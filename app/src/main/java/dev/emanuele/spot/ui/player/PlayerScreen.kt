@@ -91,6 +91,9 @@ import dev.emanuele.spot.ui.theme.softShadow
  * nothing to refract and looks like grey panels, which is why the artwork comes
  * back here as a full-bleed backdrop.
  */
+/** What occupies the middle of the player. */
+private enum class Stage { COVER, LYRICS, CANVAS }
+
 @UnstableApi
 @Composable
 fun PlayerScreen(
@@ -252,32 +255,54 @@ fun PlayerScreen(
                         // `weight(1f)`, not `weight(1f, fill = false)`: with the
                         // column arranged from the bottom, "as much space as it
                         // wants" is nothing once the controls have taken theirs.
-                        AnimatedVisibility(
-                            visible = canvas == null && !lyricsOpen,
-                            enter = fadeIn(tween(400)) + scaleIn(tween(400), initialScale = 0.92f),
-                            exit = fadeOut(tween(250)) + scaleOut(tween(250), targetScale = 0.92f),
+                        // One slot, cross-faded, rather than two AnimatedVisibility
+                        // blocks taking turns.
+                        //
+                        // Both of those carried a weight, so while one was
+                        // leaving and the other arriving the column briefly had
+                        // two weighted children and split the space between
+                        // them — the cover shrank sideways as it left instead of
+                        // simply going. A plain fade is what opening a lyric
+                        // sheet should look like, and holding the slot open
+                        // keeps everything below it still.
+                        Crossfade(
+                            targetState = when {
+                                lyricsOpen -> Stage.LYRICS
+                                canvas == null -> Stage.COVER
+                                else -> Stage.CANVAS
+                            },
+                            animationSpec = tween(320),
+                            label = "stage",
                             modifier = Modifier.weight(1f),
-                        ) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Cover(state, panel, onNext, onPrevious, sharedScope, animatedScope)
-                            }
-                        }
+                        ) { stage ->
+                            when (stage) {
+                                Stage.COVER -> Box(
+                                    Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Cover(
+                                        state,
+                                        panel,
+                                        onNext,
+                                        onPrevious,
+                                        sharedScope,
+                                        animatedScope,
+                                    )
+                                }
 
-                        // The lyrics get the same space, whether or not there is
-                        // a Canvas behind them.
-                        AnimatedVisibility(
-                            visible = lyricsOpen,
-                            enter = fadeIn(tween(400)),
-                            exit = fadeOut(tween(220)),
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            LyricsStage(
-                                lyrics = lyrics,
-                                loading = lyricsLoading,
-                                positionMs = positionMs,
-                                isPlaying = state.isPlaying,
-                                onSeek = onSeek,
-                            )
+                                Stage.LYRICS -> LyricsStage(
+                                    lyrics = lyrics,
+                                    loading = lyricsLoading,
+                                    positionMs = positionMs,
+                                    isPlaying = state.isPlaying,
+                                    onSeek = onSeek,
+                                )
+
+                                // The clip is the picture, and it is drawn
+                                // behind everything: this slot only has to keep
+                                // the space.
+                                Stage.CANVAS -> Box(Modifier.fillMaxSize())
+                            }
                         }
 
                         Spacer(Modifier.height(20.dp))
