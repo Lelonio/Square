@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -112,6 +113,22 @@ interface SpotifyApi {
         @Body request: AddTracksRequestDto,
     )
 
+    /**
+     * Removes every occurrence of the given tracks from a playlist.
+     *
+     * Every occurrence: pinning it to one position needs the playlist's
+     * snapshot id, and a playlist holding the same track twice is rare enough
+     * that carrying snapshot state around for it is not worth the failure modes.
+     *
+     * `@HTTP` rather than `@DELETE` because this one carries a body, which
+     * Retrofit's `@DELETE` does not allow.
+     */
+    @HTTP(method = "DELETE", path = "v1/playlists/{id}/tracks", hasBody = true)
+    suspend fun removeFromPlaylist(
+        @Path("id") playlistId: String,
+        @Body request: RemoveTracksRequestDto,
+    )
+
     @GET("v1/search")
     suspend fun search(
         @Query("q") query: String,
@@ -122,6 +139,12 @@ interface SpotifyApi {
 
 @Serializable
 data class AddTracksRequestDto(val uris: List<String>)
+
+@Serializable
+data class RemoveTracksRequestDto(val tracks: List<TrackUriDto>)
+
+@Serializable
+data class TrackUriDto(val uri: String)
 
 @Serializable
 data class PageDto<T>(

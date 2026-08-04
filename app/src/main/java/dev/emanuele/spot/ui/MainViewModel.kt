@@ -7,6 +7,8 @@ import dev.emanuele.spot.SpotApplication
 import dev.emanuele.spot.auth.SpotifyOAuth
 import dev.emanuele.spot.data.Catalog
 import dev.emanuele.spot.data.AddTracksRequestDto
+import dev.emanuele.spot.data.RemoveTracksRequestDto
+import dev.emanuele.spot.data.TrackUriDto
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.data.SearchItem
@@ -646,6 +648,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _playlist.value =
                         if (cached.isEmpty()) base.copy(error = describe(it)) else base.copy(tracks = cached)
                 }
+        }
+    }
+
+    /**
+     * Removes a track from the playlist currently open.
+     *
+     * Optimistic, unlike adding: the row disappearing *is* the confirmation, and
+     * putting it back is a possible outcome the user can see, whereas a row that
+     * sits there for a round trip before vanishing reads as a tap that missed.
+     * Every occurrence goes, which matters only on a playlist holding the same
+     * track twice; see SpotifyApi.removeFromPlaylist.
+     */
+    fun removeFromPlaylist(track: CatalogTrack) {
+        val uri = _playlist.value.uri ?: return
+        if (!uri.startsWith("spotify:playlist:")) return
+
+        val before = _playlist.value.tracks
+        _playlist.value = _playlist.value.copy(tracks = before.filterNot { it.uri == track.uri })
+        invalidateContext(uri)
+
+        viewModelScope.launch {
+            runCatching {
+                container.api.removeFromPlaylist(
+                    uri.substringAfterLast(':'),
+                    RemoveTracksRequestDto(listOf(TrackUriDto(track.uri))),
+                )
+            }.onFailure {
+                android.util.Log.e(TAG, "remove from playlist failed: ${chain(it)}", it)
+                // Only if the screen is still showing the same playlist.
+                if (_playlist.value.uri == uri) {
+                    _playlist.value = _playlist.value.copy(tracks = before)
+                }
+            }
         }
     }
 

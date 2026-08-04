@@ -114,7 +114,8 @@
       "Bash(git commit -q -m 'Read playlists through the Web API, and keep them *)",
       "Bash(git commit -q -m 'A draggable scrollbar, and sorting by when tracks were added *)",
       "Bash(git commit -q -m 'Track menus, a page-coloured glass, and a remembered sort *)",
-      "Bash(git commit -q -m 'Keep the glass out of the layer it samples *)"
+      "Bash(git commit -q -m 'Keep the glass out of the layer it samples *)",
+      "Bash(git commit -q -m 'Glass context menus, with remove-from-playlist *)"
     ]
   }
 }

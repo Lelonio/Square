@@ -24,8 +24,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +52,8 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.emanuele.spot.ui.components.Artwork
+import dev.emanuele.spot.ui.components.GlassMenu
+import dev.emanuele.spot.ui.components.GlassMenuItem
 import dev.emanuele.spot.ui.components.LazyScrollBar
 import dev.emanuele.spot.ui.components.SwipeToQueue
 import dev.emanuele.spot.ui.glass.LiquidButton
@@ -75,6 +75,7 @@ import com.adamglin.phosphoricons.regular.LinkSimple
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.Shuffle
+import com.adamglin.phosphoricons.regular.Trash
 import com.adamglin.phosphoricons.regular.X
 
 /** How the track list is ordered. */
@@ -97,6 +98,7 @@ fun PlaylistScreen(
     onShuffle: (List<CatalogTrack>) -> Unit,
     /** Opens the app-wide "add to playlist" sheet for one track. */
     onAddToPlaylist: (CatalogTrack) -> Unit,
+    onRemoveFromPlaylist: (CatalogTrack) -> Unit,
     onOpenItem: (dev.emanuele.spot.data.SearchItem) -> Unit = {},
     /** The remembered track order, and where a change to it is stored. */
     storedSort: String? = null,
@@ -205,6 +207,7 @@ fun PlaylistScreen(
                         } else {
                             "Brani"
                         },
+                        backdrop = pageBackdrop,
                         sort = sort,
                         sortOpen = sortOpen,
                         onSortOpen = { sortOpen = it },
@@ -280,6 +283,15 @@ fun PlaylistScreen(
                             onClick = { onPlay(visible, index) },
                             onEnqueue = { onEnqueue(track) },
                             onAddToPlaylist = { onAddToPlaylist(track) },
+                            // Only a playlist can have something taken out of
+                            // it; an album or an artist's top tracks is not a
+                            // list the account owns.
+                            onRemove = if (state.kind == MainViewModel.DetailKind.PLAYLIST) {
+                                { onRemoveFromPlaylist(track) }
+                            } else {
+                                null
+                            },
+                            backdrop = pageBackdrop,
                         )
                     }
                 }
@@ -553,6 +565,7 @@ private fun AlbumStrip(
 @Composable
 private fun SectionHeader(
     title: String,
+    backdrop: Backdrop,
     sort: TrackSort,
     sortOpen: Boolean,
     onSortOpen: (Boolean) -> Unit,
@@ -579,18 +592,25 @@ private fun SectionHeader(
                     modifier = Modifier.size(20.dp),
                 )
             }
-            DropdownMenu(expanded = sortOpen, onDismissRequest = { onSortOpen(false) }) {
+            // The same glass as the track menu: two context menus on one screen
+            // made of two different materials is worse than either choice.
+            GlassMenu(
+                expanded = sortOpen,
+                onDismiss = { onSortOpen(false) },
+                backdrop = backdrop,
+            ) {
                 TrackSort.entries.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.label) },
-                        trailingIcon = {
-                            if (option == sort) Icon(PhosphorIcons.Regular.Check, contentDescription = null)
+                    GlassMenuItem(
+                        option.label,
+                        if (option == sort) {
+                            PhosphorIcons.Regular.Check
+                        } else {
+                            PhosphorIcons.Regular.ArrowsDownUp
                         },
-                        onClick = {
-                            onSort(option)
-                            onSortOpen(false)
-                        },
-                    )
+                    ) {
+                        onSort(option)
+                        onSortOpen(false)
+                    }
                 }
             }
         }
@@ -622,6 +642,8 @@ private fun TrackRow(
     onClick: () -> Unit,
     onEnqueue: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onRemove: (() -> Unit)?,
+    backdrop: Backdrop,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(14.dp)
@@ -710,10 +732,12 @@ private fun TrackRow(
             TrackMenu(
                 expanded = menuOpen,
                 track = track,
+                backdrop = backdrop,
                 onDismiss = { menuOpen = false },
                 onPlay = onClick,
                 onEnqueue = onEnqueue,
                 onAddToPlaylist = onAddToPlaylist,
+                onRemove = onRemove,
             )
         }
     }
@@ -731,37 +755,40 @@ private fun TrackRow(
 private fun TrackMenu(
     expanded: Boolean,
     track: CatalogTrack,
+    backdrop: Backdrop,
     onDismiss: () -> Unit,
     onPlay: () -> Unit,
     onEnqueue: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    /** Null unless this list is a playlist the account can edit. */
+    onRemove: (() -> Unit)?,
 ) {
     val clipboard = LocalClipboardManager.current
 
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(
-            text = { Text("Riproduci") },
-            leadingIcon = { Icon(PhosphorIcons.Fill.Play, contentDescription = null) },
-            onClick = { onDismiss(); onPlay() },
-        )
-        DropdownMenuItem(
-            text = { Text("Aggiungi alla coda") },
-            leadingIcon = { Icon(PhosphorIcons.Regular.Queue, contentDescription = null) },
-            onClick = { onDismiss(); onEnqueue() },
-        )
-        DropdownMenuItem(
-            text = { Text("Aggiungi a una playlist") },
-            leadingIcon = { Icon(PhosphorIcons.Regular.Plus, contentDescription = null) },
-            onClick = { onDismiss(); onAddToPlaylist() },
-        )
-        DropdownMenuItem(
-            text = { Text("Copia link") },
-            leadingIcon = { Icon(PhosphorIcons.Regular.LinkSimple, contentDescription = null) },
-            onClick = {
+    GlassMenu(expanded = expanded, onDismiss = onDismiss, backdrop = backdrop) {
+        GlassMenuItem("Riproduci", PhosphorIcons.Fill.Play) { onDismiss(); onPlay() }
+        GlassMenuItem("Aggiungi alla coda", PhosphorIcons.Regular.Queue) {
+            onDismiss()
+            onEnqueue()
+        }
+        GlassMenuItem("Aggiungi a una playlist", PhosphorIcons.Regular.Plus) {
+            onDismiss()
+            onAddToPlaylist()
+        }
+        GlassMenuItem("Copia link", PhosphorIcons.Regular.LinkSimple) {
+            onDismiss()
+            clipboard.setText(AnnotatedString(track.openLink()))
+        }
+        if (onRemove != null) {
+            GlassMenuItem(
+                "Rimuovi dalla playlist",
+                PhosphorIcons.Regular.Trash,
+                destructive = true,
+            ) {
                 onDismiss()
-                clipboard.setText(AnnotatedString(track.openLink()))
-            },
-        )
+                onRemove()
+            }
+        }
     }
 }
 

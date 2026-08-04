@@ -367,6 +367,7 @@ fun SpotApp(
                                     onAddToPlaylist = { track ->
                                         viewModel.openAddToPlaylist(track.uri, track.name)
                                     },
+                                    onRemoveFromPlaylist = viewModel::removeFromPlaylist,
                                     storedSort = trackSort,
                                     onSortChange = viewModel::setTrackSort,
                                     onOpenItem = { item ->
