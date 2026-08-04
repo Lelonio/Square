@@ -238,6 +238,34 @@ fun PlaylistScreen(
                     }
                 }
             }
+
+            // A long playlist arrives a batch at a time and this is the tail of
+            // it still coming. Deliberately quiet: the list above is already
+            // readable and playable, and a spinner in the middle of the screen
+            // would say otherwise.
+            if (state.loadingMore) {
+                item(contentType = "more") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 18.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "Altri brani in arrivo",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 10.dp),
+                        )
+                    }
+                }
+            }
         }
 
         // Floating rather than a top bar: the list scrolls under it, so the

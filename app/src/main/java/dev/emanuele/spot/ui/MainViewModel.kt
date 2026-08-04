@@ -80,6 +80,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val artworkUrl: String? = null,
         val tracks: List<CatalogTrack> = emptyList(),
         val loading: Boolean = false,
+        /**
+         * More of the list is still being resolved.
+         *
+         * Separate from [loading]: the first batch replaces the screen with a
+         * spinner, the rest arrive under a list the user is already reading and
+         * must not.
+         */
+        val loadingMore: Boolean = false,
         val error: String? = null,
         val kind: DetailKind = DetailKind.PLAYLIST,
         /** Populated for artists only. */
@@ -586,9 +594,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         openPlaylist(CatalogPlaylist(uri = uri, name = name, artworkUrl = artworkUrl))
 
     fun openPlaylist(playlist: CatalogPlaylist) {
-        // Recorded before the early return: reopening what is already loaded
-        // still counts as opening it, and that is exactly the playlist the home
-        // page should keep at the front.
+        // Reopening one counts as opening it, and that is exactly the playlist
+        // the home page should keep at the front.
         container.playlistOrder.record(playlist.uri)
 
         // Reopening what is already loaded re-reads it rather than showing the
@@ -612,11 +619,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _playlist.value = base.copy(tracks = cached, loading = cached.isEmpty())
         playlistJob = viewModelScope.launch {
             runCatching {
-                if (kind == DetailKind.ARTIST) loadArtist(playlist.uri) else loadContext(playlist.uri)
-            }
-                .onSuccess { loaded ->
-                    _playlist.value = base.copy(tracks = loaded.first, albums = loaded.second)
+                if (kind == DetailKind.ARTIST) {
+                    val (tracks, albums) = loadArtist(playlist.uri)
+                    _playlist.value = base.copy(tracks = tracks, albums = albums)
+                } else {
+                    loadContextInto(base, playlist.uri)
                 }
+            }
                 .onFailure {
                     android.util.Log.e(TAG, "detail load failed: ${chain(it)}", it)
                     // Only when there is nothing to show. A refresh that fails
@@ -627,9 +636,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Playlists and albums are both contexts the access point can resolve. */
-    private suspend fun loadContext(uri: String): Pair<List<CatalogTrack>, List<SearchItem>> =
-        Catalog.tracks(Catalog.contextTrackUris(uri).take(PLAYLIST_LIMIT)) to emptyList()
+    /**
+     * Resolves a whole playlist or album, publishing it as it arrives.
+     *
+     * The list used to stop at the first hundred tracks, which is not a length
+     * anyone's playlists respect, and a track added from the player landed past
+     * the cut and looked like it had not been added at all.
+     *
+     * In batches rather than in one call because each track is its own
+     * access-point lookup: the native side runs a batch concurrently, so asking
+     * for two thousand at once would open two thousand requests and get itself
+     * throttled. A batch at a time keeps that bounded and has the useful side
+     * effect that the screen fills from the top while the rest is still coming.
+     */
+    private suspend fun loadContextInto(base: PlaylistState, uri: String) {
+        val uris = Catalog.contextTrackUris(uri)
+        if (uris.isEmpty()) {
+            _playlist.value = base
+            return
+        }
+
+        val loaded = mutableListOf<CatalogTrack>()
+        uris.chunked(METADATA_BATCH).forEach { batch ->
+            loaded += Catalog.tracks(batch)
+            _playlist.value = base.copy(
+                tracks = loaded.toList(),
+                loadingMore = loaded.size < uris.size,
+            )
+        }
+    }
 
     /**
      * Top tracks and albums for an artist.
@@ -703,7 +738,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         const val POLL_INTERVAL_MS = 250L
 
         /** Each track is its own access-point round trip. */
-        const val PLAYLIST_LIMIT = 100
+        /** Tracks resolved per access-point round trip; see loadContextInto. */
+        const val METADATA_BATCH = 100
 
         const val SEARCH_DEBOUNCE_MS = 350L
 
