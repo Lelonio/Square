@@ -64,12 +64,15 @@ import java.util.Calendar
  * A filter rather than tabs: the sections keep their order and the chips only
  * decide which of them are on the page, so nothing moves around when you switch
  * and "Tutto" is genuinely the whole thing rather than a fourth view.
+ *
+ * The chips are in the sections' own order, so scrolling walks along them left
+ * to right instead of jumping about.
  */
 private enum class Feed(val label: String) {
     ALL("Tutto"),
+    LIBRARY("Libreria"),
     RELEASES("Novità"),
     ARTISTS("Artisti"),
-    LIBRARY("Libreria"),
 }
 
 /**
@@ -211,6 +214,18 @@ fun HomeScreen(
                         bottom = contentPadding.calculateBottomPadding(),
                     ),
                 ) {
+                if (showLibrary || filter == Feed.ALL) {
+                    item(contentType = Feed.LIBRARY.name) { Heading("Le tue playlist") }
+                    item(contentType = Feed.LIBRARY.name) {
+                        Carousel(
+                            playlists.take(if (showLibrary) LIBRARY_SIZE else CAROUSEL_SIZE),
+                            key = { it.uri },
+                        ) { playlist ->
+                            PlaylistTile(playlist) { onOpenPlaylist(playlist) }
+                        }
+                    }
+                }
+
                 if (showReleases && feed.newReleases.isNotEmpty()) {
                     item(contentType = Feed.RELEASES.name) { Heading("Novità") }
                     // Cards rather than another row of thumbnails. A carousel
@@ -231,18 +246,6 @@ fun HomeScreen(
                     item(contentType = Feed.ARTISTS.name) {
                         Carousel(feed.topArtists, key = { it.uri }) { artist ->
                             ArtistTile(artist) { onOpenItem(artist) }
-                        }
-                    }
-                }
-
-                if (showLibrary || filter == Feed.ALL) {
-                    item(contentType = Feed.LIBRARY.name) { Heading("Le tue playlist") }
-                    item(contentType = Feed.LIBRARY.name) {
-                        Carousel(
-                            playlists.take(if (showLibrary) LIBRARY_SIZE else CAROUSEL_SIZE),
-                            key = { it.uri },
-                        ) { playlist ->
-                            PlaylistTile(playlist) { onOpenPlaylist(playlist) }
                         }
                     }
                 }
