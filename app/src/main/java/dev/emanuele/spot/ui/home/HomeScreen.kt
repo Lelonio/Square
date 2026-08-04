@@ -32,8 +32,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
@@ -157,19 +160,50 @@ fun HomeScreen(
                 }
             }
 
+            // Which section is being looked at, for the chips.
+            //
+            // Read from the item type rather than from an index: sections
+            // appear and disappear with the filter, so any arithmetic over
+            // positions would be wrong the moment one of them is empty.
+            val visibleSection by remember {
+                derivedStateOf {
+                    listState.layoutInfo.visibleItemsInfo
+                        .firstNotNullOfOrNull { info ->
+                            Feed.entries.firstOrNull { it.name == info.contentType }
+                        }
+                }
+            }
+
             Column(Modifier.fillMaxSize()) {
                 Header(
                     name = state.displayName,
                     avatarUrl = state.avatarUrl,
                     collapse = collapse,
                     filter = filter,
+                    highlighted = if (filter == Feed.ALL) visibleSection ?: Feed.ALL else filter,
                     backdrop = backdrop,
                     topPadding = contentPadding.calculateTopPadding(),
                     onFilter = { filter = it },
                 )
 
                 LazyColumn(
-                    Modifier.fillMaxSize(),
+                    Modifier
+                        .fillMaxSize()
+                        // Fades the first rows out under the header instead of
+                        // cutting them off square. DstIn needs a layer of its
+                        // own, or the mask would erase the page behind the list
+                        // as well.
+                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    FADE_FRACTION to Color.Black,
+                                ),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        },
                     state = listState,
                     // The header already covers the status bar, so only the
                     // bottom inset is left for the list.
@@ -178,7 +212,7 @@ fun HomeScreen(
                     ),
                 ) {
                 if (showReleases && feed.newReleases.isNotEmpty()) {
-                    item(contentType = "heading") { Heading("Novità") }
+                    item(contentType = Feed.RELEASES.name) { Heading("Novità") }
                     // Cards rather than another row of thumbnails. A carousel
                     // says "here is a list, pick one"; this is meant to be
                     // looked at, so each release gets the width of the page and
@@ -186,15 +220,15 @@ fun HomeScreen(
                     items(
                         feed.newReleases.take(FEED_SIZE),
                         key = { it.uri },
-                        contentType = { "card" },
+                        contentType = { Feed.RELEASES.name },
                     ) { item ->
                         FeedCard(item) { onOpenItem(item) }
                     }
                 }
 
                 if (showArtists && feed.topArtists.isNotEmpty()) {
-                    item(contentType = "heading") { Heading("Artisti che ascolti") }
-                    item(contentType = "artists") {
+                    item(contentType = Feed.ARTISTS.name) { Heading("Artisti che ascolti") }
+                    item(contentType = Feed.ARTISTS.name) {
                         Carousel(feed.topArtists, key = { it.uri }) { artist ->
                             ArtistTile(artist) { onOpenItem(artist) }
                         }
@@ -202,8 +236,8 @@ fun HomeScreen(
                 }
 
                 if (showLibrary || filter == Feed.ALL) {
-                    item(contentType = "heading") { Heading("Le tue playlist") }
-                    item(contentType = "playlists") {
+                    item(contentType = Feed.LIBRARY.name) { Heading("Le tue playlist") }
+                    item(contentType = Feed.LIBRARY.name) {
                         Carousel(
                             playlists.take(if (showLibrary) LIBRARY_SIZE else CAROUSEL_SIZE),
                             key = { it.uri },
@@ -214,8 +248,8 @@ fun HomeScreen(
                 }
 
                 if (recent.isNotEmpty() && filter != Feed.ARTISTS) {
-                    item(contentType = "heading") { Heading("Riascolta") }
-                    item(contentType = "recent") {
+                    item(contentType = Feed.LIBRARY.name) { Heading("Riascolta") }
+                    item(contentType = Feed.LIBRARY.name) {
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 20.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -249,6 +283,8 @@ private fun Header(
     avatarUrl: String?,
     collapse: Float,
     filter: Feed,
+    /** The chip drawn as active, which follows the scroll while nothing is filtered. */
+    highlighted: Feed,
     backdrop: Backdrop,
     topPadding: Dp,
     onFilter: (Feed) -> Unit,
@@ -321,7 +357,7 @@ private fun Header(
             )
         }
 
-        FilterRow(filter, backdrop, onFilter)
+        FilterRow(highlighted, backdrop, onFilter)
     }
 }
 
@@ -593,6 +629,9 @@ private const val COLLAPSE_DISTANCE_PX = 140f
 
 /** Comfortably under the 640px Spotify serves, so it is never upscaled. */
 private val COVER_SIZE = 210.dp
+
+/** How much of the list's height the fade under the header covers. */
+private const val FADE_FRACTION = 0.045f
 
 private const val FEED_SIZE = 6
 private const val CAROUSEL_SIZE = 8

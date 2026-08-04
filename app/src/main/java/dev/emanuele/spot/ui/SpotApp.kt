@@ -469,9 +469,19 @@ private fun BottomBar(
     // do something and come back — and giving it the same weight as Home and
     // Library made all three read as places.
     val routes = remember { listOf(Routes.HOME, Routes.LIBRARY) }
-    // Falls back to Home rather than -1 while on a screen that is not a tab —
-    // the playlist detail, say — so the indicator has somewhere to sit.
-    val selected = routes.indexOf(route).coerceAtLeast(0)
+
+    // The last tab that was actually on screen, held across screens that are not
+    // tabs at all — a playlist, the search page.
+    //
+    // Falling back to Home instead, which is what this did, navigated the user
+    // away: the bar reports every change of its selected index through
+    // `onTabSelected`, so opening a playlist from Library moved the index 1 -> 0
+    // and the bar promptly "selected" Home. That was the playlist opening and
+    // then bouncing back.
+    var lastTab by remember { mutableStateOf(0) }
+    val routeIndex = routes.indexOf(route)
+    if (routeIndex >= 0 && routeIndex != lastTab) lastTab = routeIndex
+    val selected = if (routeIndex >= 0) routeIndex else lastTab
 
     // A *stable* lambda, deliberately. LiquidBottomTabs keys its internal state
     // on this reference, so a fresh closure on every recomposition threw that
