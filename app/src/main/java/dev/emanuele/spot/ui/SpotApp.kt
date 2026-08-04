@@ -75,6 +75,7 @@ import dev.emanuele.spot.ui.home.HomeScreen
 import dev.emanuele.spot.ui.library.LibraryScreen
 import dev.emanuele.spot.ui.library.PlaylistScreen
 import dev.emanuele.spot.ui.player.MiniPlayer
+import dev.emanuele.spot.ui.player.GlassFilm
 import dev.emanuele.spot.ui.player.MiniPlayerHeight
 import dev.emanuele.spot.ui.player.PlayerScreen
 import dev.emanuele.spot.ui.player.progressOf
@@ -475,6 +476,11 @@ private fun BottomBar(
             backdrop = backdrop,
             tabsCount = routes.size,
             modifier = Modifier.weight(1f),
+            // Both upstream defaults are wrong here: the accent is a system blue
+            // that belongs to no part of this palette, and the container is a
+            // 40% fill that made the bar a solid slab beside the other glass.
+            accentColor = Ink,
+            containerColor = GlassFilm,
         ) {
             BottomItem("Home", Icons.Filled.Home, Icons.Outlined.Home, selected == 0) {
                 onSelect(Routes.HOME)
@@ -498,6 +504,9 @@ private fun BottomBar(
             contentHeight = 64.dp,
             contentPadding = 0.dp,
             blurRadius = 8.dp,
+            // The same film the capsule beside it uses, or the round button
+            // reads as clearer glass than the bar it sits next to.
+            surfaceColor = GlassFilm,
         ) {
             Icon(
                 imageVector = if (searching) Icons.Filled.Search else Icons.Outlined.Search,
