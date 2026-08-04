@@ -78,7 +78,8 @@
       "Bash(git revert *)",
       "Bash(git stash *)",
       "Bash(git reset *)",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Make the player one surface with the now-playing bar *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Make the player one surface with the now-playing bar *)",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Seat the sheet on the measured tab bar *)"
     ]
   }
 }

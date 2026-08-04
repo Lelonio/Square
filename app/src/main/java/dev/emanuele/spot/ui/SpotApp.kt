@@ -44,6 +44,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -159,6 +161,12 @@ fun SpotApp(
     val expand = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
+    // Measured rather than assumed. The constant this replaced was 62dp while
+    // the bar is a 64dp capsule with padding around it and the navigation inset
+    // under that, so the sheet sat about twenty over it.
+    var barHeight by remember { mutableStateOf(BottomBarHeight) }
+    val density = LocalDensity.current
+
     // Recorded here rather than at the tap: this fires for auto-advance and for
     // controls outside the app too, so the history matches what was actually
     // heard instead of only what was tapped.
@@ -218,8 +226,7 @@ fun SpotApp(
                 // scrolling behind them.
                 val listPadding = PaddingValues(
                     top = statusBar,
-                    bottom = navBar + BottomBarHeight +
-                        if (playback.hasItem) MiniPlayerHeight else 0.dp,
+                    bottom = barHeight + if (playback.hasItem) MiniPlayerHeight else 0.dp,
                 )
 
                 // The screens are recorded into the backdrop layer along with
@@ -347,7 +354,8 @@ fun SpotApp(
                         // before it covers it: a tab bar under a full-screen
                         // player still swallows the taps meant for the
                         // transport.
-                        .graphicsLayer { alpha = (1f - expand.value * 3f).coerceIn(0f, 1f) },
+                        .graphicsLayer { alpha = (1f - expand.value * 3f).coerceIn(0f, 1f) }
+                        .onSizeChanged { barHeight = with(density) { it.height.toDp() } },
                 ) {
                     BottomBar(
                         route = route,
@@ -360,7 +368,9 @@ fun SpotApp(
                 if (playback.hasItem) {
                     NowPlayingSheet(
                         progress = expand,
-                        bottomInset = navBar + BottomBarHeight,
+                        // The measured bar already carries the navigation
+                        // inset; the gap is what keeps the two from touching.
+                        bottomInset = barHeight + 6.dp,
                         collapsedContent = {
                             MiniPlayer(
                                 state = playback,
