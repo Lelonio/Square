@@ -46,6 +46,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.emanuele.spot.ui.player.GlassSurface
+import dev.emanuele.spot.ui.components.MENU_WIDTH
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.layout.BoxScope
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.ui.MainViewModel
 import com.kyant.backdrop.Backdrop
@@ -138,7 +148,35 @@ fun PlaylistScreen(
     // cover.
     val pageBackdrop = rememberLayerBackdrop()
 
+    // The page *including* its list, for the panes that cover it: the context
+    // menu and the collapsed bar. Nothing inside this layer samples it — the
+    // header's buttons take the plain page colour above — so there is no cycle.
+    val contentBackdrop = rememberLayerBackdrop()
+
+    // Which track's menu is open, and where its button is, so the menu can be
+    // drawn at the top level rather than inside a row the list may recycle.
+    var menuTrack by remember { mutableStateOf<CatalogTrack?>(null) }
+    var menuAnchor by remember { mutableStateOf(IntOffset.Zero) }
+    var sortAnchor by remember { mutableStateOf(IntOffset.Zero) }
+
+    val density = LocalDensity.current
+    val listState = rememberLazyListState()
+
+    // How far the hero has been scrolled away, 0 to 1. Read in a derived state
+    // so the bar it drives recomposes when the answer changes rather than on
+    // every pixel of the scroll.
+    val collapse by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) {
+                1f
+            } else {
+                (listState.firstVisibleItemScrollOffset / COLLAPSE_DISTANCE_PX).coerceIn(0f, 1f)
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
+      Box(Modifier.fillMaxSize().layerBackdrop(contentBackdrop)) {
         // The page colour, and only the page colour.
         //
         // The layer has to hold nothing that samples it. Recording the whole
@@ -168,8 +206,6 @@ fun PlaylistScreen(
         // No top content padding: the hero runs under the status bar, which is
         // the whole point of the layout — the picture is the top of the screen,
         // not something sitting below a gap.
-        val listState = rememberLazyListState()
-
         LazyColumn(
             state = listState,
             contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
@@ -207,14 +243,9 @@ fun PlaylistScreen(
                         } else {
                             "Brani"
                         },
-                        backdrop = pageBackdrop,
                         sort = sort,
-                        sortOpen = sortOpen,
                         onSortOpen = { sortOpen = it },
-                        onSort = {
-                            sort = it
-                            onSortChange(it.name)
-                        },
+                        onAnchor = { sortAnchor = it },
                     )
                 }
 
@@ -281,17 +312,10 @@ fun PlaylistScreen(
                             position = index + 1,
                             isCurrent = track.uri == nowPlayingUri,
                             onClick = { onPlay(visible, index) },
-                            onEnqueue = { onEnqueue(track) },
-                            onAddToPlaylist = { onAddToPlaylist(track) },
-                            // Only a playlist can have something taken out of
-                            // it; an album or an artist's top tracks is not a
-                            // list the account owns.
-                            onRemove = if (state.kind == MainViewModel.DetailKind.PLAYLIST) {
-                                { onRemoveFromPlaylist(track) }
-                            } else {
-                                null
+                            onMenu = { anchor ->
+                                menuAnchor = anchor
+                                menuTrack = track
                             },
-                            backdrop = pageBackdrop,
                         )
                     }
                 }
@@ -326,6 +350,8 @@ fun PlaylistScreen(
             }
         }
 
+      }
+
         LazyScrollBar(
             state = listState,
             startAfter = "track",
@@ -338,14 +364,16 @@ fun PlaylistScreen(
         )
 
         // Floating rather than a top bar: the list scrolls under it, so the
-        // picture stays uninterrupted.
+        // picture stays uninterrupted. It gives way to the collapsed bar, which
+        // carries a back button of its own.
         LiquidButton(
             onClick = onBack,
             backdrop = pageBackdrop,
             modifier = Modifier
                 .padding(top = contentPadding.calculateTopPadding() + 8.dp, start = 14.dp)
                 .align(Alignment.TopStart)
-                .size(42.dp),
+                .size(42.dp)
+                .graphicsLayer { alpha = 1f - collapse },
             contentHeight = 42.dp,
             contentPadding = 0.dp,
             blurRadius = 8.dp,
@@ -356,6 +384,173 @@ fun PlaylistScreen(
                 tint = Color.White,
                 modifier = Modifier.size(20.dp),
             )
+        }
+
+        // What the hero turns into. The cover, the title and the three controls
+        // do not simply scroll away — the title is what tells you which playlist
+        // you are in, and the play button is the thing most likely to be wanted
+        // after reading a screenful of tracks.
+        CollapsedBar(
+            title = state.name,
+            artworkUrl = state.artworkUrl,
+            collapse = collapse,
+            backdrop = contentBackdrop,
+            topPadding = contentPadding.calculateTopPadding(),
+            searching = searching,
+            onBack = onBack,
+            onPlay = { visible.takeIf { it.isNotEmpty() }?.let { onPlay(it, 0) } },
+            onShuffle = { visible.takeIf { it.isNotEmpty() }?.let(onShuffle) },
+            onToggleSearch = {
+                searching = !searching
+                if (!searching) query = ""
+            },
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        // Both menus are drawn here rather than beside the buttons that open
+        // them: a row inside a lazy list can be recycled out from under its own
+        // popup, and only at this level is there a layer holding the page for
+        // the glass to refract.
+        TrackMenu(
+            track = menuTrack,
+            anchor = menuAnchor.leftOf(density),
+            backdrop = contentBackdrop,
+            onDismiss = { menuTrack = null },
+            onPlay = { track -> visible.indexOf(track).takeIf { it >= 0 }?.let { onPlay(visible, it) } },
+            onEnqueue = onEnqueue,
+            onAddToPlaylist = onAddToPlaylist,
+            // Only a playlist can have something taken out of it; an album or an
+            // artist's top tracks is not a list the account owns.
+            onRemove = if (state.kind == MainViewModel.DetailKind.PLAYLIST) {
+                onRemoveFromPlaylist
+            } else {
+                null
+            },
+        )
+
+        GlassMenu(
+            visible = sortOpen,
+            anchor = sortAnchor.leftOf(density),
+            backdrop = contentBackdrop,
+            onDismiss = { sortOpen = false },
+        ) {
+            TrackSort.entries.forEach { option ->
+                GlassMenuItem(
+                    option.label,
+                    if (option == sort) {
+                        PhosphorIcons.Regular.Check
+                    } else {
+                        PhosphorIcons.Regular.ArrowsDownUp
+                    },
+                ) {
+                    sort = option
+                    onSortChange(option.name)
+                    sortOpen = false
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Turns a button's position into where a menu hanging off its right edge goes.
+ *
+ * Menus open leftwards from the control that owns them, because every one of
+ * those controls is at the right-hand edge of the screen.
+ */
+private fun IntOffset.leftOf(density: androidx.compose.ui.unit.Density): IntOffset {
+    val width = with(density) { MENU_WIDTH.roundToPx() }
+    val gap = with(density) { 8.dp.roundToPx() }
+    return IntOffset((x - width + gap).coerceAtLeast(gap), y + gap)
+}
+
+/**
+ * The hero, once it has been scrolled away.
+ *
+ * Fades in over the last of the cover rather than sliding down from nowhere, so
+ * the two read as one thing changing size. The controls are the same three, at
+ * the size a bar can carry them.
+ */
+@Composable
+private fun CollapsedBar(
+    title: String,
+    artworkUrl: String?,
+    collapse: Float,
+    backdrop: Backdrop,
+    topPadding: Dp,
+    searching: Boolean,
+    onBack: () -> Unit,
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+    onToggleSearch: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (collapse <= 0.01f) return
+
+    GlassSurface(
+        backdrop = backdrop,
+        shape = RoundedCornerShape(0.dp),
+        surfaceColor = Color.Black.copy(alpha = 0.34f),
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = collapse },
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = topPadding + 6.dp, bottom = 10.dp)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    PhosphorIcons.Regular.ArrowLeft,
+                    contentDescription = "Indietro",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Artwork(
+                url = artworkUrl,
+                title = title,
+                modifier = Modifier.size(34.dp),
+                corner = 8.dp,
+                decodeSize = 34.dp,
+            )
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp),
+            )
+            IconButton(onClick = onToggleSearch) {
+                Icon(
+                    if (searching) PhosphorIcons.Regular.X else PhosphorIcons.Fill.MagnifyingGlass,
+                    contentDescription = "Cerca fra i brani",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            IconButton(onClick = onShuffle) {
+                Icon(
+                    PhosphorIcons.Regular.Shuffle,
+                    contentDescription = "Casuale",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            IconButton(onClick = onPlay) {
+                Icon(
+                    PhosphorIcons.Fill.Play,
+                    contentDescription = "Riproduci",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
     }
 }
@@ -565,11 +760,10 @@ private fun AlbumStrip(
 @Composable
 private fun SectionHeader(
     title: String,
-    backdrop: Backdrop,
     sort: TrackSort,
-    sortOpen: Boolean,
     onSortOpen: (Boolean) -> Unit,
-    onSort: (TrackSort) -> Unit,
+    /** Where the sort button is, for the menu drawn above the list. */
+    onAnchor: (IntOffset) -> Unit,
 ) {
     Row(
         Modifier
@@ -579,8 +773,14 @@ private fun SectionHeader(
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
 
-        Box {
-            IconButton(onClick = { onSortOpen(true) }) {
+        IconButton(
+            onClick = { onSortOpen(true) },
+            modifier = Modifier.onGloballyPositioned {
+                val root = it.boundsInRoot()
+                onAnchor(IntOffset(root.left.toInt(), root.bottom.toInt()))
+            },
+        ) {
+            run {
                 Icon(
                     PhosphorIcons.Regular.ArrowsDownUp,
                     contentDescription = "Ordina",
@@ -592,30 +792,17 @@ private fun SectionHeader(
                     modifier = Modifier.size(20.dp),
                 )
             }
-            // The same glass as the track menu: two context menus on one screen
-            // made of two different materials is worse than either choice.
-            GlassMenu(
-                expanded = sortOpen,
-                onDismiss = { onSortOpen(false) },
-                backdrop = backdrop,
-            ) {
-                TrackSort.entries.forEach { option ->
-                    GlassMenuItem(
-                        option.label,
-                        if (option == sort) {
-                            PhosphorIcons.Regular.Check
-                        } else {
-                            PhosphorIcons.Regular.ArrowsDownUp
-                        },
-                    ) {
-                        onSort(option)
-                        onSortOpen(false)
-                    }
-                }
-            }
         }
     }
 }
+
+/**
+ * How much of the hero has to go before the bar has fully taken over.
+ *
+ * Not the whole cover: the bar should be there by the time the first tracks
+ * reach the top of the screen, not once the entire picture has gone.
+ */
+private const val COLLAPSE_DISTANCE_PX = 620f
 
 /** Tall enough to be the top of the screen rather than a banner above a list. */
 private val HERO_HEIGHT = 420.dp
@@ -640,12 +827,9 @@ private fun TrackRow(
     position: Int,
     isCurrent: Boolean,
     onClick: () -> Unit,
-    onEnqueue: () -> Unit,
-    onAddToPlaylist: () -> Unit,
-    onRemove: (() -> Unit)?,
-    backdrop: Backdrop,
+    /** Where the menu button is on screen, for the menu drawn above the list. */
+    onMenu: (IntOffset) -> Unit,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(14.dp)
     // Eased rather than snapped: rows change state on every track advance, and
     // a hard cut in the middle of a list draws the eye more than the change
@@ -720,24 +904,21 @@ private fun TrackRow(
             )
         }
 
-        Box {
-            IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(32.dp)) {
-                Icon(
-                    PhosphorIcons.Regular.DotsThree,
-                    contentDescription = "Altro",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            TrackMenu(
-                expanded = menuOpen,
-                track = track,
-                backdrop = backdrop,
-                onDismiss = { menuOpen = false },
-                onPlay = onClick,
-                onEnqueue = onEnqueue,
-                onAddToPlaylist = onAddToPlaylist,
-                onRemove = onRemove,
+        var buttonPosition by remember { mutableStateOf(IntOffset.Zero) }
+        IconButton(
+            onClick = { onMenu(buttonPosition) },
+            modifier = Modifier
+                .size(32.dp)
+                .onGloballyPositioned {
+                    val root = it.boundsInRoot()
+                    buttonPosition = IntOffset(root.left.toInt(), root.bottom.toInt())
+                },
+        ) {
+            Icon(
+                PhosphorIcons.Regular.DotsThree,
+                contentDescription = "Altro",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(18.dp),
             )
         }
     }
@@ -752,32 +933,39 @@ private fun TrackRow(
  * display and not its URI, so the entry would be there and not work.
  */
 @Composable
-private fun TrackMenu(
-    expanded: Boolean,
-    track: CatalogTrack,
+private fun BoxScope.TrackMenu(
+    track: CatalogTrack?,
+    anchor: IntOffset,
     backdrop: Backdrop,
     onDismiss: () -> Unit,
-    onPlay: () -> Unit,
-    onEnqueue: () -> Unit,
-    onAddToPlaylist: () -> Unit,
+    onPlay: (CatalogTrack) -> Unit,
+    onEnqueue: (CatalogTrack) -> Unit,
+    onAddToPlaylist: (CatalogTrack) -> Unit,
     /** Null unless this list is a playlist the account can edit. */
-    onRemove: (() -> Unit)?,
+    onRemove: ((CatalogTrack) -> Unit)?,
 ) {
     val clipboard = LocalClipboardManager.current
+    // Held so the menu still has something to draw while it animates out.
+    val shown = remember(track) { track } ?: return
 
-    GlassMenu(expanded = expanded, onDismiss = onDismiss, backdrop = backdrop) {
-        GlassMenuItem("Riproduci", PhosphorIcons.Fill.Play) { onDismiss(); onPlay() }
+    GlassMenu(
+        visible = track != null,
+        anchor = anchor,
+        backdrop = backdrop,
+        onDismiss = onDismiss,
+    ) {
+        GlassMenuItem("Riproduci", PhosphorIcons.Fill.Play) { onDismiss(); onPlay(shown) }
         GlassMenuItem("Aggiungi alla coda", PhosphorIcons.Regular.Queue) {
             onDismiss()
-            onEnqueue()
+            onEnqueue(shown)
         }
         GlassMenuItem("Aggiungi a una playlist", PhosphorIcons.Regular.Plus) {
             onDismiss()
-            onAddToPlaylist()
+            onAddToPlaylist(shown)
         }
         GlassMenuItem("Copia link", PhosphorIcons.Regular.LinkSimple) {
             onDismiss()
-            clipboard.setText(AnnotatedString(track.openLink()))
+            clipboard.setText(AnnotatedString(shown.openLink()))
         }
         if (onRemove != null) {
             GlassMenuItem(
@@ -786,7 +974,7 @@ private fun TrackMenu(
                 destructive = true,
             ) {
                 onDismiss()
-                onRemove()
+                onRemove(shown)
             }
         }
     }
