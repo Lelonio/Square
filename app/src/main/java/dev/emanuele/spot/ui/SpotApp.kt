@@ -82,8 +82,8 @@ import dev.emanuele.spot.ui.player.GlassFilm
 import dev.emanuele.spot.ui.player.AddToPlaylistSheet
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.IntOffset
-import dev.emanuele.spot.ui.components.GlassIconMenu
-import dev.emanuele.spot.ui.components.GlassIconMenuItem
+import dev.emanuele.spot.ui.components.TrackSheet
+import dev.emanuele.spot.ui.components.TrackSheetAction
 import dev.emanuele.spot.ui.library.openLink
 import com.adamglin.phosphoricons.regular.LinkSimple
 import com.adamglin.phosphoricons.regular.Plus
@@ -117,7 +117,6 @@ import com.adamglin.phosphoricons.regular.MusicNotes
 /** A track menu waiting to be drawn: what it is about, and where it points. */
 private data class TrackMenuRequest(
     val track: dev.emanuele.spot.data.CatalogTrack,
-    val anchor: IntOffset,
     val removable: Boolean,
 )
 
@@ -388,10 +387,9 @@ fun SpotApp(
                                     onAddToPlaylist = { track ->
                                         viewModel.openAddToPlaylist(track.uri, track.name)
                                     },
-                                    onTrackMenu = { track, anchor ->
+                                    onTrackMenu = { track ->
                                         trackMenu = TrackMenuRequest(
                                             track = track,
-                                            anchor = anchor,
                                             // Only a playlist can have
                                             // something taken out of it.
                                             removable = playlist.kind ==
@@ -521,33 +519,35 @@ fun SpotApp(
                 // it.
                 val menu = trackMenu
                 val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-                GlassIconMenu(
+                TrackSheet(
                     visible = menu != null,
-                    anchor = menu?.anchor ?: IntOffset.Zero,
+                    title = menu?.track?.name.orEmpty(),
+                    subtitle = menu?.track?.artist.orEmpty(),
+                    artworkUrl = menu?.track?.artworkUrl,
                     backdrop = pageBackdrop,
                     onDismiss = { trackMenu = null },
                 ) {
                     if (menu != null) {
-                        GlassIconMenuItem(PhosphorIcons.Fill.Play, "Riproduci") {
+                        TrackSheetAction("Riproduci", PhosphorIcons.Fill.Play) {
                             trackMenu = null
                             onPlay(listOf(menu.track), 0)
                         }
-                        GlassIconMenuItem(PhosphorIcons.Regular.Queue, "Aggiungi alla coda") {
+                        TrackSheetAction("Aggiungi alla coda", PhosphorIcons.Regular.Queue) {
                             trackMenu = null
                             onEnqueue(menu.track)
                         }
-                        GlassIconMenuItem(PhosphorIcons.Regular.Plus, "Aggiungi a una playlist") {
+                        TrackSheetAction("Aggiungi a una playlist", PhosphorIcons.Regular.Plus) {
                             trackMenu = null
                             viewModel.openAddToPlaylist(menu.track.uri, menu.track.name)
                         }
-                        GlassIconMenuItem(PhosphorIcons.Regular.LinkSimple, "Copia link") {
+                        TrackSheetAction("Copia link", PhosphorIcons.Regular.LinkSimple) {
                             trackMenu = null
                             clipboard.setText(AnnotatedString(menu.track.openLink()))
                         }
                         if (menu.removable) {
-                            GlassIconMenuItem(
-                                PhosphorIcons.Regular.Trash,
+                            TrackSheetAction(
                                 "Rimuovi dalla playlist",
+                                PhosphorIcons.Regular.Trash,
                                 destructive = true,
                             ) {
                                 trackMenu = null

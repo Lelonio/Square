@@ -122,7 +122,7 @@ fun PlaylistScreen(
      * drawn over the whole navigation host — nothing inside a screen can reach
      * that far up.
      */
-    onTrackMenu: (CatalogTrack, IntOffset) -> Unit,
+    onTrackMenu: (CatalogTrack) -> Unit,
     onOpenItem: (dev.emanuele.spot.data.SearchItem) -> Unit = {},
     /** The remembered track order, and where a change to it is stored. */
     storedSort: String? = null,
@@ -341,7 +341,7 @@ fun PlaylistScreen(
                             position = index + 1,
                             isCurrent = track.uri == nowPlayingUri,
                             onClick = { onPlay(visible, index) },
-                            onMenu = { anchor -> onTrackMenu(track, anchor) },
+                            onMenu = { onTrackMenu(track) },
                         )
                     }
                 }
@@ -795,8 +795,7 @@ private fun TrackRow(
     position: Int,
     isCurrent: Boolean,
     onClick: () -> Unit,
-    /** Where the menu button is on screen, for the menu drawn above the list. */
-    onMenu: (IntOffset) -> Unit,
+    onMenu: () -> Unit,
 ) {
     val shape = RoundedCornerShape(14.dp)
     // Eased rather than snapped: rows change state on every track advance, and
@@ -872,16 +871,7 @@ private fun TrackRow(
             )
         }
 
-        var buttonPosition by remember { mutableStateOf(IntOffset.Zero) }
-        IconButton(
-            onClick = { onMenu(buttonPosition) },
-            modifier = Modifier
-                .size(32.dp)
-                .onGloballyPositioned {
-                    val root = it.boundsInRoot()
-                    buttonPosition = IntOffset(root.left.toInt(), root.bottom.toInt())
-                },
-        ) {
+        IconButton(onClick = onMenu, modifier = Modifier.size(32.dp)) {
             Icon(
                 PhosphorIcons.Regular.DotsThree,
                 contentDescription = "Altro",

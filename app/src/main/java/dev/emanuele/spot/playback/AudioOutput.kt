@@ -120,6 +120,12 @@ class AudioOutput {
      * into it. A reverb needs a send — the track has to be pointed at the effect
      * with `attachAuxEffect` and given a send level above zero. Auxiliary
      * effects live on the global output mix, hence session 0.
+     *
+     * That last part is also why [suspendReverb] exists. An effect on the output
+     * mix processes the *mix*, not this track: left running while playback is
+     * paused it keeps ringing out its tail, and any other sound the phone makes
+     * — a notification, another app — arrives into a room it was never meant to
+     * be in. So the effect is only alive while this player is actually playing.
      */
     private fun applyReverb() {
         val output = track
@@ -193,6 +199,8 @@ class AudioOutput {
             output.setVolume(0f)
             output.play()
         }
+        // Back on the mix now that this player is the thing making sound.
+        synchronized(this) { applyReverb() }
         fadeExecutor.execute { ramp(output, 1f, FADE_IN_MS) }
     }
 
@@ -228,7 +236,25 @@ class AudioOutput {
             // under the new one when effects are on.
             stretcher?.release()
             stretcher = null
+
+            suspendReverb()
         }
+    }
+
+    /**
+     * Takes the reverb off the output mix until playback resumes.
+     *
+     * Not merely muted: the effect is disabled, because an enabled reverb on the
+     * mix processes whatever the phone plays next. Muting the send alone left
+     * the tail of the last few seconds ringing on after the pause, and every
+     * system sound afterwards arriving through it.
+     */
+    private fun suspendReverb() {
+        track?.runCatching {
+            setAuxEffectSendLevel(0f)
+            attachAuxEffect(0)
+        }
+        reverb?.runCatching { enabled = false }
     }
 
     /**
