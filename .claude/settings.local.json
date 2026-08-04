@@ -105,7 +105,8 @@
       "Bash(git commit -q -m 'Close the player by gesture, not by dragging it around *)",
       "Bash(git commit -q -m 'Open the player with a transform instead of a resize *)",
       "Bash(git commit -q -m 'Add a settings screen behind the account picture *)",
-      "Bash(git commit -q -m 'Credit the author in the settings *)"
+      "Bash(git commit -q -m 'Credit the author in the settings *)",
+      "Bash(git commit -q -m 'Swap the player'\\\\''s heart for add-to-playlist *)"
     ]
   }
 }

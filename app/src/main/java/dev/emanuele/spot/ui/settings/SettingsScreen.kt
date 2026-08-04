@@ -356,8 +356,8 @@ private val SCOPES = listOf(
     "user-top-read" to "Artisti che ascolti",
     "user-read-playback-state" to "Elenco dispositivi",
     "user-modify-playback-state" to "Sposta la riproduzione",
-    "user-library-read" to "Brani salvati",
-    "user-library-modify" to "Cuore nel player",
+    "playlist-modify-private" to "Aggiungi a playlist private",
+    "playlist-modify-public" to "Aggiungi a playlist pubbliche",
 )
 
 private val LICENCES = listOf(

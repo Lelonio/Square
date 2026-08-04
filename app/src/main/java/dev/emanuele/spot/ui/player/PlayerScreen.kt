@@ -63,6 +63,7 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import dev.emanuele.spot.ui.MainViewModel
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.library.formatDuration
@@ -70,14 +71,13 @@ import dev.emanuele.spot.ui.theme.softShadow
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
-import com.adamglin.phosphoricons.fill.Heart
 import com.adamglin.phosphoricons.fill.Pause
 import com.adamglin.phosphoricons.fill.Play
 import com.adamglin.phosphoricons.fill.SkipBack
 import com.adamglin.phosphoricons.fill.SkipForward
 import com.adamglin.phosphoricons.regular.CaretDown
 import com.adamglin.phosphoricons.regular.Devices
-import com.adamglin.phosphoricons.regular.Heart
+import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.Repeat
 import com.adamglin.phosphoricons.regular.RepeatOnce
@@ -148,9 +148,11 @@ fun PlayerScreen(
     onCloseDevices: () -> Unit,
     onRefreshDevices: () -> Unit,
     onSelectDevice: (String) -> Unit,
-    /** Null while unknown; see MainViewModel.liked. */
-    liked: Boolean?,
-    onToggleLiked: () -> Unit,
+    /** The "add to playlist" sheet, and the button that opens it. */
+    addToPlaylist: MainViewModel.AddToPlaylistState,
+    onAddToPlaylist: () -> Unit,
+    onPickPlaylist: (dev.emanuele.spot.data.CatalogPlaylist) -> Unit,
+    onCloseAddToPlaylist: () -> Unit,
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
 
@@ -430,28 +432,12 @@ fun PlayerScreen(
                                 RoundGlassButton(
                                     backdrop = glassBackdrop,
                                     size = 40.dp,
-                                    // Inert until the check has answered:
-                                    // guessing wrong here silently removes
-                                    // something from a library.
-                                    enabled = liked != null,
-                                    onClick = onToggleLiked,
+                                    onClick = onAddToPlaylist,
                                 ) {
                                     Icon(
-                                        if (liked == true) {
-                                            PhosphorIcons.Fill.Heart
-                                        } else {
-                                            PhosphorIcons.Regular.Heart
-                                        },
-                                        contentDescription = if (liked == true) {
-                                            "Togli dai brani salvati"
-                                        } else {
-                                            "Salva"
-                                        },
-                                        tint = if (liked == true) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            GlassInk
-                                        },
+                                        PhosphorIcons.Regular.Plus,
+                                        contentDescription = "Aggiungi a una playlist",
+                                        tint = GlassInk,
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
@@ -514,6 +500,15 @@ fun PlayerScreen(
         // Over everything, including the transport: it is a modal choice, and
         // the controls underneath would be operating a device the user is in
         // the middle of changing.
+        if (addToPlaylist.open) {
+            AddToPlaylistSheet(
+                state = addToPlaylist,
+                backdrop = glassBackdrop,
+                onSelect = onPickPlaylist,
+                onDismiss = onCloseAddToPlaylist,
+            )
+        }
+
         if (devices.open) {
             DevicePicker(
                 state = devices,

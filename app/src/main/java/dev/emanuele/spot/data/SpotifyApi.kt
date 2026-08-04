@@ -3,8 +3,8 @@ package dev.emanuele.spot.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import retrofit2.http.Body
-import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -101,19 +101,16 @@ interface SpotifyApi {
     suspend fun transferPlayback(@Body request: TransferRequestDto)
 
     /**
-     * Whether tracks are in the user's Liked Songs.
-     *
-     * Answers one boolean per id, in the order asked. Needs `user-library-read`.
+     * Appends tracks to a playlist. Needs `playlist-modify-private` for the
+     * user's own private playlists and `playlist-modify-public` for their
+     * public ones — which one applies is the playlist's visibility, not the
+     * caller's, so both are asked for.
      */
-    @GET("v1/me/tracks/contains")
-    suspend fun areSaved(@Query("ids") ids: String): List<Boolean>
-
-    /** Needs `user-library-modify`. */
-    @PUT("v1/me/tracks")
-    suspend fun saveTracks(@Query("ids") ids: String)
-
-    @DELETE("v1/me/tracks")
-    suspend fun removeTracks(@Query("ids") ids: String)
+    @POST("v1/playlists/{id}/tracks")
+    suspend fun addToPlaylist(
+        @Path("id") playlistId: String,
+        @Body request: AddTracksRequestDto,
+    )
 
     @GET("v1/search")
     suspend fun search(
@@ -122,6 +119,9 @@ interface SpotifyApi {
         @Query("limit") limit: Int = 20,
     ): SearchDto
 }
+
+@Serializable
+data class AddTracksRequestDto(val uris: List<String>)
 
 @Serializable
 data class PageDto<T>(

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dev.emanuele.spot.SpotApplication
 import dev.emanuele.spot.auth.SpotifyOAuth
 import dev.emanuele.spot.data.Catalog
+import dev.emanuele.spot.data.AddTracksRequestDto
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.data.SearchItem
@@ -243,54 +244,81 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Whether the playing track is in Liked Songs.
+     * The "add to playlist" sheet.
      *
-     * Null while unknown — no Web API application, the check still in flight, or
-     * it failed. The heart is drawn inert in that case rather than guessing,
-     * because guessing wrong here silently removes something from a library.
+     * Replaces the heart the player used to have. Liked Songs is one playlist
+     * out of the account's several and the button spent its whole width saying
+     * so; asking which playlist is the same gesture and answers the question the
+     * heart could not.
      */
-    private val _liked = MutableStateFlow<Boolean?>(null)
-    val liked: StateFlow<Boolean?> = _liked.asStateFlow()
-    private var likedJob: Job? = null
-    private var likedUri: String? = null
+    data class AddToPlaylistState(
+        val open: Boolean = false,
+        /** The track the sheet will add, captured when it opens. */
+        val trackUri: String? = null,
+        val trackTitle: String = "",
+        val playlists: List<CatalogPlaylist> = emptyList(),
+        /** URI of the playlist currently being written to. */
+        val busy: String? = null,
+        /** Name of the playlist the track just went into. */
+        val done: String? = null,
+        val error: String? = null,
+    )
 
-    fun checkLiked(trackUri: String?) {
-        likedJob?.cancel()
-        likedUri = trackUri
-        _liked.value = null
-        val id = trackUri?.takeIf { it.startsWith("spotify:track:") }
-            ?.substringAfterLast(':')
-            ?: return
-        if (!container.webApi.isReady) return
+    private val _addToPlaylist = MutableStateFlow(AddToPlaylistState())
+    val addToPlaylist: StateFlow<AddToPlaylistState> = _addToPlaylist.asStateFlow()
 
-        likedJob = viewModelScope.launch {
-            runCatching { container.api.areSaved(id).firstOrNull() }
-                .onSuccess { _liked.value = it }
-                .onFailure { android.util.Log.w(TAG, "liked check failed: ${describe(it)}") }
-        }
+    fun openAddToPlaylist(trackUri: String?, trackTitle: String) {
+        _addToPlaylist.value = AddToPlaylistState(
+            open = true,
+            trackUri = trackUri,
+            trackTitle = trackTitle,
+            playlists = (_state.value as? UiState.Ready)?.playlists.orEmpty(),
+            error = when {
+                trackUri?.startsWith("spotify:track:") != true ->
+                    "Questo brano non può essere aggiunto."
+                !container.webApi.isReady ->
+                    "Collega la tua applicazione nelle impostazioni."
+                else -> null
+            },
+        )
+    }
+
+    fun closeAddToPlaylist() {
+        _addToPlaylist.value = _addToPlaylist.value.copy(open = false)
     }
 
     /**
-     * Adds or removes the playing track.
+     * Appends the captured track to [playlist].
      *
-     * The state is flipped before the call and put back if it fails: a heart
-     * that waits for a round trip feels broken, and one that lies about the
-     * outcome is worse.
+     * Not optimistic, unlike the heart it replaces: this writes to something the
+     * user keeps, the result is a row appearing in a list rather than a filled
+     * icon, and there is nothing to undo it with if the call turns out to have
+     * failed. So the sheet waits, then says which playlist it went into.
      */
-    fun toggleLiked() {
-        val id = likedUri?.takeIf { it.startsWith("spotify:track:") }
-            ?.substringAfterLast(':')
-            ?: return
-        val wasLiked = _liked.value ?: return
+    fun addToPlaylist(playlist: CatalogPlaylist) {
+        val current = _addToPlaylist.value
+        val trackUri = current.trackUri ?: return
+        if (current.busy != null) return
+        val id = playlist.uri.substringAfterLast(':')
 
-        _liked.value = !wasLiked
+        _addToPlaylist.value = current.copy(busy = playlist.uri, done = null, error = null)
         viewModelScope.launch {
-            runCatching {
-                if (wasLiked) container.api.removeTracks(id) else container.api.saveTracks(id)
-            }.onFailure {
-                android.util.Log.e(TAG, "like failed: ${chain(it)}", it)
-                _liked.value = wasLiked
-            }
+            runCatching { container.api.addToPlaylist(id, AddTracksRequestDto(listOf(trackUri))) }
+                .onSuccess {
+                    _addToPlaylist.value =
+                        _addToPlaylist.value.copy(busy = null, done = playlist.name)
+                }
+                .onFailure {
+                    android.util.Log.e(TAG, "add to playlist failed: ${chain(it)}", it)
+                    _addToPlaylist.value = _addToPlaylist.value.copy(
+                        busy = null,
+                        // A playlist the account follows but does not own is the
+                        // one failure worth naming: it looks identical to the
+                        // user's own in every list the app draws.
+                        error = "Non è stato possibile aggiungere a ${playlist.name}. " +
+                            "Se la playlist non è tua, non puoi modificarla.",
+                    )
+                }
         }
     }
 
@@ -400,9 +428,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // playback.
                     "user-read-playback-state",
                     "user-modify-playback-state",
-                    // The heart in the player.
-                    "user-library-read",
-                    "user-library-modify",
+                    // The player's "add to playlist". Which of the two
+                    // applies is the playlist's own visibility, not the
+                    // caller's, so both are asked for.
+                    "playlist-modify-private",
+                    "playlist-modify-public",
                 ),
             )
         }

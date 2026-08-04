@@ -1,0 +1,186 @@
+package dev.emanuele.spot.ui.player
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.Check
+import com.kyant.backdrop.Backdrop
+import dev.emanuele.spot.data.CatalogPlaylist
+import dev.emanuele.spot.ui.MainViewModel
+import dev.emanuele.spot.ui.components.Artwork
+
+/**
+ * Which playlist the playing track should go into.
+ *
+ * The plus in the player opens this. It stands where a heart used to, and the
+ * heart is what it fixes: Liked Songs is one playlist out of the account's
+ * several, and a button that could only ever add to that one spent its whole
+ * width answering a question nobody asked.
+ *
+ * The rows do not close the sheet. Adding one track to two playlists is a
+ * perfectly ordinary thing to want, and a sheet that dismissed itself on the
+ * first tap would make it two round trips through the player.
+ */
+@Composable
+fun AddToPlaylistSheet(
+    state: MainViewModel.AddToPlaylistState,
+    backdrop: Backdrop,
+    onSelect: (CatalogPlaylist) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.45f))
+            .clickable(interactionSource = null, indication = null, onClick = onDismiss),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        GlassSurface(
+            backdrop = backdrop,
+            shape = RoundedCornerShape(28.dp),
+            surfaceColor = GlassFilm,
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                // Swallows taps so one inside the sheet does not dismiss it.
+                .clickable(interactionSource = null, indication = null) {},
+        ) {
+            Column(Modifier.padding(vertical = 18.dp)) {
+                Text(
+                    "Aggiungi a una playlist",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = GlassInk,
+                    modifier = Modifier.padding(start = 22.dp, end = 22.dp),
+                )
+                Text(
+                    // Says what is being added: the sheet can outlive the track
+                    // that opened it, since playback carries on underneath.
+                    state.trackTitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = GlassInkDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 2.dp, bottom = 12.dp),
+                )
+
+                if (state.error != null) {
+                    Text(
+                        state.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
+                    )
+                }
+
+                if (state.done != null) {
+                    Text(
+                        "Aggiunto a ${state.done}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
+                    )
+                }
+
+                if (state.playlists.isEmpty()) {
+                    Text(
+                        "Nessuna playlist nel tuo account",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassInkDim,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                    )
+                } else {
+                    Column(
+                        Modifier
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        state.playlists.forEach { playlist ->
+                            PlaylistRow(
+                                playlist = playlist,
+                                busy = state.busy == playlist.uri,
+                                added = state.done == playlist.name,
+                                enabled = state.trackUri != null && state.busy == null,
+                                onClick = { onSelect(playlist) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistRow(
+    playlist: CatalogPlaylist,
+    busy: Boolean,
+    added: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Artwork(
+            url = playlist.artworkUrl,
+            title = playlist.name,
+            modifier = Modifier.size(44.dp),
+            corner = 10.dp,
+            decodeSize = 44.dp,
+        )
+        Text(
+            playlist.name,
+            style = MaterialTheme.typography.titleMedium,
+            color = GlassInk,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(start = 16.dp)
+                .weight(1f),
+        )
+        when {
+            busy -> CircularProgressIndicator(
+                color = GlassInkDim,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(18.dp),
+            )
+
+            added -> Icon(
+                PhosphorIcons.Regular.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
