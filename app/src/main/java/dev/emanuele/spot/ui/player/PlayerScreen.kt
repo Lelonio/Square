@@ -165,6 +165,15 @@ fun PlayerScreen(
     // than a recomposition of the player.
     val canvasShift = remember { mutableFloatStateOf(0f) }
 
+    // Whether the clip has put a frame on screen yet.
+    //
+    // A Canvas is known about — the URL arrives with the track — well before it
+    // has decoded anything, and in between the surface is empty. Opening the
+    // player onto that gap showed a blank middle where the cover belongs, so
+    // the cover stays until this turns true and the clip fades in over it.
+    // Reset per track: the next one starts from nothing again.
+    var canvasReady by remember(canvas?.url) { mutableStateOf(false) }
+
     // The Canvas gets a layer of its own so the glass over it refracts the clip
     // rather than the app's blurred artwork. It is combined with the app
     // backdrop rather than replacing it, because with no Canvas this layer is
@@ -208,11 +217,22 @@ fun PlayerScreen(
                 }
                 .layerBackdrop(canvasBackdrop),
         ) {
+            // Held at zero until the first frame, then faded up. Without this
+            // the clip's own surface appears the instant it decodes, which next
+            // to a cover crossfading out reads as two separate events.
+            val clipAlpha by animateFloatAsState(
+                targetValue = if (canvasReady) 1f else 0f,
+                animationSpec = tween(420),
+                label = "clipAlpha",
+            )
+
             Crossfade(
                 targetState = canvas,
                 animationSpec = tween(500),
                 label = "canvas",
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = if (canvas?.isVideo == true) clipAlpha else 1f },
             ) { clip ->
                 when {
                     clip == null -> Unit
@@ -229,6 +249,7 @@ fun PlayerScreen(
                     clip.isVideo && LocalGlassEnabled.current -> CanvasSurface(
                         url = clip.url,
                         isPlaying = state.isPlaying,
+                        onFirstFrame = { canvasReady = true },
                         modifier = Modifier.fillMaxSize(),
                     )
 
@@ -324,7 +345,11 @@ fun PlayerScreen(
                                 PlayerPanel.EFFECTS -> Stage.EFFECTS
                                 PlayerPanel.QUEUE -> Stage.QUEUE
                                 PlayerPanel.NONE ->
-                                    if (canvas == null) Stage.COVER else Stage.CANVAS
+                                    if (canvas == null || !canvasReady) {
+                                        Stage.COVER
+                                    } else {
+                                        Stage.CANVAS
+                                    }
                             },
                             animationSpec = tween(320),
                             label = "stage",

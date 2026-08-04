@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -40,7 +41,19 @@ import dev.emanuele.spot.R
  */
 @UnstableApi
 @Composable
-fun CanvasSurface(url: String, isPlaying: Boolean, modifier: Modifier = Modifier) {
+fun CanvasSurface(
+    url: String,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+    /**
+     * Called when there is actually a picture on the surface.
+     *
+     * Between `prepare()` and the first decoded frame a TextureView is empty,
+     * and on a slow connection that is a second or more of nothing where the
+     * cover used to be. The caller keeps the cover up until this fires.
+     */
+    onFirstFrame: () -> Unit = {},
+) {
     val context = LocalContext.current
 
     val exoPlayer = remember(url) {
@@ -56,6 +69,17 @@ fun CanvasSurface(url: String, isPlaying: Boolean, modifier: Modifier = Modifier
 
     LaunchedEffect(exoPlayer, isPlaying) {
         exoPlayer.playWhenReady = isPlaying
+    }
+
+    val ready = rememberUpdatedState(onFirstFrame)
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                ready.value()
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
     }
 
     DisposableEffect(exoPlayer) {
