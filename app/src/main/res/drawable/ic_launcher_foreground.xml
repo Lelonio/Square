@@ -5,9 +5,12 @@
   stay square and the two open ends round, and a stroke with a round cap and a
   mitre join is exactly that, at any size, with no hinting.
 
-  Three strokes, back to front: a light one offset down for the lip the plate
-  catches, then the black wave over it. That is the whole of the depth in the
-  original — there is no bevel to reproduce, only an edge.
+  Sized to the safe zone, which is the part of this file worth knowing about. An
+  adaptive icon is 108 units wide, of which the launcher shows 72 and guarantees
+  only the middle 66 — the rest is what it crops into when the icon is masked or
+  parallaxed. The first version drew the wave 64 wide with an 11-wide stroke, so
+  its ends sat outside that window and the launcher cut them off. Everything here
+  stays within 23 and 85.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -15,20 +18,20 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- The lip: the same path, a shade lighter and a pixel lower. -->
+    <!-- The lip: the same path, a shade lighter and a unit lower. -->
     <path
         android:fillColor="#00000000"
-        android:pathData="M22,59 L22,37 L56,37 L56,73 L86,73 L86,53"
+        android:pathData="M28,59 L28,41 L54,41 L54,69 L80,69 L80,53"
         android:strokeColor="#4DFFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="miter"
-        android:strokeWidth="11" />
+        android:strokeWidth="9" />
 
     <path
         android:fillColor="#00000000"
-        android:pathData="M22,58 L22,36 L56,36 L56,72 L86,72 L86,52"
+        android:pathData="M28,58 L28,40 L54,40 L54,68 L80,68 L80,52"
         android:strokeColor="#FF1B1B1F"
         android:strokeLineCap="round"
         android:strokeLineJoin="miter"
-        android:strokeWidth="11" />
+        android:strokeWidth="9" />
 </vector>

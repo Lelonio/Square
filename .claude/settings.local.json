@@ -128,7 +128,8 @@
       "Bash(git commit -q -m 'Hold the cover until the Canvas has a frame *)",
       "Bash(git commit -q -m 'Darken the Canvas while paused *)",
       "Bash(git commit -q -m 'One panel for everything the player shows, dimmed alike *)",
-      "Bash(git commit -q -m 'Square: a square-wave icon, light and dark *)"
+      "Bash(git commit -q -m 'Square: a square-wave icon, light and dark *)",
+      "Bash(git commit -q -m 'Fit the wave inside the adaptive icon'\\\\''s safe zone *)"
     ]
   }
 }
