@@ -54,6 +54,21 @@ class AudioOutput {
     private var currentGain = 1f
 
     /**
+     * Whether the sink has been told to play.
+     *
+     * Kept because [start] can arrive before there is an AudioTrack to start —
+     * the sink is started when playback begins, and the track is built by the
+     * first packet that follows. Without this the track was created silent and
+     * nothing ever raised it: the dry signal stayed at zero while the reverb's
+     * send, which does not go through the track's volume, carried on at full
+     * level. That is the "everything is reverb and muffled until I change
+     * track" this fixes — a track change ran start() again, this time with a
+     * track present.
+     */
+    @Volatile
+    private var playing = false
+
+    /**
      * Drops incoming PCM instead of writing it.
      *
      * Set while a track change is in flight. Fading the volume down and flushing
@@ -169,6 +184,7 @@ class AudioOutput {
         // A gate left closed by a load that never got its fade-in — a track
         // loaded paused, say — would otherwise silence the next play outright.
         discarding = false
+        playing = true
         val output = synchronized(this) {
             track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
         } ?: return
@@ -192,6 +208,7 @@ class AudioOutput {
     @Suppress("unused")
     fun stop() {
         discarding = false
+        playing = false
         val output = synchronized(this) {
             track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
         }
@@ -461,10 +478,15 @@ class AudioOutput {
         )
 
         // Silent until something fades it up, so the first track of a session
-        // arrives the same way every later one does.
+        // arrives the same way every later one does — and if playback has
+        // already started, that something is here: `start` may well have run
+        // before this track existed.
         runCatching { created.setVolume(0f) }
         currentGain = 0f
         created.play()
+        if (playing) {
+            fadeExecutor.execute { ramp(created, 1f, FADE_IN_MS) }
+        }
         track = created
         configuredSampleRate = sampleRate
         configuredChannels = channels

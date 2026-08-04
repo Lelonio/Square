@@ -87,7 +87,8 @@
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Add the Connect device picker to the player *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Cut the cost of expanding the player *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Blur the page backdrop at decode time *)",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Reorder the home sections *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Reorder the home sections *)",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Raise the volume of a track created after playback started *)"
     ]
   }
 }
