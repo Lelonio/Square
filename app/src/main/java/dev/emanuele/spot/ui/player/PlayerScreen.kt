@@ -37,7 +37,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
@@ -318,11 +318,33 @@ fun PlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 TitleBlock(state, Modifier.weight(1f))
-                                // The queue used to have a button here as well
-                                // as one in the top bar and its own tab below —
-                                // three controls for one panel. The tab is the
-                                // one that stayed: it is where the other panels
-                                // are.
+                                // The queue's one control. It is a sheet that
+                                // opens over the player rather than a view of
+                                // it, which is why it sits here and not in the
+                                // segmented switch below.
+                                RoundGlassButton(
+                                    backdrop = glassBackdrop,
+                                    size = 40.dp,
+                                    onClick = {
+                                        panel = if (panel == PlayerPanel.QUEUE) {
+                                            PlayerPanel.NONE
+                                        } else {
+                                            PlayerPanel.QUEUE
+                                        }
+                                    },
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.QueueMusic,
+                                        contentDescription = "Coda",
+                                        tint = if (panel == PlayerPanel.QUEUE) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            GlassInk
+                                        },
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                                Spacer(Modifier.size(8.dp))
                                 RoundGlassButton(
                                     backdrop = glassBackdrop,
                                     size = 40.dp,

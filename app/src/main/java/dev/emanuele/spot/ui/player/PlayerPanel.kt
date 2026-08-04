@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Tune
@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +45,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.emanuele.spot.data.Lyrics
 import dev.emanuele.spot.playback.EffectPreset
+import androidx.compose.foundation.layout.RowScope
+import dev.emanuele.spot.ui.glass.LiquidBottomTab
+import dev.emanuele.spot.ui.glass.LiquidBottomTabs
 import dev.emanuele.spot.ui.glass.LiquidSlider
 import kotlin.math.ln
 import kotlin.math.roundToInt
@@ -75,26 +79,38 @@ fun PlayerPanelSection(
     backdrop: com.kyant.backdrop.Backdrop,
 ) {
     Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier
+        // The same segmented control the tab bar uses, because this is the same
+        // kind of choice: three views of one screen, exactly one of them
+        // showing. Three separate toggles said "three independent switches",
+        // which is not what cover, lyrics and effects are.
+        //
+        // The queue is deliberately not in here — it is a sheet that opens over
+        // the player rather than a view of it, and it has its own button beside
+        // the title.
+        val views = remember { listOf(PlayerPanel.NONE, PlayerPanel.LYRICS, PlayerPanel.EFFECTS) }
+        val selected = views.indexOf(panel).coerceAtLeast(0)
+        // Stable, or LiquidBottomTabs throws away the state it keys on this and
+        // the indicator stops animating; see the note in SpotApp.
+        val selectedState = rememberUpdatedState(selected)
+        val selectedTabIndex = remember { { selectedState.value } }
+
+        LiquidBottomTabs(
+            selectedTabIndex = selectedTabIndex,
+            onTabSelected = { onSelect(views[it]) },
+            backdrop = backdrop,
+            tabsCount = views.size,
+            accentColor = GlassInk,
+            containerColor = GlassFilm,
+            modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 18.dp),
-            horizontalArrangement = Arrangement.Center,
+                .padding(top = 16.dp),
         ) {
-            PanelTab(
-                Icons.AutoMirrored.Filled.QueueMusic,
-                "Coda",
-                panel == PlayerPanel.QUEUE,
-            ) {
-                onSelect(if (panel == PlayerPanel.QUEUE) PlayerPanel.NONE else PlayerPanel.QUEUE)
+            PanelTab(Icons.Filled.Album, "Copertina", selected == 0) { onSelect(PlayerPanel.NONE) }
+            PanelTab(Icons.Filled.Lyrics, "Testo", selected == 1) {
+                onSelect(PlayerPanel.LYRICS)
             }
-            PanelTab(Icons.Filled.Lyrics, "Testo", panel == PlayerPanel.LYRICS) {
-                onSelect(if (panel == PlayerPanel.LYRICS) PlayerPanel.NONE else PlayerPanel.LYRICS)
-            }
-            PanelTab(Icons.Filled.Tune, "Effetti", panel == PlayerPanel.EFFECTS) {
-                onSelect(
-                    if (panel == PlayerPanel.EFFECTS) PlayerPanel.NONE else PlayerPanel.EFFECTS,
-                )
+            PanelTab(Icons.Filled.Tune, "Effetti", selected == 2) {
+                onSelect(PlayerPanel.EFFECTS)
             }
         }
 
@@ -146,22 +162,25 @@ fun PlayerPanelSection(
  * content description, which is what a screen reader wants anyway.
  */
 @Composable
-private fun PanelTab(
+private fun RowScope.PanelTab(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    Icon(
-        imageVector = icon,
-        contentDescription = label,
-        tint = if (selected) GlassInk else GlassInkDim,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp)
-            .size(22.dp),
-    )
+    LiquidBottomTab(onClick = onClick) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (selected) GlassInk else GlassInkDim,
+            modifier = Modifier.size(21.dp),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (selected) GlassInk else GlassInkDim,
+        )
+    }
 }
 
 /** One row of the upcoming-tracks list. */
