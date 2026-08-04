@@ -174,12 +174,13 @@ fun NowPlayingSheet(
                         .align(Alignment.BottomCenter)
                         .height(fullHeight)
                         .fillMaxWidth()
-                        // Opaque before the player's own content arrives, or the
-                        // page behind would read through it at the start of
-                        // every expansion.
-                        .graphicsLayer {
-                            alpha = (progress.value / 0.25f).coerceIn(0f, 1f)
-                        },
+                        // Tracks the travel one to one, so what is behind the
+                        // player — the page it was opened from — is visible
+                        // through it while it is being dragged away. It used to
+                        // reach full opacity in the first quarter, which made
+                        // the content slide down over a background that never
+                        // moved and never let anything through.
+                        .graphicsLayer { alpha = progress.value.coerceIn(0f, 1f) },
                 ) {
                     background()
                 }
