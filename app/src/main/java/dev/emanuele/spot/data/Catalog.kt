@@ -27,6 +27,14 @@ data class CatalogTrack(
     val durationMs: Long = 0,
     val explicit: Boolean = false,
     val artworkUrl: String? = null,
+    /**
+     * When the track was added to the playlist it was read from, ISO-8601.
+     *
+     * Only the Web API knows this — the access point's context has no such
+     * field — so it is null for anything resolved through the fallback path,
+     * and sorting by it then leaves the list in playlist order.
+     */
+    val addedAt: String? = null,
 )
 
 /**
@@ -57,7 +65,7 @@ data class CatalogPlaylist(
 )
 
 /** Bridges a Web API track into the model the UI and the queue already use. */
-fun TrackDto.toCatalogTrack(): CatalogTrack = CatalogTrack(
+fun TrackDto.toCatalogTrack(addedAt: String? = null): CatalogTrack = CatalogTrack(
     uri = uri,
     name = name,
     artist = artists.joinToString(", ") { it.name },
@@ -65,6 +73,7 @@ fun TrackDto.toCatalogTrack(): CatalogTrack = CatalogTrack(
     durationMs = durationMs,
     explicit = explicit,
     artworkUrl = album?.images?.firstOrNull()?.url,
+    addedAt = addedAt,
 )
 
 /**

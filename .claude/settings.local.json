@@ -111,7 +111,8 @@
       "Bash(git commit -q -m 'Load whole playlists, a batch at a time *)",
       "Bash(PATH=/Users/emanuele/.cargo/bin:__TRACKED_VAR__ cargo check --quiet)",
       "Bash(git commit -q -m 'Cap concurrent track lookups and retry the dropped ones *)",
-      "Bash(git commit -q -m 'Read playlists through the Web API, and keep them *)"
+      "Bash(git commit -q -m 'Read playlists through the Web API, and keep them *)",
+      "Bash(git commit -q -m 'A draggable scrollbar, and sorting by when tracks were added *)"
     ]
   }
 }

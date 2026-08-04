@@ -691,7 +691,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         while (true) {
             val page = container.api.playlistTracks(id, limit = WEB_API_PAGE, offset = offset)
             // Episodes and delisted tracks come back as a null track.
-            loaded += page.items.mapNotNull { it.track?.toCatalogTrack() }
+            loaded += page.items.mapNotNull { it.track?.toCatalogTrack(it.addedAt) }
             offset += page.items.size
             if (showProgress) {
                 _playlist.value = base.copy(

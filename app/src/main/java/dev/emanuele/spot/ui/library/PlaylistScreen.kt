@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,6 +50,7 @@ import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.ui.MainViewModel
 import com.kyant.backdrop.Backdrop
 import dev.emanuele.spot.ui.components.Artwork
+import dev.emanuele.spot.ui.components.LazyScrollBar
 import dev.emanuele.spot.ui.components.SwipeToQueue
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.theme.rememberArtworkColor
@@ -73,6 +75,7 @@ enum class TrackSort(val label: String) {
     ORIGINAL("Ordine della playlist"),
     TITLE("Titolo"),
     ARTIST("Artista"),
+    ADDED("Aggiunti di recente"),
     DURATION("Durata"),
 }
 
@@ -128,7 +131,10 @@ fun PlaylistScreen(
         // No top content padding: the hero runs under the status bar, which is
         // the whole point of the layout — the picture is the top of the screen,
         // not something sitting below a gap.
+        val listState = rememberLazyListState()
+
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
         ) {
             item(contentType = "header") {
@@ -267,6 +273,16 @@ fun PlaylistScreen(
                 }
             }
         }
+
+        LazyScrollBar(
+            state = listState,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(
+                    top = contentPadding.calculateTopPadding(),
+                    bottom = contentPadding.calculateBottomPadding(),
+                ),
+        )
 
         // Floating rather than a top bar: the list scrolls under it, so the
         // picture stays uninterrupted.
@@ -674,6 +690,10 @@ private fun TrackSort.comparator(): Comparator<CatalogTrack> = when (this) {
     TrackSort.ORIGINAL -> Comparator { _, _ -> 0 }
     TrackSort.TITLE -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
     TrackSort.ARTIST -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.artist }
+    // Most recent first, and anything without a date last rather than first:
+    // a null here means the list came from the access point, which does not
+    // carry the field, and those belong at the end instead of on top.
+    TrackSort.ADDED -> compareByDescending(nullsFirst()) { it.addedAt }
     TrackSort.DURATION -> compareBy { it.durationMs }
 }
 

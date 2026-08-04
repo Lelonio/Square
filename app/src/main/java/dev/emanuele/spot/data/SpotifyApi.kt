@@ -149,6 +149,8 @@ data class SavedTrackDto(
 data class PlaylistTrackDto(
     /** Null for episodes and for tracks removed from the catalogue. */
     val track: TrackDto? = null,
+    /** ISO-8601, and absent on playlists old enough to predate the field. */
+    @SerialName("added_at") val addedAt: String? = null,
 )
 
 @Serializable
