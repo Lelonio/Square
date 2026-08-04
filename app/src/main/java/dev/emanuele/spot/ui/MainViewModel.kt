@@ -555,7 +555,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         _state.value = UiState.Loading
-        runCatching { UiState.Ready(Catalog.username(), Catalog.playlists()) }
+        runCatching { UiState.Ready(Catalog.username(), playlists()) }
             .onSuccess {
                 _state.value = it
                 loadProfile()
@@ -573,6 +573,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * already on screen with the account name by the time this runs, and an
      * account with no Web API application connected simply keeps it.
      */
+    /**
+     * The account's playlists, from the access point or from the Web API.
+     *
+     * The access point is asked first: it is the same list, it needs no
+     * registered application, and it carries the playlists this account follows
+     * as well as its own. But `rootlist` answers 502 often enough to matter —
+     * a Spotify-side failure nothing here can prevent — and losing the whole
+     * library screen to it is out of proportion, since the Web API can answer
+     * the same question.
+     */
+    private suspend fun playlists(): List<CatalogPlaylist> =
+        runCatching { Catalog.playlists() }
+            .onFailure { android.util.Log.w(TAG, "rootlist unavailable: ${describe(it)}") }
+            .recoverCatching {
+                check(container.webApi.isReady) { it.message ?: "rootlist non disponibile" }
+                container.api.playlists(limit = WEB_API_PAGE).items.map { dto ->
+                    CatalogPlaylist(
+                        uri = dto.uri,
+                        name = dto.name,
+                        artworkUrl = dto.images.firstOrNull()?.url,
+                    )
+                }
+            }
+            .getOrThrow()
+
     private fun loadProfile() = viewModelScope.launch {
         if (!container.webApi.isReady) return@launch
         runCatching { container.api.me() }
