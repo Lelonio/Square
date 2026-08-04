@@ -134,7 +134,8 @@
       "Bash(python3 -c \"import PIL; print\\(PIL.__version__\\)\")",
       "Bash(git commit -q -m 'Use the supplied icon artwork *)",
       "Bash(python3 tools/icon.py)",
-      "Bash(git commit -q -m 'Regenerate icons from source, sized by the wave *)"
+      "Bash(git commit -q -m 'Regenerate icons from source, sized by the wave *)",
+      "Bash(git commit -q -m 'New light icon artwork *)"
     ]
   }
 }
