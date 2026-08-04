@@ -318,6 +318,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // The detail screen holds a list resolved before this track
                     // was in it; if that is the playlist just written to, read
                     // it again.
+                    invalidateContext(playlist.uri)
                     if (_playlist.value.uri == playlist.uri) openPlaylist(playlist)
                 }
                 .onFailure {
@@ -593,20 +594,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun openContext(uri: String, name: String, artworkUrl: String? = null) =
         openPlaylist(CatalogPlaylist(uri = uri, name = name, artworkUrl = artworkUrl))
 
+    /**
+     * Track lists already resolved, keyed by context URI.
+     *
+     * Reopening a playlist used to re-resolve it from scratch, which on a
+     * thousand-track playlist is a minute of watching rows appear. The list is
+     * held for the session and shown immediately; a refresh runs behind it and
+     * replaces it only when it has the whole thing, so reopening never takes a
+     * finished list away and rebuilds it in front of the user.
+     */
+    private val contextCache = object : LinkedHashMap<String, List<CatalogTrack>>(0, 0.75f, true) {
+        override fun removeEldestEntry(eldest: Map.Entry<String, List<CatalogTrack>>) =
+            size > CONTEXT_CACHE_SIZE
+    }
+
     fun openPlaylist(playlist: CatalogPlaylist) {
         // Reopening one counts as opening it, and that is exactly the playlist
         // the home page should keep at the front.
         container.playlistOrder.record(playlist.uri)
-
-        // Reopening what is already loaded re-reads it rather than showing the
-        // copy in memory. It used to return here, which is how a track added
-        // from the player could be genuinely in the playlist on Spotify and
-        // missing from this screen: the list had been resolved before the track
-        // existed and nothing ever asked again.
-        //
-        // The tracks already on screen stay up while the reload runs, so this
-        // costs a round trip and shows no spinner.
-        val cached = _playlist.value.takeIf { it.uri == playlist.uri }?.tracks.orEmpty()
 
         val kind = kindOf(playlist.uri)
         playlistJob?.cancel()
@@ -616,14 +621,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             artworkUrl = playlist.artworkUrl,
             kind = kind,
         )
+
+        val cached = contextCache[playlist.uri].orEmpty()
         _playlist.value = base.copy(tracks = cached, loading = cached.isEmpty())
+
         playlistJob = viewModelScope.launch {
             runCatching {
                 if (kind == DetailKind.ARTIST) {
                     val (tracks, albums) = loadArtist(playlist.uri)
                     _playlist.value = base.copy(tracks = tracks, albums = albums)
                 } else {
-                    loadContextInto(base, playlist.uri)
+                    loadContextInto(base, playlist.uri, showProgress = cached.isEmpty())
                 }
             }
                 .onFailure {
@@ -636,39 +644,89 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Drops a context from the cache so the next open re-reads it. */
+    private fun invalidateContext(uri: String) {
+        contextCache.remove(uri)
+    }
+
     /**
-     * Resolves a whole playlist or album, publishing it as it arrives.
+     * Resolves a whole playlist or album.
      *
-     * The list used to stop at the first hundred tracks, which is not a length
-     * anyone's playlists respect, and a track added from the player landed past
-     * the cut and looked like it had not been added at all.
+     * Two sources, and which one is used matters more than anything else on this
+     * screen. The Web API returns a hundred *complete* tracks per request, so a
+     * twelve-hundred-track playlist is a dozen requests. The access point
+     * answers with URIs and then charges one round trip per track to turn each
+     * into a name — the same playlist is twelve hundred lookups, minutes of
+     * waiting, and enough of them get dropped that the total came out different
+     * on every open. So the Web API is the path whenever the user has connected
+     * their application, and the access point is the fallback for when they have
+     * not.
      *
-     * In batches rather than in one call because each track is its own
-     * access-point lookup: the native side runs a batch concurrently, so asking
-     * for two thousand at once would open two thousand requests and get itself
-     * throttled. A batch at a time keeps that bounded and has the useful side
-     * effect that the screen fills from the top while the rest is still coming.
+     * @param showProgress publish each page as it arrives. Off when there is a
+     *   cached list on screen: a finished list must not be replaced by a
+     *   growing one.
      */
-    private suspend fun loadContextInto(base: PlaylistState, uri: String) {
-        val uris = Catalog.contextTrackUris(uri)
-        if (uris.isEmpty()) {
-            _playlist.value = base
-            return
+    private suspend fun loadContextInto(base: PlaylistState, uri: String, showProgress: Boolean) {
+        val viaWebApi = runCatching { webApiTracks(base, uri, showProgress) }
+            .onFailure { android.util.Log.w(TAG, "web api playlist read failed: ${describe(it)}") }
+            .getOrNull()
+
+        val tracks = viaWebApi ?: accessPointTracks(base, uri, showProgress)
+
+        contextCache[uri] = tracks
+        _playlist.value = base.copy(tracks = tracks, loadingMore = false)
+    }
+
+    /** Null when this is not something the Web API can page through. */
+    private suspend fun webApiTracks(
+        base: PlaylistState,
+        uri: String,
+        showProgress: Boolean,
+    ): List<CatalogTrack>? {
+        if (!container.webApi.isReady || !uri.startsWith("spotify:playlist:")) return null
+        val id = uri.substringAfterLast(':')
+
+        val loaded = mutableListOf<CatalogTrack>()
+        var offset = 0
+        while (true) {
+            val page = container.api.playlistTracks(id, limit = WEB_API_PAGE, offset = offset)
+            // Episodes and delisted tracks come back as a null track.
+            loaded += page.items.mapNotNull { it.track?.toCatalogTrack() }
+            offset += page.items.size
+            if (showProgress) {
+                _playlist.value = base.copy(
+                    tracks = loaded.toList(),
+                    loadingMore = offset < page.total,
+                )
+            }
+            if (page.items.isEmpty() || offset >= page.total) return loaded
         }
+    }
+
+    private suspend fun accessPointTracks(
+        base: PlaylistState,
+        uri: String,
+        showProgress: Boolean,
+    ): List<CatalogTrack> {
+        val uris = Catalog.contextTrackUris(uri)
+        if (uris.isEmpty()) return emptyList()
 
         val batches = uris.chunked(METADATA_BATCH)
         val loaded = mutableListOf<CatalogTrack>()
         batches.forEachIndexed { index, batch ->
             loaded += Catalog.tracks(batch)
-            _playlist.value = base.copy(
-                tracks = loaded.toList(),
-                // Counted in batches, not in tracks. Comparing the two totals
-                // left "more coming" on forever whenever anything was dropped —
-                // a delisted or region-locked track resolves to nothing, so the
-                // list is legitimately shorter than the URIs asked for.
-                loadingMore = index < batches.lastIndex,
-            )
+            if (showProgress) {
+                _playlist.value = base.copy(
+                    tracks = loaded.toList(),
+                    // Counted in batches, not in tracks: a delisted track
+                    // resolves to nothing, so the list is legitimately shorter
+                    // than the URIs asked for and comparing the two totals left
+                    // "more coming" on forever.
+                    loadingMore = index < batches.lastIndex,
+                )
+            }
         }
+        return loaded
     }
 
     /**
@@ -745,6 +803,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         /** Each track is its own access-point round trip. */
         /** Tracks resolved per access-point round trip; see loadContextInto. */
         const val METADATA_BATCH = 100
+
+        /** The Web API's own maximum page size for playlist tracks. */
+        const val WEB_API_PAGE = 100
+
+        /** How many track lists to keep resolved; see contextCache. */
+        const val CONTEXT_CACHE_SIZE = 8
 
         const val SEARCH_DEBOUNCE_MS = 350L
 
