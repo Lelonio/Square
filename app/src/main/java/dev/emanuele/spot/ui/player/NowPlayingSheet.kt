@@ -96,7 +96,10 @@ fun NowPlayingSheet(
         val collapsedHeight = MiniPlayerHeight
         val travelPx = with(density) { (fullHeight - collapsedHeight).toPx() }
 
-        fun settle(target: Float) {
+        // One spec for both directions, and the same one the tap uses: closing
+        // is meant to be the opening played backwards, so nothing about the
+        // motion may depend on which way it is going.
+        fun settle(target: Float, initialVelocity: Float = 0f) {
             scope.launch {
                 progress.animateTo(
                     target,
@@ -104,6 +107,7 @@ fun NowPlayingSheet(
                     // settle rather than stopping dead, which is what makes a
                     // panel this size feel like it has weight.
                     spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
+                    initialVelocity = initialVelocity,
                 )
             }
         }
@@ -165,7 +169,11 @@ fun NowPlayingSheet(
                             progress.value > 0.5f -> 1f
                             else -> 0f
                         }
-                        settle(target)
+                        // Handed to the spring rather than dropped. Releasing
+                        // mid-drag otherwise restarted the motion from a dead
+                        // stop, which is the one thing a tap-to-open never does
+                        // and is why closing felt unlike opening reversed.
+                        settle(target, initialVelocity = -velocity / travelPx)
                     },
                 ),
         ) {
@@ -245,17 +253,23 @@ fun NowPlayingSheet(
 }
 
 /**
- * The bar is gone by a fifth of the way up, the player is there by two thirds.
+ * The bar is gone by a third of the way up, and the player starts there.
  *
- * They deliberately do not cross at 0.5: with both half-visible in the middle
- * of the travel you see two sets of controls at once, which is precisely what
- * the cross-fade version looked like.
+ * They hand over rather than overlap: with both half-visible you see two sets
+ * of controls at once, which is what the cross-dissolve version looked like.
+ * They also hand over at exactly the same point in both directions — the two
+ * used to leave a sliver of travel where the bar had gone and the player had
+ * not arrived, and running that backwards is not the same as running it
+ * forwards.
  */
 private fun collapsedAlpha(fraction: Float): Float =
-    (1f - fraction / 0.2f).coerceIn(0f, 1f)
+    (1f - fraction / HANDOVER).coerceIn(0f, 1f)
 
 private fun expandedAlpha(fraction: Float): Float =
-    ((fraction - 0.15f) / 0.5f).coerceIn(0f, 1f)
+    ((fraction - HANDOVER) / (1f - HANDOVER) * 2f).coerceIn(0f, 1f)
+
+/** Where the bar has finished leaving and the player begins to arrive. */
+private const val HANDOVER = 0.3f
 
 /**
  * How far the player is shrunk when fully collapsed.
