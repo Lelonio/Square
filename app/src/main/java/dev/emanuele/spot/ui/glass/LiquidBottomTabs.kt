@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.fastRoundToInt
@@ -78,6 +79,10 @@ fun LiquidBottomTabs(
     // everything else. Upstream values kept as the defaults.
     accentColor: Color = Color(0xFF0091FF),
     containerColor: Color = Color(0xFF121212).copy(0.4f),
+    // LOCAL CHANGE: upstream pins the bar at 64dp. The player wants a slimmer
+    // version of the same control, and copying the file to change one number
+    // would leave two of them to keep in step.
+    height: Dp = 64f.dp,
     content: @Composable RowScope.() -> Unit
 ) {
     val isLightTheme = !isSystemInDarkTheme()
@@ -189,7 +194,7 @@ fun LiquidBottomTabs(
                     onDrawSurface = { drawRect(containerColor) }
                 )
                 .then(interactiveHighlight.modifier)
-                .height(64f.dp)
+                .height(height)
                 .fillMaxWidth()
                 .padding(4f.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -228,7 +233,7 @@ fun LiquidBottomTabs(
                         onDrawSurface = { drawRect(containerColor) }
                     )
                     .then(interactiveHighlight.modifier)
-                    .height(56f.dp)
+                    .height(height - 8f.dp)
                     .fillMaxWidth()
                     .padding(horizontal = 4f.dp)
                     .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
@@ -290,7 +295,7 @@ fun LiquidBottomTabs(
                         drawRect(Color.Black.copy(alpha = 0.03f * progress))
                     }
                 )
-                .height(56f.dp)
+                .height(height - 8f.dp)
                 .fillMaxWidth(1f / tabsCount)
         )
     }

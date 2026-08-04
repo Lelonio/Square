@@ -93,7 +93,7 @@ import dev.emanuele.spot.ui.theme.softShadow
  * back here as a full-bleed backdrop.
  */
 /** What occupies the middle of the player. */
-private enum class Stage { COVER, LYRICS, CANVAS }
+private enum class Stage { COVER, LYRICS, EFFECTS, QUEUE, CANVAS }
 
 @UnstableApi
 @Composable
@@ -154,9 +154,12 @@ fun PlayerScreen(
     // the bottom, and the Canvas goes out of focus behind them: a clip is
     // motion, and reading over motion is the one thing that does not work. Blur
     // keeps it present as light and colour without competing for attention.
-    val lyricsOpen = panel == PlayerPanel.LYRICS
+    // Any panel, not just the lyrics: they all sit in the middle of the screen
+    // now, and reading a slider over a moving clip is no easier than reading a
+    // lyric over one.
+    val panelOpen = panel != PlayerPanel.NONE
     val canvasBlur by animateDpAsState(
-        targetValue = if (lyricsOpen) 26.dp else 0.dp,
+        targetValue = if (panelOpen) 26.dp else 0.dp,
         animationSpec = tween(320),
         label = "canvasBlur",
     )
@@ -262,10 +265,12 @@ fun PlayerScreen(
                         // sheet should look like, and holding the slot open
                         // keeps everything below it still.
                         Crossfade(
-                            targetState = when {
-                                lyricsOpen -> Stage.LYRICS
-                                canvas == null -> Stage.COVER
-                                else -> Stage.CANVAS
+                            targetState = when (panel) {
+                                PlayerPanel.LYRICS -> Stage.LYRICS
+                                PlayerPanel.EFFECTS -> Stage.EFFECTS
+                                PlayerPanel.QUEUE -> Stage.QUEUE
+                                PlayerPanel.NONE ->
+                                    if (canvas == null) Stage.COVER else Stage.CANVAS
                             },
                             animationSpec = tween(320),
                             label = "stage",
@@ -293,6 +298,34 @@ fun PlayerScreen(
                                     isPlaying = state.isPlaying,
                                     onSeek = onSeek,
                                 )
+
+                                // Effects and the queue share the lyrics' space
+                                // rather than opening a sheet under the
+                                // controls. A panel that pushed the transport
+                                // around every time it opened was the reason
+                                // this screen never sat still.
+                                Stage.EFFECTS -> Box(
+                                    Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    EffectsPanel(
+                                        speed = state.speed,
+                                        pitch = state.pitch,
+                                        reverb = reverb,
+                                        onSpeed = onSpeed,
+                                        onPitch = onPitch,
+                                        onReverb = onReverb,
+                                        presets = presets,
+                                        onApplyPreset = onApplyPreset,
+                                        onSavePreset = onSavePreset,
+                                        onDeletePreset = onDeletePreset,
+                                        backdrop = glassBackdrop,
+                                    )
+                                }
+
+                                Stage.QUEUE -> Box(Modifier.fillMaxSize()) {
+                                    QueueList(queue, onPlayQueueItem)
+                                }
 
                                 // The clip is the picture, and it is drawn
                                 // behind everything: this slot only has to keep

@@ -78,7 +78,10 @@ fun PlayerPanelSection(
     /** The layer the panel refracts; see the liquid-glass note in PlayerScreen. */
     backdrop: com.kyant.backdrop.Backdrop,
 ) {
-    Column(Modifier.fillMaxWidth()) {
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         // The same segmented control the tab bar uses, because this is the same
         // kind of choice: three views of one screen, exactly one of them
         // showing. Three separate toggles said "three independent switches",
@@ -101,9 +104,13 @@ fun PlayerPanelSection(
             tabsCount = views.size,
             accentColor = GlassInk,
             containerColor = GlassFilm,
+            // Slimmer than the tab bar, and icon-only. This one sits under the
+            // transport rather than at the edge of the window, so it has to
+            // read as a smaller thing than the app's own navigation.
+            height = 42.dp,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
+                .fillMaxWidth(0.72f)
+                .padding(top = 14.dp),
         ) {
             PanelTab(Icons.Filled.Album, "Copertina", selected == 0) { onSelect(PlayerPanel.NONE) }
             PanelTab(Icons.Filled.Lyrics, "Testo", selected == 1) {
@@ -114,53 +121,9 @@ fun PlayerPanelSection(
             }
         }
 
-        // Lyrics are not in here any more: they are drawn in the middle of the
-        // player, over the blurred Canvas. The tab stays because it is still
-        // what turns them on — it just no longer opens a sheet.
-        AnimatedVisibility(
-            visible = panel != PlayerPanel.NONE && panel != PlayerPanel.LYRICS,
-        ) {
-            GlassSurface(
-                backdrop = backdrop,
-                shape = RoundedCornerShape(26.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-                    .heightIn(max = 260.dp),
-            ) {
-                when (panel) {
-                    PlayerPanel.QUEUE -> QueueList(queue, onPlayQueueItem)
-                    // Drawn in the middle of the player instead; see
-                    // LyricsStage in PlayerScreen.
-                    PlayerPanel.LYRICS -> Unit
-                    PlayerPanel.EFFECTS -> EffectsPanel(
-                        speed = speed,
-                        pitch = pitch,
-                        reverb = reverb,
-                        onSpeed = onSpeed,
-                        onPitch = onPitch,
-                        onReverb = onReverb,
-                        presets = presets,
-                        onApplyPreset = onApplyPreset,
-                        onSavePreset = onSavePreset,
-                        onDeletePreset = onDeletePreset,
-                        backdrop = backdrop,
-                    )
-
-                    PlayerPanel.NONE -> Unit
-                }
-            }
-        }
     }
 }
 
-/**
- * Icons rather than the words they replaced.
- *
- * Everything else on this screen is a glyph, and three words set in caps read as
- * a different control from the ones around them. The label survives as the
- * content description, which is what a screen reader wants anyway.
- */
 @Composable
 private fun RowScope.PanelTab(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -173,12 +136,7 @@ private fun RowScope.PanelTab(
             imageVector = icon,
             contentDescription = label,
             tint = if (selected) GlassInk else GlassInkDim,
-            modifier = Modifier.size(21.dp),
-        )
-        Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (selected) GlassInk else GlassInkDim,
+            modifier = Modifier.size(19.dp),
         )
     }
 }
@@ -187,7 +145,7 @@ private fun RowScope.PanelTab(
 data class QueueEntry(val index: Int, val title: String, val artist: String, val isCurrent: Boolean)
 
 @Composable
-private fun QueueList(queue: List<QueueEntry>, onPlay: (Int) -> Unit) {
+internal fun QueueList(queue: List<QueueEntry>, onPlay: (Int) -> Unit) {
     if (queue.isEmpty()) {
         EmptyPanel("La coda è vuota")
         return
@@ -232,7 +190,7 @@ private fun QueueList(queue: List<QueueEntry>, onPlay: (Int) -> Unit) {
  * stretcher does the work — see [dev.emanuele.spot.playback.AudioOutput].
  */
 @Composable
-private fun EffectsPanel(
+internal fun EffectsPanel(
     speed: Float,
     pitch: Float,
     reverb: Float,
@@ -478,7 +436,7 @@ private fun formatSemitones(pitch: Float): String {
 }
 
 @Composable
-private fun EmptyPanel(message: String) {
+internal fun EmptyPanel(message: String) {
     Box(
         Modifier
             .fillMaxWidth()

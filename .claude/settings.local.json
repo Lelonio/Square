@@ -94,7 +94,8 @@
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Contract the player as it collapses *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Make closing the player the opening reversed *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Player controls: one queue button, a working heart, icon tabs *)",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Switch the player'\\\\''s views with the segmented control *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Switch the player'\\\\''s views with the segmented control *)",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Panels share the lyrics'\\\\'' space; slimmer switch *)"
     ]
   }
 }
