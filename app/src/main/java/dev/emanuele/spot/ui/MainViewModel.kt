@@ -307,6 +307,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess {
                     _addToPlaylist.value =
                         _addToPlaylist.value.copy(busy = null, done = playlist.name)
+                    // The detail screen holds a list resolved before this track
+                    // was in it; if that is the playlist just written to, read
+                    // it again.
+                    if (_playlist.value.uri == playlist.uri) openPlaylist(playlist)
                 }
                 .onFailure {
                     android.util.Log.e(TAG, "add to playlist failed: ${chain(it)}", it)
@@ -587,7 +591,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // page should keep at the front.
         container.playlistOrder.record(playlist.uri)
 
-        if (_playlist.value.uri == playlist.uri && _playlist.value.tracks.isNotEmpty()) return
+        // Reopening what is already loaded re-reads it rather than showing the
+        // copy in memory. It used to return here, which is how a track added
+        // from the player could be genuinely in the playlist on Spotify and
+        // missing from this screen: the list had been resolved before the track
+        // existed and nothing ever asked again.
+        //
+        // The tracks already on screen stay up while the reload runs, so this
+        // costs a round trip and shows no spinner.
+        val cached = _playlist.value.takeIf { it.uri == playlist.uri }?.tracks.orEmpty()
 
         val kind = kindOf(playlist.uri)
         playlistJob?.cancel()
@@ -597,7 +609,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             artworkUrl = playlist.artworkUrl,
             kind = kind,
         )
-        _playlist.value = base.copy(loading = true)
+        _playlist.value = base.copy(tracks = cached, loading = cached.isEmpty())
         playlistJob = viewModelScope.launch {
             runCatching {
                 if (kind == DetailKind.ARTIST) loadArtist(playlist.uri) else loadContext(playlist.uri)
@@ -607,7 +619,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 .onFailure {
                     android.util.Log.e(TAG, "detail load failed: ${chain(it)}", it)
-                    _playlist.value = base.copy(error = describe(it))
+                    // Only when there is nothing to show. A refresh that fails
+                    // over a list already on screen should leave the list.
+                    _playlist.value =
+                        if (cached.isEmpty()) base.copy(error = describe(it)) else base.copy(tracks = cached)
                 }
         }
     }
