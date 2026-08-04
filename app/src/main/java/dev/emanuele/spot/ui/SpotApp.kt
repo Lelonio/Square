@@ -340,7 +340,7 @@ fun SpotApp(
                                 onApplyPreset = { preset ->
                                     player?.playbackParameters =
                                         PlaybackParameters(preset.speed, preset.pitch)
-                                    AudioEffects.setReverb(preset.reverb)
+                                    AudioEffects.setReverb(preset.reverbAmount)
                                 },
                                 onSavePreset = {
                                     viewModel.saveEffectPreset(
