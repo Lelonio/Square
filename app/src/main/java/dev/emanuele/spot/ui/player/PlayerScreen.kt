@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -91,6 +92,14 @@ import kotlin.math.abs
  * moving it one to one drags the whole screen's refraction along with it.
  */
 private const val CANVAS_SWIPE_FOLLOW = 0.35f
+
+/**
+ * How far a Canvas is darkened while playback is paused.
+ *
+ * Enough to be unmistakable, not so much that the clip stops being visible —
+ * this is a paused picture, not a closed one.
+ */
+private const val PAUSED_DIM = 0.55f
 
 /**
  * The player, as a liquid-glass prototype.
@@ -275,7 +284,17 @@ fun PlayerScreen(
             // enough contrast without turning the video into a mood board. With
             // no Canvas there is nothing to darken — the app's backdrop is
             // already dimmed.
+            //
+            // It deepens on pause. A stilled clip is a frozen picture that looks
+            // no different from a playing one held on a slow shot, so pausing
+            // read as the video having stalled rather than as playback having
+            // stopped. Dimming it says the same thing the picture cannot.
             if (canvas != null) {
+                val pausedDim by animateFloatAsState(
+                    targetValue = if (state.isPlaying) 0f else 1f,
+                    animationSpec = tween(420),
+                    label = "canvasDim",
+                )
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -287,7 +306,11 @@ fun PlayerScreen(
                                     Color.Black.copy(alpha = 0.52f),
                                 ),
                             ),
-                        ),
+                        )
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(Color.Black, alpha = pausedDim * PAUSED_DIM)
+                        },
                 )
             }
         }

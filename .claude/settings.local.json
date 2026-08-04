@@ -125,7 +125,8 @@
       "Bash(git commit -q -m 'Wait for a track before opening the player; drop the cover stand-in *)",
       "Bash(git commit -q -m 'Deliver the notification intent; blur what the sheets actually cover *)",
       "Bash(git commit -q -m 'An icon made of the app'\\\\''s own glass *)",
-      "Bash(git commit -q -m 'Hold the cover until the Canvas has a frame *)"
+      "Bash(git commit -q -m 'Hold the cover until the Canvas has a frame *)",
+      "Bash(git commit -q -m 'Darken the Canvas while paused *)"
     ]
   }
 }
