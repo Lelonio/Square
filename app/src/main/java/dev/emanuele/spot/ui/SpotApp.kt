@@ -151,6 +151,7 @@ fun SpotApp(
     val feed by viewModel.feed.collectAsStateWithLifecycle()
     val playlistOrder by viewModel.playlistOrder.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
+    val liked by viewModel.liked.collectAsStateWithLifecycle()
 
     // Once, on the first composition that has a usable Web API session. The
     // ViewModel keeps what it fetched, so navigating away and back does not
@@ -196,6 +197,8 @@ fun SpotApp(
             ),
         )
     }
+
+    LaunchedEffect(playback.mediaId) { viewModel.checkLiked(playback.mediaId) }
 
     var canvas by remember { mutableStateOf<CanvasClip?>(null) }
 
@@ -450,6 +453,8 @@ fun SpotApp(
                                 onCloseDevices = viewModel::closeDevices,
                                 onRefreshDevices = viewModel::refreshDevices,
                                 onSelectDevice = { viewModel.transferPlayback(it) },
+                                liked = liked,
+                                onToggleLiked = viewModel::toggleLiked,
                             )
                         },
                     )

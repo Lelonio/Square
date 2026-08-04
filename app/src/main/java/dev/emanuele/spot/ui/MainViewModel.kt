@@ -242,6 +242,58 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
     }
 
+    /**
+     * Whether the playing track is in Liked Songs.
+     *
+     * Null while unknown — no Web API application, the check still in flight, or
+     * it failed. The heart is drawn inert in that case rather than guessing,
+     * because guessing wrong here silently removes something from a library.
+     */
+    private val _liked = MutableStateFlow<Boolean?>(null)
+    val liked: StateFlow<Boolean?> = _liked.asStateFlow()
+    private var likedJob: Job? = null
+    private var likedUri: String? = null
+
+    fun checkLiked(trackUri: String?) {
+        likedJob?.cancel()
+        likedUri = trackUri
+        _liked.value = null
+        val id = trackUri?.takeIf { it.startsWith("spotify:track:") }
+            ?.substringAfterLast(':')
+            ?: return
+        if (!container.webApi.isReady) return
+
+        likedJob = viewModelScope.launch {
+            runCatching { container.api.areSaved(id).firstOrNull() }
+                .onSuccess { _liked.value = it }
+                .onFailure { android.util.Log.w(TAG, "liked check failed: ${describe(it)}") }
+        }
+    }
+
+    /**
+     * Adds or removes the playing track.
+     *
+     * The state is flipped before the call and put back if it fails: a heart
+     * that waits for a round trip feels broken, and one that lies about the
+     * outcome is worse.
+     */
+    fun toggleLiked() {
+        val id = likedUri?.takeIf { it.startsWith("spotify:track:") }
+            ?.substringAfterLast(':')
+            ?: return
+        val wasLiked = _liked.value ?: return
+
+        _liked.value = !wasLiked
+        viewModelScope.launch {
+            runCatching {
+                if (wasLiked) container.api.removeTracks(id) else container.api.saveTracks(id)
+            }.onFailure {
+                android.util.Log.e(TAG, "like failed: ${chain(it)}", it)
+                _liked.value = wasLiked
+            }
+        }
+    }
+
     private val _playlist = MutableStateFlow(PlaylistState())
     val playlist: StateFlow<PlaylistState> = _playlist.asStateFlow()
 
@@ -348,6 +400,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // playback.
                     "user-read-playback-state",
                     "user-modify-playback-state",
+                    // The heart in the player.
+                    "user-library-read",
+                    "user-library-modify",
                 ),
             )
         }

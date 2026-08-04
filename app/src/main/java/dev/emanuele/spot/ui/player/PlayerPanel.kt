@@ -20,7 +20,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lyrics
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -78,13 +81,17 @@ fun PlayerPanelSection(
                 .padding(top = 18.dp),
             horizontalArrangement = Arrangement.Center,
         ) {
-            PanelTab("CODA", panel == PlayerPanel.QUEUE) {
+            PanelTab(
+                Icons.AutoMirrored.Filled.QueueMusic,
+                "Coda",
+                panel == PlayerPanel.QUEUE,
+            ) {
                 onSelect(if (panel == PlayerPanel.QUEUE) PlayerPanel.NONE else PlayerPanel.QUEUE)
             }
-            PanelTab("TESTO", panel == PlayerPanel.LYRICS) {
+            PanelTab(Icons.Filled.Lyrics, "Testo", panel == PlayerPanel.LYRICS) {
                 onSelect(if (panel == PlayerPanel.LYRICS) PlayerPanel.NONE else PlayerPanel.LYRICS)
             }
-            PanelTab("EFFETTI", panel == PlayerPanel.EFFECTS) {
+            PanelTab(Icons.Filled.Tune, "Effetti", panel == PlayerPanel.EFFECTS) {
                 onSelect(
                     if (panel == PlayerPanel.EFFECTS) PlayerPanel.NONE else PlayerPanel.EFFECTS,
                 )
@@ -131,16 +138,29 @@ fun PlayerPanelSection(
     }
 }
 
+/**
+ * Icons rather than the words they replaced.
+ *
+ * Everything else on this screen is a glyph, and three words set in caps read as
+ * a different control from the ones around them. The label survives as the
+ * content description, which is what a screen reader wants anyway.
+ */
 @Composable
-private fun PanelTab(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelLarge,
-        color = if (selected) GlassInk else GlassInkDim,
+private fun PanelTab(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Icon(
+        imageVector = icon,
+        contentDescription = label,
+        tint = if (selected) GlassInk else GlassInkDim,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 8.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .size(22.dp),
     )
 }
 

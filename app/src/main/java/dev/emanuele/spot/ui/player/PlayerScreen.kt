@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -136,6 +137,9 @@ fun PlayerScreen(
     onCloseDevices: () -> Unit,
     onRefreshDevices: () -> Unit,
     onSelectDevice: (String) -> Unit,
+    /** Null while unknown; see MainViewModel.liked. */
+    liked: Boolean?,
+    onToggleLiked: () -> Unit,
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
 
@@ -221,16 +225,8 @@ fun PlayerScreen(
                 ) {
                     TopBar(
                         backdrop = glassBackdrop,
-                        queueOpen = panel == PlayerPanel.QUEUE,
                         onCollapse = onCollapse,
                         onOpenDevices = onOpenDevices,
-                        onToggleQueue = {
-                            panel = if (panel == PlayerPanel.QUEUE) {
-                                PlayerPanel.NONE
-                            } else {
-                                PlayerPanel.QUEUE
-                            }
-                        },
                     )
 
                     // Everything sits at the bottom, as in the reference: the
@@ -322,28 +318,36 @@ fun PlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 TitleBlock(state, Modifier.weight(1f))
+                                // The queue used to have a button here as well
+                                // as one in the top bar and its own tab below —
+                                // three controls for one panel. The tab is the
+                                // one that stayed: it is where the other panels
+                                // are.
                                 RoundGlassButton(
                                     backdrop = glassBackdrop,
                                     size = 40.dp,
-                                    onClick = {
-                                        panel = if (panel == PlayerPanel.QUEUE) {
-                                            PlayerPanel.NONE
-                                        } else {
-                                            PlayerPanel.QUEUE
-                                        }
-                                    },
+                                    // Inert until the check has answered:
+                                    // guessing wrong here silently removes
+                                    // something from a library.
+                                    enabled = liked != null,
+                                    onClick = onToggleLiked,
                                 ) {
                                     Icon(
-                                        Icons.Filled.QueueMusic,
-                                        contentDescription = "Coda",
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                                Spacer(Modifier.size(8.dp))
-                                RoundGlassButton(backdrop = glassBackdrop, size = 40.dp, onClick = {}) {
-                                    Icon(
-                                        Icons.Outlined.FavoriteBorder,
-                                        contentDescription = null,
+                                        if (liked == true) {
+                                            Icons.Filled.Favorite
+                                        } else {
+                                            Icons.Outlined.FavoriteBorder
+                                        },
+                                        contentDescription = if (liked == true) {
+                                            "Togli dai brani salvati"
+                                        } else {
+                                            "Salva"
+                                        },
+                                        tint = if (liked == true) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            GlassInk
+                                        },
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
@@ -421,10 +425,8 @@ fun PlayerScreen(
 @Composable
 private fun TopBar(
     backdrop: Backdrop,
-    queueOpen: Boolean,
     onCollapse: () -> Unit,
     onOpenDevices: () -> Unit,
-    onToggleQueue: () -> Unit,
 ) {
     Row(
         Modifier
@@ -451,14 +453,7 @@ private fun TopBar(
                 tint = GlassInk,
             )
         }
-        Spacer(Modifier.size(8.dp))
-        GlassButton(backdrop, onClick = onToggleQueue) {
-            Icon(
-                Icons.Filled.MoreHoriz,
-                contentDescription = "Altro",
-                tint = if (queueOpen) GlassInk else GlassInkDim,
-            )
-        }
+
     }
 }
 
