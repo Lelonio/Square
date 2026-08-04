@@ -91,7 +91,12 @@ fun PlayerPanelSection(
             }
         }
 
-        AnimatedVisibility(visible = panel != PlayerPanel.NONE) {
+        // Lyrics are not in here any more: they are drawn in the middle of the
+        // player, over the blurred Canvas. The tab stays because it is still
+        // what turns them on — it just no longer opens a sheet.
+        AnimatedVisibility(
+            visible = panel != PlayerPanel.NONE && panel != PlayerPanel.LYRICS,
+        ) {
             GlassSurface(
                 backdrop = backdrop,
                 shape = RoundedCornerShape(26.dp),

@@ -114,7 +114,7 @@ private fun LyricRow(
     )
 
     val scale by animateFloatAsState(
-        targetValue = if (isActive) 1f else 0.88f,
+        targetValue = if (isActive) 1f else 0.90f,
         animationSpec = springSpec,
         label = "lyricScale",
     )
@@ -135,7 +135,7 @@ private fun LyricRow(
     // it (API 31+); below that it is a no-op and the alpha ramp carries it.
     val blurRadius = when {
         unsynced || distance <= 1 -> 0.dp
-        else -> ((distance - 1) * 0.9f).coerceAtMost(3.5f).dp
+        else -> ((distance - 1) * 1.1f).coerceAtMost(4.5f).dp
     }
 
     Box(
@@ -147,13 +147,12 @@ private fun LyricRow(
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 21.sp, lineHeight = 26.sp),
-            fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
-            color = if (isActive) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
+            style = MaterialTheme.typography.titleLarge.copy(fontSize = 27.sp, lineHeight = 33.sp),
+            fontWeight = FontWeight.Bold,
+            // White rather than the artwork accent. These sit over a Canvas now,
+            // and an accent pulled from the cover can land anywhere — including
+            // on the clip's own colours.
+            color = Color.White,
             textAlign = TextAlign.Start,
             modifier = Modifier
                 .then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)

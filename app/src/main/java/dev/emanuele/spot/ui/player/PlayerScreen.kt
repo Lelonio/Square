@@ -13,6 +13,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -131,10 +133,22 @@ fun PlayerScreen(
     val canvasBackdrop = rememberLayerBackdrop()
     val glassBackdrop = rememberCombinedBackdrop(backdrop, canvasBackdrop)
 
+    // Lyrics take over the middle of the screen rather than opening a panel at
+    // the bottom, and the Canvas goes out of focus behind them: a clip is
+    // motion, and reading over motion is the one thing that does not work. Blur
+    // keeps it present as light and colour without competing for attention.
+    val lyricsOpen = panel == PlayerPanel.LYRICS
+    val canvasBlur by animateDpAsState(
+        targetValue = if (lyricsOpen) 26.dp else 0.dp,
+        animationSpec = tween(320),
+        label = "canvasBlur",
+    )
+
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
+                .then(if (canvasBlur > 0.dp) Modifier.blur(canvasBlur) else Modifier)
                 .layerBackdrop(canvasBackdrop),
         ) {
             Crossfade(
@@ -228,7 +242,7 @@ fun PlayerScreen(
                         // column arranged from the bottom, "as much space as it
                         // wants" is nothing once the controls have taken theirs.
                         AnimatedVisibility(
-                            visible = canvas == null,
+                            visible = canvas == null && !lyricsOpen,
                             enter = fadeIn(tween(400)) + scaleIn(tween(400), initialScale = 0.92f),
                             exit = fadeOut(tween(250)) + scaleOut(tween(250), targetScale = 0.92f),
                             modifier = Modifier.weight(1f),
@@ -236,6 +250,22 @@ fun PlayerScreen(
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Cover(state, panel, onNext, onPrevious)
                             }
+                        }
+
+                        // The lyrics get the same space, whether or not there is
+                        // a Canvas behind them.
+                        AnimatedVisibility(
+                            visible = lyricsOpen,
+                            enter = fadeIn(tween(400)),
+                            exit = fadeOut(tween(220)),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            LyricsStage(
+                                lyrics = lyrics,
+                                loading = lyricsLoading,
+                                positionMs = positionMs,
+                                onSeek = onSeek,
+                            )
                         }
 
                         Spacer(Modifier.height(20.dp))
@@ -647,3 +677,40 @@ internal val GlassInkDim = Color.White.copy(alpha = 0.68f)
  * player and the search button beside it.
  */
 internal val GlassFilm = Color.White.copy(alpha = 0.12f)
+
+/**
+ * The lyrics, centre stage.
+ *
+ * Its own composable only so the empty and loading cases stay out of the layout
+ * above: this sits where the cover would, so "no lyrics" has to occupy the same
+ * space rather than collapsing the screen around it.
+ */
+@Composable
+private fun LyricsStage(
+    lyrics: dev.emanuele.spot.data.Lyrics?,
+    loading: Boolean,
+    positionMs: State<Long>,
+    onSeek: (Long) -> Unit,
+) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        when {
+            loading -> androidx.compose.material3.CircularProgressIndicator(
+                color = GlassInkDim,
+                strokeWidth = 2.dp,
+            )
+
+            lyrics == null -> Text(
+                "Nessun testo per questo brano",
+                style = MaterialTheme.typography.bodyMedium,
+                color = GlassInkDim,
+            )
+
+            else -> LyricsView(
+                lyrics = lyrics,
+                positionMs = positionMs,
+                onSeek = onSeek,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}

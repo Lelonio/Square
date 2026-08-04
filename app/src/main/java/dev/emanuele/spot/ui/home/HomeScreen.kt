@@ -31,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -257,6 +256,14 @@ private fun Header(
     Column(
         Modifier
             .fillMaxWidth()
+            // Seats the header on the page instead of leaving it floating over
+            // whatever the list has scrolled underneath it.
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.45f),
+                    1f to Color.Transparent,
+                ),
+            )
             .padding(top = topPadding),
     ) {
         Row(
@@ -265,7 +272,7 @@ private fun Header(
                 .padding(
                     start = 24.dp,
                     end = 24.dp,
-                    top = lerp(20.dp, 6.dp, collapse),
+                    top = lerp(18.dp, 2.dp, collapse),
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -323,7 +330,7 @@ private fun FilterRow(selected: Feed, backdrop: Backdrop, onSelect: (Feed) -> Un
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(top = 22.dp),
+        modifier = Modifier.padding(top = 14.dp, bottom = 10.dp),
     ) {
         items(Feed.entries.toList(), key = { it.name }) { entry ->
             val isSelected = entry == selected
@@ -371,17 +378,20 @@ private fun FeedCard(item: SearchItem, onClick: () -> Unit) {
         //
         // Spotify serves album art at 640px and no larger, so a cover stretched
         // across a 1080px-wide card is upscaled by nearly two and looks soft —
-        // which is exactly the "low quality covers" this replaced. Blurred, that
-        // upscaling is invisible, so the background can be full width while the
-        // cover that has to be sharp is displayed well under its native size.
+        // which is exactly the "low quality covers" this replaced. The
+        // background is allowed to be soft, so it takes the full width; the copy
+        // that has to be sharp is drawn well under its native size.
+        //
+        // Softened by decoding it tiny and letting the upscale blur it, rather
+        // than by `Modifier.blur`. That modifier renders into a layer of its own
+        // which is not bound by this box's clip, so it painted a hard black
+        // rectangle past the card's rounded corners and up into the header.
         Artwork(
             url = item.artworkUrl,
             title = item.title,
-            modifier = Modifier
-                .matchParentSize()
-                .blur(36.dp),
+            modifier = Modifier.matchParentSize(),
             corner = 0.dp,
-            decodeSize = 200.dp,
+            decodeSize = 24.dp,
         )
         Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.42f)))
 
