@@ -69,6 +69,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import dev.emanuele.spot.ui.components.BlurTransformation
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -117,9 +118,13 @@ private val BottomBarHeight = 62.dp
 /**
  * Decode size of the page backdrop, in pixels.
  *
- * Small enough that stretching it across the window *is* the blur.
+ * Large enough that the blur has something to work with, small enough that
+ * blurring it costs nothing and it never reads as a photograph.
  */
-private const val BACKDROP_DECODE_PX = 32
+private const val BACKDROP_DECODE_PX = 128
+
+/** Radius in pixels of the decoded image; see [BlurTransformation]. */
+private val BackdropBlur = BlurTransformation(radius = 14, passes = 2)
 
 @UnstableApi
 @Composable
@@ -470,16 +475,19 @@ private fun AppBackdrop(artworkUrl: String?) {
             .background(Color(0xFF0A0A0C)),
     ) {
         if (artworkUrl != null) {
-            // Softened by decoding it tiny and letting the upscale do the work,
-            // not by `Modifier.blur`. An 80dp blur over the whole window is a
-            // RenderEffect on a full-screen layer, re-run whenever that layer
-            // changes — which during the player's expansion is every frame, and
-            // was a large part of why it stuttered. A 32px bitmap stretched to
-            // the window is the same picture for nothing.
+            // Blurred at decode time rather than by `Modifier.blur`. That
+            // modifier is a RenderEffect over the whole window, re-run whenever
+            // the layer changes — every frame while the player expands, which is
+            // most of what made it stutter. Stretching a 32px bitmap instead was
+            // free and looked it: bilinear upscaling from that size shows square
+            // blocks, not a wash. This does the blur once per cover, on a small
+            // bitmap, and Coil caches it.
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(artworkUrl)
                     .size(BACKDROP_DECODE_PX)
+                    .transformations(BackdropBlur)
+                    .allowHardware(false)
                     .crossfade(true)
                     .build(),
                 contentDescription = null,
