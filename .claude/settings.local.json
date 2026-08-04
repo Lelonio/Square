@@ -103,7 +103,8 @@
       "Bash(./gradlew :app:assembleDev -q)",
       "Bash(git commit -q -m 'Swap every icon to Phosphor *)",
       "Bash(git commit -q -m 'Close the player by gesture, not by dragging it around *)",
-      "Bash(git commit -q -m 'Open the player with a transform instead of a resize *)"
+      "Bash(git commit -q -m 'Open the player with a transform instead of a resize *)",
+      "Bash(git commit -q -m 'Add a settings screen behind the account picture *)"
     ]
   }
 }

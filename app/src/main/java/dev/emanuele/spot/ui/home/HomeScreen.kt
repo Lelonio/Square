@@ -99,6 +99,7 @@ fun HomeScreen(
     onPlayRecent: (List<CatalogTrack>, Int) -> Unit,
     feed: MainViewModel.FeedState,
     onOpenItem: (SearchItem) -> Unit,
+    onOpenSettings: () -> Unit,
     /** The layer the glass on this page refracts; see the note in SpotApp. */
     backdrop: Backdrop,
 ) {
@@ -187,6 +188,7 @@ fun HomeScreen(
                     backdrop = backdrop,
                     topPadding = contentPadding.calculateTopPadding(),
                     onFilter = { filter = it },
+                    onOpenSettings = onOpenSettings,
                 )
 
                 LazyColumn(
@@ -291,6 +293,7 @@ private fun Header(
     backdrop: Backdrop,
     topPadding: Dp,
     onFilter: (Feed) -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     Column(
         Modifier
@@ -348,12 +351,17 @@ private fun Header(
             // Falls back to the generated cover keyed on the name, which is what
             // every other missing image in the app gets rather than a grey
             // circle.
+            // The way into the settings. They have no tab of their own — see
+            // SettingsScreen — and the account picture is where anyone looks for
+            // them anyway.
             Artwork(
                 url = avatarUrl,
                 title = name,
                 modifier = Modifier
                     .padding(start = 14.dp)
                     .size(lerp(46.dp, 36.dp, collapse))
+                    .clip(CircleShape)
+                    .clickable(onClick = onOpenSettings)
                     .softShadow(CircleShape, elevation = 10.dp),
                 corner = 23.dp,
                 decodeSize = 46.dp,

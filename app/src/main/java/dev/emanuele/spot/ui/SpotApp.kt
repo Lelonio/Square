@@ -88,6 +88,7 @@ import dev.emanuele.spot.ui.player.rememberPlaybackState
 import dev.emanuele.spot.ui.player.rememberPositionMs
 import dev.emanuele.spot.ui.player.rememberQueue
 import dev.emanuele.spot.ui.search.SearchScreen
+import dev.emanuele.spot.ui.settings.SettingsScreen
 import dev.emanuele.spot.ui.theme.Ink
 import dev.emanuele.spot.ui.theme.SpotTheme
 import dev.emanuele.spot.ui.theme.rememberArtworkColor
@@ -107,6 +108,7 @@ object Routes {
     const val SEARCH = "search"
     const val LIBRARY = "library"
     const val PLAYLIST = "playlist"
+    const val SETTINGS = "settings"
 }
 
 /** How the player settles when it is not being dragged. */
@@ -289,6 +291,7 @@ fun SpotApp(
                                     navController.navigate(Routes.PLAYLIST)
                                 },
                                 backdrop = artBackdrop,
+                                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                             )
                         }
 
@@ -321,6 +324,21 @@ fun SpotApp(
                                 onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
                                 playlistOrder = playlistOrder,
                                 backdrop = artBackdrop,
+                            )
+                        }
+
+                        composable(Routes.SETTINGS) {
+                            SettingsScreen(
+                                state = state,
+                                webApi = webApi,
+                                contentPadding = listPadding,
+                                backdrop = artBackdrop,
+                                deviceName = android.os.Build.MODEL ?: "Android",
+                                onClientIdChange = viewModel::onWebApiClientIdChange,
+                                onConnectWebApi = viewModel::connectWebApi,
+                                onDisconnectWebApi = viewModel::disconnectWebApi,
+                                onLogOut = viewModel::logOut,
+                                onBack = { navController.popBackStack() },
                             )
                         }
 
