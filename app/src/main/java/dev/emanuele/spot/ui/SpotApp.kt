@@ -6,6 +6,8 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -50,6 +52,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -82,8 +85,10 @@ import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.home.HomeScreen
 import dev.emanuele.spot.ui.library.LibraryScreen
 import dev.emanuele.spot.ui.library.PlaylistScreen
+import dev.emanuele.spot.ui.player.EXPAND_MS
 import dev.emanuele.spot.ui.player.MiniPlayer
 import dev.emanuele.spot.ui.player.GlassFilm
+import dev.emanuele.spot.ui.player.EXPAND_MS
 import dev.emanuele.spot.ui.player.MiniPlayerHeight
 import dev.emanuele.spot.ui.player.PlayerScreen
 import dev.emanuele.spot.ui.player.progressOf
@@ -104,9 +109,6 @@ object Routes {
 }
 
 private val BottomBarHeight = 62.dp
-
-/** How long the mini player takes to become the player, and back. */
-private const val EXPAND_MS = 420
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @UnstableApi
@@ -337,10 +339,38 @@ fun SpotApp(
                             // from the mini player's 42dp thumbnail to the full
                             // cover and back. Sliding the screen as well would
                             // be two animations describing the same thing.
-                            enterTransition = { fadeIn(tween(EXPAND_MS)) },
-                            exitTransition = { fadeOut(tween(EXPAND_MS)) },
-                            popEnterTransition = { fadeIn(tween(EXPAND_MS)) },
-                            popExitTransition = { fadeOut(tween(EXPAND_MS)) },
+                            enterTransition = {
+                                fadeIn(tween(220, delayMillis = 60)) +
+                                    scaleIn(
+                                        tween(EXPAND_MS),
+                                        initialScale = 0.94f,
+                                        transformOrigin = TransformOrigin(0.5f, 1f),
+                                    )
+                            },
+                            exitTransition = {
+                                fadeOut(tween(160)) +
+                                    scaleOut(
+                                        tween(EXPAND_MS),
+                                        targetScale = 0.94f,
+                                        transformOrigin = TransformOrigin(0.5f, 1f),
+                                    )
+                            },
+                            popEnterTransition = {
+                                fadeIn(tween(220, delayMillis = 60)) +
+                                    scaleIn(
+                                        tween(EXPAND_MS),
+                                        initialScale = 0.94f,
+                                        transformOrigin = TransformOrigin(0.5f, 1f),
+                                    )
+                            },
+                            popExitTransition = {
+                                fadeOut(tween(160)) +
+                                    scaleOut(
+                                        tween(EXPAND_MS),
+                                        targetScale = 0.94f,
+                                        transformOrigin = TransformOrigin(0.5f, 1f),
+                                    )
+                            },
                         ) {
                             PlayerScreen(
                                 state = playback,
@@ -412,8 +442,12 @@ fun SpotApp(
                     // the half of the transition that shrinks back into the bar.
                     AnimatedVisibility(
                         visible = !onPlayer && playback.hasItem,
-                        enter = fadeIn(tween(EXPAND_MS)),
-                        exit = fadeOut(tween(EXPAND_MS)),
+                        // Short, because the bar does not really disappear: its
+                        // bounds morph into the player's title capsule. A long
+                        // fade here left a ghost of the bar sitting over the
+                        // screen it had just become.
+                        enter = fadeIn(tween(200, delayMillis = 120)),
+                        exit = fadeOut(tween(120)),
                     ) {
                         MiniPlayer(
                             state = playback,

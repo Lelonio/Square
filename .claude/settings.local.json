@@ -65,7 +65,16 @@
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Lyrics centre stage over a blurred Canvas; fix the card blur artefact *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Word-level lyric highlight, list fade, chips follow the scroll *)",
       "Bash(cd \"/Users/emanuele/Progetto Spotify\" && grep -rn \"sharedElement\\\\|SharedTransitionLayout\" ~/.gradle/caches/modules-2/files-2.1/androidx.compose.animation/ 2>/dev/null | head -2; ls ~/.gradle/caches/modules-2/files-2.1/androidx.compose.animation/ 2>/dev/null)",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Expand the mini player into the player; smooth the lyric sweep *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Expand the mini player into the player; smooth the lyric sweep *)",
+      "Bash(which ffmpeg *)",
+      "Bash(rm -f f_*.jpg)",
+      "Bash(ffmpeg -hide_banner -loglevel error -i \"/Users/emanuele/Desktop/screen-20260804-122239.mp4\" -vf \"fps=8,scale=360:-1\" -q:v 6 f_%03d.jpg)",
+      "Bash(ffprobe -v error -show_entries format=duration -of csv=p=0 \"/Users/emanuele/Desktop/screen-20260804-122239.mp4\")",
+      "Bash(ffmpeg -hide_banner -loglevel error -i f_%03d.jpg -vf \"select='between\\(n,20,43\\)',tile=6x4\" -frames:v 1 grid1.jpg)",
+      "Bash(ffmpeg -hide_banner -loglevel error -i f_%03d.jpg -vf \"select='between\\(n,44,67\\)',tile=6x4\" -frames:v 1 grid2.jpg)",
+      "Bash(unzip -o -q classes.jar 'androidx/compose/animation/SharedTransitionScope$ResizeMode$Companion.class')",
+      "Bash(javap -classpath . 'androidx.compose.animation.SharedTransitionScope$ResizeMode$Companion')",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Morph the now-playing bar into the player'\\\\''s title capsule *)"
     ]
   }
 }

@@ -280,7 +280,9 @@ fun PlayerScreen(
                             backdrop = glassBackdrop,
                             surfaceColor = GlassFilm,
                             shape = RoundedCornerShape(50),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .sharedPill(sharedScope, animatedScope),
                         ) {
                             Row(
                                 Modifier.padding(start = 22.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
