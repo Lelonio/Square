@@ -31,6 +31,15 @@ class MainActivity : ComponentActivity() {
 
     private var controller by mutableStateOf<MediaController?>(null)
 
+    /**
+     * Bumped when something asks for the player to be open — the notification,
+     * for now.
+     *
+     * A counter rather than a flag: two taps in a row are two requests, and a
+     * boolean that is already true the second time would be ignored.
+     */
+    private var openPlayer by mutableStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Transparent bars; SpotTheme sets the icon colour, because it is the
@@ -45,8 +54,25 @@ class MainActivity : ComponentActivity() {
                 android.graphics.Color.TRANSPARENT,
             ),
         )
+        if (intent?.getBooleanExtra(dev.emanuele.spot.playback.EXTRA_OPEN_PLAYER, false) == true) {
+            openPlayer++
+        }
+
         setContent {
-            SpotApp(player = controller, onPlay = ::play, onEnqueue = ::enqueue)
+            SpotApp(
+                player = controller,
+                onPlay = ::play,
+                onEnqueue = ::enqueue,
+                openPlayer = openPlayer,
+            )
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(dev.emanuele.spot.playback.EXTRA_OPEN_PLAYER, false)) {
+            openPlayer++
         }
     }
 

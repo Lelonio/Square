@@ -268,7 +268,16 @@ class AudioOutput {
             setAuxEffectSendLevel(0f)
             attachAuxEffect(0)
         }
-        reverb?.runCatching { enabled = false }
+        // Released, not just disabled. Disabling stops the effect processing but
+        // leaves it on the output mix, and the tail already inside it went on
+        // ringing out over whatever the phone played next. Releasing it takes it
+        // off the mix entirely; the next play builds a fresh one, which starts
+        // silent by definition.
+        reverb?.runCatching {
+            enabled = false
+            release()
+        }
+        reverb = null
     }
 
     /**

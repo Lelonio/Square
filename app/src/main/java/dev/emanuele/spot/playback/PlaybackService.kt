@@ -30,6 +30,9 @@ import kotlinx.coroutines.withContext
  * in [onDestroy] is guaranteed to run.
  */
 @UnstableApi
+/** Set on the intent the notification fires: open straight into the player. */
+const val EXTRA_OPEN_PLAYER = "dev.emanuele.spot.OPEN_PLAYER"
+
 class PlaybackService : MediaSessionService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -62,6 +65,23 @@ class PlaybackService : MediaSessionService() {
         )
         session = MediaSession.Builder(this, player)
             .setCallback(MediaItemsCallback)
+            // Without this the notification is inert to a tap: Media3 has no way
+            // to know which activity owns the session. `SINGLE_TOP` so an app
+            // already running comes forward rather than starting a second copy
+            // on top of itself.
+            .setSessionActivity(
+                android.app.PendingIntent.getActivity(
+                    this,
+                    0,
+                    android.content.Intent(this, dev.emanuele.spot.ui.MainActivity::class.java)
+                        .setAction(android.content.Intent.ACTION_MAIN)
+                        .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+                        .putExtra(EXTRA_OPEN_PLAYER, true)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    android.app.PendingIntent.FLAG_IMMUTABLE or
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+                ),
+            )
             .build()
 
         AudioEffects.load(this)

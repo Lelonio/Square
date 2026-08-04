@@ -217,9 +217,25 @@ fun PlayerScreen(
                 when {
                     clip == null -> Unit
 
-                    clip.isVideo -> CanvasSurface(
+                    // The video only while the player is at rest.
+                    //
+                    // A TextureView inside a layer that is being scaled and
+                    // faded — which is exactly what the closing animation does —
+                    // goes black for the length of the travel: its surface is
+                    // detached and re-attached around the layer change, and
+                    // there is nothing to draw in between. Standing in the
+                    // artwork for those few hundred milliseconds is invisible;
+                    // a black rectangle sliding down the screen is not.
+                    clip.isVideo && LocalGlassEnabled.current -> CanvasSurface(
                         url = clip.url,
                         isPlaying = state.isPlaying,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+
+                    clip.isVideo -> AsyncImage(
+                        model = state.artworkUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
 

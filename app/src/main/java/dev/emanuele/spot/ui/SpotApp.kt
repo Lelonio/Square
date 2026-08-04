@@ -154,6 +154,12 @@ fun SpotApp(
     onPlay: (List<CatalogTrack>, Int) -> Unit,
     /** Appends one track to the end of the queue; see the swipe gesture on rows. */
     onEnqueue: (CatalogTrack) -> Unit,
+    /**
+     * Incremented when something outside the app asks for the player — the
+     * notification, for now. A counter, so a second request while the player is
+     * already open is still a request.
+     */
+    openPlayer: Int = 0,
     viewModel: MainViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -201,6 +207,13 @@ fun SpotApp(
     // see NowPlayingSheet for why the player stopped being a route.
     val expand = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
+
+    // Opened from outside — a tap on the media notification. Skipped on the
+    // first composition of a launch that did not ask for it, since the counter
+    // starts at zero.
+    LaunchedEffect(openPlayer) {
+        if (openPlayer > 0 && playback.hasItem) expand.animateTo(1f, expandSpec)
+    }
 
     // Measured rather than assumed. The constant this replaced was 62dp while
     // the bar is a 64dp capsule with padding around it and the navigation inset

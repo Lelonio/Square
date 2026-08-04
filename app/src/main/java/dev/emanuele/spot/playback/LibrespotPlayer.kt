@@ -463,11 +463,16 @@ class LibrespotPlayer(
                 playbackState = Player.STATE_READY
                 playWhenReady = true
                 positionMs = eventPositionMs
+                // Here as well as in handleSetPlayWhenReady: a pause can arrive
+                // from the notification, from a headset button or from another
+                // Connect device, and only this path sees all of them.
+                onPlaybackActive(true)
             }
             "paused" -> {
                 playbackState = Player.STATE_READY
                 playWhenReady = false
                 positionMs = eventPositionMs
+                onPlaybackActive(false)
             }
             "position" -> {
                 positionMs = eventPositionMs
@@ -475,6 +480,7 @@ class LibrespotPlayer(
             "stopped" -> {
                 playbackState = Player.STATE_IDLE
                 playWhenReady = false
+                onPlaybackActive(false)
             }
             // Both used to advance the queue from here. The engine does it now
             // — it owns the queue — so acting on them as well would skip two
