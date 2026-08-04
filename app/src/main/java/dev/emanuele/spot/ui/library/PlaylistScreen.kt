@@ -133,28 +133,36 @@ fun PlaylistScreen(
     // Not the app's backdrop: that is the blurred cover of whatever is playing,
     // so the buttons here — back, play, shuffle, search — picked up the colour
     // of an unrelated track while the page around them was tinted from this
-    // cover. Recording this screen instead makes them glass over *this* page.
+    // cover.
     val pageBackdrop = rememberLayerBackdrop()
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .layerBackdrop(pageBackdrop)
-            // Opaque, so the app-wide blurred artwork of the playing track does
-            // not show through and re-tint the page.
-            .background(
-                Brush.verticalGradient(
-                    // Held flat over the top half rather than falling away
-                    // immediately: the header has to end on the same colour the
-                    // page starts with, and the list scrolls, so the meeting
-                    // point moves. A slow gradient makes that seam impossible
-                    // to catch.
-                    0f to pageColor,
-                    0.45f to pageColor,
-                    1f to PageFloor,
-                ),
-            ),
-    ) {
+    Box(Modifier.fillMaxSize()) {
+        // The page colour, and only the page colour.
+        //
+        // The layer has to hold nothing that samples it. Recording the whole
+        // screen — content included — put the glass buttons inside the layer
+        // those same buttons draw from, and the render tree recursed until it
+        // overflowed the stack. Every one of them lives above this box.
+        Box(
+            Modifier
+                .fillMaxSize()
+                // Opaque, so the app-wide blurred artwork of the playing track
+                // does not show through and re-tint the page.
+                .background(
+                    Brush.verticalGradient(
+                        // Held flat over the top half rather than falling away
+                        // immediately: the header has to end on the same colour
+                        // the page starts with, and the list scrolls, so the
+                        // meeting point moves. A slow gradient makes that seam
+                        // impossible to catch.
+                        0f to pageColor,
+                        0.45f to pageColor,
+                        1f to PageFloor,
+                    ),
+                )
+                .layerBackdrop(pageBackdrop),
+        )
+
         // No top content padding: the hero runs under the status bar, which is
         // the whole point of the layout — the picture is the top of the screen,
         // not something sitting below a gap.
