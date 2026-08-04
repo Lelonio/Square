@@ -46,7 +46,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -67,7 +66,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -112,6 +113,13 @@ private val expandSpec = spring<Float>(
 )
 
 private val BottomBarHeight = 62.dp
+
+/**
+ * Decode size of the page backdrop, in pixels.
+ *
+ * Small enough that stretching it across the window *is* the blur.
+ */
+private const val BACKDROP_DECODE_PX = 32
 
 @UnstableApi
 @Composable
@@ -462,16 +470,21 @@ private fun AppBackdrop(artworkUrl: String?) {
             .background(Color(0xFF0A0A0C)),
     ) {
         if (artworkUrl != null) {
+            // Softened by decoding it tiny and letting the upscale do the work,
+            // not by `Modifier.blur`. An 80dp blur over the whole window is a
+            // RenderEffect on a full-screen layer, re-run whenever that layer
+            // changes — which during the player's expansion is every frame, and
+            // was a large part of why it stuttered. A 32px bitmap stretched to
+            // the window is the same picture for nothing.
             AsyncImage(
-                model = artworkUrl,
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(artworkUrl)
+                    .size(BACKDROP_DECODE_PX)
+                    .crossfade(true)
+                    .build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    // Well past the point where the cover is recognisable: this
-                    // is meant to read as light coming off the artwork, not as
-                    // an out-of-focus photograph.
-                    .blur(80.dp),
+                modifier = Modifier.fillMaxSize(),
             )
         }
 

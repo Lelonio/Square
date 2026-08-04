@@ -1,5 +1,6 @@
 package dev.emanuele.spot.ui.player
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -33,6 +34,17 @@ import com.kyant.backdrop.effects.vibrancy
  * Android 12 the blur goes too. What is left is a plain translucent surface, so
  * the screen stays usable rather than breaking on older phones.
  */
+/**
+ * Whether panes actually refract, or fall back to a plain film.
+ *
+ * False while the player is in motion. A pane's blur and lens are RuntimeShaders
+ * sampling a recorded layer, and during the expansion that layer changes every
+ * frame — several full-screen shader passes per frame, which is most of what
+ * made the animation stutter. Nobody can see refraction through a surface that
+ * is travelling anyway.
+ */
+val LocalGlassEnabled = androidx.compose.runtime.staticCompositionLocalOf { true }
+
 @Composable
 fun GlassSurface(
     backdrop: Backdrop,
@@ -53,6 +65,18 @@ fun GlassSurface(
     surfaceColor: Color = Color.Unspecified,
     content: @Composable () -> Unit,
 ) {
+    if (!LocalGlassEnabled.current) {
+        Box(
+            modifier.background(
+                color = if (surfaceColor.isSpecified) surfaceColor else FallbackFilm,
+                shape = shape,
+            ),
+        ) {
+            content()
+        }
+        return
+    }
+
     Box(
         modifier.drawBackdrop(
             backdrop = backdrop,
@@ -77,3 +101,6 @@ fun GlassSurface(
         content()
     }
 }
+
+/** What a pane looks like with the refraction switched off. */
+private val FallbackFilm = Color.White.copy(alpha = 0.12f)
