@@ -1,5 +1,6 @@
 package dev.emanuele.spot.ui.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -26,10 +28,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.CatalogTrack
+import dev.emanuele.spot.data.SearchItem
 import dev.emanuele.spot.ui.MainViewModel
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.player.PlaybackState
@@ -48,6 +54,8 @@ fun HomeScreen(
     onOpenPlayer: () -> Unit,
     recent: List<CatalogTrack>,
     onPlayRecent: (List<CatalogTrack>, Int) -> Unit,
+    feed: MainViewModel.FeedState,
+    onOpenItem: (SearchItem) -> Unit,
 ) {
     when (state) {
         MainViewModel.UiState.LoggedOut -> Centered {
@@ -104,6 +112,42 @@ fun HomeScreen(
             if (playback.hasItem) {
                 item(contentType = "resume") {
                     ResumeCard(playback, onOpenPlayer)
+                }
+            }
+
+            if (feed.newReleases.isNotEmpty()) {
+                item(contentType = "section") {
+                    SectionTitle("Novità", Modifier.padding(top = 30.dp))
+                }
+                // Cards rather than another row of thumbnails, and only a few of
+                // them. A carousel says "here is a list, pick one"; this section
+                // is meant to be looked at, so each release gets the width of the
+                // screen and the cover is allowed to carry it. Six, because a
+                // feed that never ends turns the sections below it into
+                // something nobody scrolls to.
+                items(
+                    feed.newReleases.take(FEED_SIZE),
+                    key = { it.uri },
+                    contentType = { "feedCard" },
+                ) { item ->
+                    FeedCard(item) { onOpenItem(item) }
+                }
+            }
+
+            if (feed.topArtists.isNotEmpty()) {
+                item(contentType = "section") {
+                    SectionTitle("Artisti che ascolti", Modifier.padding(top = 34.dp))
+                }
+                item(contentType = "artists") {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier.padding(top = 14.dp),
+                    ) {
+                        items(feed.topArtists, key = { it.uri }) { artist ->
+                            ArtistTile(artist) { onOpenItem(artist) }
+                        }
+                    }
                 }
             }
 
@@ -201,6 +245,102 @@ private fun ResumeCard(playback: PlaybackState, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+/**
+ * One release, the full width of the page.
+ *
+ * The title sits *on* the cover rather than under it. Every other listing in
+ * this app puts a caption beneath a square, which is right when you are
+ * scanning a row of twenty; here there are six, and the point is that each one
+ * is worth stopping on. The gradient exists because covers are not designed to
+ * have text over them — without it the title lands on whatever the artwork
+ * happens to be doing in that corner.
+ */
+@Composable
+private fun FeedCard(item: SearchItem, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(26.dp)
+    Box(
+        Modifier
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .fillMaxWidth()
+            .height(300.dp)
+            .softShadow(shape, elevation = 20.dp, spot = 0.22f)
+            .clip(shape)
+            .clickable(onClick = onClick),
+    ) {
+        Artwork(
+            url = item.artworkUrl,
+            title = item.title,
+            modifier = Modifier.fillMaxSize(),
+            corner = 0.dp,
+        )
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.45f to Color.Black.copy(alpha = 0.25f),
+                        1f to Color.Black.copy(alpha = 0.80f),
+                    ),
+                ),
+        )
+
+        Column(
+            Modifier
+                .align(Alignment.BottomStart)
+                .padding(20.dp),
+        ) {
+            Text(
+                item.title,
+                style = MaterialTheme.typography.headlineLarge,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (item.subtitle.isNotBlank()) {
+                Text(
+                    item.subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+/** Round, because that is how every music app has drawn an artist for a decade. */
+@Composable
+private fun ArtistTile(artist: SearchItem, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .width(112.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Artwork(
+            url = artist.artworkUrl,
+            title = artist.title,
+            modifier = Modifier
+                .size(112.dp)
+                .softShadow(CircleShape, elevation = 12.dp),
+            corner = 56.dp,
+            decodeSize = 112.dp,
+        )
+        Text(
+            artist.title,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 10.dp),
+        )
     }
 }
 
@@ -318,5 +458,6 @@ private fun greeting(): String = when (Calendar.getInstance().get(Calendar.HOUR_
     else -> "Buonasera"
 }
 
+private const val FEED_SIZE = 6
 private const val CAROUSEL_SIZE = 8
 private const val REST_SIZE = 6

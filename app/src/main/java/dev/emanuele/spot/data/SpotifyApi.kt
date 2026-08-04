@@ -39,6 +39,26 @@ interface SpotifyApi {
     ): PageDto<PlaylistTrackDto>
 
     /**
+     * Albums and singles released recently.
+     *
+     * Not personalised — Spotify's own recommendation endpoints were closed to
+     * new applications, so this is the closest thing still open, and it is the
+     * catalogue's front page rather than the user's. What makes the home feed
+     * personal is what surrounds it: their own top artists, their playlists and
+     * what they actually played.
+     */
+    @GET("v1/browse/new-releases")
+    suspend fun newReleases(@Query("limit") limit: Int = 12): NewReleasesDto
+
+    /** Needs the `user-top-read` scope; 403 without it. */
+    @GET("v1/me/top/artists")
+    suspend fun topArtists(
+        @Query("limit") limit: Int = 12,
+        /** `short_term` is roughly the last month, which is what "lately" means. */
+        @Query("time_range") timeRange: String = "short_term",
+    ): PageDto<ArtistDto>
+
+    /**
      * An artist's most-played tracks.
      *
      * The access point serves playlists and albums as contexts, but an artist is
@@ -126,10 +146,15 @@ data class AlbumDto(
     /** ISO date, and not always a full one — Spotify returns bare years too. */
     @SerialName("release_date") val releaseDate: String? = null,
     @SerialName("total_tracks") val totalTracks: Int = 0,
+    /** Present on browse and search results, absent when an album is nested in a track. */
+    val artists: List<ArtistDto> = emptyList(),
 )
 
 @Serializable
 data class TopTracksDto(val tracks: List<TrackDto> = emptyList())
+
+@Serializable
+data class NewReleasesDto(val albums: PageDto<AlbumDto>? = null)
 
 @Serializable
 data class PlaylistDto(

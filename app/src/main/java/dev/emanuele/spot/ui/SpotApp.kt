@@ -121,6 +121,12 @@ fun SpotApp(
     val webApi by viewModel.webApi.collectAsStateWithLifecycle()
     val reverb by AudioEffects.reverb.collectAsStateWithLifecycle()
     val presets by viewModel.effectPresets.collectAsStateWithLifecycle()
+    val feed by viewModel.feed.collectAsStateWithLifecycle()
+
+    // Once, on the first composition that has a usable Web API session. The
+    // ViewModel keeps what it fetched, so navigating away and back does not
+    // spend the quota again.
+    LaunchedEffect(webApi.connected) { viewModel.loadFeed() }
     // Two layers, and the split is not optional.
     //
     // `pageBackdrop` records the artwork *and* the screen on top of it, and is
@@ -235,6 +241,11 @@ fun SpotApp(
                                 onOpenPlayer = { navController.navigate(Routes.PLAYER) },
                                 recent = recent,
                                 onPlayRecent = onPlay,
+                                feed = feed,
+                                onOpenItem = { item ->
+                                    viewModel.openContext(item.uri, item.title, item.artworkUrl)
+                                    navController.navigate(Routes.PLAYLIST)
+                                },
                             )
                         }
 

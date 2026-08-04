@@ -83,6 +83,65 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
 
+    /**
+     * The home feed's catalogue sections.
+     *
+     * Everything here comes from the Web API and therefore needs the user's own
+     * application, so an empty feed is an ordinary state rather than an error:
+     * the rest of the home page — playlists, what was played — works without it.
+     */
+    data class FeedState(
+        val newReleases: List<SearchItem> = emptyList(),
+        val topArtists: List<SearchItem> = emptyList(),
+        val loading: Boolean = false,
+    )
+
+    private val _feed = MutableStateFlow(FeedState())
+    val feed: StateFlow<FeedState> = _feed.asStateFlow()
+    private var feedJob: Job? = null
+
+    /**
+     * Loads the feed, quietly.
+     *
+     * Each section is fetched on its own and a failure drops just that section:
+     * top artists need the `user-top-read` scope, and an account that connected
+     * its application before that scope was asked for answers 403 there while
+     * everything else still works. One combined call would lose the lot.
+     */
+    fun loadFeed() {
+        if (!container.webApi.isReady || feedJob?.isActive == true) return
+        if (_feed.value.newReleases.isNotEmpty()) return
+
+        _feed.value = _feed.value.copy(loading = true)
+        feedJob = viewModelScope.launch {
+            val releases = runCatching {
+                container.api.newReleases().albums?.items.orEmpty().mapNotNull { album ->
+                    SearchItem(
+                        uri = album.uri ?: return@mapNotNull null,
+                        title = album.name,
+                        subtitle = album.artists.joinToString(", ") { it.name },
+                        artworkUrl = album.images.firstOrNull()?.url,
+                    )
+                }
+            }.onFailure { android.util.Log.w(TAG, "new releases unavailable: ${describe(it)}") }
+                .getOrDefault(emptyList())
+
+            val artists = runCatching {
+                container.api.topArtists().items.mapNotNull { artist ->
+                    SearchItem(
+                        uri = artist.uri ?: return@mapNotNull null,
+                        title = artist.name,
+                        subtitle = "Artista",
+                        artworkUrl = artist.images.firstOrNull()?.url,
+                    )
+                }
+            }.onFailure { android.util.Log.w(TAG, "top artists unavailable: ${describe(it)}") }
+                .getOrDefault(emptyList())
+
+            _feed.value = FeedState(newReleases = releases, topArtists = artists, loading = false)
+        }
+    }
+
     private val _playlist = MutableStateFlow(PlaylistState())
     val playlist: StateFlow<PlaylistState> = _playlist.asStateFlow()
 
@@ -173,15 +232,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _webApi.value = _webApi.value.copy(connecting = true, error = null)
         container.webApi.setClientId(clientId)
         runCatching {
-            // No scopes: search reads public catalogue data, and asking for
-            // permissions the feature does not use would put a consent screen in
-            // front of the user for nothing.
-            SpotifyOAuth.authorize(getApplication(), clientId = clientId, scopes = emptyList())
+            // Search needs no scope — it reads public catalogue data — but the
+            // home feed's "artisti che ascolti" is the user's own listening,
+            // and that is gated behind `user-top-read`. It is the only
+            // permission asked for, and an account connected before this
+            // existed keeps working: the section simply stays empty until the
+            // application is reconnected.
+            SpotifyOAuth.authorize(
+                getApplication(),
+                clientId = clientId,
+                scopes = listOf("user-top-read"),
+            )
         }
             .onSuccess {
                 container.webApi.tokens.save(it)
                 _webApi.value = _webApi.value.copy(connecting = false, connected = true)
                 _search.value = _search.value.copy(needsSetup = false)
+                // The feed could not have loaded before this point.
+                loadFeed()
                 // Re-run whatever the user had already typed.
                 _search.value.query.takeIf { q -> q.isNotBlank() }?.let(::onSearchQuery)
             }
