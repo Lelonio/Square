@@ -203,6 +203,12 @@ fun SpotApp(
     val artBackdrop = rememberLayerBackdrop()
     val pageBackdrop = rememberLayerBackdrop()
 
+    // Everything the modals cover: the screens, the bars *and* the player. The
+    // sheets used to sample `pageBackdrop`, which stops at the navigation host,
+    // so opening one over the player blurred the home page behind it instead of
+    // the player it was opened from.
+    val overlayBackdrop = rememberLayerBackdrop()
+
     // How far the player is open, 0 to 1. A value rather than a destination:
     // see NowPlayingSheet for why the player stopped being a route.
     val expand = remember { Animatable(0f) }
@@ -221,7 +227,13 @@ fun SpotApp(
     LaunchedEffect(pendingOpen, playback.hasItem) {
         if (pendingOpen && playback.hasItem) {
             pendingOpen = false
-            expand.animateTo(1f, expandSpec)
+            // Run outside this effect. Clearing the flag changes one of the
+            // effect's own keys, so the effect is cancelled immediately — and
+            // with it the animation, about two frames in. That is why the player
+            // "opened" and was never seen.
+            scope.launch {
+                expand.animateTo(1f, expandSpec)
+            }
         }
     }
 
@@ -303,6 +315,7 @@ fun SpotApp(
                 // actually beneath them, so they looked like frosted panels
                 // rather than like glass: nothing of the list underneath ever
                 // showed through.
+                Box(Modifier.fillMaxSize().layerBackdrop(overlayBackdrop)) {
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -537,6 +550,8 @@ fun SpotApp(
                     )
                 }
 
+                }
+
                 // Above the tab bar and the now-playing bar, which is the whole
                 // reason it lives here instead of in the screen that asked for
                 // it.
@@ -547,7 +562,7 @@ fun SpotApp(
                     title = menu?.track?.name.orEmpty(),
                     subtitle = menu?.track?.artist.orEmpty(),
                     artworkUrl = menu?.track?.artworkUrl,
-                    backdrop = pageBackdrop,
+                    backdrop = overlayBackdrop,
                     onDismiss = { trackMenu = null },
                 ) {
                     if (menu != null) {
@@ -583,14 +598,12 @@ fun SpotApp(
                 // Over everything, including the player: the same sheet is
                 // opened from a track row in the library and from the plus in
                 // the player, and it is one sheet with one state.
-                if (addToPlaylist.open) {
-                    AddToPlaylistSheet(
-                        state = addToPlaylist,
-                        backdrop = pageBackdrop,
-                        onSelect = viewModel::addToPlaylist,
-                        onDismiss = viewModel::closeAddToPlaylist,
-                    )
-                }
+                AddToPlaylistSheet(
+                    state = addToPlaylist,
+                    backdrop = overlayBackdrop,
+                    onSelect = viewModel::addToPlaylist,
+                    onDismiss = viewModel::closeAddToPlaylist,
+                )
             }
         }
     }

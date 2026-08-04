@@ -33,6 +33,9 @@ import kotlinx.coroutines.withContext
 /** Set on the intent the notification fires: open straight into the player. */
 const val EXTRA_OPEN_PLAYER = "dev.emanuele.spot.OPEN_PLAYER"
 
+/** Its action; see the note where the PendingIntent is built. */
+const val ACTION_OPEN_PLAYER = "dev.emanuele.spot.action.OPEN_PLAYER"
+
 class PlaybackService : MediaSessionService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -73,11 +76,15 @@ class PlaybackService : MediaSessionService() {
                 android.app.PendingIntent.getActivity(
                     this,
                     0,
+                    // Deliberately not ACTION_MAIN/CATEGORY_LAUNCHER. A launcher
+                    // intent aimed at a singleTask activity that is already
+                    // running is treated as "bring the task forward" and the
+                    // intent is never delivered — the app came up on whatever
+                    // screen it was last on and onNewIntent never fired. A
+                    // custom action is delivered.
                     android.content.Intent(this, dev.emanuele.spot.ui.MainActivity::class.java)
-                        .setAction(android.content.Intent.ACTION_MAIN)
-                        .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-                        .putExtra(EXTRA_OPEN_PLAYER, true)
-                        .addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                        .setAction(ACTION_OPEN_PLAYER)
+                        .putExtra(EXTRA_OPEN_PLAYER, true),
                     android.app.PendingIntent.FLAG_IMMUTABLE or
                         android.app.PendingIntent.FLAG_UPDATE_CURRENT,
                 ),

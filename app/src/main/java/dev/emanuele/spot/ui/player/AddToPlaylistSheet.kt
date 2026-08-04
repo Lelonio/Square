@@ -1,6 +1,15 @@
 package dev.emanuele.spot.ui.player
 
 import androidx.compose.foundation.background
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.drawBackdrop
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,17 +61,44 @@ fun AddToPlaylistSheet(
     onSelect: (CatalogPlaylist) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .clickable(interactionSource = null, indication = null, onClick = onDismiss),
-        contentAlignment = Alignment.BottomCenter,
+    Box(Modifier.fillMaxSize()) {
+    // The page out of focus, like the track sheet: this covers the player as
+    // often as it covers a list, and a scrim alone left both perfectly readable
+    // underneath.
+    AnimatedVisibility(
+        visible = state.open,
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(180)),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { RectangleShape },
+                    effects = { blur(28f.dp.toPx()) },
+                    onDrawSurface = { drawRect(Color.Black.copy(alpha = 0.42f)) },
+                )
+                .clickable(interactionSource = null, indication = null, onClick = onDismiss),
+        )
+    }
+
+    AnimatedVisibility(
+        visible = state.open,
+        // Up from the bottom edge, since that is where it sits.
+        enter = slideInVertically(tween(240)) { it / 6 } + fadeIn(tween(180)),
+        exit = slideOutVertically(tween(180)) { it / 6 } + fadeOut(tween(150)),
+        modifier = Modifier.align(Alignment.BottomCenter),
     ) {
         GlassSurface(
             backdrop = backdrop,
             shape = RoundedCornerShape(28.dp),
             surfaceColor = GlassFilm,
+            // Heavier than the page behind it: the panel samples the unblurred
+            // layer, so at the usual radius the rows underneath came through
+            // sharper inside the sheet than outside it.
+            blurRadius = 46.dp,
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth()
@@ -133,6 +169,7 @@ fun AddToPlaylistSheet(
                 }
             }
         }
+    }
     }
 }
 

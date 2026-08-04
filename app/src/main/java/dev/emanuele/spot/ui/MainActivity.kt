@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
                 android.graphics.Color.TRANSPARENT,
             ),
         )
-        if (intent?.getBooleanExtra(dev.emanuele.spot.playback.EXTRA_OPEN_PLAYER, false) == true) {
+        if (intent?.opensPlayer() == true) {
             openPlayer++
         }
 
@@ -71,10 +71,14 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.getBooleanExtra(dev.emanuele.spot.playback.EXTRA_OPEN_PLAYER, false)) {
+        if (intent.opensPlayer()) {
             openPlayer++
         }
     }
+
+    private fun android.content.Intent.opensPlayer(): Boolean =
+        action == dev.emanuele.spot.playback.ACTION_OPEN_PLAYER ||
+            getBooleanExtra(dev.emanuele.spot.playback.EXTRA_OPEN_PLAYER, false)
 
     override fun onStart() {
         super.onStart()
