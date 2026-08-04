@@ -129,7 +129,10 @@
       "Bash(git commit -q -m 'Darken the Canvas while paused *)",
       "Bash(git commit -q -m 'One panel for everything the player shows, dimmed alike *)",
       "Bash(git commit -q -m 'Square: a square-wave icon, light and dark *)",
-      "Bash(git commit -q -m 'Fit the wave inside the adaptive icon'\\\\''s safe zone *)"
+      "Bash(git commit -q -m 'Fit the wave inside the adaptive icon'\\\\''s safe zone *)",
+      "Bash(file app/icon-src/*)",
+      "Bash(python3 -c \"import PIL; print\\(PIL.__version__\\)\")",
+      "Bash(git commit -q -m 'Use the supplied icon artwork *)"
     ]
   }
 }

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The flat stand-in for launchers older than adaptive icons. -->
-    <color name="ic_launcher_background">#D4D4DA</color>
+    <!-- Sampled from the icon's own plate, so the two meet invisibly. -->
+    <color name="ic_launcher_background">#C7C7CD</color>
 </resources>

@@ -1,6 +1,15 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?><!--
+  The artwork is the supplied icon, scaled into the adaptive icon's safe zone.
+
+  A launcher shows 72 of the 108 units and guarantees only the middle 66, so the
+  plate is drawn at 66 and the background colour — sampled from the plate itself
+  — fills the rest. Whatever mask the launcher applies then cuts into a field of
+  the same colour rather than into the wave.
+
+  The night qualifier picks the dark plate; see mipmap-night-*.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
     <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>
