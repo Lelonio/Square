@@ -127,7 +127,8 @@
       "Bash(git commit -q -m 'An icon made of the app'\\\\''s own glass *)",
       "Bash(git commit -q -m 'Hold the cover until the Canvas has a frame *)",
       "Bash(git commit -q -m 'Darken the Canvas while paused *)",
-      "Bash(git commit -q -m 'One panel for everything the player shows, dimmed alike *)"
+      "Bash(git commit -q -m 'One panel for everything the player shows, dimmed alike *)",
+      "Bash(git commit -q -m 'Square: a square-wave icon, light and dark *)"
     ]
   }
 }

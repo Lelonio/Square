@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-  The themed-icon form, Android 13 and up.
-
-  One flat colour by definition — the launcher tints it — so the glass has to be
-  said with line instead of with light: the same pane, drawn as an outline, with
-  the same four bars solid inside it.
+  The themed form: one flat colour, so only the wave itself is left.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -12,19 +8,9 @@
     android:viewportHeight="108">
     <path
         android:fillColor="#00000000"
-        android:pathData="M32,29h44a11,11 0,0 1,11 11v28a11,11 0,0 1,-11 11h-44a11,11 0,0 1,-11 -11v-28a11,11 0,0 1,11 -11z"
+        android:pathData="M22,58 L22,36 L56,36 L56,72 L86,72 L86,52"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="3" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M36,50h5a2.5,2.5 0,0 1,2.5 2.5v3a2.5,2.5 0,0 1,-2.5 2.5h-5a2.5,2.5 0,0 1,-2.5 -2.5v-3a2.5,2.5 0,0 1,2.5 -2.5z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M48,41h5a2.5,2.5 0,0 1,2.5 2.5v21a2.5,2.5 0,0 1,-2.5 2.5h-5a2.5,2.5 0,0 1,-2.5 -2.5v-21a2.5,2.5 0,0 1,2.5 -2.5z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M60,46h5a2.5,2.5 0,0 1,2.5 2.5v11a2.5,2.5 0,0 1,-2.5 2.5h-5a2.5,2.5 0,0 1,-2.5 -2.5v-11a2.5,2.5 0,0 1,2.5 -2.5z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M72,49h5a2.5,2.5 0,0 1,2.5 2.5v5a2.5,2.5 0,0 1,-2.5 2.5h-5a2.5,2.5 0,0 1,-2.5 -2.5v-5a2.5,2.5 0,0 1,2.5 -2.5z" />
+        android:strokeLineCap="round"
+        android:strokeLineJoin="miter"
+        android:strokeWidth="11" />
 </vector>

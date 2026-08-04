@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-  A square wave, which is what the app is named after.
+  The wave on the dark plate: the colours swap, the geometry does not.
 
-  Drawn as a stroked path rather than as an outline shape: the corners have to
-  stay square and the two open ends round, and a stroke with a round cap and a
-  mitre join is exactly that, at any size, with no hinting.
-
-  Three strokes, back to front: a light one offset down for the lip the plate
-  catches, then the black wave over it. That is the whole of the depth in the
-  original — there is no bevel to reproduce, only an edge.
+  The lip goes dark here for the same reason it is light on the pale plate — it
+  is the shadowed side of the same edge, and which side that is depends on what
+  the plate is made of.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -15,11 +11,10 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- The lip: the same path, a shade lighter and a pixel lower. -->
     <path
         android:fillColor="#00000000"
         android:pathData="M22,59 L22,37 L56,37 L56,73 L86,73 L86,53"
-        android:strokeColor="#4DFFFFFF"
+        android:strokeColor="#59000000"
         android:strokeLineCap="round"
         android:strokeLineJoin="miter"
         android:strokeWidth="11" />
@@ -27,7 +22,7 @@
     <path
         android:fillColor="#00000000"
         android:pathData="M22,58 L22,36 L56,36 L56,72 L86,72 L86,52"
-        android:strokeColor="#FF1B1B1F"
+        android:strokeColor="#FFEDEDF0"
         android:strokeLineCap="round"
         android:strokeLineJoin="miter"
         android:strokeWidth="11" />

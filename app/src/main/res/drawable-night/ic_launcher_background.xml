@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-  The plate the wave is cut into: near-white, very slightly lit from the top
-  left, the way the icon it was drawn from is.
+  The dark plate. Same object, unlit: near-black with the faintest fall-off, so
+  the wave over it is the only bright thing.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -16,9 +16,9 @@
                 android:startX="16"
                 android:startY="8"
                 android:type="linear">
-                <item android:color="#FFE3E3E8" android:offset="0" />
-                <item android:color="#FFD4D4DA" android:offset="0.55" />
-                <item android:color="#FFC9C9D0" android:offset="1" />
+                <item android:color="#FF161618" android:offset="0" />
+                <item android:color="#FF0D0D0F" android:offset="0.55" />
+                <item android:color="#FF060607" android:offset="1" />
             </gradient>
         </aapt:attr>
     </path>
