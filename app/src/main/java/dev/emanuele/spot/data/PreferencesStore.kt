@@ -1,0 +1,34 @@
+package dev.emanuele.spot.data
+
+import android.content.Context
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Small UI choices that should survive the screen being left.
+ *
+ * Kept as strings rather than as an enum so this module does not have to know
+ * about the screens that use it, and so a value written by an older version that
+ * no longer exists reads back as "not set" instead of crashing.
+ */
+class PreferencesStore(context: Context) {
+
+    private val prefs = context.applicationContext
+        .getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
+
+    private val _trackSort = MutableStateFlow(prefs.getString(KEY_TRACK_SORT, null))
+
+    /** How the detail screen's track list is ordered; null until first chosen. */
+    val trackSort: StateFlow<String?> = _trackSort.asStateFlow()
+
+    fun setTrackSort(value: String) {
+        _trackSort.value = value
+        prefs.edit().putString(KEY_TRACK_SORT, value).apply()
+    }
+
+    private companion object {
+        const val FILE_NAME = "spot_preferences"
+        const val KEY_TRACK_SORT = "track_sort"
+    }
+}

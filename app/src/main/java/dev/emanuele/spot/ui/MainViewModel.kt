@@ -584,6 +584,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Playlists in the order this device last opened them; see [PlaylistOrderStore]. */
     val playlistOrder: StateFlow<List<String>> get() = container.playlistOrder.order
 
+    /** How the detail screen sorts its tracks; remembered between visits. */
+    val trackSort: StateFlow<String?> get() = container.preferences.trackSort
+
+    fun setTrackSort(value: String) = container.preferences.setTrackSort(value)
+
     /**
      * Loads a playlist's tracks.
      *

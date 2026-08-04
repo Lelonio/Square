@@ -148,11 +148,14 @@ fun PlayerScreen(
     onCloseDevices: () -> Unit,
     onRefreshDevices: () -> Unit,
     onSelectDevice: (String) -> Unit,
-    /** The "add to playlist" sheet, and the button that opens it. */
-    addToPlaylist: MainViewModel.AddToPlaylistState,
+    /**
+     * Opens the "add to playlist" sheet.
+     *
+     * The sheet itself is drawn by the app rather than by this screen: the track
+     * rows in the library open the same one, and two copies would be two states
+     * of one thing.
+     */
     onAddToPlaylist: () -> Unit,
-    onPickPlaylist: (dev.emanuele.spot.data.CatalogPlaylist) -> Unit,
-    onCloseAddToPlaylist: () -> Unit,
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
 
@@ -500,15 +503,6 @@ fun PlayerScreen(
         // Over everything, including the transport: it is a modal choice, and
         // the controls underneath would be operating a device the user is in
         // the middle of changing.
-        if (addToPlaylist.open) {
-            AddToPlaylistSheet(
-                state = addToPlaylist,
-                backdrop = glassBackdrop,
-                onSelect = onPickPlaylist,
-                onDismiss = onCloseAddToPlaylist,
-            )
-        }
-
         if (devices.open) {
             DevicePicker(
                 state = devices,

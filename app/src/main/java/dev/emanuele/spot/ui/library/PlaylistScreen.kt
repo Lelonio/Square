@@ -42,6 +42,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.ui.MainViewModel
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.components.LazyScrollBar
 import dev.emanuele.spot.ui.components.SwipeToQueue
@@ -67,6 +71,9 @@ import com.adamglin.phosphoricons.regular.ArrowLeft
 import com.adamglin.phosphoricons.regular.ArrowsDownUp
 import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.DotsThree
+import com.adamglin.phosphoricons.regular.LinkSimple
+import com.adamglin.phosphoricons.regular.Plus
+import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.Shuffle
 import com.adamglin.phosphoricons.regular.X
 
@@ -88,12 +95,23 @@ fun PlaylistScreen(
     onPlay: (List<CatalogTrack>, Int) -> Unit,
     onEnqueue: (CatalogTrack) -> Unit,
     onShuffle: (List<CatalogTrack>) -> Unit,
-    backdrop: Backdrop,
+    /** Opens the app-wide "add to playlist" sheet for one track. */
+    onAddToPlaylist: (CatalogTrack) -> Unit,
     onOpenItem: (dev.emanuele.spot.data.SearchItem) -> Unit = {},
+    /** The remembered track order, and where a change to it is stored. */
+    storedSort: String? = null,
+    onSortChange: (String) -> Unit = {},
 ) {
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
-    var sort by remember { mutableStateOf(TrackSort.ORIGINAL) }
+    // Seeded from the stored choice and written back on change: picking an
+    // order and finding it gone on the next playlist is the kind of thing that
+    // makes a setting feel like it did not take.
+    var sort by remember(storedSort) {
+        mutableStateOf(
+            TrackSort.entries.firstOrNull { it.name == storedSort } ?: TrackSort.ORIGINAL,
+        )
+    }
     var sortOpen by remember { mutableStateOf(false) }
 
     // Derived, not stored: keeping a second list in state would leave the two
@@ -110,9 +128,18 @@ fun PlaylistScreen(
     val accent by rememberArtworkColor(state.artworkUrl)
     val pageColor = remember(accent) { pageColorFor(accent) }
 
+    // What the glass on this screen refracts.
+    //
+    // Not the app's backdrop: that is the blurred cover of whatever is playing,
+    // so the buttons here — back, play, shuffle, search — picked up the colour
+    // of an unrelated track while the page around them was tinted from this
+    // cover. Recording this screen instead makes them glass over *this* page.
+    val pageBackdrop = rememberLayerBackdrop()
+
     Box(
         Modifier
             .fillMaxSize()
+            .layerBackdrop(pageBackdrop)
             // Opaque, so the app-wide blurred artwork of the playing track does
             // not show through and re-tint the page.
             .background(
@@ -145,7 +172,7 @@ fun PlaylistScreen(
                     trackCount = state.tracks.size,
                     totalMs = state.tracks.sumOf { it.durationMs },
                     pageColor = pageColor,
-                    backdrop = backdrop,
+                    backdrop = pageBackdrop,
                     onPlay = { visible.takeIf { it.isNotEmpty() }?.let { onPlay(it, 0) } },
                     onShuffle = { visible.takeIf { it.isNotEmpty() }?.let(onShuffle) },
                     onToggleSearch = {
@@ -173,7 +200,10 @@ fun PlaylistScreen(
                         sort = sort,
                         sortOpen = sortOpen,
                         onSortOpen = { sortOpen = it },
-                        onSort = { sort = it },
+                        onSort = {
+                            sort = it
+                            onSortChange(it.name)
+                        },
                     )
                 }
 
@@ -240,6 +270,8 @@ fun PlaylistScreen(
                             position = index + 1,
                             isCurrent = track.uri == nowPlayingUri,
                             onClick = { onPlay(visible, index) },
+                            onEnqueue = { onEnqueue(track) },
+                            onAddToPlaylist = { onAddToPlaylist(track) },
                         )
                     }
                 }
@@ -276,6 +308,7 @@ fun PlaylistScreen(
 
         LazyScrollBar(
             state = listState,
+            startAfter = "track",
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(
@@ -288,7 +321,7 @@ fun PlaylistScreen(
         // picture stays uninterrupted.
         LiquidButton(
             onClick = onBack,
-            backdrop = backdrop,
+            backdrop = pageBackdrop,
             modifier = Modifier
                 .padding(top = contentPadding.calculateTopPadding() + 8.dp, start = 14.dp)
                 .align(Alignment.TopStart)
@@ -579,7 +612,10 @@ private fun TrackRow(
     position: Int,
     isCurrent: Boolean,
     onClick: () -> Unit,
+    onEnqueue: () -> Unit,
+    onAddToPlaylist: () -> Unit,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(14.dp)
     // Eased rather than snapped: rows change state on every track advance, and
     // a hard cut in the middle of a list draws the eye more than the change
@@ -654,16 +690,76 @@ private fun TrackRow(
             )
         }
 
-        Icon(
-            PhosphorIcons.Regular.DotsThree,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier
-                .padding(start = 10.dp)
-                .size(18.dp),
+        Box {
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    PhosphorIcons.Regular.DotsThree,
+                    contentDescription = "Altro",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            TrackMenu(
+                expanded = menuOpen,
+                track = track,
+                onDismiss = { menuOpen = false },
+                onPlay = onClick,
+                onEnqueue = onEnqueue,
+                onAddToPlaylist = onAddToPlaylist,
+            )
+        }
+    }
+}
+
+/**
+ * What can be done with one track, without leaving the list.
+ *
+ * Only actions this app can actually carry out: the queue and the playlists,
+ * plus the link, since sharing a track is the one thing people leave a music
+ * app to do. No "go to album" — the track model carries the album's name for
+ * display and not its URI, so the entry would be there and not work.
+ */
+@Composable
+private fun TrackMenu(
+    expanded: Boolean,
+    track: CatalogTrack,
+    onDismiss: () -> Unit,
+    onPlay: () -> Unit,
+    onEnqueue: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+) {
+    val clipboard = LocalClipboardManager.current
+
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(
+            text = { Text("Riproduci") },
+            leadingIcon = { Icon(PhosphorIcons.Fill.Play, contentDescription = null) },
+            onClick = { onDismiss(); onPlay() },
+        )
+        DropdownMenuItem(
+            text = { Text("Aggiungi alla coda") },
+            leadingIcon = { Icon(PhosphorIcons.Regular.Queue, contentDescription = null) },
+            onClick = { onDismiss(); onEnqueue() },
+        )
+        DropdownMenuItem(
+            text = { Text("Aggiungi a una playlist") },
+            leadingIcon = { Icon(PhosphorIcons.Regular.Plus, contentDescription = null) },
+            onClick = { onDismiss(); onAddToPlaylist() },
+        )
+        DropdownMenuItem(
+            text = { Text("Copia link") },
+            leadingIcon = { Icon(PhosphorIcons.Regular.LinkSimple, contentDescription = null) },
+            onClick = {
+                onDismiss()
+                clipboard.setText(AnnotatedString(track.openLink()))
+            },
         )
     }
 }
+
+/** The web address for a track URI, which is what a share expects. */
+private fun CatalogTrack.openLink(): String =
+    "https://open.spotify.com/track/" + uri.substringAfterLast(':')
 
 @Composable
 private fun StatusBox(content: @Composable () -> Unit) {

@@ -79,6 +79,7 @@ import dev.emanuele.spot.ui.home.HomeScreen
 import dev.emanuele.spot.ui.library.LibraryScreen
 import dev.emanuele.spot.ui.library.PlaylistScreen
 import dev.emanuele.spot.ui.player.GlassFilm
+import dev.emanuele.spot.ui.player.AddToPlaylistSheet
 import dev.emanuele.spot.ui.player.MiniPlayer
 import dev.emanuele.spot.ui.player.MiniPlayerHeight
 import dev.emanuele.spot.ui.player.NowPlayingSheet
@@ -156,6 +157,7 @@ fun SpotApp(
     val playlistOrder by viewModel.playlistOrder.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val addToPlaylist by viewModel.addToPlaylist.collectAsStateWithLifecycle()
+    val trackSort by viewModel.trackSort.collectAsStateWithLifecycle()
 
     // Once, on the first composition that has a usable Web API session. The
     // ViewModel keeps what it fetched, so navigating away and back does not
@@ -362,7 +364,11 @@ fun SpotApp(
                                         player?.shuffleModeEnabled = true
                                         onPlay(tracks, 0)
                                     },
-                                    backdrop = artBackdrop,
+                                    onAddToPlaylist = { track ->
+                                        viewModel.openAddToPlaylist(track.uri, track.name)
+                                    },
+                                    storedSort = trackSort,
+                                    onSortChange = viewModel::setTrackSort,
                                     onOpenItem = { item ->
                                         viewModel.openContext(
                                             item.uri,
@@ -471,14 +477,23 @@ fun SpotApp(
                                 onCloseDevices = viewModel::closeDevices,
                                 onRefreshDevices = viewModel::refreshDevices,
                                 onSelectDevice = { viewModel.transferPlayback(it) },
-                                addToPlaylist = addToPlaylist,
                                 onAddToPlaylist = {
                                     viewModel.openAddToPlaylist(playback.mediaId, playback.title)
                                 },
-                                onPickPlaylist = viewModel::addToPlaylist,
-                                onCloseAddToPlaylist = viewModel::closeAddToPlaylist,
                             )
                         },
+                    )
+                }
+
+                // Over everything, including the player: the same sheet is
+                // opened from a track row in the library and from the plus in
+                // the player, and it is one sheet with one state.
+                if (addToPlaylist.open) {
+                    AddToPlaylistSheet(
+                        state = addToPlaylist,
+                        backdrop = pageBackdrop,
+                        onSelect = viewModel::addToPlaylist,
+                        onDismiss = viewModel::closeAddToPlaylist,
                     )
                 }
             }

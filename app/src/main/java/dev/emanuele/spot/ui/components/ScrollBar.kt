@@ -52,6 +52,15 @@ fun LazyScrollBar(
     modifier: Modifier = Modifier,
     /** Below this many rows the list is short enough to scroll by hand. */
     minItems: Int = 40,
+    /**
+     * Content type of the first row the bar should span from.
+     *
+     * The detail screen opens on a full-bleed cover, and a bar running up the
+     * side of the artwork is a scrollbar over a picture. With this set it starts
+     * where the tracks start and grows into the full height as the cover scrolls
+     * away.
+     */
+    startAfter: Any? = null,
     thumbHeight: Dp = 52.dp,
     color: Color = Color.White.copy(alpha = 0.55f),
 ) {
@@ -103,12 +112,27 @@ fun LazyScrollBar(
                 // thumb without recomposing the list it is drawn over.
                 .graphicsLayer {
                     this.alpha = alpha
-                    translationY = (trackPx - thumbPx) * state.progress()
+                    val top = state.topOffsetFor(startAfter)
+                    translationY = top + (trackPx - top - thumbPx).coerceAtLeast(0f) *
+                        state.progress()
                 }
                 .clip(RoundedCornerShape(50))
                 .background(color),
         )
     }
+}
+
+/**
+ * Where the run of rows begins on screen, in pixels from the top of the bar.
+ *
+ * Zero once whatever precedes them has been scrolled off, which is what makes
+ * the bar grow to the full height rather than jump.
+ */
+private fun LazyListState.topOffsetFor(contentType: Any?): Float {
+    if (contentType == null) return 0f
+    val first = layoutInfo.visibleItemsInfo.firstOrNull { it.contentType == contentType }
+        ?: return 0f
+    return first.offset.toFloat().coerceAtLeast(0f)
 }
 
 /** How far down the list is, 0 to 1, counted in items. */

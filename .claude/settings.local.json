@@ -112,7 +112,8 @@
       "Bash(PATH=/Users/emanuele/.cargo/bin:__TRACKED_VAR__ cargo check --quiet)",
       "Bash(git commit -q -m 'Cap concurrent track lookups and retry the dropped ones *)",
       "Bash(git commit -q -m 'Read playlists through the Web API, and keep them *)",
-      "Bash(git commit -q -m 'A draggable scrollbar, and sorting by when tracks were added *)"
+      "Bash(git commit -q -m 'A draggable scrollbar, and sorting by when tracks were added *)",
+      "Bash(git commit -q -m 'Track menus, a page-coloured glass, and a remembered sort *)"
     ]
   }
 }
