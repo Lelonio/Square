@@ -132,7 +132,9 @@
       "Bash(git commit -q -m 'Fit the wave inside the adaptive icon'\\\\''s safe zone *)",
       "Bash(file app/icon-src/*)",
       "Bash(python3 -c \"import PIL; print\\(PIL.__version__\\)\")",
-      "Bash(git commit -q -m 'Use the supplied icon artwork *)"
+      "Bash(git commit -q -m 'Use the supplied icon artwork *)",
+      "Bash(python3 tools/icon.py)",
+      "Bash(git commit -q -m 'Regenerate icons from source, sized by the wave *)"
     ]
   }
 }
