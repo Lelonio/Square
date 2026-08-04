@@ -22,16 +22,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Equalizer
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -65,6 +55,18 @@ import dev.emanuele.spot.ui.theme.rememberArtworkColor
 import dev.emanuele.spot.ui.theme.softShadow
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.fill.MagnifyingGlass
+import com.adamglin.phosphoricons.fill.Play
+import com.adamglin.phosphoricons.fill.Waveform
+import com.adamglin.phosphoricons.regular.ArrowLeft
+import com.adamglin.phosphoricons.regular.ArrowsDownUp
+import com.adamglin.phosphoricons.regular.Check
+import com.adamglin.phosphoricons.regular.DotsThree
+import com.adamglin.phosphoricons.regular.Shuffle
+import com.adamglin.phosphoricons.regular.X
 
 /** How the track list is ordered. */
 enum class TrackSort(val label: String) {
@@ -176,11 +178,11 @@ fun PlaylistScreen(
                             onValueChange = { query = it },
                             placeholder = { Text("Cerca fra i brani") },
                             singleLine = true,
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            leadingIcon = { Icon(PhosphorIcons.Fill.MagnifyingGlass, contentDescription = null) },
                             trailingIcon = {
                                 if (query.isNotEmpty()) {
                                     IconButton(onClick = { query = "" }) {
-                                        Icon(Icons.Filled.Close, contentDescription = "Cancella")
+                                        Icon(PhosphorIcons.Regular.X, contentDescription = "Cancella")
                                     }
                                 }
                             },
@@ -252,7 +254,7 @@ fun PlaylistScreen(
             blurRadius = 8.dp,
         ) {
             Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
+                PhosphorIcons.Regular.ArrowLeft,
                 contentDescription = "Indietro",
                 tint = Color.White,
                 modifier = Modifier.size(20.dp),
@@ -350,7 +352,7 @@ private fun DetailHeader(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CircleAction(
-                    icon = Icons.Filled.Shuffle,
+                    icon = PhosphorIcons.Regular.Shuffle,
                     description = "Casuale",
                     size = 46.dp,
                     backdrop = backdrop,
@@ -369,14 +371,14 @@ private fun DetailHeader(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        Icons.Filled.PlayArrow,
+                        PhosphorIcons.Fill.Play,
                         contentDescription = "Riproduci",
                         tint = Color.Black,
                         modifier = Modifier.size(34.dp),
                     )
                 }
                 CircleAction(
-                    icon = if (searching) Icons.Filled.Close else Icons.Filled.Search,
+                    icon = if (searching) PhosphorIcons.Regular.X else PhosphorIcons.Fill.MagnifyingGlass,
                     description = "Cerca fra i brani",
                     size = 46.dp,
                     backdrop = backdrop,
@@ -482,7 +484,7 @@ private fun SectionHeader(
         Box {
             IconButton(onClick = { onSortOpen(true) }) {
                 Icon(
-                    Icons.Filled.SwapVert,
+                    PhosphorIcons.Regular.ArrowsDownUp,
                     contentDescription = "Ordina",
                     tint = if (sort == TrackSort.ORIGINAL) {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -497,7 +499,7 @@ private fun SectionHeader(
                     DropdownMenuItem(
                         text = { Text(option.label) },
                         trailingIcon = {
-                            if (option == sort) Icon(Icons.Filled.Check, contentDescription = null)
+                            if (option == sort) Icon(PhosphorIcons.Regular.Check, contentDescription = null)
                         },
                         onClick = {
                             onSort(option)
@@ -568,7 +570,7 @@ private fun TrackRow(
         Box(Modifier.width(30.dp), contentAlignment = Alignment.CenterStart) {
             if (isCurrent) {
                 Icon(
-                    Icons.Filled.Equalizer,
+                    PhosphorIcons.Fill.Waveform,
                     contentDescription = "In riproduzione",
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp),
@@ -609,7 +611,7 @@ private fun TrackRow(
         }
 
         Icon(
-            Icons.Filled.MoreHoriz,
+            PhosphorIcons.Regular.DotsThree,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             modifier = Modifier

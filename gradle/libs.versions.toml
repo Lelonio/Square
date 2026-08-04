@@ -48,6 +48,10 @@ androidx-navigation-compose = { module = "androidx.navigation:navigation-compose
 backdrop = { module = "io.github.kyant0:backdrop", version = "2.0.0" }
 # Capsule and friends, used by the vendored Liquid* components.
 kyant-shapes = { module = "io.github.kyant0:shapes", version = "1.2.0" }
+# Phosphor (MIT). Apple's SF Symbols are licensed for Apple platforms only, so
+# they cannot be used here; Phosphor is the closest set that can, and it carries
+# the outline/fill pair this UI already relies on for selected states.
+phosphor = { module = "com.adamglin:phosphor-icon", version = "1.0.0" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

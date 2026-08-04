@@ -21,10 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -41,6 +37,11 @@ import com.kyant.backdrop.Backdrop
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.theme.softShadow
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.fill.Pause
+import com.adamglin.phosphoricons.fill.Play
+import com.adamglin.phosphoricons.fill.SkipForward
 
 /** Persistent bar above the bottom edge; tapping it opens the full player. */
 /**
@@ -195,7 +196,7 @@ fun MiniPlayer(
 
                 IconButton(onClick = onNext, enabled = state.hasNext) {
                     Icon(
-                        Icons.Filled.SkipNext,
+                        PhosphorIcons.Fill.SkipForward,
                         contentDescription = "Successivo",
                         tint = MiniPlayerInkDim,
                     )
@@ -218,7 +219,7 @@ fun MiniPlayer(
                         label = "playPause",
                     ) { playing ->
                         Icon(
-                            imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
                             contentDescription = if (playing) "Pausa" else "Riproduci",
                             tint = MiniPlayerInk,
                             modifier = Modifier.size(20.dp),

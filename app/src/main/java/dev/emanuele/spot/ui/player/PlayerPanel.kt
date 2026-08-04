@@ -18,12 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Album
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Lyrics
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -51,6 +45,13 @@ import dev.emanuele.spot.ui.glass.LiquidBottomTabs
 import dev.emanuele.spot.ui.glass.LiquidSlider
 import kotlin.math.ln
 import kotlin.math.roundToInt
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.Plus
+import com.adamglin.phosphoricons.regular.SlidersHorizontal
+import com.adamglin.phosphoricons.regular.TextAlignLeft
+import com.adamglin.phosphoricons.regular.VinylRecord
+import com.adamglin.phosphoricons.regular.X
 
 /** Which panel is open below the transport controls. */
 enum class PlayerPanel { NONE, QUEUE, LYRICS, EFFECTS }
@@ -112,11 +113,11 @@ fun PlayerPanelSection(
                 .fillMaxWidth(0.72f)
                 .padding(top = 14.dp),
         ) {
-            PanelTab(Icons.Filled.Album, "Copertina", selected == 0) { onSelect(PlayerPanel.NONE) }
-            PanelTab(Icons.Filled.Lyrics, "Testo", selected == 1) {
+            PanelTab(PhosphorIcons.Regular.VinylRecord, "Copertina", selected == 0) { onSelect(PlayerPanel.NONE) }
+            PanelTab(PhosphorIcons.Regular.TextAlignLeft, "Testo", selected == 1) {
                 onSelect(PlayerPanel.LYRICS)
             }
-            PanelTab(Icons.Filled.Tune, "Effetti", selected == 2) {
+            PanelTab(PhosphorIcons.Regular.SlidersHorizontal, "Effetti", selected == 2) {
                 onSelect(PlayerPanel.EFFECTS)
             }
         }
@@ -323,7 +324,7 @@ private fun PresetRow(
                 )
                 if (selected && !preset.builtIn) {
                     Icon(
-                        Icons.Filled.Close,
+                        PhosphorIcons.Regular.X,
                         contentDescription = "Elimina ${preset.name}",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier
@@ -344,7 +345,7 @@ private fun PresetRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                Icons.Filled.Add,
+                PhosphorIcons.Regular.Plus,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(16.dp),

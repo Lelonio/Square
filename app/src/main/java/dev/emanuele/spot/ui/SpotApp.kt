@@ -22,13 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.LibraryMusic
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -99,6 +92,15 @@ import dev.emanuele.spot.ui.theme.Ink
 import dev.emanuele.spot.ui.theme.SpotTheme
 import dev.emanuele.spot.ui.theme.rememberArtworkColor
 import kotlinx.coroutines.launch
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.fill.House
+import com.adamglin.phosphoricons.fill.MagnifyingGlass
+import com.adamglin.phosphoricons.fill.MusicNotes
+import com.adamglin.phosphoricons.regular.House
+import com.adamglin.phosphoricons.regular.MagnifyingGlass
+import com.adamglin.phosphoricons.regular.MusicNotes
 
 object Routes {
     const val HOME = "home"
@@ -593,13 +595,13 @@ private fun BottomBar(
             accentColor = Ink,
             containerColor = GlassFilm,
         ) {
-            BottomItem("Home", Icons.Filled.Home, Icons.Outlined.Home, selected == 0) {
+            BottomItem("Home", PhosphorIcons.Fill.House, PhosphorIcons.Regular.House, selected == 0) {
                 onSelect(Routes.HOME)
             }
             BottomItem(
                 "Libreria",
-                Icons.Filled.LibraryMusic,
-                Icons.Outlined.LibraryMusic,
+                PhosphorIcons.Fill.MusicNotes,
+                PhosphorIcons.Regular.MusicNotes,
                 selected == 1,
             ) { onSelect(Routes.LIBRARY) }
             }
@@ -621,7 +623,7 @@ private fun BottomBar(
             surfaceColor = GlassFilm,
         ) {
             Icon(
-                imageVector = if (searching) Icons.Filled.Search else Icons.Outlined.Search,
+                imageVector = if (searching) PhosphorIcons.Fill.MagnifyingGlass else PhosphorIcons.Regular.MagnifyingGlass,
                 contentDescription = "Cerca",
                 tint = Ink,
                 modifier = Modifier.size(24.dp),

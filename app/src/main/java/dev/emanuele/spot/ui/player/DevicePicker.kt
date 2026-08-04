@@ -14,12 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Computer
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.filled.Speaker
-import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +28,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import dev.emanuele.spot.ui.MainViewModel
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.ArrowClockwise
+import com.adamglin.phosphoricons.regular.Desktop
+import com.adamglin.phosphoricons.regular.DeviceMobile
+import com.adamglin.phosphoricons.regular.SpeakerHifi
+import com.adamglin.phosphoricons.regular.Television
 
 /**
  * The Spotify Connect device list.
@@ -96,7 +97,7 @@ fun DevicePicker(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            Icons.Filled.Refresh,
+                            PhosphorIcons.Regular.ArrowClockwise,
                             contentDescription = "Aggiorna",
                             tint = GlassInkDim,
                             modifier = Modifier.size(20.dp),
@@ -185,8 +186,8 @@ private fun DeviceRow(device: MainViewModel.SpotifyDevice, onClick: () -> Unit) 
 
 /** Spotify's device types, as far as they map onto icons worth telling apart. */
 private fun iconFor(type: String): ImageVector = when (type.lowercase()) {
-    "computer" -> Icons.Filled.Computer
-    "smartphone", "tablet" -> Icons.Filled.Smartphone
-    "tv", "castvideo" -> Icons.Filled.Tv
-    else -> Icons.Filled.Speaker
+    "computer" -> PhosphorIcons.Regular.Desktop
+    "smartphone", "tablet" -> PhosphorIcons.Regular.DeviceMobile
+    "tv", "castvideo" -> PhosphorIcons.Regular.Television
+    else -> PhosphorIcons.Regular.SpeakerHifi
 }

@@ -156,6 +156,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.backdrop)
     implementation(libs.kyant.shapes)
+    implementation(libs.phosphor)
 }
 
 /** Pinned so a build is not at the mercy of upstream's next commit. */

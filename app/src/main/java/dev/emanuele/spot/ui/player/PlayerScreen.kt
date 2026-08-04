@@ -31,20 +31,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.RepeatOne
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
@@ -80,6 +66,21 @@ import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.library.formatDuration
 import dev.emanuele.spot.ui.theme.softShadow
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.fill.Heart
+import com.adamglin.phosphoricons.fill.Pause
+import com.adamglin.phosphoricons.fill.Play
+import com.adamglin.phosphoricons.fill.SkipBack
+import com.adamglin.phosphoricons.fill.SkipForward
+import com.adamglin.phosphoricons.regular.CaretDown
+import com.adamglin.phosphoricons.regular.Devices
+import com.adamglin.phosphoricons.regular.Heart
+import com.adamglin.phosphoricons.regular.Queue
+import com.adamglin.phosphoricons.regular.Repeat
+import com.adamglin.phosphoricons.regular.RepeatOnce
+import com.adamglin.phosphoricons.regular.Shuffle
 
 /**
  * The player, as a liquid-glass prototype.
@@ -367,7 +368,7 @@ fun PlayerScreen(
                                     },
                                 ) {
                                     Icon(
-                                        Icons.AutoMirrored.Filled.QueueMusic,
+                                        PhosphorIcons.Regular.Queue,
                                         contentDescription = "Coda",
                                         tint = if (panel == PlayerPanel.QUEUE) {
                                             MaterialTheme.colorScheme.primary
@@ -389,9 +390,9 @@ fun PlayerScreen(
                                 ) {
                                     Icon(
                                         if (liked == true) {
-                                            Icons.Filled.Favorite
+                                            PhosphorIcons.Fill.Heart
                                         } else {
-                                            Icons.Outlined.FavoriteBorder
+                                            PhosphorIcons.Regular.Heart
                                         },
                                         contentDescription = if (liked == true) {
                                             "Togli dai brani salvati"
@@ -490,7 +491,7 @@ private fun TopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         GlassButton(backdrop, onClick = onCollapse) {
-            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Chiudi")
+            Icon(PhosphorIcons.Regular.CaretDown, contentDescription = "Chiudi")
         }
         Text(
             "In riproduzione",
@@ -503,7 +504,7 @@ private fun TopBar(
         // the player is open, and the queue already has its own tab below.
         GlassButton(backdrop, onClick = onOpenDevices) {
             Icon(
-                Icons.Filled.Devices,
+                PhosphorIcons.Regular.Devices,
                 contentDescription = "Dispositivi",
                 tint = GlassInk,
             )
@@ -649,7 +650,7 @@ private fun Controls(
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         ToggleIcon(
-            icon = Icons.Filled.Shuffle,
+            icon = PhosphorIcons.Regular.Shuffle,
             description = "Riproduzione casuale",
             active = state.shuffleEnabled,
             onClick = onToggleShuffle,
@@ -666,7 +667,7 @@ private fun Controls(
             onClick = onPrevious,
         ) {
             Icon(
-                Icons.Filled.SkipPrevious,
+                PhosphorIcons.Fill.SkipBack,
                 contentDescription = "Precedente",
                 modifier = Modifier.size(30.dp),
             )
@@ -679,7 +680,7 @@ private fun Controls(
                 label = "playPause",
             ) { playing ->
                 Icon(
-                    imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
                     contentDescription = if (playing) "Pausa" else "Riproduci",
                     modifier = Modifier.size(34.dp),
                 )
@@ -693,7 +694,7 @@ private fun Controls(
             onClick = onNext,
         ) {
             Icon(
-                Icons.Filled.SkipNext,
+                PhosphorIcons.Fill.SkipForward,
                 contentDescription = "Successivo",
                 modifier = Modifier.size(30.dp),
             )
@@ -701,9 +702,9 @@ private fun Controls(
 
         ToggleIcon(
             icon = if (state.repeatMode == Player.REPEAT_MODE_ONE) {
-                Icons.Filled.RepeatOne
+                PhosphorIcons.Regular.RepeatOnce
             } else {
-                Icons.Filled.Repeat
+                PhosphorIcons.Regular.Repeat
             },
             description = "Ripeti",
             active = state.repeatMode != Player.REPEAT_MODE_OFF,

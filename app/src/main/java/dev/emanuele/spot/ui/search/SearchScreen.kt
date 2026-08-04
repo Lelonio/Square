@@ -14,9 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +36,11 @@ import dev.emanuele.spot.ui.components.Artwork
 import com.kyant.backdrop.Backdrop
 import dev.emanuele.spot.ui.components.SwipeToQueue
 import dev.emanuele.spot.ui.glass.LiquidButton
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.fill.MagnifyingGlass
+import com.adamglin.phosphoricons.regular.X
 
 /**
  * Search across tracks, artists, albums and playlists.
@@ -71,11 +73,11 @@ fun SearchScreen(
                     onValueChange = onQueryChange,
                     placeholder = { Text("Brani, artisti, album, playlist") },
                     singleLine = true,
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    leadingIcon = { Icon(PhosphorIcons.Fill.MagnifyingGlass, contentDescription = null) },
                     trailingIcon = {
                         if (state.query.isNotEmpty()) {
                             IconButton(onClick = { onQueryChange("") }) {
-                                Icon(Icons.Filled.Close, contentDescription = "Cancella")
+                                Icon(PhosphorIcons.Regular.X, contentDescription = "Cancella")
                             }
                         }
                     },
