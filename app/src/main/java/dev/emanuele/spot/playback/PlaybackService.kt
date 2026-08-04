@@ -58,6 +58,7 @@ class PlaybackService : MediaSessionService() {
             audioOutput::setSpeedAndPitch,
             audioOutput::fadeOutThen,
             audioOutput::fadeIn,
+            audioOutput::setPlaybackActive,
         )
         session = MediaSession.Builder(this, player)
             .setCallback(MediaItemsCallback)

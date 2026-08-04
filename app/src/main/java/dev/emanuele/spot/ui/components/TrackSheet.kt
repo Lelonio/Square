@@ -97,6 +97,11 @@ fun BoxScope.TrackSheet(
             backdrop = backdrop,
             shape = shape,
             surfaceColor = SheetFilm,
+            // Heavier than the page behind it, on purpose. The panel samples the
+            // *unblurred* layer, so at the usual 8dp the rows underneath came
+            // through sharper inside the sheet than outside it — the one thing
+            // that reads as a mistake rather than as a material.
+            blurRadius = 46.dp,
             modifier = Modifier
                 .padding(horizontal = 28.dp)
                 .fillMaxWidth()
@@ -182,4 +187,4 @@ fun TrackSheetAction(
 }
 
 /** Light: the page behind is already blurred, so this only has to be a surface. */
-private val SheetFilm = Color.White.copy(alpha = 0.13f)
+private val SheetFilm = Color.White.copy(alpha = 0.16f)

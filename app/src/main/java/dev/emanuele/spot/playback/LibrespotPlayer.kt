@@ -45,6 +45,13 @@ class LibrespotPlayer(
      */
     private val fadeOutThen: (() -> Unit) -> Unit,
     private val fadeIn: () -> Unit,
+    /**
+     * Told when playback starts and stops.
+     *
+     * The output needs this because the reverb sits on the global mix; see
+     * AudioOutput.setPlaybackActive.
+     */
+    private val onPlaybackActive: (Boolean) -> Unit,
 ) : SimpleBasePlayer(looper), NativeEvents {
 
     /**
@@ -207,9 +214,11 @@ class LibrespotPlayer(
             // Refusing focus means something else owns the output — starting
             // anyway would talk over it.
             if (!focus.requestFocus()) return Futures.immediateVoidFuture()
+            onPlaybackActive(true)
             NativeBridge.play()
         } else {
             NativeBridge.pause()
+            onPlaybackActive(false)
             focus.abandonFocus()
         }
         // Do not update local state here: the engine confirms via onEvent, and

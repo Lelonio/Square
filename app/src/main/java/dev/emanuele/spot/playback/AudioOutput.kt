@@ -249,6 +249,20 @@ class AudioOutput {
      * the tail of the last few seconds ringing on after the pause, and every
      * system sound afterwards arriving through it.
      */
+    /**
+     * Called by the player on pause and on resume.
+     *
+     * The sink's own [start]/[stop] are not enough: librespot keeps the sink
+     * open across a pause, so nothing here would run and the reverb would sit on
+     * the output mix ringing out and colouring every other sound the phone
+     * makes. This is the pause the *player* knows about.
+     */
+    fun setPlaybackActive(active: Boolean) {
+        synchronized(this) {
+            if (active) applyReverb() else suspendReverb()
+        }
+    }
+
     private fun suspendReverb() {
         track?.runCatching {
             setAuxEffectSendLevel(0f)
