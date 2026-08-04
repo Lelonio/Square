@@ -1,0 +1,20 @@
+# ninja log v5
+1	5569	1785761000877626007	CMakeFiles/pffft.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/submodules/pffft/pffft.c.o	68027d55983c9452
+8	7729	1785761003076160368	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Assert.cpp.o	2e43e821b2ea564f
+7	8405	1785761003759714057	CMakeFiles/spotstretch.dir/stretch.cpp.o	35fdbfe44e943e6d
+16	12976	1785761008328714968	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Instrumentation.cpp.o	ca0bf9b97430432
+5	13635	1785761008960370867	CMakeFiles/pffft.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/submodules/pffft/fftpack.c.o	1ed7c45bc139e184
+13635	14000	1785761009375884000	libpffft.a	bb4a5d4a7112ab6c
+10	15118	1785761010457539718	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Fourier.cpp.o	a49204e9a94980f6
+13	15299	1785761010647127487	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Grains.cpp.o	b98296741c3c4db3
+15299	15412	1785761010784346658	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/version.cpp.o	b0c4d88be304141d
+14	16607	1785761011878018794	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Input.cpp.o	a90ce43bedb78bc
+17	17524	1785761012830835878	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Output.cpp.o	19d6700aa5fb07ac
+11	17898	1785761013241275985	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Grain.cpp.o	bc604516fb55c553
+5570	19336	1785761014687161534	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Partials.cpp.o	a4762c12adda1f18
+7742	20027	1785761015372972170	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Stretch.cpp.o	f8b38af35eccf477
+12980	23309	1785761018653156033	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Synthesis.cpp.o	5c1bc5bb7ba12524
+14000	23844	1785761019195174121	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Timing.cpp.o	1669617b26cd26e7
+15118	24488	1785761019836880776	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Window.cpp.o	dd368edb0bc1de1b
+8406	24603	1785761019943659634	CMakeFiles/spotstretch.dir/Users/emanuele/Progetto_Spotify/native-dsp/bungee/src/Stretcher.cpp.o	49b0e10753e7a2eb
+24603	25184	1785761020501404693	/Users/emanuele/Progetto Spotify/app/build/intermediates/cxx/RelWithDebInfo/2i6al211/obj/arm64-v8a/libspotstretch.so	4fd422ba14d7bda4

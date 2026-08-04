@@ -1,0 +1,587 @@
+package dev.emanuele.spot.ui
+
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import dev.emanuele.spot.data.CanvasClip
+import dev.emanuele.spot.data.Catalog
+import dev.emanuele.spot.data.CatalogPlaylist
+import dev.emanuele.spot.data.CatalogTrack
+import dev.emanuele.spot.data.Lyrics
+import dev.emanuele.spot.playback.AudioEffects
+import dev.emanuele.spot.ui.glass.LiquidBottomTabs
+import dev.emanuele.spot.ui.glass.LiquidButton
+import dev.emanuele.spot.ui.home.HomeScreen
+import dev.emanuele.spot.ui.library.LibraryScreen
+import dev.emanuele.spot.ui.library.PlaylistScreen
+import dev.emanuele.spot.ui.player.MiniPlayer
+import dev.emanuele.spot.ui.player.MiniPlayerHeight
+import dev.emanuele.spot.ui.player.PlayerScreen
+import dev.emanuele.spot.ui.player.progressOf
+import dev.emanuele.spot.ui.player.rememberPlaybackState
+import dev.emanuele.spot.ui.player.rememberPositionMs
+import dev.emanuele.spot.ui.player.rememberQueue
+import dev.emanuele.spot.ui.search.SearchScreen
+import dev.emanuele.spot.ui.theme.Ink
+import dev.emanuele.spot.ui.theme.SpotTheme
+import dev.emanuele.spot.ui.theme.rememberArtworkColor
+
+object Routes {
+    const val HOME = "home"
+    const val SEARCH = "search"
+    const val LIBRARY = "library"
+    const val PLAYLIST = "playlist"
+    const val PLAYER = "player"
+}
+
+private val BottomBarHeight = 62.dp
+
+@UnstableApi
+@Composable
+fun SpotApp(
+    player: Player?,
+    onPlay: (List<CatalogTrack>, Int) -> Unit,
+    /** Appends one track to the end of the queue; see the swipe gesture on rows. */
+    onEnqueue: (CatalogTrack) -> Unit,
+    viewModel: MainViewModel = viewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val playlist by viewModel.playlist.collectAsStateWithLifecycle()
+    val playback by rememberPlaybackState(player)
+    // Held as State, not read here: reading the position at this level would
+    // recompose the whole app — lists included — several times a second.
+    val positionMs = rememberPositionMs(player, playback.isPlaying)
+    val queue by rememberQueue(player)
+    val accent by rememberArtworkColor(playback.artworkUrl)
+    val recent by viewModel.recent.collectAsStateWithLifecycle()
+    val search by viewModel.search.collectAsStateWithLifecycle()
+    val webApi by viewModel.webApi.collectAsStateWithLifecycle()
+    val reverb by AudioEffects.reverb.collectAsStateWithLifecycle()
+    val presets by viewModel.effectPresets.collectAsStateWithLifecycle()
+    // Two layers, and the split is not optional.
+    //
+    // `pageBackdrop` records the artwork *and* the screen on top of it, and is
+    // what the floating bars refract — that is how the list underneath shows
+    // through them. Those bars therefore have to be drawn outside it: a layer
+    // that contains something which draws that same layer recurses until the
+    // render thread's stack runs out, which is exactly the SIGSEGV this caused.
+    //
+    // `artBackdrop` records only the blurred artwork, and is what glass *inside*
+    // a screen uses — the playlist buttons, the search button — for the same
+    // reason: they cannot sample a layer they are part of.
+    val artBackdrop = rememberLayerBackdrop()
+    val pageBackdrop = rememberLayerBackdrop()
+
+    // Recorded here rather than at the tap: this fires for auto-advance and for
+    // controls outside the app too, so the history matches what was actually
+    // heard instead of only what was tapped.
+    LaunchedEffect(playback.mediaId) {
+        val uri = playback.mediaId ?: return@LaunchedEffect
+        viewModel.recordPlayed(
+            CatalogTrack(
+                uri = uri,
+                name = playback.title,
+                artist = playback.artist,
+                durationMs = playback.durationMs,
+                artworkUrl = playback.artworkUrl,
+            ),
+        )
+    }
+
+    var canvas by remember { mutableStateOf<CanvasClip?>(null) }
+
+    // Fetched per track, like the lyrics. Most tracks have none, so a null is an
+    // ordinary answer and the player falls back to the cover.
+    LaunchedEffect(playback.mediaId) {
+        val uri = playback.mediaId
+        canvas = null
+        if (uri != null) canvas = Catalog.canvas(uri)
+    }
+
+    var lyrics by remember { mutableStateOf<Lyrics?>(null) }
+    var lyricsLoading by remember { mutableStateOf(false) }
+
+    // Fetched per track. Most of the catalogue has none, so a null result is an
+    // ordinary answer that shows an empty state rather than an error.
+    LaunchedEffect(playback.mediaId) {
+        val uri = playback.mediaId
+        lyrics = null
+        if (uri == null) return@LaunchedEffect
+        lyricsLoading = true
+        lyrics = runCatching { Catalog.lyrics(uri) }.getOrNull()
+        lyricsLoading = false
+    }
+
+    SpotTheme(seed = accent) {
+        // Material's default content colour is black, and it used to arrive from
+        // the Surface that wrapped this tree. That Surface is gone — it painted
+        // an opaque page over the backdrop — so the colour has to be provided
+        // here, or every Text that does not set one explicitly stays black on
+        // the darkened artwork.
+        CompositionLocalProvider(LocalContentColor provides Ink) {
+            Box(Modifier.fillMaxSize()) {
+                val navController = rememberNavController()
+                val currentEntry by navController.currentBackStackEntryAsState()
+                val route = currentEntry?.destination?.route
+                val onPlayer = route == Routes.PLAYER
+
+                val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+                // Lists end above the bottom bar and the mini player rather than
+                // scrolling behind them.
+                val listPadding = PaddingValues(
+                    top = statusBar,
+                    bottom = navBar + BottomBarHeight +
+                        if (playback.hasItem) MiniPlayerHeight else 0.dp,
+                )
+
+                // The screens are recorded into the backdrop layer along with
+                // the artwork behind them, and the bars that float over them are
+                // not.
+                //
+                // That split is the whole point. Recording only the artwork —
+                // which is what this did at first — meant the mini player and
+                // the tab bar refracted a blurred cover no matter what was
+                // actually beneath them, so they looked like frosted panels
+                // rather than like glass: nothing of the list underneath ever
+                // showed through.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .layerBackdrop(pageBackdrop),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .layerBackdrop(artBackdrop),
+                    ) {
+                        AppBackdrop(playback.artworkUrl)
+                    }
+
+                    NavHost(navController, startDestination = Routes.HOME) {
+                        composable(Routes.HOME) {
+                            HomeScreen(
+                                state = state,
+                                playback = playback,
+                                contentPadding = listPadding,
+                                onLogIn = viewModel::logIn,
+                                onRetry = { viewModel.refresh() },
+                                onLogOut = viewModel::logOut,
+                                onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
+                                onOpenPlayer = { navController.navigate(Routes.PLAYER) },
+                                recent = recent,
+                                onPlayRecent = onPlay,
+                            )
+                        }
+
+                        composable(Routes.SEARCH) {
+                            SearchScreen(
+                                state = search,
+                                webApi = webApi,
+                                contentPadding = listPadding,
+                                nowPlayingUri = playback.mediaId,
+                                onQueryChange = viewModel::onSearchQuery,
+                                onClientIdChange = viewModel::onWebApiClientIdChange,
+                                onConnectWebApi = { viewModel.connectWebApi() },
+                                onPlayTrack = onPlay,
+                                onEnqueue = onEnqueue,
+                                onOpenContext = { item ->
+                                    viewModel.openContext(item.uri, item.title, item.artworkUrl)
+                                    navController.navigate(Routes.PLAYLIST)
+                                },
+                                backdrop = artBackdrop,
+                            )
+                        }
+
+                        composable(Routes.LIBRARY) {
+                            LibraryScreen(
+                                state = state,
+                                contentPadding = listPadding,
+                                onLogIn = viewModel::logIn,
+                                onRetry = { viewModel.refresh() },
+                                onLogOut = viewModel::logOut,
+                                onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
+                            )
+                        }
+
+                        composable(Routes.PLAYLIST) {
+                            // Re-seeded from the open playlist, album or artist.
+                            // The rest of the app is themed after whatever is
+                            // playing, which is right for the home page and
+                            // wrong here: an album page tinted by an unrelated
+                            // track reads as belonging to something else.
+                            val detailAccent by rememberArtworkColor(playlist.artworkUrl)
+                            SpotTheme(seed = detailAccent) {
+                                PlaylistScreen(
+                                    state = playlist,
+                                    contentPadding = listPadding,
+                                    nowPlayingUri = playback.mediaId,
+                                    onBack = { navController.popBackStack() },
+                                    onPlay = onPlay,
+                                    onEnqueue = onEnqueue,
+                                    onShuffle = { tracks ->
+                                        // Order does not matter: the player
+                                        // treats shuffle as a mode and stamps it
+                                        // onto whatever queue arrives next.
+                                        player?.shuffleModeEnabled = true
+                                        onPlay(tracks, 0)
+                                    },
+                                    backdrop = artBackdrop,
+                                    onOpenItem = { item ->
+                                        viewModel.openContext(
+                                            item.uri,
+                                            item.title,
+                                            item.artworkUrl,
+                                        )
+                                    },
+                                )
+                            }
+                        }
+
+                        composable(
+                            Routes.PLAYER,
+                            // Rises from the bottom, like the bar it grew out of.
+                            enterTransition = { slideInVertically { it } },
+                            exitTransition = { slideOutVertically { it } },
+                            popEnterTransition = { slideInVertically { it } },
+                            popExitTransition = { slideOutVertically { it } },
+                        ) {
+                            PlayerScreen(
+                                state = playback,
+                                positionMs = positionMs,
+                                onCollapse = { navController.popBackStack() },
+                                onTogglePlay = { player?.togglePlay() },
+                                onNext = { player?.seekToNextMediaItem() },
+                                onPrevious = { player?.seekToPreviousMediaItem() },
+                                onSeek = { player?.seekTo(it) },
+                                onToggleShuffle = {
+                                    player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+                                },
+                                onCycleRepeat = { player?.cycleRepeatMode() },
+                                queue = queue,
+                                lyrics = lyrics,
+                                lyricsLoading = lyricsLoading,
+                                onPlayQueueItem = { player?.seekTo(it, 0L) },
+                                reverb = reverb,
+                                // Speed and pitch are set as a pair because
+                                // PlaybackParameters carries both; changing one
+                                // has to carry the other through unchanged.
+                                onSpeed = {
+                                    player?.playbackParameters =
+                                        PlaybackParameters(it, playback.pitch)
+                                },
+                                onPitch = {
+                                    player?.playbackParameters =
+                                        PlaybackParameters(playback.speed, it)
+                                },
+                                onReverb = AudioEffects::setReverb,
+                                presets = presets,
+                                onApplyPreset = { preset ->
+                                    player?.playbackParameters =
+                                        PlaybackParameters(preset.speed, preset.pitch)
+                                    AudioEffects.setReverb(preset.reverb)
+                                },
+                                onSavePreset = {
+                                    viewModel.saveEffectPreset(
+                                        it,
+                                        playback.speed,
+                                        playback.pitch,
+                                        reverb,
+                                    )
+                                },
+                                onDeletePreset = viewModel::deleteEffectPreset,
+                                backdrop = artBackdrop,
+                                canvas = canvas,
+                            )
+                        }
+                    }
+                }
+
+                // Outside the recorded layer, and that is structural rather than
+                // stylistic: these refract `pageBackdrop`, and a pane drawn
+                // inside the layer it samples recurses on the render thread
+                // until the process dies.
+                //
+                // Both survive navigation, and both step aside on the full
+                // player, which already carries the same controls.
+                if (!onPlayer) {
+                    Column(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth(),
+                    ) {
+                        if (playback.hasItem) {
+                            MiniPlayer(
+                                state = playback,
+                                progress = { progressOf(positionMs.value, playback.durationMs) },
+                                backdrop = pageBackdrop,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                onExpand = { navController.navigate(Routes.PLAYER) },
+                                onTogglePlay = { player?.togglePlay() },
+                                onNext = { player?.seekToNextMediaItem() },
+                            )
+                        }
+                        BottomBar(
+                            route = route,
+                            bottomInset = navBar,
+                            backdrop = pageBackdrop,
+                            onSelect = navController::switchTab,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The blurred artwork every screen sits on.
+ *
+ * Blurred here rather than by the backdrop library: this is the *page*
+ * background, not a glass pane, and it has to be soft even where no glass is
+ * drawn over it. The scrim on top is what keeps text legible over a bright
+ * cover — the palette is built for a dark page.
+ */
+@Composable
+private fun AppBackdrop(artworkUrl: String?) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0A0A0C)),
+    ) {
+        if (artworkUrl != null) {
+            AsyncImage(
+                model = artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    // Well past the point where the cover is recognisable: this
+                    // is meant to read as light coming off the artwork, not as
+                    // an out-of-focus photograph.
+                    .blur(80.dp),
+            )
+        }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.45f),
+                        0.5f to Color.Black.copy(alpha = 0.60f),
+                        1f to Color.Black.copy(alpha = 0.78f),
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
+private fun BottomBar(
+    route: String?,
+    bottomInset: Dp,
+    backdrop: Backdrop,
+    onSelect: (String) -> Unit,
+) {
+    // Search sits outside the capsule as its own round button, the way the
+    // reference has it: it is a different kind of destination — you go there to
+    // do something and come back — and giving it the same weight as Home and
+    // Library made all three read as places.
+    val routes = remember { listOf(Routes.HOME, Routes.LIBRARY) }
+    // Falls back to Home rather than -1 while on a screen that is not a tab —
+    // the playlist detail, say — so the indicator has somewhere to sit.
+    val selected = routes.indexOf(route).coerceAtLeast(0)
+
+    // A *stable* lambda, deliberately. LiquidBottomTabs keys its internal state
+    // on this reference, so a fresh closure on every recomposition threw that
+    // state away and the indicator arrived at the new tab without ever
+    // animating — which is exactly the bug where tapping snapped and only
+    // dragging moved.
+    val selectedState = rememberUpdatedState(selected)
+    val selectedTabIndex = remember { { selectedState.value } }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = bottomInset + 8.dp, top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LiquidBottomTabs(
+            selectedTabIndex = selectedTabIndex,
+            onTabSelected = { onSelect(routes[it]) },
+            backdrop = backdrop,
+            tabsCount = routes.size,
+            modifier = Modifier.weight(1f),
+        ) {
+            BottomItem("Home", Icons.Filled.Home, Icons.Outlined.Home, selected == 0) {
+                onSelect(Routes.HOME)
+            }
+            BottomItem(
+                "Libreria",
+                Icons.Filled.LibraryMusic,
+                Icons.Outlined.LibraryMusic,
+                selected == 1,
+            ) { onSelect(Routes.LIBRARY) }
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        val searching = route == Routes.SEARCH
+        LiquidButton(
+            onClick = { onSelect(Routes.SEARCH) },
+            backdrop = backdrop,
+            tint = if (searching) MaterialTheme.colorScheme.primary else Color.Unspecified,
+            modifier = Modifier.size(64.dp),
+            contentHeight = 64.dp,
+            contentPadding = 0.dp,
+            blurRadius = 8.dp,
+        ) {
+            Icon(
+                imageVector = if (searching) Icons.Filled.Search else Icons.Outlined.Search,
+                contentDescription = "Cerca",
+                tint = Ink,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Selected tabs switch to the filled icon as well as to ink.
+ *
+ * Weight carries the selection, not just colour: the difference between a
+ * filled and an outlined glyph survives at a glance and for anyone who cannot
+ * separate the two tints.
+ */
+@Composable
+private fun BottomItem(
+    label: String,
+    filled: ImageVector,
+    outlined: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    // Fixed ink rather than the artwork accent. Tinting the label after the
+    // playing track put an arbitrary colour on the one control that has to stay
+    // readable, and some of those colours have almost no contrast against the
+    // glass.
+    val tint = if (selected) Ink else Ink.copy(alpha = 0.62f)
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = if (selected) filled else outlined,
+            contentDescription = label,
+            tint = tint,
+            modifier = Modifier.size(23.dp),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = tint,
+            modifier = Modifier.padding(top = 3.dp),
+        )
+    }
+}
+
+/** Loads the playlist and shows it, from whichever tab asked. */
+private fun NavHostController.openPlaylist(viewModel: MainViewModel, playlist: CatalogPlaylist) {
+    viewModel.openPlaylist(playlist)
+    navigate(Routes.PLAYLIST)
+}
+
+/**
+ * Switches tab without stacking destinations.
+ *
+ * Without popping back to the start, tapping between tabs would grow the back
+ * stack forever and the system back button would walk the entire history.
+ */
+private fun NavHostController.switchTab(route: String) {
+    if (currentDestination?.route == route) return
+    navigate(route) {
+        popUpTo(Routes.HOME) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+private fun Player.togglePlay() {
+    if (isPlaying) pause() else play()
+}
+
+/** off → all → one → off, the order every player uses. */
+private fun Player.cycleRepeatMode() {
+    repeatMode = when (repeatMode) {
+        Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+        Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+        else -> Player.REPEAT_MODE_OFF
+    }
+}

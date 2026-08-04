@@ -1,0 +1,46 @@
+[package]
+name = "spotcore"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+
+[lib]
+name = "spotcore"
+crate-type = ["cdylib"]
+
+[dependencies]
+# rustls + webpki roots: no OpenSSL to cross-compile, no reliance on the Java keystore.
+librespot-core = { version = "0.8", default-features = false, features = ["rustls-tls-webpki-roots"] }
+# No backend feature: audio goes to an AudioTrack via src/sink.rs, so
+# rodio and cpal are not built at all.
+librespot-playback = { version = "0.8", default-features = false, features = ["rustls-tls-webpki-roots"] }
+librespot-metadata = { version = "0.8", default-features = false, features = ["rustls-tls-webpki-roots"] }
+librespot-protocol = { version = "0.8", default-features = false }
+protobuf = "3"
+
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }
+jni = "0.21"
+log = "0.4"
+once_cell = "1"
+# Same major as librespot-core, so `Method` is the type spclient expects.
+http = "1.3"
+serde_json = "1"
+futures-util = "0.3"
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-context = "0.1"
+android_logger = "0.14"
+
+# librespot-core carries a one-line local patch; see native/vendor/README.md.
+# Patching rather than depending on the fork directly means librespot-playback
+# and librespot-metadata, which pull librespot-core from crates.io, resolve to
+# the patched copy too.
+[patch.crates-io]
+librespot-core = { path = "vendor/librespot-core" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

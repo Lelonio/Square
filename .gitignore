@@ -1,0 +1,17 @@
+# Build output
+build/
+app/build/
+.gradle/
+local.properties
+
+# Fetched, not vendored (see fetchBungee in app/build.gradle.kts)
+native-dsp/bungee/
+
+# Cross-compiled by cargoBuild
+app/src/main/jniLibs/
+native/target/
+
+# IDE
+.idea/
+*.iml
+.DS_Store

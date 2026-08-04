@@ -1,0 +1,401 @@
+package dev.emanuele.spot.ui
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import dev.emanuele.spot.SpotApplication
+import dev.emanuele.spot.auth.SpotifyOAuth
+import dev.emanuele.spot.data.Catalog
+import dev.emanuele.spot.data.CatalogPlaylist
+import dev.emanuele.spot.data.CatalogTrack
+import dev.emanuele.spot.data.SearchItem
+import dev.emanuele.spot.data.SearchResults
+import dev.emanuele.spot.data.toCatalogTrack
+import dev.emanuele.spot.data.toResults
+import dev.emanuele.spot.nativecore.NativeBridge
+import dev.emanuele.spot.playback.BuiltInPresets
+import dev.emanuele.spot.playback.EffectPreset
+import dev.emanuele.spot.playback.PlaybackService
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+/**
+ * Login gate and library browsing.
+ *
+ * Playback commands are deliberately absent: the UI talks to the media session
+ * controller directly, so the notification, the lock screen and the app all read
+ * one source of truth instead of two copies that can drift.
+ */
+class MainViewModel(app: Application) : AndroidViewModel(app) {
+
+    sealed interface UiState {
+        data object LoggedOut : UiState
+
+        /** Waiting for the access-point handshake. */
+        data object Connecting : UiState
+        data object Loading : UiState
+        data class Ready(val displayName: String, val playlists: List<CatalogPlaylist>) : UiState
+        data class Failed(val message: String) : UiState
+    }
+
+    /** What kind of thing the detail screen is showing. */
+    enum class DetailKind(val label: String) {
+        PLAYLIST("Playlist"),
+        ALBUM("Album"),
+        ARTIST("Artista"),
+    }
+
+    /**
+     * The playlist, album or artist currently open, keyed by its URI.
+     *
+     * One state and one screen for all three: they differ in where the tracks
+     * come from and in a strip of albums the artist has and the other two do
+     * not, which is not enough to justify three near-identical screens that
+     * would then drift apart.
+     */
+    data class PlaylistState(
+        val uri: String? = null,
+        val name: String = "",
+        val artworkUrl: String? = null,
+        val tracks: List<CatalogTrack> = emptyList(),
+        val loading: Boolean = false,
+        val error: String? = null,
+        val kind: DetailKind = DetailKind.PLAYLIST,
+        /** Populated for artists only. */
+        val albums: List<SearchItem> = emptyList(),
+    )
+
+    private val container get() = getApplication<SpotApplication>()
+
+    private var inFlight: Job? = null
+    private var playlistJob: Job? = null
+
+    private val _state = MutableStateFlow<UiState>(
+        if (container.tokenStore.isLoggedIn) UiState.Connecting else UiState.LoggedOut,
+    )
+    val state: StateFlow<UiState> = _state.asStateFlow()
+
+    private val _playlist = MutableStateFlow(PlaylistState())
+    val playlist: StateFlow<PlaylistState> = _playlist.asStateFlow()
+
+    /** Search box contents and results. */
+    data class SearchState(
+        val query: String = "",
+        val loading: Boolean = false,
+        val results: SearchResults = SearchResults(),
+        val error: String? = null,
+        /**
+         * False until the user has registered their own Spotify application.
+         * Search cannot work without one, so the screen offers the setup instead
+         * of a search box that would only ever answer 429.
+         */
+        val needsSetup: Boolean = false,
+    )
+
+    private val _search = MutableStateFlow(SearchState(needsSetup = !container.webApi.isReady))
+    val search: StateFlow<SearchState> = _search.asStateFlow()
+    private var searchJob: Job? = null
+
+    /**
+     * Runs a search, debounced.
+     *
+     * Firing on every keystroke would spend the Web API quota several times per
+     * word, mostly on prefixes nobody wanted results for.
+     */
+    fun onSearchQuery(query: String) {
+        val ready = container.webApi.isReady
+        _search.value = _search.value.copy(query = query, needsSetup = !ready)
+        searchJob?.cancel()
+
+        if (query.isBlank() || !ready) {
+            _search.value = SearchState(query = query, needsSetup = !ready)
+            return
+        }
+
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            _search.value = _search.value.copy(loading = true, error = null)
+            runCatching { container.api.search(query.trim()).toResults() }
+                .onSuccess { results ->
+                    _search.value = _search.value.copy(loading = false, results = results)
+                }
+                .onFailure {
+                    android.util.Log.e(TAG, "search failed: ${chain(it)}", it)
+                    _search.value = _search.value.copy(loading = false, error = describe(it))
+                }
+        }
+    }
+
+    /** The user's own Spotify application, used for search. */
+    data class WebApiState(
+        val clientId: String = "",
+        val connected: Boolean = false,
+        val connecting: Boolean = false,
+        val error: String? = null,
+        /** What the user must register as a redirect URI in their dashboard. */
+        val redirectUri: String = SpotifyOAuth.REDIRECT_URI,
+    )
+
+    private val _webApi = MutableStateFlow(
+        WebApiState(
+            clientId = container.webApi.clientId.value.orEmpty(),
+            connected = container.webApi.isReady,
+        ),
+    )
+    val webApi: StateFlow<WebApiState> = _webApi.asStateFlow()
+
+    fun onWebApiClientIdChange(value: String) {
+        _webApi.value = _webApi.value.copy(clientId = value, error = null)
+    }
+
+    /**
+     * Registers the client id and runs a second OAuth flow against it.
+     *
+     * A separate authorization from the playback login by necessity: an access
+     * token is only valid for the application it was issued to, so the Web API
+     * needs its own even though it is the same Spotify account behind both.
+     */
+    fun connectWebApi() = viewModelScope.launch {
+        val clientId = _webApi.value.clientId.trim()
+        if (clientId.isEmpty()) {
+            _webApi.value = _webApi.value.copy(error = "Inserisci il client id.")
+            return@launch
+        }
+
+        _webApi.value = _webApi.value.copy(connecting = true, error = null)
+        container.webApi.setClientId(clientId)
+        runCatching {
+            // No scopes: search reads public catalogue data, and asking for
+            // permissions the feature does not use would put a consent screen in
+            // front of the user for nothing.
+            SpotifyOAuth.authorize(getApplication(), clientId = clientId, scopes = emptyList())
+        }
+            .onSuccess {
+                container.webApi.tokens.save(it)
+                _webApi.value = _webApi.value.copy(connecting = false, connected = true)
+                _search.value = _search.value.copy(needsSetup = false)
+                // Re-run whatever the user had already typed.
+                _search.value.query.takeIf { q -> q.isNotBlank() }?.let(::onSearchQuery)
+            }
+            .onFailure {
+                android.util.Log.e(TAG, "web api login failed: ${chain(it)}", it)
+                _webApi.value = _webApi.value.copy(connecting = false, error = describe(it))
+            }
+    }
+
+    fun disconnectWebApi() {
+        container.webApi.disconnect()
+        _webApi.value = _webApi.value.copy(connected = false, error = null)
+        _search.value = _search.value.copy(needsSetup = true)
+    }
+
+    /**
+     * Saved effect presets: the built-in ones followed by the user's own.
+     *
+     * Combined here rather than stored together so the built-ins can be changed
+     * or added to in a later version without migrating what the user saved.
+     */
+    val effectPresets: StateFlow<List<EffectPreset>> =
+        container.effectPresets.presets
+            .map { BuiltInPresets + it }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, BuiltInPresets)
+
+    fun saveEffectPreset(name: String, speed: Float, pitch: Float, reverb: Float) {
+        container.effectPresets.save(name, speed, pitch, reverb)
+    }
+
+    fun deleteEffectPreset(id: String) = container.effectPresets.delete(id)
+
+    /** Locally recorded listening history; see [dev.emanuele.spot.data.RecentStore]. */
+    val recent: StateFlow<List<CatalogTrack>> get() = container.recentStore.tracks
+
+    /** Called when a track starts, to keep the home page's history current. */
+    fun recordPlayed(track: CatalogTrack) = viewModelScope.launch {
+        container.recentStore.record(track)
+    }
+
+    init {
+        if (container.tokenStore.isLoggedIn) {
+            PlaybackService.connect(app)
+            refresh()
+        }
+    }
+
+    fun logIn() = viewModelScope.launch {
+        _state.value = UiState.Loading
+        runCatching { SpotifyOAuth.authorize(getApplication()) }
+            .onSuccess {
+                container.tokenStore.save(it)
+                // The service was created before this session existed, so it has
+                // to be told to authenticate the native engine now.
+                PlaybackService.connect(getApplication())
+                refresh()
+            }
+            .onFailure {
+                android.util.Log.e(TAG, "login failed: ${chain(it)}", it)
+                _state.value = UiState.Failed(describe(it))
+            }
+    }
+
+    fun logOut() {
+        container.tokenStore.clear()
+        container.recentStore.clear()
+        _playlist.value = PlaylistState()
+        _state.value = UiState.LoggedOut
+    }
+
+    fun refresh(): Job {
+        inFlight?.takeIf { it.isActive }?.let { return it }
+        return launchRefresh().also { inFlight = it }
+    }
+
+    private fun launchRefresh() = viewModelScope.launch {
+        if (!container.tokenStore.isLoggedIn) {
+            _state.value = UiState.LoggedOut
+            return@launch
+        }
+
+        _state.value = UiState.Connecting
+        if (!awaitEngine()) {
+            _state.value = if (container.tokenStore.isLoggedIn) {
+                UiState.Failed("Impossibile connettersi a Spotify.")
+            } else {
+                UiState.LoggedOut
+            }
+            return@launch
+        }
+
+        _state.value = UiState.Loading
+        runCatching { UiState.Ready(Catalog.username(), Catalog.playlists()) }
+            .onSuccess { _state.value = it }
+            .onFailure {
+                android.util.Log.e(TAG, "library load failed: ${chain(it)}", it)
+                _state.value = UiState.Failed(describe(it))
+            }
+    }
+
+    /**
+     * Loads a playlist's tracks.
+     *
+     * Reloading the playlist already shown is skipped: it is a few dozen
+     * access-point round trips, and returning to a playlist from the player is
+     * the common case.
+     */
+    fun openContext(uri: String, name: String, artworkUrl: String? = null) =
+        openPlaylist(CatalogPlaylist(uri = uri, name = name, artworkUrl = artworkUrl))
+
+    fun openPlaylist(playlist: CatalogPlaylist) {
+        if (_playlist.value.uri == playlist.uri && _playlist.value.tracks.isNotEmpty()) return
+
+        val kind = kindOf(playlist.uri)
+        playlistJob?.cancel()
+        val base = PlaylistState(
+            uri = playlist.uri,
+            name = playlist.name,
+            artworkUrl = playlist.artworkUrl,
+            kind = kind,
+        )
+        _playlist.value = base.copy(loading = true)
+        playlistJob = viewModelScope.launch {
+            runCatching {
+                if (kind == DetailKind.ARTIST) loadArtist(playlist.uri) else loadContext(playlist.uri)
+            }
+                .onSuccess { loaded ->
+                    _playlist.value = base.copy(tracks = loaded.first, albums = loaded.second)
+                }
+                .onFailure {
+                    android.util.Log.e(TAG, "detail load failed: ${chain(it)}", it)
+                    _playlist.value = base.copy(error = describe(it))
+                }
+        }
+    }
+
+    /** Playlists and albums are both contexts the access point can resolve. */
+    private suspend fun loadContext(uri: String): Pair<List<CatalogTrack>, List<SearchItem>> =
+        Catalog.tracks(Catalog.contextTrackUris(uri).take(PLAYLIST_LIMIT)) to emptyList()
+
+    /**
+     * Top tracks and albums for an artist.
+     *
+     * Web API rather than the access point: an artist is not a playable context,
+     * so there is no track list to resolve there. That also means this is the one
+     * screen which cannot work until the user has registered their own
+     * application, hence the explicit message rather than a raw 401.
+     */
+    private suspend fun loadArtist(uri: String): Pair<List<CatalogTrack>, List<SearchItem>> {
+        if (!container.webApi.isReady) {
+            error("Per aprire un artista serve la tua applicazione Spotify, configurala in Cerca.")
+        }
+        val id = uri.substringAfterLast(':')
+        val tracks = container.api.artistTopTracks(id).tracks.map { it.toCatalogTrack() }
+        val albums = container.api.artistAlbums(id).items.mapNotNull { album ->
+            SearchItem(
+                uri = album.uri ?: return@mapNotNull null,
+                title = album.name,
+                subtitle = album.releaseDate?.take(4).orEmpty(),
+                artworkUrl = album.images.firstOrNull()?.url,
+            )
+        }
+        return tracks to albums
+    }
+
+    private fun kindOf(uri: String): DetailKind = when {
+        uri.startsWith("spotify:artist:") -> DetailKind.ARTIST
+        uri.startsWith("spotify:album:") -> DetailKind.ALBUM
+        else -> DetailKind.PLAYLIST
+    }
+
+    /**
+     * Waits for the native session to finish authenticating.
+     *
+     * Every catalogue call fails outright without it, so polling here is what
+     * stops a cold start from showing a spurious error. Polling rather than a
+     * callback because readiness lives behind a JNI boolean.
+     */
+    private suspend fun awaitEngine(): Boolean = withTimeoutOrNull(ENGINE_TIMEOUT_MS) {
+        while (!NativeBridge.isConnected) {
+            // The service clears the session when Spotify rejects it. Without
+            // this check the UI would sit on "connecting" for the full timeout
+            // and then report a connection problem, when the real answer is
+            // that the user has to log in again.
+            if (!container.tokenStore.isLoggedIn) return@withTimeoutOrNull false
+            delay(POLL_INTERVAL_MS)
+        }
+        true
+    } ?: false
+
+    /** Full `Class: message` chain, for the log. */
+    private fun chain(error: Throwable): String =
+        generateSequence(error, Throwable::cause)
+            .joinToString(" <- ") { "${it::class.java.name}: ${it.message}" }
+
+    /**
+     * A message worth putting on screen. `Throwable.message` alone is often null
+     * or an empty wrapper, which is how "unknown error" screens happen.
+     */
+    private fun describe(error: Throwable): String {
+        val parts = generateSequence(error, Throwable::cause)
+            .mapNotNull { it.message?.takeIf(String::isNotBlank) }
+            .toList()
+        return parts.firstOrNull() ?: error::class.java.simpleName
+    }
+
+    private companion object {
+        const val TAG = "SpotUi"
+        const val ENGINE_TIMEOUT_MS = 30_000L
+        const val POLL_INTERVAL_MS = 250L
+
+        /** Each track is its own access-point round trip. */
+        const val PLAYLIST_LIMIT = 100
+
+        const val SEARCH_DEBOUNCE_MS = 350L
+    }
+}

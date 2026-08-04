@@ -1,0 +1,4 @@
+/Users/emanuele/Progetto Spotify/app/.cxx/RelWithDebInfo/151m4dr6/arm64-v8a/CMakeFiles/pffft.dir
+/Users/emanuele/Progetto Spotify/app/.cxx/RelWithDebInfo/151m4dr6/arm64-v8a/CMakeFiles/spotstretch.dir
+/Users/emanuele/Progetto Spotify/app/.cxx/RelWithDebInfo/151m4dr6/arm64-v8a/CMakeFiles/edit_cache.dir
+/Users/emanuele/Progetto Spotify/app/.cxx/RelWithDebInfo/151m4dr6/arm64-v8a/CMakeFiles/rebuild_cache.dir
