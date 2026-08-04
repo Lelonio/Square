@@ -22,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
@@ -196,7 +197,21 @@ fun NowPlayingSheet(
                         .height(fullHeight)
                         .fillMaxWidth()
                         .graphicsLayer {
-                            alpha = expandedAlpha(progress.value)
+                            val f = progress.value.coerceIn(0f, 1f)
+                            alpha = expandedAlpha(f)
+                            // Contracts towards the bottom edge as it closes.
+                            //
+                            // Without this the player was a full-size screen
+                            // being slid down behind a shrinking window: every
+                            // element kept its size right up to the moment it
+                            // was gone, which reads as a screen leaving rather
+                            // than as a panel collapsing into the bar. The
+                            // origin is the bottom because that is where the bar
+                            // it is becoming actually is.
+                            val scale = COLLAPSE_SCALE + (1f - COLLAPSE_SCALE) * f
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = TransformOrigin(0.5f, 1f)
                             // Modulated rather than composited: the default
                             // draws the whole subtree into an offscreen buffer
                             // the size of the window before applying alpha,
@@ -241,6 +256,14 @@ private fun collapsedAlpha(fraction: Float): Float =
 
 private fun expandedAlpha(fraction: Float): Float =
     ((fraction - 0.15f) / 0.5f).coerceIn(0f, 1f)
+
+/**
+ * How far the player is shrunk when fully collapsed.
+ *
+ * Enough to read as a contraction; much below this and the text inside starts
+ * to look like it is being squashed rather than moving away.
+ */
+private const val COLLAPSE_SCALE = 0.86f
 
 /** Margin the collapsed bar keeps from the edges of the window. */
 private val SIDE_MARGIN = 16.dp
