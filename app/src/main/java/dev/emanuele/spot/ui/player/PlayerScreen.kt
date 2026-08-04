@@ -41,6 +41,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -81,6 +82,15 @@ import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.Repeat
 import com.adamglin.phosphoricons.regular.RepeatOnce
 import com.adamglin.phosphoricons.regular.Shuffle
+import kotlin.math.abs
+
+/**
+ * How much of the swipe the clip takes, when it stands in for the cover.
+ *
+ * Damped: the Canvas is the backdrop every piece of glass above it samples, and
+ * moving it one to one drags the whole screen's refraction along with it.
+ */
+private const val CANVAS_SWIPE_FOLLOW = 0.35f
 
 /**
  * The player, as a liquid-glass prototype.
@@ -144,6 +154,12 @@ fun PlayerScreen(
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
 
+    // How far the track-change swipe has been dragged, when the clip stands in
+    // for the cover. Written from the gesture and read only inside a
+    // graphicsLayer, so following the finger costs a redraw of one layer rather
+    // than a recomposition of the player.
+    val canvasShift = remember { mutableFloatStateOf(0f) }
+
     // The Canvas gets a layer of its own so the glass over it refracts the clip
     // rather than the app's blurred artwork. It is combined with the app
     // backdrop rather than replacing it, because with no Canvas this layer is
@@ -170,6 +186,21 @@ fun PlayerScreen(
             Modifier
                 .fillMaxSize()
                 .then(if (canvasBlur > 0.dp) Modifier.blur(canvasBlur) else Modifier)
+                // The clip follows a track-change swipe, since with a Canvas
+                // playing it is the only thing on screen the gesture could be
+                // about. Damped, because the clip is the backdrop of everything
+                // above it and moving it one to one drags the whole screen's
+                // refraction with it.
+                .graphicsLayer {
+                    val shift = canvasShift.floatValue
+                    if (shift == 0f) return@graphicsLayer
+                    translationX = shift * CANVAS_SWIPE_FOLLOW
+                    val travel = (abs(shift) / size.width).coerceIn(0f, 1f)
+                    val shrink = 1f - travel * 0.12f
+                    scaleX = shrink
+                    scaleY = shrink
+                    alpha = 1f - travel * 0.5f
+                }
                 .layerBackdrop(canvasBackdrop),
         ) {
             Crossfade(
@@ -229,6 +260,7 @@ fun PlayerScreen(
                 ) {
                     TopBar(
                         backdrop = glassBackdrop,
+                        panel = panel,
                         onCollapse = onCollapse,
                         onOpenDevices = onOpenDevices,
                     )
@@ -343,6 +375,7 @@ fun PlayerScreen(
                                     canGoNext = state.hasNext,
                                     canGoPrevious = state.hasPrevious,
                                     followFinger = false,
+                                    onDrag = { canvasShift.floatValue = it },
                                     modifier = Modifier.fillMaxSize(),
                                 ) {
                                     Box(Modifier.fillMaxSize())
@@ -496,6 +529,7 @@ fun PlayerScreen(
 @Composable
 private fun TopBar(
     backdrop: Backdrop,
+    panel: PlayerPanel,
     onCollapse: () -> Unit,
     onOpenDevices: () -> Unit,
 ) {
@@ -508,12 +542,26 @@ private fun TopBar(
         GlassButton(backdrop, onClick = onCollapse) {
             Icon(PhosphorIcons.Regular.CaretDown, contentDescription = "Chiudi")
         }
-        Text(
-            "In riproduzione",
-            style = MaterialTheme.typography.titleMedium,
-            textAlign = TextAlign.Center,
+        // Names whatever the middle of the screen is currently showing, so the
+        // switch below has a label without carrying one.
+        Crossfade(
+            targetState = when (panel) {
+                PlayerPanel.LYRICS -> "Testo"
+                PlayerPanel.EFFECTS -> "Effetti"
+                PlayerPanel.QUEUE -> "In coda"
+                PlayerPanel.NONE -> "In riproduzione"
+            },
+            animationSpec = tween(220),
+            label = "topBarTitle",
             modifier = Modifier.weight(1f),
-        )
+        ) { title ->
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         // Connect gets the permanent slot rather than hiding behind "more":
         // moving playback to another speaker is the thing you reach for while
         // the player is open, and the queue already has its own tab below.
@@ -849,3 +897,4 @@ private fun LyricsStage(
         }
     }
 }
+

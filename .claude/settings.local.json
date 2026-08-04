@@ -102,7 +102,8 @@
       "Bash(xargs -0 sed -i '' -e s/Magnifyingglass/MagnifyingGlass/g -e s/Musicnotes/MusicNotes/g -e s/Skipback/SkipBack/g -e s/Skipforward/SkipForward/g -e s/Arrowclockwise/ArrowClockwise/g -e s/Arrowleft/ArrowLeft/g -e s/Arrowsdownup/ArrowsDownUp/g -e s/Caretdown/CaretDown/g -e s/Devicemobile/DeviceMobile/g -e s/Dotsthree/DotsThree/g -e s/Listbullets/ListBullets/g -e s/Slidershorizontal/SlidersHorizontal/g -e s/Speakerhifi/SpeakerHifi/g -e s/Squaresfour/SquaresFour/g -e s/Textalignleft/TextAlignLeft/g -e s/Vinylrecord/VinylRecord/g -e s/RepeatOne/RepeatOnce/g)",
       "Bash(./gradlew :app:assembleDev -q)",
       "Bash(git commit -q -m 'Swap every icon to Phosphor *)",
-      "Bash(git commit -q -m 'Close the player by gesture, not by dragging it around *)"
+      "Bash(git commit -q -m 'Close the player by gesture, not by dragging it around *)",
+      "Bash(git commit -q -m 'Open the player with a transform instead of a resize *)"
     ]
   }
 }

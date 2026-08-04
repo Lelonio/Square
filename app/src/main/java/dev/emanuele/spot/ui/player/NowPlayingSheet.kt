@@ -39,12 +39,21 @@ import kotlin.math.abs
  * screens, both on stage at once, and no amount of shared-element work hides
  * that the bar and the player are two different things pretending to be one.
  *
- * Here they *are* one. A single container sits at the bottom of the window and
- * its height runs from the bar's to the whole window's; the player is inside it
- * the entire time, laid out at full height and revealed as the container grows,
- * and the bar's row fades out over the first quarter of the travel. Nothing is
- * re-measured while it moves — the player keeps its final layout throughout —
- * so the motion is a single edge sliding up, not two screens dissolving.
+ * They still are, in the sense that matters: one `progress` value owns both, so
+ * the bar and the player are two views of a single state rather than two screens
+ * taking turns.
+ *
+ * How that value is spent went through a growing container — the bar's height
+ * stretched up to the window's, with the player already laid out full size
+ * inside it. It looked right and it was never quite smooth: resizing that
+ * container re-ran a layout pass over a screen holding a video surface and
+ * several pieces of live glass, sixty times a second, and deferring every state
+ * read only moved the cost around.
+ *
+ * So the travel is now a transform and nothing else. The player is full size
+ * from the first frame, rises a little way into place and fades in as the bar
+ * fades out under it. One layer, scaled and faded on the render thread, with no
+ * measure or layout anywhere in the frame.
  *
  * The same value is what a drag writes to, which is why dragging down works at
  * any point and can be released anywhere: expansion is a position, not an event.
@@ -121,132 +130,79 @@ fun NowPlayingSheet(
             }
         }
 
-        val marginPx = with(density) { SIDE_MARGIN.roundToPx() }
-        val insetPx = with(density) { bottomInset.roundToPx() }
-        val collapsedPx = with(density) { collapsedHeight.roundToPx() }
-        val fullPx = with(density) { fullHeight.roundToPx() }
-
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                // Size, margins and inset in one measure pass, all read here
-                // rather than in composition.
-                .layout { measurable, constraints ->
-                    val f = progress.value.coerceIn(0f, 1f)
-                    val margin = ((1f - f) * marginPx).toInt()
-                    val inset = ((1f - f) * insetPx).toInt()
-                    val height = collapsedPx + ((fullPx - collapsedPx) * f).toInt()
-
-                    val width = (constraints.maxWidth - margin * 2).coerceAtLeast(0)
-                    val placeable = measurable.measure(
-                        constraints.copy(
-                            minWidth = width,
-                            maxWidth = width,
-                            minHeight = height,
-                            maxHeight = height,
-                        ),
-                    )
-                    layout(constraints.maxWidth, height + inset) {
-                        placeable.place(margin, 0)
-                    }
-                }
-                .graphicsLayer {
-                    val f = progress.value.coerceIn(0f, 1f)
-                    shape = RoundedCornerShape(SHEET_CORNER * (1f - f))
-                    clip = true
-                }
-                .draggable(
-                    state = draggable,
-                    orientation = Orientation.Vertical,
-                    onDragStopped = { velocity ->
-                        // Velocity decides when the gesture was a flick;
-                        // otherwise the halfway point does. Without the
-                        // velocity test a fast short flick would snap back,
-                        // which reads as the gesture having been ignored.
-                        val target = when {
-                            abs(velocity) > FLING_VELOCITY -> if (velocity < 0) 1f else 0f
-                            progress.value > 0.5f -> 1f
-                            else -> 0f
-                        }
-                        // Handed to the spring rather than dropped. Releasing
-                        // mid-drag otherwise restarted the motion from a dead
-                        // stop, which is the one thing a tap-to-open never does
-                        // and is why closing felt unlike opening reversed.
-                        settle(target, initialVelocity = -velocity / travelPx)
+        // The player, full size from the first frame to the last. Nothing about
+        // the travel touches measure or layout any more: the growing container
+        // that used to drive it re-ran a layout pass on the whole player every
+        // frame, and no amount of deferring state reads makes that free on a
+        // screen with a video surface and a stack of glass in it. What is left
+        // is one layer being scaled and faded, which the render thread does
+        // without waking the UI thread at all.
+        if (expandedVisible) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val f = progress.value.coerceIn(0f, 1f)
+                        alpha = f
+                        // Rises into place from just below, slightly smaller.
+                        // Small numbers on purpose — this is the player arriving
+                        // where it already is, not flying in from off-screen.
+                        val scale = ENTER_SCALE + (1f - ENTER_SCALE) * f
+                        scaleX = scale
+                        scaleY = scale
+                        translationY = (1f - f) * size.height * ENTER_TRAVEL
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        // Rounded while it is on its way in and square once it
+                        // has arrived, so it reads as a sheet rather than as a
+                        // screen appearing.
+                        shape = RoundedCornerShape(SHEET_CORNER * (1f - f))
+                        clip = true
+                        // Modulated rather than composited: the default draws
+                        // the whole subtree into an offscreen buffer the size of
+                        // the window before applying alpha, every frame.
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
                     },
-                ),
-        ) {
-            if (expandedVisible) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .height(fullHeight)
-                        .fillMaxWidth()
-                        // Tracks the travel one to one, so what is behind the
-                        // player — the page it was opened from — is visible
-                        // through it while it is being dragged away. It used to
-                        // reach full opacity in the first quarter, which made
-                        // the content slide down over a background that never
-                        // moved and never let anything through.
-                        .graphicsLayer { alpha = progress.value.coerceIn(0f, 1f) },
+            ) {
+                background()
+                androidx.compose.runtime.CompositionLocalProvider(
+                    LocalGlassEnabled provides settled,
                 ) {
-                    background()
+                    expandedContent()
                 }
             }
+        }
 
-            // Laid out at its final size from the start and simply uncovered.
-            // Re-measuring a screen this complex on every frame of the travel is
-            // what would make it stutter.
-            if (expandedVisible) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .height(fullHeight)
-                        .fillMaxWidth()
-                        .graphicsLayer {
-                            val f = progress.value.coerceIn(0f, 1f)
-                            alpha = expandedAlpha(f)
-                            // Contracts towards the bottom edge as it closes.
-                            //
-                            // Without this the player was a full-size screen
-                            // being slid down behind a shrinking window: every
-                            // element kept its size right up to the moment it
-                            // was gone, which reads as a screen leaving rather
-                            // than as a panel collapsing into the bar. The
-                            // origin is the bottom because that is where the bar
-                            // it is becoming actually is.
-                            val scale = COLLAPSE_SCALE + (1f - COLLAPSE_SCALE) * f
-                            scaleX = scale
-                            scaleY = scale
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            // Modulated rather than composited: the default
-                            // draws the whole subtree into an offscreen buffer
-                            // the size of the window before applying alpha,
-                            // every frame. Modulating is per-draw-call and looks
-                            // identical here because nothing in the player
-                            // overlaps itself.
-                            compositingStrategy = CompositingStrategy.ModulateAlpha
+        // The bar stays where it is and fades under the arriving player. It used
+        // to be the same surface, stretched — which is the effect this is
+        // giving up, and with it the stutter that came from stretching it.
+        if (collapsedVisible) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = SIDE_MARGIN)
+                    .padding(bottom = bottomInset)
+                    .height(collapsedHeight)
+                    .fillMaxWidth()
+                    .graphicsLayer { alpha = collapsedAlpha(progress.value) }
+                    .draggable(
+                        state = draggable,
+                        orientation = Orientation.Vertical,
+                        onDragStopped = { velocity ->
+                            // Velocity decides when the gesture was a flick;
+                            // otherwise the halfway point does. Without the
+                            // velocity test a fast short flick would snap back,
+                            // which reads as the gesture having been ignored.
+                            val target = when {
+                                abs(velocity) > FLING_VELOCITY -> if (velocity < 0) 1f else 0f
+                                progress.value > 0.5f -> 1f
+                                else -> 0f
+                            }
+                            // Handed to the spring rather than dropped.
+                            settle(target, initialVelocity = -velocity / travelPx)
                         },
-                ) {
-                    androidx.compose.runtime.CompositionLocalProvider(
-                        LocalGlassEnabled provides settled,
-                    ) {
-                        expandedContent()
-                    }
-                }
-            }
-
-            if (collapsedVisible) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .height(collapsedHeight)
-                        .fillMaxWidth()
-                        .graphicsLayer { alpha = collapsedAlpha(progress.value) },
-                ) {
-                    collapsedContent()
-                }
+                    ),
+            ) {
+                collapsedContent()
             }
         }
     }
@@ -265,19 +221,14 @@ fun NowPlayingSheet(
 private fun collapsedAlpha(fraction: Float): Float =
     (1f - fraction / HANDOVER).coerceIn(0f, 1f)
 
-private fun expandedAlpha(fraction: Float): Float =
-    ((fraction - HANDOVER) / (1f - HANDOVER) * 2f).coerceIn(0f, 1f)
-
 /** Where the bar has finished leaving and the player begins to arrive. */
 private const val HANDOVER = 0.3f
 
-/**
- * How far the player is shrunk when fully collapsed.
- *
- * Enough to read as a contraction; much below this and the text inside starts
- * to look like it is being squashed rather than moving away.
- */
-private const val COLLAPSE_SCALE = 0.86f
+/** How small the player starts, growing to its own size as it arrives. */
+private const val ENTER_SCALE = 0.92f
+
+/** How far below its place it starts, as a fraction of its height. */
+private const val ENTER_TRAVEL = 0.06f
 
 /** Margin the collapsed bar keeps from the edges of the window. */
 private val SIDE_MARGIN = 16.dp

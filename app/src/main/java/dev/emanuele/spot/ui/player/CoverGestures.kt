@@ -6,7 +6,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -43,6 +47,13 @@ fun CoverGestures(
      * the swipe refers to is the clip behind this box rather than the box.
      */
     followFinger: Boolean = true,
+    /**
+     * How far the gesture has travelled, in pixels, for whoever is drawing the
+     * feedback. Reported when the swiped thing is not inside this box — over a
+     * Canvas the clip is drawn behind the whole screen, so it is the only thing
+     * that can move, and it is not ours to place.
+     */
+    onDrag: (Float) -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val offsetX = remember { Animatable(0f) }
@@ -52,6 +63,11 @@ fun CoverGestures(
 
     val screenWidth = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
     val threshold = screenWidth * 0.22f
+
+    val report by rememberUpdatedState(onDrag)
+    LaunchedEffect(Unit) {
+        snapshotFlow { offsetX.value }.collect { report(it) }
+    }
 
     Box(
         modifier
