@@ -208,11 +208,21 @@ fun SpotApp(
     val expand = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
 
-    // Opened from outside — a tap on the media notification. Skipped on the
-    // first composition of a launch that did not ask for it, since the counter
-    // starts at zero.
+    // Opened from outside — a tap on the media notification.
+    //
+    // Held as a pending request rather than acted on immediately: the media
+    // controller connects a moment after the activity starts, so a launch
+    // straight from the notification arrives here with no track yet and the
+    // player would have nothing to open onto. This waits for one.
+    var pendingOpen by remember { mutableStateOf(false) }
     LaunchedEffect(openPlayer) {
-        if (openPlayer > 0 && playback.hasItem) expand.animateTo(1f, expandSpec)
+        if (openPlayer > 0) pendingOpen = true
+    }
+    LaunchedEffect(pendingOpen, playback.hasItem) {
+        if (pendingOpen && playback.hasItem) {
+            pendingOpen = false
+            expand.animateTo(1f, expandSpec)
+        }
     }
 
     // Measured rather than assumed. The constant this replaced was 62dp while

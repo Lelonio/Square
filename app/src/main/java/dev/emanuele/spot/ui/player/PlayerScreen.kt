@@ -232,12 +232,12 @@ fun PlayerScreen(
                         modifier = Modifier.fillMaxSize(),
                     )
 
-                    clip.isVideo -> AsyncImage(
-                        model = state.artworkUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    // Nothing at all, rather than the cover: what shows through
+                    // is the app's own blurred artwork, which is the same
+                    // picture out of focus and reads as the clip softening for a
+                    // moment. Dropping a sharp cover in for the length of the
+                    // animation was worse than the black rectangle it fixed.
+                    clip.isVideo -> Unit
 
                     // A handful of canvases are stills rather than clips.
                     else -> AsyncImage(
