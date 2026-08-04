@@ -60,7 +60,8 @@
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Lay the bottom tabs out with LiquidBottomTab *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Turn the home page into a feed *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Rewrite the home page on the glass material *)",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Home: profile header, recency-ordered playlists, plainer cards *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Home: profile header, recency-ordered playlists, plainer cards *)",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Collapsing home header, sharper cards, library rewrite *)"
     ]
   }
 }

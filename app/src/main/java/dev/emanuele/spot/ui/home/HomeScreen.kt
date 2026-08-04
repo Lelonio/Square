@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -23,18 +24,24 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import com.kyant.backdrop.Backdrop
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.CatalogTrack
@@ -133,49 +140,44 @@ fun HomeScreen(
             val showArtists = filter == Feed.ALL || filter == Feed.ARTISTS
             val showLibrary = filter == Feed.ALL || filter == Feed.LIBRARY
 
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding) {
-                item(contentType = "greeting") {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 24.dp, end = 24.dp, top = 34.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                greeting().uppercase(),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = InkDim,
-                            )
-                            Text(
-                                state.displayName,
-                                style = MaterialTheme.typography.displayLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 2.dp),
-                            )
-                        }
+            val listState = rememberLazyListState()
 
-                        // Falls back to the generated cover keyed on the name,
-                        // which is the same thing every other missing image in
-                        // the app gets rather than a grey circle.
-                        Artwork(
-                            url = state.avatarUrl,
-                            title = state.displayName,
-                            modifier = Modifier
-                                .padding(start = 14.dp)
-                                .size(46.dp)
-                                .softShadow(CircleShape, elevation = 10.dp),
-                            corner = 23.dp,
-                            decodeSize = 46.dp,
-                        )
-                    }
+            // How far the header has collapsed, 0 to 1.
+            //
+            // Read from the list rather than driven by a nested-scroll
+            // connection: the header is a sibling of the list, not part of it,
+            // so it never consumes scroll and the list keeps its own fling
+            // untouched. Past the first item the header is simply fully
+            // collapsed — asking for the exact offset of something scrolled far
+            // off screen means measuring items that no longer exist.
+            val collapse by remember {
+                derivedStateOf {
+                    if (listState.firstVisibleItemIndex > 0) 1f
+                    else (listState.firstVisibleItemScrollOffset / COLLAPSE_DISTANCE_PX)
+                        .coerceIn(0f, 1f)
                 }
+            }
 
-                item(contentType = "filters") {
-                    FilterRow(filter, backdrop) { filter = it }
-                }
+            Column(Modifier.fillMaxSize()) {
+                Header(
+                    name = state.displayName,
+                    avatarUrl = state.avatarUrl,
+                    collapse = collapse,
+                    filter = filter,
+                    backdrop = backdrop,
+                    topPadding = contentPadding.calculateTopPadding(),
+                    onFilter = { filter = it },
+                )
 
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    state = listState,
+                    // The header already covers the status bar, so only the
+                    // bottom inset is left for the list.
+                    contentPadding = PaddingValues(
+                        bottom = contentPadding.calculateBottomPadding(),
+                    ),
+                ) {
                 if (showReleases && feed.newReleases.isNotEmpty()) {
                     item(contentType = "heading") { Heading("Novità") }
                     // Cards rather than another row of thumbnails. A carousel
@@ -228,8 +230,91 @@ fun HomeScreen(
                 }
 
                 item(contentType = "tail") { Box(Modifier.height(24.dp)) }
+                }
             }
         }
+    }
+}
+
+/**
+ * Name, picture and filters, always on screen.
+ *
+ * It shrinks rather than sliding away: the filter chips are a control, and a
+ * control that has to be scrolled back to before it can be used may as well not
+ * be there. What collapses is only the part that is decoration — the greeting
+ * line and the size of the name.
+ */
+@Composable
+private fun Header(
+    name: String,
+    avatarUrl: String?,
+    collapse: Float,
+    filter: Feed,
+    backdrop: Backdrop,
+    topPadding: Dp,
+    onFilter: (Feed) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = topPadding),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = 24.dp,
+                    end = 24.dp,
+                    top = lerp(20.dp, 6.dp, collapse),
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                // Height goes with the alpha. Fading it alone would leave the
+                // header the same size with a blank line in it.
+                if (collapse < 1f) {
+                    Text(
+                        greeting().uppercase(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = InkDim,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .height(lerp(18.dp, 0.dp, collapse))
+                            .graphicsLayer { alpha = 1f - collapse },
+                    )
+                }
+                Text(
+                    name,
+                    style = MaterialTheme.typography.displayLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // Scaled rather than swapped for a smaller style: a style
+                    // change is a jump, and this has to track a finger.
+                    modifier = Modifier.graphicsLayer {
+                        val scale = 1f - 0.34f * collapse
+                        scaleX = scale
+                        scaleY = scale
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                    },
+                )
+            }
+
+            // Falls back to the generated cover keyed on the name, which is what
+            // every other missing image in the app gets rather than a grey
+            // circle.
+            Artwork(
+                url = avatarUrl,
+                title = name,
+                modifier = Modifier
+                    .padding(start = 14.dp)
+                    .size(lerp(46.dp, 36.dp, collapse))
+                    .softShadow(CircleShape, elevation = 10.dp),
+                corner = 23.dp,
+                decodeSize = 46.dp,
+            )
+        }
+
+        FilterRow(filter, backdrop, onFilter)
     }
 }
 
@@ -276,56 +361,63 @@ private fun FeedCard(item: SearchItem, onClick: () -> Unit) {
     val shape = RoundedCornerShape(28.dp)
     Box(
         Modifier
-            .padding(horizontal = 20.dp, vertical = 7.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
             .fillMaxWidth()
-            .height(320.dp)
-            .softShadow(shape, elevation = 22.dp, spot = 0.24f)
+            .softShadow(shape, elevation = 26.dp, spot = 0.55f)
             .clip(shape)
             .clickable(onClick = onClick),
     ) {
+        // The same cover twice, and that is the point.
+        //
+        // Spotify serves album art at 640px and no larger, so a cover stretched
+        // across a 1080px-wide card is upscaled by nearly two and looks soft —
+        // which is exactly the "low quality covers" this replaced. Blurred, that
+        // upscaling is invisible, so the background can be full width while the
+        // cover that has to be sharp is displayed well under its native size.
         Artwork(
             url = item.artworkUrl,
             title = item.title,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .matchParentSize()
+                .blur(36.dp),
             corner = 0.dp,
+            decodeSize = 200.dp,
         )
-
-        // The caption sits straight on the cover, so this gradient is what makes
-        // it readable rather than decoration. Weighted to the bottom third: any
-        // higher and it starts dimming the part of the picture the card exists
-        // to show.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.55f to Color.Black.copy(alpha = 0.18f),
-                        1f to Color.Black.copy(alpha = 0.78f),
-                    ),
-                ),
-        )
+        Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.42f)))
 
         Column(
             Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 22.dp, vertical = 20.dp),
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Artwork(
+                url = item.artworkUrl,
+                title = item.title,
+                modifier = Modifier
+                    .size(COVER_SIZE)
+                    .softShadow(RoundedCornerShape(18.dp), elevation = 24.dp, spot = 0.5f),
+                corner = 18.dp,
+                decodeSize = COVER_SIZE,
+            )
             Text(
                 item.title,
                 style = MaterialTheme.typography.headlineLarge,
                 color = Color.White,
+                textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 18.dp),
             )
             if (item.subtitle.isNotBlank()) {
                 Text(
                     item.subtitle,
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.76f),
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = 3.dp),
                 )
             }
         }
@@ -479,6 +571,18 @@ private fun greeting(): String = when (Calendar.getInstance().get(Calendar.HOUR_
 
 /** A harder film for the chip that is on; see the note at the call site. */
 private val SelectedFilm = Color.White.copy(alpha = 0.26f)
+
+/**
+ * How far the list scrolls before the header is fully collapsed, in pixels.
+ *
+ * Pixels rather than dp because it is compared against a scroll offset, which
+ * the list reports in pixels; converting per frame to compare two numbers would
+ * be work for nothing.
+ */
+private const val COLLAPSE_DISTANCE_PX = 140f
+
+/** Comfortably under the 640px Spotify serves, so it is never upscaled. */
+private val COVER_SIZE = 210.dp
 
 private const val FEED_SIZE = 6
 private const val CAROUSEL_SIZE = 8

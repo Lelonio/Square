@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
@@ -50,6 +51,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.PlaybackParameters
@@ -277,6 +279,8 @@ fun SpotApp(
                                 onRetry = { viewModel.refresh() },
                                 onLogOut = viewModel::logOut,
                                 onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
+                                playlistOrder = playlistOrder,
+                                backdrop = artBackdrop,
                             )
                         }
 
@@ -484,12 +488,37 @@ private fun BottomBar(
             .padding(bottom = bottomInset + 8.dp, top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LiquidBottomTabs(
+        Box(Modifier.weight(1f)) {
+            // While the search screen is open, taps on the tabs have to be
+            // caught here rather than by the bar.
+            //
+            // The bar draws its sliding indicator *over* the selected tab, and
+            // that indicator carries the drag gesture, so it swallows taps on
+            // whatever it is sitting on. Search is not one of the tabs, so the
+            // selection falls back to Home — and tapping Home then hit the
+            // indicator, matched the index the bar already held, and produced no
+            // event at all. That was the "search does not close" bug.
+            if (route == Routes.SEARCH) {
+                Row(Modifier.matchParentSize().zIndex(1f)) {
+                    routes.forEach { tab ->
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(
+                                    interactionSource = null,
+                                    indication = null,
+                                ) { onSelect(tab) },
+                        )
+                    }
+                }
+            }
+
+            LiquidBottomTabs(
             selectedTabIndex = selectedTabIndex,
             onTabSelected = { onSelect(routes[it]) },
             backdrop = backdrop,
             tabsCount = routes.size,
-            modifier = Modifier.weight(1f),
             // Both upstream defaults are wrong here: the accent is a system blue
             // that belongs to no part of this palette, and the container is a
             // 40% fill that made the bar a solid slab beside the other glass.
@@ -505,6 +534,7 @@ private fun BottomBar(
                 Icons.Outlined.LibraryMusic,
                 selected == 1,
             ) { onSelect(Routes.LIBRARY) }
+            }
         }
 
         Spacer(Modifier.width(10.dp))
