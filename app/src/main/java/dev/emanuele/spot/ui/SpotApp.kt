@@ -371,6 +371,7 @@ fun SpotApp(
                         // The measured bar already carries the navigation
                         // inset; the gap is what keeps the two from touching.
                         bottomInset = barHeight + 6.dp,
+                        background = { AppBackdrop(playback.artworkUrl) },
                         collapsedContent = {
                             MiniPlayer(
                                 state = playback,

@@ -55,6 +55,15 @@ fun NowPlayingSheet(
     progress: Animatable<Float, *>,
     /** Space the collapsed bar leaves for the tab bar beneath it. */
     bottomInset: Dp,
+    /**
+     * Drawn under the player, fading in with it.
+     *
+     * The player used to be a destination stacked over the app's own backdrop
+     * and so had no background of its own. As a sheet it sits *above* the page,
+     * so without this the home screen showed through every track that has no
+     * Canvas to cover it.
+     */
+    background: @Composable () -> Unit,
     collapsedContent: @Composable () -> Unit,
     expandedContent: @Composable () -> Unit,
 ) {
@@ -118,6 +127,21 @@ fun NowPlayingSheet(
                     },
                 ),
         ) {
+            if (fraction > 0.001f) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .height(fullHeight)
+                        .fillMaxWidth()
+                        // Opaque before the player's own content arrives, or the
+                        // page behind would read through it at the start of
+                        // every expansion.
+                        .graphicsLayer { alpha = (fraction / 0.25f).coerceIn(0f, 1f) },
+                ) {
+                    background()
+                }
+            }
+
             // Laid out at its final size from the start and simply uncovered.
             // Re-measuring a screen this complex on every frame of the travel is
             // what would make it stutter.
