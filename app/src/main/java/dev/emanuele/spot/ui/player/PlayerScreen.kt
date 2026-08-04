@@ -123,6 +123,9 @@ fun PlayerScreen(
     backdrop: Backdrop,
     /** The track's Canvas clip, or null when it has none. */
     canvas: dev.emanuele.spot.data.CanvasClip?,
+    /** See MiniPlayer: the cover is shared with the bar this screen grew out of. */
+    sharedScope: androidx.compose.animation.SharedTransitionScope? = null,
+    animatedScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
 
@@ -248,7 +251,7 @@ fun PlayerScreen(
                             modifier = Modifier.weight(1f),
                         ) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Cover(state, panel, onNext, onPrevious)
+                                Cover(state, panel, onNext, onPrevious, sharedScope, animatedScope)
                             }
                         }
 
@@ -264,6 +267,7 @@ fun PlayerScreen(
                                 lyrics = lyrics,
                                 loading = lyricsLoading,
                                 positionMs = positionMs,
+                                isPlaying = state.isPlaying,
                                 onSeek = onSeek,
                             )
                         }
@@ -413,6 +417,8 @@ private fun Cover(
     panel: PlayerPanel,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
+    sharedScope: androidx.compose.animation.SharedTransitionScope? = null,
+    animatedScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
 ) {
     val coverFraction by animateFloatAsState(
         targetValue = if (panel == PlayerPanel.NONE) 0.82f else 0.44f,
@@ -455,6 +461,7 @@ private fun Cover(
                 title = title,
                 modifier = Modifier
                     .fillMaxSize()
+                    .sharedArtwork(sharedScope, animatedScope)
                     .softShadow(
                         RoundedCornerShape(26.dp),
                         elevation = (10 + 30 * playingLift).dp,
@@ -690,6 +697,7 @@ private fun LyricsStage(
     lyrics: dev.emanuele.spot.data.Lyrics?,
     loading: Boolean,
     positionMs: State<Long>,
+    isPlaying: Boolean,
     onSeek: (Long) -> Unit,
 ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -708,6 +716,7 @@ private fun LyricsStage(
             else -> LyricsView(
                 lyrics = lyrics,
                 positionMs = positionMs,
+                isPlaying = isPlaying,
                 onSeek = onSeek,
                 modifier = Modifier.fillMaxSize(),
             )

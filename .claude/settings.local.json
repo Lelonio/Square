@@ -63,7 +63,9 @@
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Home: profile header, recency-ordered playlists, plainer cards *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Collapsing home header, sharper cards, library rewrite *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Lyrics centre stage over a blurred Canvas; fix the card blur artefact *)",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Word-level lyric highlight, list fade, chips follow the scroll *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Word-level lyric highlight, list fade, chips follow the scroll *)",
+      "Bash(cd \"/Users/emanuele/Progetto Spotify\" && grep -rn \"sharedElement\\\\|SharedTransitionLayout\" ~/.gradle/caches/modules-2/files-2.1/androidx.compose.animation/ 2>/dev/null | head -2; ls ~/.gradle/caches/modules-2/files-2.1/androidx.compose.animation/ 2>/dev/null)",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Expand the mini player into the player; smooth the lyric sweep *)"
     ]
   }
 }

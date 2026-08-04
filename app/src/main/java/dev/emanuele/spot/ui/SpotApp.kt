@@ -1,7 +1,11 @@
 package dev.emanuele.spot.ui
 
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -101,6 +105,10 @@ object Routes {
 
 private val BottomBarHeight = 62.dp
 
+/** How long the mini player takes to become the player, and back. */
+private const val EXPAND_MS = 420
+
+@OptIn(ExperimentalSharedTransitionApi::class)
 @UnstableApi
 @Composable
 fun SpotApp(
@@ -191,6 +199,10 @@ fun SpotApp(
         // here, or every Text that does not set one explicitly stays black on
         // the darkened artwork.
         CompositionLocalProvider(LocalContentColor provides Ink) {
+            // Wraps everything that takes part in the expand animation: the
+            // mini player lives outside the NavHost, and a shared element only
+            // works between two composables under the same layout.
+            SharedTransitionLayout {
             Box(Modifier.fillMaxSize()) {
                 val navController = rememberNavController()
                 val currentEntry by navController.currentBackStackEntryAsState()
@@ -320,11 +332,15 @@ fun SpotApp(
 
                         composable(
                             Routes.PLAYER,
-                            // Rises from the bottom, like the bar it grew out of.
-                            enterTransition = { slideInVertically { it } },
-                            exitTransition = { slideOutVertically { it } },
-                            popEnterTransition = { slideInVertically { it } },
-                            popExitTransition = { slideOutVertically { it } },
+                            // A plain fade, deliberately. The motion belongs to
+                            // the artwork: it is a shared element, so it travels
+                            // from the mini player's 42dp thumbnail to the full
+                            // cover and back. Sliding the screen as well would
+                            // be two animations describing the same thing.
+                            enterTransition = { fadeIn(tween(EXPAND_MS)) },
+                            exitTransition = { fadeOut(tween(EXPAND_MS)) },
+                            popEnterTransition = { fadeIn(tween(EXPAND_MS)) },
+                            popExitTransition = { fadeOut(tween(EXPAND_MS)) },
                         ) {
                             PlayerScreen(
                                 state = playback,
@@ -372,6 +388,8 @@ fun SpotApp(
                                 onDeletePreset = viewModel::deleteEffectPreset,
                                 backdrop = artBackdrop,
                                 canvas = canvas,
+                                sharedScope = this@SharedTransitionLayout,
+                                animatedScope = this@composable,
                             )
                         }
                     }
@@ -384,23 +402,32 @@ fun SpotApp(
                 //
                 // Both survive navigation, and both step aside on the full
                 // player, which already carries the same controls.
-                if (!onPlayer) {
-                    Column(
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth(),
+                Column(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth(),
+                ) {
+                    // An AnimatedVisibility rather than an `if`, because the
+                    // shared element needs a scope to animate within: this is
+                    // the half of the transition that shrinks back into the bar.
+                    AnimatedVisibility(
+                        visible = !onPlayer && playback.hasItem,
+                        enter = fadeIn(tween(EXPAND_MS)),
+                        exit = fadeOut(tween(EXPAND_MS)),
                     ) {
-                        if (playback.hasItem) {
-                            MiniPlayer(
-                                state = playback,
-                                progress = { progressOf(positionMs.value, playback.durationMs) },
-                                backdrop = pageBackdrop,
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                onExpand = { navController.navigate(Routes.PLAYER) },
-                                onTogglePlay = { player?.togglePlay() },
-                                onNext = { player?.seekToNextMediaItem() },
-                            )
-                        }
+                        MiniPlayer(
+                            state = playback,
+                            progress = { progressOf(positionMs.value, playback.durationMs) },
+                            backdrop = pageBackdrop,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            sharedScope = this@SharedTransitionLayout,
+                            animatedScope = this@AnimatedVisibility,
+                            onExpand = { navController.navigate(Routes.PLAYER) },
+                            onTogglePlay = { player?.togglePlay() },
+                            onNext = { player?.seekToNextMediaItem() },
+                        )
+                    }
+                    if (!onPlayer) {
                         BottomBar(
                             route = route,
                             bottomInset = navBar,
@@ -409,6 +436,7 @@ fun SpotApp(
                         )
                     }
                 }
+            }
             }
         }
     }

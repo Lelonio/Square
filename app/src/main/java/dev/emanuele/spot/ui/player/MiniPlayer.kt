@@ -42,6 +42,29 @@ import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.theme.softShadow
 
 /** Persistent bar above the bottom edge; tapping it opens the full player. */
+/**
+ * Marks the artwork as the element shared with the full player.
+ *
+ * An extension rather than an inline block because it is needed identically at
+ * both ends, and the two have to agree on the key or nothing is shared.
+ */
+@Composable
+fun Modifier.sharedArtwork(
+    sharedScope: androidx.compose.animation.SharedTransitionScope?,
+    animatedScope: androidx.compose.animation.AnimatedVisibilityScope?,
+): Modifier {
+    if (sharedScope == null || animatedScope == null) return this
+    return with(sharedScope) {
+        this@sharedArtwork.sharedElement(
+            rememberSharedContentState(key = SHARED_ARTWORK),
+            animatedScope,
+        )
+    }
+}
+
+/** The key both ends of the expand animation agree on. */
+const val SHARED_ARTWORK = "nowPlayingArtwork"
+
 @Composable
 fun MiniPlayer(
     state: PlaybackState,
@@ -53,6 +76,16 @@ fun MiniPlayer(
     /** The layer this bar refracts. */
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
+    /**
+     * The two halves of the expand animation.
+     *
+     * The cover here and the cover on the player screen are declared as the same
+     * shared element, so opening the player grows this bar into that screen
+     * instead of sliding a new one over it. Null when there is no transition to
+     * take part in, which keeps this composable usable on its own.
+     */
+    sharedScope: androidx.compose.animation.SharedTransitionScope? = null,
+    animatedScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
     onExpand: () -> Unit,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
@@ -79,7 +112,14 @@ fun MiniPlayer(
                     .padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Artwork(state.artworkUrl, state.title, Modifier.size(42.dp), corner = 12.dp)
+                Artwork(
+                    state.artworkUrl,
+                    state.title,
+                    Modifier
+                        .size(42.dp)
+                        .sharedArtwork(sharedScope, animatedScope),
+                    corner = 12.dp,
+                )
 
                 // Slides up on a track change, so an auto-advance is visible
                 // without having to be reading the bar at that moment.

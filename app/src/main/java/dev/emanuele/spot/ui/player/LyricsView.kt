@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -50,11 +51,14 @@ import kotlin.math.abs
 fun LyricsView(
     lyrics: Lyrics,
     positionMs: State<Long>,
+    isPlaying: Boolean,
     modifier: Modifier = Modifier,
     onSeek: (Long) -> Unit,
 ) {
-    val listState = rememberLazyListState()
-    val position = positionMs.value
+    // Keyed on the lyrics, so a new track starts at its first line. Kept across
+    // the change, the list stayed wherever the previous song was left.
+    val listState = remember(lyrics) { androidx.compose.foundation.lazy.LazyListState() }
+    val position by rememberSmoothPosition(positionMs, isPlaying)
 
     val activeLine = remember(lyrics, position) {
         if (!lyrics.synced) -1
@@ -109,6 +113,35 @@ fun LyricsView(
             )
         }
     }
+}
+
+/**
+ * The playback position, advanced every frame between reports.
+ *
+ * The player is polled four times a second, which is plenty for a seek bar and
+ * far too coarse for a highlight that sweeps across words: at 250ms steps the
+ * words light up in visible jumps, which is exactly what this was. Between
+ * reports the clock simply runs — playback does too — and every report snaps it
+ * back to the truth, so it can never drift further than one poll.
+ */
+@Composable
+private fun rememberSmoothPosition(source: State<Long>, isPlaying: Boolean): State<Long> {
+    val smoothed = remember { androidx.compose.runtime.mutableLongStateOf(source.value) }
+    val reported = source.value
+
+    androidx.compose.runtime.LaunchedEffect(reported, isPlaying) {
+        smoothed.longValue = reported
+        if (!isPlaying) return@LaunchedEffect
+
+        val startedAt = withFrameMillis { it }
+        while (true) {
+            withFrameMillis { frame ->
+                smoothed.longValue = reported + (frame - startedAt)
+            }
+        }
+    }
+
+    return smoothed
 }
 
 /**
@@ -212,14 +245,27 @@ private fun LyricRow(
             } else {
                 buildAnnotatedString {
                     append(text)
+                    var previousStop = 0f
                     wordStops(text).forEach { (range, stop) ->
-                        if (stop > sungFraction) {
-                            addStyle(
-                                SpanStyle(color = Color.White.copy(alpha = 0.45f)),
-                                range.first,
-                                range.last + 1,
-                            )
-                        }
+                        // Each word lights over its own span rather than
+                        // switching at the moment it starts. A hard switch is
+                        // what made this read as stepping from word to word;
+                        // Apple's version has each one come up as it is reached.
+                        val span = (stop - previousStop).coerceAtLeast(0.0001f)
+                        val lit = ((sungFraction - previousStop) / span).coerceIn(0f, 1f)
+                        previousStop = stop
+                        // Eased at both ends, so a word neither snaps on nor
+                        // finishes brightening a beat before the next begins.
+                        val eased = lit * lit * (3f - 2f * lit)
+                        addStyle(
+                            SpanStyle(
+                                color = Color.White.copy(
+                                    alpha = DIM_WORD_ALPHA + (1f - DIM_WORD_ALPHA) * eased,
+                                ),
+                            ),
+                            range.first,
+                            range.last + 1,
+                        )
                     }
                 }
             }
@@ -250,6 +296,9 @@ private fun LyricRow(
 
 /** Rough line height in px, used to bias the auto-scroll target. */
 private const val LineHeightPx = 60
+
+/** How dim a word is before it has been reached. */
+private const val DIM_WORD_ALPHA = 0.42f
 
 /** How long the last line is assumed to last, having no next line to end it. */
 private const val TAIL_LINE_MS = 4_000L

@@ -107,7 +107,9 @@ fun PlayerPanelSection(
             ) {
                 when (panel) {
                     PlayerPanel.QUEUE -> QueueList(queue, onPlayQueueItem)
-                    PlayerPanel.LYRICS -> LyricsPanel(lyrics, lyricsLoading, positionMs, onSeek)
+                    // Drawn in the middle of the player instead; see
+                    // LyricsStage in PlayerScreen.
+                    PlayerPanel.LYRICS -> Unit
                     PlayerPanel.EFFECTS -> EffectsPanel(
                         speed = speed,
                         pitch = pitch,
@@ -179,20 +181,6 @@ private fun QueueList(queue: List<QueueEntry>, onPlay: (Int) -> Unit) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun LyricsPanel(
-    lyrics: Lyrics?,
-    loading: Boolean,
-    positionMs: androidx.compose.runtime.State<Long>,
-    onSeek: (Long) -> Unit,
-) {
-    when {
-        loading -> EmptyPanel("Carico il testo…")
-        lyrics == null -> EmptyPanel("Nessun testo disponibile")
-        else -> LyricsView(lyrics = lyrics, positionMs = positionMs, onSeek = onSeek)
     }
 }
 
