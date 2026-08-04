@@ -123,7 +123,8 @@
       "Bash(git commit -q -m 'Blur the sheet harder than the page; stop reverb on pause *)",
       "Bash(git commit -q -m 'Reverb released on pause, notification opens the player, no black Canvas *)",
       "Bash(git commit -q -m 'Wait for a track before opening the player; drop the cover stand-in *)",
-      "Bash(git commit -q -m 'Deliver the notification intent; blur what the sheets actually cover *)"
+      "Bash(git commit -q -m 'Deliver the notification intent; blur what the sheets actually cover *)",
+      "Bash(git commit -q -m 'An icon made of the app'\\\\''s own glass *)"
     ]
   }
 }

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  The page the icon's glass sits on.
+
+  Near-black with a warm bloom off-centre, which is what every screen in the app
+  looks like: a dark surface lit unevenly by the artwork behind it. A flat colour
+  would leave the pane above with nothing to refract, and the icon would read as
+  a white shape on a square rather than as a piece of the same material.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="96"
+                android:endY="104"
+                android:startX="12"
+                android:startY="4"
+                android:type="linear">
+                <item android:color="#FF17171C" android:offset="0" />
+                <item android:color="#FF101014" android:offset="0.55" />
+                <item android:color="#FF08080A" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- The bloom. Two of them, so the light has a direction. -->
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="34"
+                android:centerY="30"
+                android:gradientRadius="52"
+                android:type="radial">
+                <item android:color="#66FF7A3D" android:offset="0" />
+                <item android:color="#00FF7A3D" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="84"
+                android:centerY="88"
+                android:gradientRadius="46"
+                android:type="radial">
+                <item android:color="#4D3D7BFF" android:offset="0" />
+                <item android:color="#003D7BFF" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
