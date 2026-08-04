@@ -331,7 +331,22 @@ fun PlayerScreen(
                                 // The clip is the picture, and it is drawn
                                 // behind everything: this slot only has to keep
                                 // the space.
-                                Stage.CANVAS -> Box(Modifier.fillMaxSize())
+                                // With a clip playing there is no cover to
+                                // swipe, and the track-change gesture went with
+                                // it. The slot keeps the same drag handler over
+                                // the clip — nothing moves, because the clip is
+                                // drawn behind this and is not ours to shift,
+                                // but the swipe still changes track.
+                                Stage.CANVAS -> CoverGestures(
+                                    onNext = onNext,
+                                    onPrevious = onPrevious,
+                                    canGoNext = state.hasNext,
+                                    canGoPrevious = state.hasPrevious,
+                                    followFinger = false,
+                                    modifier = Modifier.fillMaxSize(),
+                                ) {
+                                    Box(Modifier.fillMaxSize())
+                                }
                             }
                         }
 

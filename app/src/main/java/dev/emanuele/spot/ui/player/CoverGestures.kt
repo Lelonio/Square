@@ -38,6 +38,11 @@ fun CoverGestures(
     canGoNext: Boolean,
     canGoPrevious: Boolean,
     modifier: Modifier = Modifier,
+    /**
+     * Whether the content tracks the finger. Off over a Canvas, where the thing
+     * the swipe refers to is the clip behind this box rather than the box.
+     */
+    followFinger: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val offsetX = remember { Animatable(0f) }
@@ -51,6 +56,7 @@ fun CoverGestures(
     Box(
         modifier
             .graphicsLayer {
+                if (!followFinger) return@graphicsLayer
                 translationX = offsetX.value
                 // Dimmest exactly where releasing would act.
                 val travel = abs(offsetX.value) / threshold

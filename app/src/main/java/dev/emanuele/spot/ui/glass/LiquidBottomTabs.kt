@@ -83,6 +83,12 @@ fun LiquidBottomTabs(
     // version of the same control, and copying the file to change one number
     // would leave two of them to keep in step.
     height: Dp = 64f.dp,
+    // LOCAL CHANGE: how deep the capsule refracts what is behind it. Upstream's
+    // 24dp is tuned for the 64dp bar; on a shorter one the bend coming down from
+    // the top edge and the bend coming up from the bottom meet in the middle and
+    // leave a hard horizontal seam across the glass. Keep it below half the
+    // height.
+    lensDepth: Dp = 24f.dp,
     content: @Composable RowScope.() -> Unit
 ) {
     val isLightTheme = !isSystemInDarkTheme()
@@ -183,7 +189,7 @@ fun LiquidBottomTabs(
                     effects = {
                         vibrancy()
                         blur(8f.dp.toPx())
-                        lens(24f.dp.toPx(), 24f.dp.toPx())
+                        lens(lensDepth.toPx(), lensDepth.toPx())
                     },
                     layerBlock = {
                         val progress = dampedDragAnimation.pressProgress
@@ -222,8 +228,8 @@ fun LiquidBottomTabs(
                             vibrancy()
                             blur(8f.dp.toPx())
                             lens(
-                                24f.dp.toPx() * progress,
-                                24f.dp.toPx() * progress
+                                lensDepth.toPx() * progress,
+                                lensDepth.toPx() * progress
                             )
                         },
                         highlight = {

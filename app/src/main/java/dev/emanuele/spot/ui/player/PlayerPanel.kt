@@ -109,6 +109,9 @@ fun PlayerPanelSection(
             // transport rather than at the edge of the window, so it has to
             // read as a smaller thing than the app's own navigation.
             height = 42.dp,
+            // Under half the height, or the refraction from the two long edges
+            // meets in the middle and draws a seam across the capsule.
+            lensDepth = 12.dp,
             modifier = Modifier
                 .fillMaxWidth(0.72f)
                 .padding(top = 14.dp),
