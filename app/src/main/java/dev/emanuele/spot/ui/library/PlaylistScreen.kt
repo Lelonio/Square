@@ -46,6 +46,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.runtime.mutableFloatStateOf
 import dev.emanuele.spot.ui.player.GlassSurface
 import dev.emanuele.spot.ui.components.MENU_WIDTH
 import androidx.compose.ui.unit.IntOffset
@@ -148,11 +155,6 @@ fun PlaylistScreen(
     // cover.
     val pageBackdrop = rememberLayerBackdrop()
 
-    // The page *including* its list, for the panes that cover it: the context
-    // menu and the collapsed bar. Nothing inside this layer samples it — the
-    // header's buttons take the plain page colour above — so there is no cycle.
-    val contentBackdrop = rememberLayerBackdrop()
-
     // Which track's menu is open, and where its button is, so the menu can be
     // drawn at the top level rather than inside a row the list may recycle.
     var menuTrack by remember { mutableStateOf<CatalogTrack?>(null) }
@@ -162,21 +164,44 @@ fun PlaylistScreen(
     val density = LocalDensity.current
     val listState = rememberLazyListState()
 
-    // How far the hero has been scrolled away, 0 to 1. Read in a derived state
-    // so the bar it drives recomposes when the answer changes rather than on
-    // every pixel of the scroll.
-    val collapse by remember {
-        derivedStateOf {
-            if (listState.firstVisibleItemIndex > 0) {
-                1f
-            } else {
-                (listState.firstVisibleItemScrollOffset / COLLAPSE_DISTANCE_PX).coerceIn(0f, 1f)
+    val topPadding = contentPadding.calculateTopPadding()
+    val collapsedHeight = topPadding + COLLAPSED_BAR_HEIGHT
+
+    // The header is not in the list. It sits above it and shrinks as the list is
+    // dragged upwards, which is the difference between a hero that collapses and
+    // a hero that scrolls away with a bar appearing over it.
+    //
+    // Nested scroll is what makes the two feel like one surface: the drag
+    // reaches the header first and only what the header cannot use scrolls the
+    // list, so a single gesture closes the cover and then carries on into the
+    // tracks.
+    val collapseRange = with(density) { (HERO_HEIGHT - collapsedHeight).toPx() }
+    var collapsed by remember { mutableFloatStateOf(0f) }
+    val collapseFraction = { (collapsed / collapseRange).coerceIn(0f, 1f) }
+
+    val headerScroll = remember(collapseRange) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y >= 0f) return Offset.Zero
+                val take = (-available.y).coerceAtMost(collapseRange - collapsed)
+                collapsed += take
+                return Offset(0f, -take)
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (available.y <= 0f) return Offset.Zero
+                val give = available.y.coerceAtMost(collapsed)
+                collapsed -= give
+                return Offset(0f, give)
             }
         }
     }
 
     Box(Modifier.fillMaxSize()) {
-      Box(Modifier.fillMaxSize().layerBackdrop(contentBackdrop)) {
         // The page colour, and only the page colour.
         //
         // The layer has to hold nothing that samples it. Recording the whole
@@ -203,32 +228,33 @@ fun PlaylistScreen(
                 .layerBackdrop(pageBackdrop),
         )
 
-        // No top content padding: the hero runs under the status bar, which is
-        // the whole point of the layout — the picture is the top of the screen,
-        // not something sitting below a gap.
+        Column(Modifier.fillMaxSize()) {
+        DetailHeader(
+            name = state.name,
+            artworkUrl = state.artworkUrl,
+            kind = state.kind,
+            trackCount = state.tracks.size,
+            totalMs = state.tracks.sumOf { it.durationMs },
+            pageColor = pageColor,
+            backdrop = pageBackdrop,
+            collapse = collapseFraction,
+            collapsedHeight = collapsedHeight,
+            topPadding = topPadding,
+            onBack = onBack,
+            onPlay = { visible.takeIf { it.isNotEmpty() }?.let { onPlay(it, 0) } },
+            onShuffle = { visible.takeIf { it.isNotEmpty() }?.let(onShuffle) },
+            onToggleSearch = {
+                searching = !searching
+                if (!searching) query = ""
+            },
+            searching = searching,
+        )
+
         LazyColumn(
             state = listState,
+            modifier = Modifier.nestedScroll(headerScroll),
             contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
         ) {
-            item(contentType = "header") {
-                DetailHeader(
-                    name = state.name,
-                    artworkUrl = state.artworkUrl,
-                    kind = state.kind,
-                    trackCount = state.tracks.size,
-                    totalMs = state.tracks.sumOf { it.durationMs },
-                    pageColor = pageColor,
-                    backdrop = pageBackdrop,
-                    onPlay = { visible.takeIf { it.isNotEmpty() }?.let { onPlay(it, 0) } },
-                    onShuffle = { visible.takeIf { it.isNotEmpty() }?.let(onShuffle) },
-                    onToggleSearch = {
-                        searching = !searching
-                        if (!searching) query = ""
-                    },
-                    searching = searching,
-                )
-            }
-
             if (state.albums.isNotEmpty()) {
                 item(contentType = "albums") {
                     AlbumStrip(albums = state.albums, onOpen = onOpenItem)
@@ -349,8 +375,7 @@ fun PlaylistScreen(
                 }
             }
         }
-
-      }
+        }
 
         LazyScrollBar(
             state = listState,
@@ -373,7 +398,7 @@ fun PlaylistScreen(
                 .padding(top = contentPadding.calculateTopPadding() + 8.dp, start = 14.dp)
                 .align(Alignment.TopStart)
                 .size(42.dp)
-                .graphicsLayer { alpha = 1f - collapse },
+                .graphicsLayer { alpha = 1f - collapseFraction() },
             contentHeight = 42.dp,
             contentPadding = 0.dp,
             blurRadius = 8.dp,
@@ -386,27 +411,6 @@ fun PlaylistScreen(
             )
         }
 
-        // What the hero turns into. The cover, the title and the three controls
-        // do not simply scroll away — the title is what tells you which playlist
-        // you are in, and the play button is the thing most likely to be wanted
-        // after reading a screenful of tracks.
-        CollapsedBar(
-            title = state.name,
-            artworkUrl = state.artworkUrl,
-            collapse = collapse,
-            backdrop = contentBackdrop,
-            topPadding = contentPadding.calculateTopPadding(),
-            searching = searching,
-            onBack = onBack,
-            onPlay = { visible.takeIf { it.isNotEmpty() }?.let { onPlay(it, 0) } },
-            onShuffle = { visible.takeIf { it.isNotEmpty() }?.let(onShuffle) },
-            onToggleSearch = {
-                searching = !searching
-                if (!searching) query = ""
-            },
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
-
         // Both menus are drawn here rather than beside the buttons that open
         // them: a row inside a lazy list can be recycled out from under its own
         // popup, and only at this level is there a layer holding the page for
@@ -414,7 +418,6 @@ fun PlaylistScreen(
         TrackMenu(
             track = menuTrack,
             anchor = menuAnchor.leftOf(density),
-            backdrop = contentBackdrop,
             onDismiss = { menuTrack = null },
             onPlay = { track -> visible.indexOf(track).takeIf { it >= 0 }?.let { onPlay(visible, it) } },
             onEnqueue = onEnqueue,
@@ -431,7 +434,6 @@ fun PlaylistScreen(
         GlassMenu(
             visible = sortOpen,
             anchor = sortAnchor.leftOf(density),
-            backdrop = contentBackdrop,
             onDismiss = { sortOpen = false },
         ) {
             TrackSort.entries.forEach { option ->
@@ -465,97 +467,6 @@ private fun IntOffset.leftOf(density: androidx.compose.ui.unit.Density): IntOffs
 }
 
 /**
- * The hero, once it has been scrolled away.
- *
- * Fades in over the last of the cover rather than sliding down from nowhere, so
- * the two read as one thing changing size. The controls are the same three, at
- * the size a bar can carry them.
- */
-@Composable
-private fun CollapsedBar(
-    title: String,
-    artworkUrl: String?,
-    collapse: Float,
-    backdrop: Backdrop,
-    topPadding: Dp,
-    searching: Boolean,
-    onBack: () -> Unit,
-    onPlay: () -> Unit,
-    onShuffle: () -> Unit,
-    onToggleSearch: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (collapse <= 0.01f) return
-
-    GlassSurface(
-        backdrop = backdrop,
-        shape = RoundedCornerShape(0.dp),
-        surfaceColor = Color.Black.copy(alpha = 0.34f),
-        modifier = modifier
-            .fillMaxWidth()
-            .graphicsLayer { alpha = collapse },
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = topPadding + 6.dp, bottom = 10.dp)
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    PhosphorIcons.Regular.ArrowLeft,
-                    contentDescription = "Indietro",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Artwork(
-                url = artworkUrl,
-                title = title,
-                modifier = Modifier.size(34.dp),
-                corner = 8.dp,
-                decodeSize = 34.dp,
-            )
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-            )
-            IconButton(onClick = onToggleSearch) {
-                Icon(
-                    if (searching) PhosphorIcons.Regular.X else PhosphorIcons.Fill.MagnifyingGlass,
-                    contentDescription = "Cerca fra i brani",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            IconButton(onClick = onShuffle) {
-                Icon(
-                    PhosphorIcons.Regular.Shuffle,
-                    contentDescription = "Casuale",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            IconButton(onClick = onPlay) {
-                Icon(
-                    PhosphorIcons.Fill.Play,
-                    contentDescription = "Riproduci",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-    }
-}
-
-/**
  * The picture-first header: cover full bleed, everything else on top of it.
  *
  * The old header put a 118dp thumbnail beside the title. This is the layout the
@@ -574,15 +485,39 @@ private fun DetailHeader(
     totalMs: Long,
     pageColor: Color,
     backdrop: Backdrop,
+    /** 0 fully open, 1 collapsed into the bar. A lambda, so reading it costs a
+     * re-layout rather than a recomposition of the header on every frame. */
+    collapse: () -> Float,
+    collapsedHeight: Dp,
+    topPadding: Dp,
     searching: Boolean,
+    onBack: () -> Unit,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onToggleSearch: () -> Unit,
 ) {
+    val density = LocalDensity.current
+    val heroPx = with(density) { HERO_HEIGHT.roundToPx() }
+    val collapsedPx = with(density) { collapsedHeight.roundToPx() }
+
     Box(
         Modifier
             .fillMaxWidth()
-            .height(HERO_HEIGHT),
+            // The header genuinely shrinks. Everything inside keeps its full
+            // size and is clipped by it, which is what makes the cover look like
+            // it is being rolled up rather than moved off.
+            .layout { measurable, constraints ->
+                val height = androidx.compose.ui.util.lerp(heroPx, collapsedPx, collapse())
+                val placeable = measurable.measure(
+                    constraints.copy(minHeight = heroPx, maxHeight = heroPx),
+                )
+                layout(constraints.maxWidth, height) {
+                    // Anchored to the bottom of the picture, so what stays
+                    // visible as it closes is the part the title sits on.
+                    placeable.place(0, height - heroPx)
+                }
+            }
+            .clipToBounds(),
     ) {
         Artwork(
             url = artworkUrl,
@@ -601,8 +536,6 @@ private fun DetailHeader(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        // Only there to keep the floating back button legible
-                        // over a bright cover.
                         0f to Color.Black.copy(alpha = 0.35f),
                         0.28f to Color.Transparent,
                         0.58f to pageColor.copy(alpha = 0.55f),
@@ -616,7 +549,11 @@ private fun DetailHeader(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 18.dp),
+                .padding(horizontal = 24.dp, vertical = 18.dp)
+                // Gone by the time the header is half closed: below that there
+                // is no room for a 68dp play button and a two-line title, and
+                // watching them be squeezed is worse than watching them leave.
+                .graphicsLayer { alpha = (1f - collapse() * 2f).coerceIn(0f, 1f) },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -678,6 +615,63 @@ private fun DetailHeader(
                 )
             }
         }
+
+        // What the header becomes: the same title and the same three controls,
+        // at the size a bar can carry them. It arrives in the second half of the
+        // travel, as the full-size version finishes leaving.
+        Row(
+            Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .height(collapsedHeight)
+                .padding(top = topPadding)
+                .padding(horizontal = 6.dp)
+                .graphicsLayer { alpha = (collapse() * 2f - 1f).coerceIn(0f, 1f) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    PhosphorIcons.Regular.ArrowLeft,
+                    contentDescription = "Indietro",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Text(
+                name,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 6.dp),
+            )
+            IconButton(onClick = onToggleSearch) {
+                Icon(
+                    if (searching) PhosphorIcons.Regular.X else PhosphorIcons.Fill.MagnifyingGlass,
+                    contentDescription = "Cerca fra i brani",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            IconButton(onClick = onShuffle) {
+                Icon(
+                    PhosphorIcons.Regular.Shuffle,
+                    contentDescription = "Casuale",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            IconButton(onClick = onPlay) {
+                Icon(
+                    PhosphorIcons.Fill.Play,
+                    contentDescription = "Riproduci",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
     }
 }
 
@@ -706,7 +700,6 @@ private fun CircleAction(
     }
 }
 
-/** The artist's albums, which is the one part playlists and albums have no use for. */
 @Composable
 private fun AlbumStrip(
     albums: List<dev.emanuele.spot.data.SearchItem>,
@@ -796,13 +789,8 @@ private fun SectionHeader(
     }
 }
 
-/**
- * How much of the hero has to go before the bar has fully taken over.
- *
- * Not the whole cover: the bar should be there by the time the first tracks
- * reach the top of the screen, not once the entire picture has gone.
- */
-private const val COLLAPSE_DISTANCE_PX = 620f
+/** What the hero shrinks to: a bar, under the status bar's own inset. */
+private val COLLAPSED_BAR_HEIGHT = 56.dp
 
 /** Tall enough to be the top of the screen rather than a banner above a list. */
 private val HERO_HEIGHT = 420.dp
@@ -933,10 +921,9 @@ private fun TrackRow(
  * display and not its URI, so the entry would be there and not work.
  */
 @Composable
-private fun BoxScope.TrackMenu(
+private fun TrackMenu(
     track: CatalogTrack?,
     anchor: IntOffset,
-    backdrop: Backdrop,
     onDismiss: () -> Unit,
     onPlay: (CatalogTrack) -> Unit,
     onEnqueue: (CatalogTrack) -> Unit,
@@ -948,12 +935,7 @@ private fun BoxScope.TrackMenu(
     // Held so the menu still has something to draw while it animates out.
     val shown = remember(track) { track } ?: return
 
-    GlassMenu(
-        visible = track != null,
-        anchor = anchor,
-        backdrop = backdrop,
-        onDismiss = onDismiss,
-    ) {
+    GlassMenu(visible = track != null, anchor = anchor, onDismiss = onDismiss) {
         GlassMenuItem("Riproduci", PhosphorIcons.Fill.Play) { onDismiss(); onPlay(shown) }
         GlassMenuItem("Aggiungi alla coda", PhosphorIcons.Regular.Queue) {
             onDismiss()
