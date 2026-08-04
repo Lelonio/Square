@@ -246,6 +246,7 @@ fun SpotApp(
                                     viewModel.openContext(item.uri, item.title, item.artworkUrl)
                                     navController.navigate(Routes.PLAYLIST)
                                 },
+                                backdrop = artBackdrop,
                             )
                         }
 
