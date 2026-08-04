@@ -1,13 +1,8 @@
 package dev.emanuele.spot.ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -44,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -52,7 +48,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -85,11 +81,10 @@ import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.home.HomeScreen
 import dev.emanuele.spot.ui.library.LibraryScreen
 import dev.emanuele.spot.ui.library.PlaylistScreen
-import dev.emanuele.spot.ui.player.EXPAND_MS
-import dev.emanuele.spot.ui.player.MiniPlayer
 import dev.emanuele.spot.ui.player.GlassFilm
-import dev.emanuele.spot.ui.player.EXPAND_MS
+import dev.emanuele.spot.ui.player.MiniPlayer
 import dev.emanuele.spot.ui.player.MiniPlayerHeight
+import dev.emanuele.spot.ui.player.NowPlayingSheet
 import dev.emanuele.spot.ui.player.PlayerScreen
 import dev.emanuele.spot.ui.player.progressOf
 import dev.emanuele.spot.ui.player.rememberPlaybackState
@@ -99,18 +94,23 @@ import dev.emanuele.spot.ui.search.SearchScreen
 import dev.emanuele.spot.ui.theme.Ink
 import dev.emanuele.spot.ui.theme.SpotTheme
 import dev.emanuele.spot.ui.theme.rememberArtworkColor
+import kotlinx.coroutines.launch
 
 object Routes {
     const val HOME = "home"
     const val SEARCH = "search"
     const val LIBRARY = "library"
     const val PLAYLIST = "playlist"
-    const val PLAYER = "player"
 }
+
+/** How the player settles when it is not being dragged. */
+private val expandSpec = spring<Float>(
+    dampingRatio = 0.86f,
+    stiffness = Spring.StiffnessMediumLow,
+)
 
 private val BottomBarHeight = 62.dp
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @UnstableApi
 @Composable
 fun SpotApp(
@@ -153,6 +153,11 @@ fun SpotApp(
     // reason: they cannot sample a layer they are part of.
     val artBackdrop = rememberLayerBackdrop()
     val pageBackdrop = rememberLayerBackdrop()
+
+    // How far the player is open, 0 to 1. A value rather than a destination:
+    // see NowPlayingSheet for why the player stopped being a route.
+    val expand = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
 
     // Recorded here rather than at the tap: this fires for auto-advance and for
     // controls outside the app too, so the history matches what was actually
@@ -201,15 +206,10 @@ fun SpotApp(
         // here, or every Text that does not set one explicitly stays black on
         // the darkened artwork.
         CompositionLocalProvider(LocalContentColor provides Ink) {
-            // Wraps everything that takes part in the expand animation: the
-            // mini player lives outside the NavHost, and a shared element only
-            // works between two composables under the same layout.
-            SharedTransitionLayout {
             Box(Modifier.fillMaxSize()) {
                 val navController = rememberNavController()
                 val currentEntry by navController.currentBackStackEntryAsState()
                 val route = currentEntry?.destination?.route
-                val onPlayer = route == Routes.PLAYER
 
                 val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -332,50 +332,52 @@ fun SpotApp(
                             }
                         }
 
-                        composable(
-                            Routes.PLAYER,
-                            // A plain fade, deliberately. The motion belongs to
-                            // the artwork: it is a shared element, so it travels
-                            // from the mini player's 42dp thumbnail to the full
-                            // cover and back. Sliding the screen as well would
-                            // be two animations describing the same thing.
-                            enterTransition = {
-                                fadeIn(tween(220, delayMillis = 60)) +
-                                    scaleIn(
-                                        tween(EXPAND_MS),
-                                        initialScale = 0.94f,
-                                        transformOrigin = TransformOrigin(0.5f, 1f),
-                                    )
-                            },
-                            exitTransition = {
-                                fadeOut(tween(160)) +
-                                    scaleOut(
-                                        tween(EXPAND_MS),
-                                        targetScale = 0.94f,
-                                        transformOrigin = TransformOrigin(0.5f, 1f),
-                                    )
-                            },
-                            popEnterTransition = {
-                                fadeIn(tween(220, delayMillis = 60)) +
-                                    scaleIn(
-                                        tween(EXPAND_MS),
-                                        initialScale = 0.94f,
-                                        transformOrigin = TransformOrigin(0.5f, 1f),
-                                    )
-                            },
-                            popExitTransition = {
-                                fadeOut(tween(160)) +
-                                    scaleOut(
-                                        tween(EXPAND_MS),
-                                        targetScale = 0.94f,
-                                        transformOrigin = TransformOrigin(0.5f, 1f),
-                                    )
-                            },
-                        ) {
+                    }
+                }
+
+                // Outside the recorded layer, and that is structural rather than
+                // stylistic: these refract `pageBackdrop`, and a pane drawn
+                // inside the layer it samples recurses on the render thread
+                // until the process dies.
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        // Hidden as the player takes over, and out of the way
+                        // before it covers it: a tab bar under a full-screen
+                        // player still swallows the taps meant for the
+                        // transport.
+                        .graphicsLayer { alpha = (1f - expand.value * 3f).coerceIn(0f, 1f) },
+                ) {
+                    BottomBar(
+                        route = route,
+                        bottomInset = navBar,
+                        backdrop = pageBackdrop,
+                        onSelect = navController::switchTab,
+                    )
+                }
+
+                if (playback.hasItem) {
+                    NowPlayingSheet(
+                        progress = expand,
+                        bottomInset = navBar + BottomBarHeight,
+                        collapsedContent = {
+                            MiniPlayer(
+                                state = playback,
+                                progress = {
+                                    progressOf(positionMs.value, playback.durationMs)
+                                },
+                                backdrop = pageBackdrop,
+                                onExpand = { scope.launch { expand.animateTo(1f, expandSpec) } },
+                                onTogglePlay = { player?.togglePlay() },
+                                onNext = { player?.seekToNextMediaItem() },
+                            )
+                        },
+                        expandedContent = {
                             PlayerScreen(
                                 state = playback,
                                 positionMs = positionMs,
-                                onCollapse = { navController.popBackStack() },
+                                onCollapse = { scope.launch { expand.animateTo(0f, expandSpec) } },
                                 onTogglePlay = { player?.togglePlay() },
                                 onNext = { player?.seekToNextMediaItem() },
                                 onPrevious = { player?.seekToPreviousMediaItem() },
@@ -418,59 +420,10 @@ fun SpotApp(
                                 onDeletePreset = viewModel::deleteEffectPreset,
                                 backdrop = artBackdrop,
                                 canvas = canvas,
-                                sharedScope = this@SharedTransitionLayout,
-                                animatedScope = this@composable,
                             )
-                        }
-                    }
+                        },
+                    )
                 }
-
-                // Outside the recorded layer, and that is structural rather than
-                // stylistic: these refract `pageBackdrop`, and a pane drawn
-                // inside the layer it samples recurses on the render thread
-                // until the process dies.
-                //
-                // Both survive navigation, and both step aside on the full
-                // player, which already carries the same controls.
-                Column(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth(),
-                ) {
-                    // An AnimatedVisibility rather than an `if`, because the
-                    // shared element needs a scope to animate within: this is
-                    // the half of the transition that shrinks back into the bar.
-                    AnimatedVisibility(
-                        visible = !onPlayer && playback.hasItem,
-                        // Short, because the bar does not really disappear: its
-                        // bounds morph into the player's title capsule. A long
-                        // fade here left a ghost of the bar sitting over the
-                        // screen it had just become.
-                        enter = fadeIn(tween(200, delayMillis = 120)),
-                        exit = fadeOut(tween(120)),
-                    ) {
-                        MiniPlayer(
-                            state = playback,
-                            progress = { progressOf(positionMs.value, playback.durationMs) },
-                            backdrop = pageBackdrop,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            sharedScope = this@SharedTransitionLayout,
-                            animatedScope = this@AnimatedVisibility,
-                            onExpand = { navController.navigate(Routes.PLAYER) },
-                            onTogglePlay = { player?.togglePlay() },
-                            onNext = { player?.seekToNextMediaItem() },
-                        )
-                    }
-                    if (!onPlayer) {
-                        BottomBar(
-                            route = route,
-                            bottomInset = navBar,
-                            backdrop = pageBackdrop,
-                            onSelect = navController::switchTab,
-                        )
-                    }
-                }
-            }
             }
         }
     }

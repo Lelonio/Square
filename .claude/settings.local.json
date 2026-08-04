@@ -74,7 +74,11 @@
       "Bash(ffmpeg -hide_banner -loglevel error -i f_%03d.jpg -vf \"select='between\\(n,44,67\\)',tile=6x4\" -frames:v 1 grid2.jpg)",
       "Bash(unzip -o -q classes.jar 'androidx/compose/animation/SharedTransitionScope$ResizeMode$Companion.class')",
       "Bash(javap -classpath . 'androidx.compose.animation.SharedTransitionScope$ResizeMode$Companion')",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Morph the now-playing bar into the player'\\\\''s title capsule *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Morph the now-playing bar into the player'\\\\''s title capsule *)",
+      "Bash(git revert *)",
+      "Bash(git stash *)",
+      "Bash(git reset *)",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Make the player one surface with the now-playing bar *)"
     ]
   }
 }
