@@ -656,12 +656,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
+        val batches = uris.chunked(METADATA_BATCH)
         val loaded = mutableListOf<CatalogTrack>()
-        uris.chunked(METADATA_BATCH).forEach { batch ->
+        batches.forEachIndexed { index, batch ->
             loaded += Catalog.tracks(batch)
             _playlist.value = base.copy(
                 tracks = loaded.toList(),
-                loadingMore = loaded.size < uris.size,
+                // Counted in batches, not in tracks. Comparing the two totals
+                // left "more coming" on forever whenever anything was dropped —
+                // a delisted or region-locked track resolves to nothing, so the
+                // list is legitimately shorter than the URIs asked for.
+                loadingMore = index < batches.lastIndex,
             )
         }
     }

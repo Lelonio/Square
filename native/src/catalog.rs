@@ -11,7 +11,7 @@
 //! protobufs into Java objects field by field.
 
 use crate::engine::{with_session, EngineResult};
-use futures_util::future::join_all;
+use futures_util::stream::{self, StreamExt};
 use http::Method;
 use librespot_core::{session::Session, spotify_uri::SpotifyUri};
 use librespot_metadata::{image::Images, Metadata, Track};
@@ -118,12 +118,22 @@ pub fn context_tracks(uri: &str) -> EngineResult<String> {
                 }
             }
 
-            // An empty page carries a link instead of its contents.
+            // An empty page carries a link instead of its contents, and a
+            // long playlist is a chain of those: each resolved page names the
+            // next one. Following only the first is how a 2000-track playlist
+            // used to arrive with a few hundred in it.
             if page.tracks.is_empty() {
-                if let Some(page_url) = page.page_url.as_ref().filter(|u| !u.is_empty()) {
-                    match resolve_page(&session, page_url).await {
-                        Ok(mut resolved) => uris.append(&mut resolved),
-                        Err(e) => log::warn!("could not resolve page {page_url}: {e}"),
+                let mut next = page.page_url.as_ref().filter(|u| !u.is_empty()).cloned();
+                while let Some(page_url) = next {
+                    match resolve_page(&session, &page_url).await {
+                        Ok((mut resolved, following)) => {
+                            uris.append(&mut resolved);
+                            next = following.filter(|u| !u.is_empty() && *u != page_url);
+                        }
+                        Err(e) => {
+                            log::warn!("could not resolve page: {e}");
+                            next = None;
+                        }
                     }
                 }
             }
@@ -134,8 +144,11 @@ pub fn context_tracks(uri: &str) -> EngineResult<String> {
     })
 }
 
-/// Fetch a lazy context page and pull the track URIs out of it.
-async fn resolve_page(session: &Session, page_url: &str) -> Result<Vec<String>, String> {
+/// Fetch a lazy context page: its track URIs, and the page after it if any.
+async fn resolve_page(
+    session: &Session,
+    page_url: &str,
+) -> Result<(Vec<String>, Option<String>), String> {
     let bytes = session
         .spclient()
         .get_next_page(page_url)
@@ -150,17 +163,26 @@ async fn resolve_page(session: &Session, page_url: &str) -> Result<Vec<String>, 
         .and_then(Value::as_array)
         .ok_or_else(|| {
             // The exact shape is not documented; log enough to fix this quickly
-            // if Spotify returns something else.
+            // if Spotify returns something else. Key names only — the values are
+            // the user's own library.
             format!(
                 "no `tracks` array; keys were {:?}",
                 parsed.as_object().map(|o| o.keys().collect::<Vec<_>>())
             )
         })?;
 
-    Ok(tracks
+    // Spelling varies by endpoint, and an unknown one simply ends the walk.
+    let next = ["next_page_url", "nextPageUrl", "next"]
+        .iter()
+        .find_map(|key| parsed.get(*key).and_then(Value::as_str))
+        .map(str::to_owned);
+
+    let uris = tracks
         .iter()
         .filter_map(|t| t.get("uri").and_then(Value::as_str).map(str::to_owned))
-        .collect())
+        .collect();
+
+    Ok((uris, next))
 }
 
 /// Resolve display metadata for the given track URIs, in the order supplied.
@@ -169,27 +191,67 @@ async fn resolve_page(session: &Session, page_url: &str) -> Result<Vec<String>, 
 /// because each one is a separate access-point round trip and a playlist screen
 /// needs dozens of them; doing it sequentially is the difference between a
 /// screen that appears and one that fills in line by line.
+///
+/// Concurrency is capped, though, and that cap is the whole point of this
+/// function's shape. Firing a batch off at once made a long playlist load a
+/// different number of tracks every time it was opened — a few hundred, then
+/// thirty — because the access point drops requests once enough are in flight
+/// and a dropped lookup was silently skipped. A bounded window plus one retry
+/// turns that into a wait instead of a hole in the list.
 pub fn tracks_metadata(uris_json: &str) -> EngineResult<String> {
     let uris: Vec<String> =
         serde_json::from_str(uris_json).map_err(|e| format!("invalid uri list: {e}"))?;
     let session = with_session(|s| s.clone())?;
+    let requested = uris.len();
 
     block_on(async move {
-        let lookups = uris.iter().map(|uri| {
+        let lookups = stream::iter(uris.iter().map(|uri| {
             let session = session.clone();
             async move {
                 let parsed = SpotifyUri::from_uri(uri).ok()?;
-                let track = Track::get(&session, &parsed).await.ok()?;
-                Some(track_json(&track))
+                for attempt in 0..RESOLVE_ATTEMPTS {
+                    match Track::get(&session, &parsed).await {
+                        Ok(track) => return Some(track_json(&track)),
+                        Err(e) => {
+                            // Last attempt, or nothing to gain from waiting.
+                            if attempt + 1 == RESOLVE_ATTEMPTS {
+                                log::debug!("track lookup failed after retries: {e}");
+                            } else {
+                                tokio::time::sleep(RETRY_DELAY).await;
+                            }
+                        }
+                    }
+                }
+                None
             }
-        });
+        }))
+        // `buffered`, not `buffer_unordered`: the caller relies on the order it
+        // asked in, which is the order the playlist is in.
+        .buffered(RESOLVE_CONCURRENCY);
 
         // Unresolvable tracks are dropped rather than failing the whole batch:
         // one region-locked or delisted item should not empty a playlist.
-        let tracks: Vec<Value> = join_all(lookups).await.into_iter().flatten().collect();
+        let tracks: Vec<Value> = lookups.filter_map(|t| async move { t }).collect().await;
+
+        // Counts only — these are the user's own library.
+        if tracks.len() != requested {
+            log::warn!("resolved {} of {} tracks", tracks.len(), requested);
+        }
         Ok(Value::from(tracks).to_string())
     })
 }
+
+/// How many track lookups may be in flight at once.
+///
+/// Empirical: the access point starts dropping them well before a hundred, and
+/// this is comfortably under whatever that threshold actually is while still
+/// being far quicker than resolving one at a time.
+const RESOLVE_CONCURRENCY: usize = 12;
+
+/// Attempts per track, the first one included.
+const RESOLVE_ATTEMPTS: usize = 3;
+
+const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(220);
 
 fn track_json(track: &Track) -> Value {
     json!({

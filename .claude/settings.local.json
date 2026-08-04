@@ -108,7 +108,9 @@
       "Bash(git commit -q -m 'Credit the author in the settings *)",
       "Bash(git commit -q -m 'Swap the player'\\\\''s heart for add-to-playlist *)",
       "Bash(git commit -q -m 'Re-read a playlist when it is reopened *)",
-      "Bash(git commit -q -m 'Load whole playlists, a batch at a time *)"
+      "Bash(git commit -q -m 'Load whole playlists, a batch at a time *)",
+      "Bash(PATH=/Users/emanuele/.cargo/bin:__TRACKED_VAR__ cargo check --quiet)",
+      "Bash(git commit -q -m 'Cap concurrent track lookups and retry the dropped ones *)"
     ]
   }
 }
