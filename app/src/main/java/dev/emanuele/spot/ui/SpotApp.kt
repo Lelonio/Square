@@ -122,6 +122,7 @@ fun SpotApp(
     val reverb by AudioEffects.reverb.collectAsStateWithLifecycle()
     val presets by viewModel.effectPresets.collectAsStateWithLifecycle()
     val feed by viewModel.feed.collectAsStateWithLifecycle()
+    val playlistOrder by viewModel.playlistOrder.collectAsStateWithLifecycle()
 
     // Once, on the first composition that has a usable Web API session. The
     // ViewModel keeps what it fetched, so navigating away and back does not
@@ -232,13 +233,12 @@ fun SpotApp(
                         composable(Routes.HOME) {
                             HomeScreen(
                                 state = state,
-                                playback = playback,
                                 contentPadding = listPadding,
                                 onLogIn = viewModel::logIn,
                                 onRetry = { viewModel.refresh() },
                                 onLogOut = viewModel::logOut,
                                 onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
-                                onOpenPlayer = { navController.navigate(Routes.PLAYER) },
+                                playlistOrder = playlistOrder,
                                 recent = recent,
                                 onPlayRecent = onPlay,
                                 feed = feed,

@@ -19,11 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,16 +36,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
-import com.kyant.shapes.Capsule
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.data.SearchItem
+import dev.emanuele.spot.data.sortedByRecentlyOpened
 import dev.emanuele.spot.ui.MainViewModel
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.player.GlassFilm
-import dev.emanuele.spot.ui.player.GlassSurface
-import dev.emanuele.spot.ui.player.PlaybackState
 import dev.emanuele.spot.ui.theme.Ink
 import dev.emanuele.spot.ui.theme.InkDim
 import dev.emanuele.spot.ui.theme.softShadow
@@ -82,13 +76,13 @@ private enum class Feed(val label: String) {
 @Composable
 fun HomeScreen(
     state: MainViewModel.UiState,
-    playback: PlaybackState,
     contentPadding: PaddingValues,
     onLogIn: () -> Unit,
     onRetry: () -> Unit,
     onLogOut: () -> Unit,
     onOpenPlaylist: (CatalogPlaylist) -> Unit,
-    onOpenPlayer: () -> Unit,
+    /** URIs most recently opened first; see PlaylistOrderStore. */
+    playlistOrder: List<String>,
     recent: List<CatalogTrack>,
     onPlayRecent: (List<CatalogTrack>, Int) -> Unit,
     feed: MainViewModel.FeedState,
@@ -129,29 +123,52 @@ fun HomeScreen(
 
         is MainViewModel.UiState.Ready -> {
             var filter by remember { mutableStateOf(Feed.ALL) }
+            // Spotify's rootlist arrives in the order the account added them,
+            // which for an old account is close to arbitrary — the playlist
+            // opened every day can sit thirtieth.
+            val playlists = remember(state.playlists, playlistOrder) {
+                state.playlists.sortedByRecentlyOpened(playlistOrder)
+            }
             val showReleases = filter == Feed.ALL || filter == Feed.RELEASES
             val showArtists = filter == Feed.ALL || filter == Feed.ARTISTS
             val showLibrary = filter == Feed.ALL || filter == Feed.LIBRARY
 
             LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding) {
                 item(contentType = "greeting") {
-                    Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 34.dp)) {
-                        Text(
-                            greeting().uppercase(),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = InkDim,
-                        )
-                        Text(
-                            state.displayName,
-                            style = MaterialTheme.typography.displayLarge,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
-                    }
-                }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 24.dp, end = 24.dp, top = 34.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                greeting().uppercase(),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = InkDim,
+                            )
+                            Text(
+                                state.displayName,
+                                style = MaterialTheme.typography.displayLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
 
-                if (playback.hasItem) {
-                    item(contentType = "resume") {
-                        NowPlayingCard(playback, backdrop, onOpenPlayer)
+                        // Falls back to the generated cover keyed on the name,
+                        // which is the same thing every other missing image in
+                        // the app gets rather than a grey circle.
+                        Artwork(
+                            url = state.avatarUrl,
+                            title = state.displayName,
+                            modifier = Modifier
+                                .padding(start = 14.dp)
+                                .size(46.dp)
+                                .softShadow(CircleShape, elevation = 10.dp),
+                            corner = 23.dp,
+                            decodeSize = 46.dp,
+                        )
                     }
                 }
 
@@ -170,7 +187,7 @@ fun HomeScreen(
                         key = { it.uri },
                         contentType = { "card" },
                     ) { item ->
-                        FeedCard(item, backdrop) { onOpenItem(item) }
+                        FeedCard(item) { onOpenItem(item) }
                     }
                 }
 
@@ -187,7 +204,7 @@ fun HomeScreen(
                     item(contentType = "heading") { Heading("Le tue playlist") }
                     item(contentType = "playlists") {
                         Carousel(
-                            state.playlists.take(if (showLibrary) LIBRARY_SIZE else CAROUSEL_SIZE),
+                            playlists.take(if (showLibrary) LIBRARY_SIZE else CAROUSEL_SIZE),
                             key = { it.uri },
                         ) { playlist ->
                             PlaylistTile(playlist) { onOpenPlaylist(playlist) }
@@ -212,77 +229,6 @@ fun HomeScreen(
 
                 item(contentType = "tail") { Box(Modifier.height(24.dp)) }
             }
-        }
-    }
-}
-
-/**
- * The playing track, as a pane of glass.
- *
- * The one card on the page that is not a cover: it sits over the app's blurred
- * artwork, which *is* this track's cover, so filling it with the same image
- * again would be a picture of itself.
- */
-@Composable
-private fun NowPlayingCard(playback: PlaybackState, backdrop: Backdrop, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(26.dp)
-    GlassSurface(
-        backdrop = backdrop,
-        shape = shape,
-        surfaceColor = GlassFilm,
-        modifier = Modifier
-            .padding(horizontal = 20.dp)
-            .padding(top = 22.dp)
-            .fillMaxWidth()
-            .clip(shape)
-            .clickable(onClick = onClick),
-    ) {
-        Row(
-            Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Artwork(
-                url = playback.artworkUrl,
-                title = playback.title,
-                modifier = Modifier
-                    .size(66.dp)
-                    .softShadow(RoundedCornerShape(16.dp), elevation = 14.dp),
-                corner = 16.dp,
-                decodeSize = 66.dp,
-            )
-            Column(
-                Modifier
-                    .padding(start = 14.dp)
-                    .weight(1f),
-            ) {
-                Text(
-                    if (playback.isPlaying) "IN RIPRODUZIONE" else "IN PAUSA",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = InkDim,
-                )
-                Text(
-                    playback.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
-                Text(
-                    playback.artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = InkDim,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Icon(
-                if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = null,
-                tint = Ink,
-                modifier = Modifier
-                    .padding(end = 6.dp)
-                    .size(26.dp),
-            )
         }
     }
 }
@@ -326,7 +272,7 @@ private fun FilterRow(selected: Feed, backdrop: Backdrop, onSelect: (Feed) -> Un
  * ends up dimming the picture it is supposed to be showing.
  */
 @Composable
-private fun FeedCard(item: SearchItem, backdrop: Backdrop, onClick: () -> Unit) {
+private fun FeedCard(item: SearchItem, onClick: () -> Unit) {
     val shape = RoundedCornerShape(28.dp)
     Box(
         Modifier
@@ -344,49 +290,43 @@ private fun FeedCard(item: SearchItem, backdrop: Backdrop, onClick: () -> Unit) 
             corner = 0.dp,
         )
 
-        // Just enough to seat the pane; the pane itself carries the contrast.
+        // The caption sits straight on the cover, so this gradient is what makes
+        // it readable rather than decoration. Weighted to the bottom third: any
+        // higher and it starts dimming the part of the picture the card exists
+        // to show.
         Box(
             Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         0f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.35f),
+                        0.55f to Color.Black.copy(alpha = 0.18f),
+                        1f to Color.Black.copy(alpha = 0.78f),
                     ),
                 ),
         )
 
-        GlassSurface(
-            backdrop = backdrop,
-            shape = Capsule(),
-            surfaceColor = GlassFilm,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(14.dp)
-                .fillMaxWidth(),
+        Column(
+            Modifier
+                .align(Alignment.BottomStart)
+                .padding(horizontal = 22.dp, vertical = 20.dp),
         ) {
-            Row(
-                Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        item.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Ink,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (item.subtitle.isNotBlank()) {
-                        Text(
-                            item.subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = InkDim,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+            Text(
+                item.title,
+                style = MaterialTheme.typography.headlineLarge,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (item.subtitle.isNotBlank()) {
+                Text(
+                    item.subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.76f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
         }
     }

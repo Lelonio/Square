@@ -3,6 +3,7 @@ package dev.emanuele.spot
 import android.app.Application
 import dev.emanuele.spot.auth.TokenStore
 import dev.emanuele.spot.auth.WebApiAccount
+import dev.emanuele.spot.data.PlaylistOrderStore
 import dev.emanuele.spot.data.RecentStore
 import dev.emanuele.spot.playback.EffectPresetStore
 import dev.emanuele.spot.data.ApiFactory
@@ -19,6 +20,9 @@ class SpotApplication : Application() {
 
     val tokenStore: TokenStore by lazy { TokenStore(this) }
     val recentStore: RecentStore by lazy { RecentStore(this) }
+
+    /** Which playlists were opened most recently, for ordering the home page. */
+    val playlistOrder: PlaylistOrderStore by lazy { PlaylistOrderStore(this) }
 
     /**
      * The user's own Spotify application. Web API calls go through it so they

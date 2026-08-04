@@ -42,7 +42,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         /** Waiting for the access-point handshake. */
         data object Connecting : UiState
         data object Loading : UiState
-        data class Ready(val displayName: String, val playlists: List<CatalogPlaylist>) : UiState
+        data class Ready(
+            /**
+             * The profile name where one is available, the account name
+             * otherwise. The access point only knows the latter — a login id
+             * like `31k4…` on many accounts — so the readable name has to come
+             * from the Web API, and does not exist until the user has connected
+             * their own application.
+             */
+            val displayName: String,
+            val playlists: List<CatalogPlaylist>,
+            val avatarUrl: String? = null,
+        ) : UiState
         data class Failed(val message: String) : UiState
     }
 
@@ -316,7 +327,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun logOut() {
         container.tokenStore.clear()
         container.recentStore.clear()
+        container.playlistOrder.clear()
         _playlist.value = PlaylistState()
+        _feed.value = FeedState()
         _state.value = UiState.LoggedOut
     }
 
@@ -343,12 +356,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         _state.value = UiState.Loading
         runCatching { UiState.Ready(Catalog.username(), Catalog.playlists()) }
-            .onSuccess { _state.value = it }
+            .onSuccess {
+                _state.value = it
+                loadProfile()
+            }
             .onFailure {
                 android.util.Log.e(TAG, "library load failed: ${chain(it)}", it)
                 _state.value = UiState.Failed(describe(it))
             }
     }
+
+    /**
+     * Fills in the profile name and picture.
+     *
+     * Separate from the library load and allowed to fail quietly: the page is
+     * already on screen with the account name by the time this runs, and an
+     * account with no Web API application connected simply keeps it.
+     */
+    private fun loadProfile() = viewModelScope.launch {
+        if (!container.webApi.isReady) return@launch
+        runCatching { container.api.me() }
+            .onSuccess { profile ->
+                val ready = _state.value as? UiState.Ready ?: return@onSuccess
+                _state.value = ready.copy(
+                    displayName = profile.displayName?.takeIf(String::isNotBlank)
+                        ?: ready.displayName,
+                    avatarUrl = profile.images.lastOrNull()?.url,
+                )
+            }
+            .onFailure { android.util.Log.w(TAG, "profile unavailable: ${describe(it)}") }
+    }
+
+    /** Playlists in the order this device last opened them; see [PlaylistOrderStore]. */
+    val playlistOrder: StateFlow<List<String>> get() = container.playlistOrder.order
 
     /**
      * Loads a playlist's tracks.
@@ -361,6 +401,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         openPlaylist(CatalogPlaylist(uri = uri, name = name, artworkUrl = artworkUrl))
 
     fun openPlaylist(playlist: CatalogPlaylist) {
+        // Recorded before the early return: reopening what is already loaded
+        // still counts as opening it, and that is exactly the playlist the home
+        // page should keep at the front.
+        container.playlistOrder.record(playlist.uri)
+
         if (_playlist.value.uri == playlist.uri && _playlist.value.tracks.isNotEmpty()) return
 
         val kind = kindOf(playlist.uri)
