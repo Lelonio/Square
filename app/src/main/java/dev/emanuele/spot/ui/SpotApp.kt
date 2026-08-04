@@ -80,6 +80,15 @@ import dev.emanuele.spot.ui.library.LibraryScreen
 import dev.emanuele.spot.ui.library.PlaylistScreen
 import dev.emanuele.spot.ui.player.GlassFilm
 import dev.emanuele.spot.ui.player.AddToPlaylistSheet
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.IntOffset
+import dev.emanuele.spot.ui.components.GlassIconMenu
+import dev.emanuele.spot.ui.components.GlassIconMenuItem
+import dev.emanuele.spot.ui.library.openLink
+import com.adamglin.phosphoricons.regular.LinkSimple
+import com.adamglin.phosphoricons.regular.Plus
+import com.adamglin.phosphoricons.regular.Queue
+import com.adamglin.phosphoricons.regular.Trash
 import dev.emanuele.spot.ui.player.MiniPlayer
 import dev.emanuele.spot.ui.player.MiniPlayerHeight
 import dev.emanuele.spot.ui.player.NowPlayingSheet
@@ -95,6 +104,7 @@ import dev.emanuele.spot.ui.theme.SpotTheme
 import dev.emanuele.spot.ui.theme.rememberArtworkColor
 import kotlinx.coroutines.launch
 import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.fill.Play
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.fill.House
@@ -103,6 +113,13 @@ import com.adamglin.phosphoricons.fill.MusicNotes
 import com.adamglin.phosphoricons.regular.House
 import com.adamglin.phosphoricons.regular.MagnifyingGlass
 import com.adamglin.phosphoricons.regular.MusicNotes
+
+/** A track menu waiting to be drawn: what it is about, and where it points. */
+private data class TrackMenuRequest(
+    val track: dev.emanuele.spot.data.CatalogTrack,
+    val anchor: IntOffset,
+    val removable: Boolean,
+)
 
 object Routes {
     const val HOME = "home"
@@ -158,6 +175,10 @@ fun SpotApp(
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val addToPlaylist by viewModel.addToPlaylist.collectAsStateWithLifecycle()
     val trackSort by viewModel.trackSort.collectAsStateWithLifecycle()
+
+    // The open track menu, if any. Held here because the menu is drawn above
+    // everything the app puts over its screens.
+    var trackMenu by remember { mutableStateOf<TrackMenuRequest?>(null) }
 
     // Once, on the first composition that has a usable Web API session. The
     // ViewModel keeps what it fetched, so navigating away and back does not
@@ -367,7 +388,16 @@ fun SpotApp(
                                     onAddToPlaylist = { track ->
                                         viewModel.openAddToPlaylist(track.uri, track.name)
                                     },
-                                    onRemoveFromPlaylist = viewModel::removeFromPlaylist,
+                                    onTrackMenu = { track, anchor ->
+                                        trackMenu = TrackMenuRequest(
+                                            track = track,
+                                            anchor = anchor,
+                                            // Only a playlist can have
+                                            // something taken out of it.
+                                            removable = playlist.kind ==
+                                                MainViewModel.DetailKind.PLAYLIST,
+                                        )
+                                    },
                                     storedSort = trackSort,
                                     onSortChange = viewModel::setTrackSort,
                                     onOpenItem = { item ->
@@ -484,6 +514,47 @@ fun SpotApp(
                             )
                         },
                     )
+                }
+
+                // Above the tab bar and the now-playing bar, which is the whole
+                // reason it lives here instead of in the screen that asked for
+                // it.
+                val menu = trackMenu
+                val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                GlassIconMenu(
+                    visible = menu != null,
+                    anchor = menu?.anchor ?: IntOffset.Zero,
+                    backdrop = pageBackdrop,
+                    onDismiss = { trackMenu = null },
+                ) {
+                    if (menu != null) {
+                        GlassIconMenuItem(PhosphorIcons.Fill.Play, "Riproduci") {
+                            trackMenu = null
+                            onPlay(listOf(menu.track), 0)
+                        }
+                        GlassIconMenuItem(PhosphorIcons.Regular.Queue, "Aggiungi alla coda") {
+                            trackMenu = null
+                            onEnqueue(menu.track)
+                        }
+                        GlassIconMenuItem(PhosphorIcons.Regular.Plus, "Aggiungi a una playlist") {
+                            trackMenu = null
+                            viewModel.openAddToPlaylist(menu.track.uri, menu.track.name)
+                        }
+                        GlassIconMenuItem(PhosphorIcons.Regular.LinkSimple, "Copia link") {
+                            trackMenu = null
+                            clipboard.setText(AnnotatedString(menu.track.openLink()))
+                        }
+                        if (menu.removable) {
+                            GlassIconMenuItem(
+                                PhosphorIcons.Regular.Trash,
+                                "Rimuovi dalla playlist",
+                                destructive = true,
+                            ) {
+                                trackMenu = null
+                                viewModel.removeFromPlaylist(menu.track)
+                            }
+                        }
+                    }
                 }
 
                 // Over everything, including the player: the same sheet is

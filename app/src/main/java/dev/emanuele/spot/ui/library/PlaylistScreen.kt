@@ -115,7 +115,14 @@ fun PlaylistScreen(
     onShuffle: (List<CatalogTrack>) -> Unit,
     /** Opens the app-wide "add to playlist" sheet for one track. */
     onAddToPlaylist: (CatalogTrack) -> Unit,
-    onRemoveFromPlaylist: (CatalogTrack) -> Unit,
+    /**
+     * Opens the track menu, which the app draws rather than this screen.
+     *
+     * It has to be above the tab bar and the now-playing bar, and those are
+     * drawn over the whole navigation host — nothing inside a screen can reach
+     * that far up.
+     */
+    onTrackMenu: (CatalogTrack, IntOffset) -> Unit,
     onOpenItem: (dev.emanuele.spot.data.SearchItem) -> Unit = {},
     /** The remembered track order, and where a change to it is stored. */
     storedSort: String? = null,
@@ -155,10 +162,6 @@ fun PlaylistScreen(
     // cover.
     val pageBackdrop = rememberLayerBackdrop()
 
-    // Which track's menu is open, and where its button is, so the menu can be
-    // drawn at the top level rather than inside a row the list may recycle.
-    var menuTrack by remember { mutableStateOf<CatalogTrack?>(null) }
-    var menuAnchor by remember { mutableStateOf(IntOffset.Zero) }
     var sortAnchor by remember { mutableStateOf(IntOffset.Zero) }
 
     val density = LocalDensity.current
@@ -338,10 +341,7 @@ fun PlaylistScreen(
                             position = index + 1,
                             isCurrent = track.uri == nowPlayingUri,
                             onClick = { onPlay(visible, index) },
-                            onMenu = { anchor ->
-                                menuAnchor = anchor
-                                menuTrack = track
-                            },
+                            onMenu = { anchor -> onTrackMenu(track, anchor) },
                         )
                     }
                 }
@@ -410,26 +410,6 @@ fun PlaylistScreen(
                 modifier = Modifier.size(20.dp),
             )
         }
-
-        // Both menus are drawn here rather than beside the buttons that open
-        // them: a row inside a lazy list can be recycled out from under its own
-        // popup, and only at this level is there a layer holding the page for
-        // the glass to refract.
-        TrackMenu(
-            track = menuTrack,
-            anchor = menuAnchor.leftOf(density),
-            onDismiss = { menuTrack = null },
-            onPlay = { track -> visible.indexOf(track).takeIf { it >= 0 }?.let { onPlay(visible, it) } },
-            onEnqueue = onEnqueue,
-            onAddToPlaylist = onAddToPlaylist,
-            // Only a playlist can have something taken out of it; an album or an
-            // artist's top tracks is not a list the account owns.
-            onRemove = if (state.kind == MainViewModel.DetailKind.PLAYLIST) {
-                onRemoveFromPlaylist
-            } else {
-                null
-            },
-        )
 
         GlassMenu(
             visible = sortOpen,
@@ -920,50 +900,8 @@ private fun TrackRow(
  * app to do. No "go to album" — the track model carries the album's name for
  * display and not its URI, so the entry would be there and not work.
  */
-@Composable
-private fun TrackMenu(
-    track: CatalogTrack?,
-    anchor: IntOffset,
-    onDismiss: () -> Unit,
-    onPlay: (CatalogTrack) -> Unit,
-    onEnqueue: (CatalogTrack) -> Unit,
-    onAddToPlaylist: (CatalogTrack) -> Unit,
-    /** Null unless this list is a playlist the account can edit. */
-    onRemove: ((CatalogTrack) -> Unit)?,
-) {
-    val clipboard = LocalClipboardManager.current
-    // Held so the menu still has something to draw while it animates out.
-    val shown = remember(track) { track } ?: return
-
-    GlassMenu(visible = track != null, anchor = anchor, onDismiss = onDismiss) {
-        GlassMenuItem("Riproduci", PhosphorIcons.Fill.Play) { onDismiss(); onPlay(shown) }
-        GlassMenuItem("Aggiungi alla coda", PhosphorIcons.Regular.Queue) {
-            onDismiss()
-            onEnqueue(shown)
-        }
-        GlassMenuItem("Aggiungi a una playlist", PhosphorIcons.Regular.Plus) {
-            onDismiss()
-            onAddToPlaylist(shown)
-        }
-        GlassMenuItem("Copia link", PhosphorIcons.Regular.LinkSimple) {
-            onDismiss()
-            clipboard.setText(AnnotatedString(shown.openLink()))
-        }
-        if (onRemove != null) {
-            GlassMenuItem(
-                "Rimuovi dalla playlist",
-                PhosphorIcons.Regular.Trash,
-                destructive = true,
-            ) {
-                onDismiss()
-                onRemove(shown)
-            }
-        }
-    }
-}
-
 /** The web address for a track URI, which is what a share expects. */
-private fun CatalogTrack.openLink(): String =
+fun CatalogTrack.openLink(): String =
     "https://open.spotify.com/track/" + uri.substringAfterLast(':')
 
 @Composable

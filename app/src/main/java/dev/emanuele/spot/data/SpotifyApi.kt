@@ -35,11 +35,22 @@ interface SpotifyApi {
         @Query("offset") offset: Int = 0,
     ): PageDto<PlaylistDto>
 
+    /**
+     * A page of a playlist's tracks.
+     *
+     * `market` is not optional in practice. Without it the response carries each
+     * track's *original* URI, and a large share of the catalogue is region-split:
+     * the original is not playable here and the engine skips straight past it —
+     * which looks exactly like a player that will not play anything. With a
+     * market Spotify relinks each track to the copy licensed for this account,
+     * and `is_playable` becomes meaningful.
+     */
     @GET("v1/playlists/{id}/tracks")
     suspend fun playlistTracks(
         @Path("id") playlistId: String,
         @Query("limit") limit: Int = 100,
         @Query("offset") offset: Int = 0,
+        @Query("market") market: String = "from_token",
     ): PageDto<PlaylistTrackDto>
 
     /**

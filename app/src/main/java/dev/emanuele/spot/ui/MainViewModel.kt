@@ -730,8 +730,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         var offset = 0
         while (true) {
             val page = container.api.playlistTracks(id, limit = WEB_API_PAGE, offset = offset)
-            // Episodes and delisted tracks come back as a null track.
-            loaded += page.items.mapNotNull { it.track?.toCatalogTrack(it.addedAt) }
+            // Episodes and delisted tracks come back as a null track, and
+            // `is_playable` is false for anything the relinking could not find a
+            // licensed copy of here. Keeping those would put items in the queue
+            // that the engine can only skip.
+            loaded += page.items.mapNotNull { item ->
+                item.track
+                    ?.takeIf { it.isPlayable != false && it.uri.startsWith("spotify:track:") }
+                    ?.toCatalogTrack(item.addedAt)
+            }
             offset += page.items.size
             if (showProgress) {
                 _playlist.value = base.copy(

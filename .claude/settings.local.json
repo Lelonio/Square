@@ -117,7 +117,8 @@
       "Bash(git commit -q -m 'Keep the glass out of the layer it samples *)",
       "Bash(git commit -q -m 'Glass context menus, with remove-from-playlist *)",
       "Bash(git commit -q -m 'Menus that refract the page, and a hero that collapses into a bar *)",
-      "Bash(git commit -q -m 'A hero that actually collapses, and a menu nothing covers *)"
+      "Bash(git commit -q -m 'A hero that actually collapses, and a menu nothing covers *)",
+      "Bash(git commit -q -m 'Relink playlist tracks to this market; icon-only track menu *)"
     ]
   }
 }

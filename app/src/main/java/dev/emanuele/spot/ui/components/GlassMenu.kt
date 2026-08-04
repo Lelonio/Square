@@ -11,6 +11,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import dev.emanuele.spot.ui.player.GlassSurface
+import dev.emanuele.spot.ui.theme.softShadow
+import com.kyant.backdrop.Backdrop
+import com.kyant.shapes.Capsule
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -130,3 +141,91 @@ private val MenuSurface = Color(0xFF16161A)
 
 /** The hairline every other surface in the app catches light with. */
 private val MenuEdge = Color.White.copy(alpha = 0.14f)
+
+/**
+ * The compact form: one row of icons in a glass capsule.
+ *
+ * For a menu whose entries are all verbs on the same object — play it, queue it,
+ * add it, copy it, remove it. Five words stacked in a list is a dialogue box;
+ * five icons in a capsule is a control, and it is small enough to sit beside the
+ * row it belongs to rather than over half the screen.
+ *
+ * Unlike [GlassMenu] this is not a popup, so it can refract [backdrop] properly.
+ * That means it has to be drawn late enough not to be covered — at the app
+ * level, above the tab bar and the now-playing bar, not inside a screen.
+ */
+@Composable
+fun BoxScope.GlassIconMenu(
+    visible: Boolean,
+    anchor: IntOffset,
+    backdrop: Backdrop,
+    onDismiss: () -> Unit,
+    content: @Composable RowScope.() -> Unit,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(120)),
+        exit = fadeOut(tween(120)),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clickable(interactionSource = null, indication = null, onClick = onDismiss),
+        )
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = scaleIn(tween(180), initialScale = 0.7f, transformOrigin = TopEnd) +
+            fadeIn(tween(120)),
+        exit = scaleOut(tween(130), targetScale = 0.8f, transformOrigin = TopEnd) +
+            fadeOut(tween(110)),
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .offset { anchor },
+    ) {
+        val shape = Capsule()
+        GlassSurface(
+            backdrop = backdrop,
+            shape = shape,
+            surfaceColor = CapsuleFilm,
+            modifier = Modifier
+                .height(54.dp)
+                .clip(shape)
+                .softShadow(shape, elevation = 18.dp, spot = 0.3f),
+        ) {
+            Row(
+                Modifier.padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        }
+    }
+}
+
+@Composable
+fun GlassIconMenuItem(
+    icon: ImageVector,
+    description: String,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = description,
+            tint = if (destructive) MaterialTheme.colorScheme.error else Color.White,
+            modifier = Modifier.size(21.dp),
+        )
+    }
+}
+
+/** Light enough to stay glass; the capsule is small and never covers text. */
+private val CapsuleFilm = Color.White.copy(alpha = 0.14f)
