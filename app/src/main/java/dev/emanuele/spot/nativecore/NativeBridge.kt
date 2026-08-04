@@ -1,5 +1,9 @@
 package dev.emanuele.spot.nativecore
 
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
+
 /**
  * Events pushed from the librespot engine. Called on a native tokio worker
  * thread, never on the main thread — implementations must marshal themselves.
@@ -63,13 +67,30 @@ object NativeBridge {
         listener: NativeEvents,
     ) = nativeStart(clientId, deviceName, accessToken, credentialsDir, cacheDir, listener)
 
-    fun load(uri: String, startPlaying: Boolean, positionMs: Int = 0) =
-        nativeLoad(uri, startPlaying, positionMs)
+    /**
+     * Hands the whole queue to the Connect device, starting at [index].
+     *
+     * A list rather than one track: since the engine went through Spirc, the
+     * queue belongs to the Connect state — it is what the account and every
+     * other device see, and it is Spirc that advances at the end of a track.
+     */
+    fun loadQueue(uris: List<String>, index: Int, startPlaying: Boolean, positionMs: Int = 0) =
+        nativeLoadQueue(
+            Json.encodeToString(ListSerializer(String.serializer()), uris),
+            index,
+            startPlaying,
+            positionMs,
+        )
 
     fun play() = nativePlay()
     fun pause() = nativePause()
     fun stop() = nativeStop()
     fun seek(positionMs: Long) = nativeSeek(positionMs)
+    fun next() = nativeNext()
+    fun previous() = nativePrevious()
+    fun setShuffle(shuffle: Boolean) = nativeSetShuffle(shuffle)
+    fun setRepeat(repeatContext: Boolean, repeatTrack: Boolean) =
+        nativeSetRepeat(repeatContext, repeatTrack)
 
     /** Volume in librespot's raw 0..65535 range. */
     var volume: Int
@@ -123,7 +144,16 @@ object NativeBridge {
         listener: NativeEvents,
     )
 
-    private external fun nativeLoad(uri: String, startPlaying: Boolean, positionMs: Int)
+    private external fun nativeLoadQueue(
+        urisJson: String,
+        index: Int,
+        startPlaying: Boolean,
+        positionMs: Int,
+    )
+    private external fun nativeNext()
+    private external fun nativePrevious()
+    private external fun nativeSetShuffle(shuffle: Boolean)
+    private external fun nativeSetRepeat(repeatContext: Boolean, repeatTrack: Boolean)
     private external fun nativePlay()
     private external fun nativePause()
     private external fun nativeStop()

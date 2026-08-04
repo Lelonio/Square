@@ -47,10 +47,22 @@ class LibrespotPlayer(
     private val fadeIn: () -> Unit,
 ) : SimpleBasePlayer(looper), NativeEvents {
 
-    /** Loads a track with the fade around it. */
-    private fun loadFaded(uri: String, startPlaying: Boolean, positionMs: Int = 0) {
+    /**
+     * Hands the current queue to the engine, with the fade around it.
+     *
+     * The whole list, not the current track: the engine now drives playback
+     * through Spotify Connect, where the queue is part of the state published
+     * to the account. Loading one track at a time would show every other device
+     * a queue with nothing in it, and would take the end-of-track advance away
+     * from the side that owns it.
+     */
+    private fun pushQueue(startPlaying: Boolean, positionMs: Int = 0) {
+        val uris = queue.items.map { it.uri }
+        if (uris.isEmpty()) return
+        val index = queue.currentIndex
         fadeOutThen {
-            NativeBridge.load(uri, startPlaying, positionMs)
+            runCatching { NativeBridge.loadQueue(uris, index, startPlaying, positionMs) }
+                .onFailure { android.util.Log.e("SpotPlayer", "load failed: ${it.message}") }
             if (startPlaying) fadeIn()
         }
     }
@@ -232,11 +244,32 @@ class LibrespotPlayer(
         val target = queue.items.getOrNull(mediaItemIndex)
             ?: return Futures.immediateVoidFuture()
 
-        if (mediaItemIndex != queue.currentIndex) {
-            queue.currentIndex = mediaItemIndex
-            loadFaded(target.uri, startPlaying = true, positionMs = newPositionMs.toInt())
-        } else {
-            NativeBridge.seek(newPositionMs)
+        when {
+            mediaItemIndex == queue.currentIndex -> NativeBridge.seek(newPositionMs)
+
+            // A step either way is a skip, and Spirc has to be the one making
+            // it: reloading the queue for a skip would restart the context and
+            // show up on other devices as a new session rather than a next.
+            mediaItemIndex == queue.currentIndex + 1 -> {
+                queue.currentIndex = mediaItemIndex
+                fadeOutThen {
+                    NativeBridge.next()
+                    fadeIn()
+                }
+            }
+
+            mediaItemIndex == queue.currentIndex - 1 -> {
+                queue.currentIndex = mediaItemIndex
+                fadeOutThen {
+                    NativeBridge.previous()
+                    fadeIn()
+                }
+            }
+
+            else -> {
+                queue.currentIndex = mediaItemIndex
+                pushQueue(startPlaying = true, positionMs = newPositionMs.toInt())
+            }
         }
         positionMs = newPositionMs
         return Futures.immediateVoidFuture()
@@ -273,11 +306,10 @@ class LibrespotPlayer(
         // all while paused.
         positionMs = startPositionMs
         playbackState = Player.STATE_BUFFERING
-        NativeBridge.load(
-            first.uri,
-            startPlaying = playWhenReady,
-            positionMs = startPositionMs.toInt(),
-        )
+        // `first` is only read to check there is something playable; the engine
+        // is handed the whole list.
+        check(first.uri.isNotEmpty())
+        pushQueue(startPlaying = playWhenReady, positionMs = startPositionMs.toInt())
         invalidateState()
         return Futures.immediateVoidFuture()
     }
@@ -347,10 +379,15 @@ class LibrespotPlayer(
         playbackState = Player.STATE_READY
         onQueueChanged()
 
-        queue.items.getOrNull(queue.currentIndex)?.let { track ->
-            // Paused: an app that starts playing by itself when opened is worse
-            // than one that forgets where it was.
-            loadFaded(track.uri, startPlaying = false, positionMs = positionMs.toInt())
+        // Paused: an app that starts playing by itself when opened is worse
+        // than one that forgets where it was.
+        //
+        // The load also takes over the Connect device, which is why it is not
+        // done here at all when there is nothing to restore — activating on
+        // launch would pull playback away from whatever the account is actually
+        // playing on.
+        if (queue.items.isNotEmpty()) {
+            pushQueue(startPlaying = false, positionMs = positionMs.toInt())
         }
         invalidateState()
     }
@@ -362,12 +399,22 @@ class LibrespotPlayer(
         shuffleEnabled = shuffleModeEnabled
         queue.setShuffled(shuffleModeEnabled)
         onQueueChanged()
+        // Told to the engine as well: shuffle is part of the published Connect
+        // state, and a device whose local order disagrees with what the account
+        // shows is worse than one that cannot shuffle at all.
+        runCatching { NativeBridge.setShuffle(shuffleModeEnabled) }
         invalidateState()
         return Futures.immediateVoidFuture()
     }
 
     override fun handleSetRepeatMode(repeatMode: @Player.RepeatMode Int): ListenableFuture<*> {
         this.repeatMode = repeatMode
+        runCatching {
+            NativeBridge.setRepeat(
+                repeatContext = repeatMode == Player.REPEAT_MODE_ALL,
+                repeatTrack = repeatMode == Player.REPEAT_MODE_ONE,
+            )
+        }
         invalidateState()
         return Futures.immediateVoidFuture()
     }
@@ -382,11 +429,22 @@ class LibrespotPlayer(
     // --- NativeEvents: arrives on a tokio worker thread ---
 
     override fun onEvent(type: String, uri: String, positionMs: Long) {
-        handler.post { applyEvent(type, positionMs) }
+        handler.post { applyEvent(type, uri, positionMs) }
     }
 
-    private fun applyEvent(type: String, eventPositionMs: Long) {
+    private fun applyEvent(type: String, uri: String, eventPositionMs: Long) {
         if (released) return
+
+        // The engine decides what plays next now, so the current index is
+        // followed rather than set: an advance, a remote skip from another
+        // device and a local one all arrive here the same way.
+        if (uri.isNotEmpty()) {
+            val index = queue.items.indexOfFirst { it.uri == uri }
+            if (index >= 0 && index != queue.currentIndex) {
+                queue.currentIndex = index
+                positionMs = 0
+            }
+        }
 
         when (type) {
             "loading" -> {
@@ -409,44 +467,11 @@ class LibrespotPlayer(
                 playbackState = Player.STATE_IDLE
                 playWhenReady = false
             }
-            "end_of_track" -> {
-                advance()
-                return
-            }
-            // The track is region-locked or otherwise unplayable; skipping keeps
-            // a bad item in a playlist from stalling the whole queue.
-            "unavailable" -> {
-                advance()
-                return
-            }
+            // Both used to advance the queue from here. The engine does it now
+            // — it owns the queue — so acting on them as well would skip two
+            // tracks for every one that ended.
+            "end_of_track", "unavailable" -> return
             else -> return
-        }
-        invalidateState()
-    }
-
-    /**
-     * Moves to whatever should play next, honouring the repeat mode.
-     *
-     * Done here rather than left to Media3 because end-of-track comes from the
-     * engine, not from a controller command.
-     */
-    private fun advance() {
-        val nextIndex = when {
-            repeatMode == Player.REPEAT_MODE_ONE -> queue.currentIndex
-            queue.currentIndex + 1 <= queue.items.lastIndex -> queue.currentIndex + 1
-            repeatMode == Player.REPEAT_MODE_ALL -> 0
-            else -> null
-        }
-
-        val next = nextIndex?.let(queue.items::getOrNull)
-        if (next == null) {
-            playbackState = Player.STATE_ENDED
-            playWhenReady = false
-        } else {
-            queue.currentIndex = nextIndex
-            positionMs = 0
-            playbackState = Player.STATE_BUFFERING
-            loadFaded(next.uri, startPlaying = true)
         }
         invalidateState()
     }

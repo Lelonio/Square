@@ -108,15 +108,68 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStar
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoad(
+pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoadQueue(
     mut env: JNIEnv,
     _class: JClass,
-    uri: JString,
+    uris_json: JString,
+    index: jint,
     start_playing: jboolean,
     position_ms: jint,
 ) {
-    let result = read_string(&mut env, &uri)
-        .and_then(|uri| engine::load(&uri, start_playing == JNI_TRUE, position_ms.max(0) as u32));
+    // JSON rather than a jobjectArray: the Kotlin side already serialises track
+    // lists for the catalogue calls, and one decoder is easier to keep correct
+    // than two ways of crossing the same boundary.
+    let result = read_string(&mut env, &uris_json)
+        .and_then(|raw| {
+            serde_json::from_str::<Vec<String>>(&raw).map_err(|e| format!("bad queue: {e}"))
+        })
+        .and_then(|uris| {
+            engine::load_queue(
+                uris,
+                index.max(0) as u32,
+                start_playing == JNI_TRUE,
+                position_ms.max(0) as u32,
+            )
+        });
+    or_throw(&mut env, result);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeNext(
+    mut env: JNIEnv,
+    _class: JClass,
+) {
+    let result = engine::next();
+    or_throw(&mut env, result);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePrevious(
+    mut env: JNIEnv,
+    _class: JClass,
+) {
+    let result = engine::previous();
+    or_throw(&mut env, result);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetShuffle(
+    mut env: JNIEnv,
+    _class: JClass,
+    shuffle: jboolean,
+) {
+    let result = engine::set_shuffle(shuffle == JNI_TRUE);
+    or_throw(&mut env, result);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetRepeat(
+    mut env: JNIEnv,
+    _class: JClass,
+    repeat_context: jboolean,
+    repeat_track: jboolean,
+) {
+    let result = engine::set_repeat(repeat_context == JNI_TRUE, repeat_track == JNI_TRUE);
     or_throw(&mut env, result);
 }
 

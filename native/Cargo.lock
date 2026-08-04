@@ -1130,6 +1130,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "librespot-connect"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b2a21e9e19b906c6676b1a515fc5529d5414f69049f5a167dfb2ea3206e5a27"
+dependencies = [
+ "futures-util",
+ "librespot-core",
+ "librespot-playback",
+ "librespot-protocol",
+ "log",
+ "protobuf",
+ "rand 0.9.5",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+ "tokio-stream",
+ "uuid",
+]
+
+[[package]]
 name = "librespot-core"
 version = "0.8.0"
 dependencies = [
@@ -2317,6 +2337,7 @@ dependencies = [
  "futures-util",
  "http",
  "jni",
+ "librespot-connect",
  "librespot-core",
  "librespot-metadata",
  "librespot-playback",

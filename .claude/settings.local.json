@@ -80,7 +80,9 @@
       "Bash(git reset *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Make the player one surface with the now-playing bar *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Seat the sheet on the measured tab bar *)",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Give the player sheet its own background *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Give the player sheet its own background *)",
+      "Bash(cd \"/Users/emanuele/Progetto *)",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Play through Spotify Connect *)"
     ]
   }
 }

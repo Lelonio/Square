@@ -14,6 +14,10 @@ librespot-core = { version = "0.8", default-features = false, features = ["rustl
 # No backend feature: audio goes to an AudioTrack via src/sink.rs, so
 # rodio and cpal are not built at all.
 librespot-playback = { version = "0.8", default-features = false, features = ["rustls-tls-webpki-roots"] }
+# Spotify Connect. The device only appears in the user's account — and plays
+# are only recorded in their history — because this publishes state; nothing
+# about decoding audio requires it.
+librespot-connect = { version = "0.8", default-features = false, features = ["rustls-tls-webpki-roots"] }
 librespot-metadata = { version = "0.8", default-features = false, features = ["rustls-tls-webpki-roots"] }
 librespot-protocol = { version = "0.8", default-features = false }
 protobuf = "3"
