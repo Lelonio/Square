@@ -82,7 +82,9 @@
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Seat the sheet on the measured tab bar *)",
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Give the player sheet its own background *)",
       "Bash(cd \"/Users/emanuele/Progetto *)",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Play through Spotify Connect *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Play through Spotify Connect *)",
+      "Bash(./gradlew :app:compileDevKotlin)",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Add the Connect device picker to the player *)"
     ]
   }
 }

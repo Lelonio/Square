@@ -137,6 +137,7 @@ fun SpotApp(
     val presets by viewModel.effectPresets.collectAsStateWithLifecycle()
     val feed by viewModel.feed.collectAsStateWithLifecycle()
     val playlistOrder by viewModel.playlistOrder.collectAsStateWithLifecycle()
+    val devices by viewModel.devices.collectAsStateWithLifecycle()
 
     // Once, on the first composition that has a usable Web API session. The
     // ViewModel keeps what it fetched, so navigating away and back does not
@@ -431,6 +432,11 @@ fun SpotApp(
                                 onDeletePreset = viewModel::deleteEffectPreset,
                                 backdrop = artBackdrop,
                                 canvas = canvas,
+                                devices = devices,
+                                onOpenDevices = viewModel::openDevices,
+                                onCloseDevices = viewModel::closeDevices,
+                                onRefreshDevices = viewModel::refreshDevices,
+                                onSelectDevice = { viewModel.transferPlayback(it) },
                             )
                         },
                     )

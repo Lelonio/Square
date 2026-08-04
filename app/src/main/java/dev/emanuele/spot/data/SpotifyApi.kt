@@ -2,7 +2,9 @@ package dev.emanuele.spot.data
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -81,6 +83,22 @@ interface SpotifyApi {
         @Query("limit") limit: Int = 20,
     ): PageDto<AlbumDto>
 
+    /**
+     * Every device the account can currently play on.
+     *
+     * The Web API rather than the access point: librespot's Connect state keeps
+     * the cluster — which is exactly this list — inside its own event loop, with
+     * no public accessor, so reading it there would mean patching the crate.
+     *
+     * Needs `user-read-playback-state`.
+     */
+    @GET("v1/me/player/devices")
+    suspend fun devices(): DevicesDto
+
+    /** Moves playback to another device. Needs `user-modify-playback-state`. */
+    @PUT("v1/me/player")
+    suspend fun transferPlayback(@Body request: TransferRequestDto)
+
     @GET("v1/search")
     suspend fun search(
         @Query("q") query: String,
@@ -155,6 +173,31 @@ data class TopTracksDto(val tracks: List<TrackDto> = emptyList())
 
 @Serializable
 data class NewReleasesDto(val albums: PageDto<AlbumDto>? = null)
+
+@Serializable
+data class DevicesDto(val devices: List<DeviceDto> = emptyList())
+
+@Serializable
+data class DeviceDto(
+    /** Null for a device the account can see but not address, which is not playable. */
+    val id: String? = null,
+    val name: String,
+    /** `Computer`, `Smartphone`, `Speaker`, `TV`, … */
+    val type: String = "",
+    @SerialName("is_active") val isActive: Boolean = false,
+    @SerialName("is_restricted") val isRestricted: Boolean = false,
+    @SerialName("volume_percent") val volumePercent: Int? = null,
+)
+
+@Serializable
+data class TransferRequestDto(
+    @SerialName("device_ids") val deviceIds: List<String>,
+    /**
+     * Keeps playing after the move. False would transfer *and* pause, which is
+     * never what picking a device from a player means.
+     */
+    val play: Boolean = true,
+)
 
 @Serializable
 data class PlaylistDto(

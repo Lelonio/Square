@@ -9,6 +9,7 @@ import dev.emanuele.spot.data.Catalog
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.data.SearchItem
+import dev.emanuele.spot.data.TransferRequestDto
 import dev.emanuele.spot.data.SearchResults
 import dev.emanuele.spot.data.toCatalogTrack
 import dev.emanuele.spot.data.toResults
@@ -153,6 +154,94 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** The Spotify Connect device picker. */
+    data class DevicesState(
+        val open: Boolean = false,
+        val loading: Boolean = false,
+        val devices: List<SpotifyDevice> = emptyList(),
+        val error: String? = null,
+    )
+
+    data class SpotifyDevice(
+        val id: String,
+        val name: String,
+        val type: String,
+        val isActive: Boolean,
+    )
+
+    private val _devices = MutableStateFlow(DevicesState())
+    val devices: StateFlow<DevicesState> = _devices.asStateFlow()
+    private var devicesJob: Job? = null
+
+    fun openDevices() {
+        _devices.value = _devices.value.copy(open = true)
+        refreshDevices()
+    }
+
+    fun closeDevices() {
+        _devices.value = _devices.value.copy(open = false)
+    }
+
+    /**
+     * Reads the account's device list.
+     *
+     * Needs `user-read-playback-state`, which an application connected before
+     * this feature existed was never asked for — hence the explicit message
+     * rather than a bare 403.
+     */
+    fun refreshDevices() {
+        devicesJob?.cancel()
+        if (!container.webApi.isReady) {
+            _devices.value = _devices.value.copy(
+                loading = false,
+                error = "Serve la tua applicazione Spotify: configurala in Cerca.",
+            )
+            return
+        }
+
+        _devices.value = _devices.value.copy(loading = true, error = null)
+        devicesJob = viewModelScope.launch {
+            runCatching { container.api.devices().devices }
+                .onSuccess { list ->
+                    _devices.value = _devices.value.copy(
+                        loading = false,
+                        devices = list.mapNotNull { device ->
+                            SpotifyDevice(
+                                // A device with no id cannot be addressed, so it
+                                // is dropped rather than shown as a dead row.
+                                id = device.id ?: return@mapNotNull null,
+                                name = device.name,
+                                type = device.type,
+                                isActive = device.isActive,
+                            )
+                        },
+                    )
+                }
+                .onFailure {
+                    android.util.Log.e(TAG, "devices failed: ${chain(it)}", it)
+                    _devices.value = _devices.value.copy(
+                        loading = false,
+                        error = describe(it),
+                    )
+                }
+        }
+    }
+
+    /** Moves playback to another device, keeping it playing. */
+    fun transferPlayback(deviceId: String) = viewModelScope.launch {
+        runCatching { container.api.transferPlayback(TransferRequestDto(listOf(deviceId))) }
+            .onSuccess {
+                // Spotify reports the move a beat after acknowledging it, so the
+                // list is re-read rather than edited optimistically.
+                delay(TRANSFER_SETTLE_MS)
+                refreshDevices()
+            }
+            .onFailure {
+                android.util.Log.e(TAG, "transfer failed: ${chain(it)}", it)
+                _devices.value = _devices.value.copy(error = describe(it))
+            }
+    }
+
     private val _playlist = MutableStateFlow(PlaylistState())
     val playlist: StateFlow<PlaylistState> = _playlist.asStateFlow()
 
@@ -252,7 +341,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             SpotifyOAuth.authorize(
                 getApplication(),
                 clientId = clientId,
-                scopes = listOf("user-top-read"),
+                scopes = listOf(
+                    // The home feed's "artisti che ascolti".
+                    "user-top-read",
+                    // The Connect device picker: one to list them, one to move
+                    // playback.
+                    "user-read-playback-state",
+                    "user-modify-playback-state",
+                ),
             )
         }
             .onSuccess {
@@ -510,5 +606,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         const val PLAYLIST_LIMIT = 100
 
         const val SEARCH_DEBOUNCE_MS = 350L
+
+        /** Spotify acknowledges a transfer before it has taken effect. */
+        const val TRANSFER_SETTLE_MS = 700L
     }
 }

@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Pause
@@ -126,6 +127,12 @@ fun PlayerScreen(
     /** See MiniPlayer: the cover is shared with the bar this screen grew out of. */
     sharedScope: androidx.compose.animation.SharedTransitionScope? = null,
     animatedScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
+    /** The Spotify Connect device list, and what to do with it. */
+    devices: dev.emanuele.spot.ui.MainViewModel.DevicesState,
+    onOpenDevices: () -> Unit,
+    onCloseDevices: () -> Unit,
+    onRefreshDevices: () -> Unit,
+    onSelectDevice: (String) -> Unit,
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
 
@@ -213,6 +220,7 @@ fun PlayerScreen(
                         backdrop = glassBackdrop,
                         queueOpen = panel == PlayerPanel.QUEUE,
                         onCollapse = onCollapse,
+                        onOpenDevices = onOpenDevices,
                         onToggleQueue = {
                             panel = if (panel == PlayerPanel.QUEUE) {
                                 PlayerPanel.NONE
@@ -369,6 +377,19 @@ fun PlayerScreen(
                 }
             }
         }
+
+        // Over everything, including the transport: it is a modal choice, and
+        // the controls underneath would be operating a device the user is in
+        // the middle of changing.
+        if (devices.open) {
+            DevicePicker(
+                state = devices,
+                backdrop = glassBackdrop,
+                onSelect = onSelectDevice,
+                onRefresh = onRefreshDevices,
+                onDismiss = onCloseDevices,
+            )
+        }
     }
 }
 
@@ -377,6 +398,7 @@ private fun TopBar(
     backdrop: Backdrop,
     queueOpen: Boolean,
     onCollapse: () -> Unit,
+    onOpenDevices: () -> Unit,
     onToggleQueue: () -> Unit,
 ) {
     Row(
@@ -394,6 +416,17 @@ private fun TopBar(
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
+        // Connect gets the permanent slot rather than hiding behind "more":
+        // moving playback to another speaker is the thing you reach for while
+        // the player is open, and the queue already has its own tab below.
+        GlassButton(backdrop, onClick = onOpenDevices) {
+            Icon(
+                Icons.Filled.Devices,
+                contentDescription = "Dispositivi",
+                tint = GlassInk,
+            )
+        }
+        Spacer(Modifier.size(8.dp))
         GlassButton(backdrop, onClick = onToggleQueue) {
             Icon(
                 Icons.Filled.MoreHoriz,
