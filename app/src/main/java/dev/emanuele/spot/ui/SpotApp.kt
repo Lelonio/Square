@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -69,6 +70,7 @@ import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.data.Lyrics
 import dev.emanuele.spot.playback.AudioEffects
+import dev.emanuele.spot.ui.glass.LiquidBottomTab
 import dev.emanuele.spot.ui.glass.LiquidBottomTabs
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.home.HomeScreen
@@ -526,7 +528,7 @@ private fun BottomBar(
  * separate the two tints.
  */
 @Composable
-private fun BottomItem(
+private fun RowScope.BottomItem(
     label: String,
     filled: ImageVector,
     outlined: ImageVector,
@@ -538,13 +540,12 @@ private fun BottomItem(
     // readable, and some of those colours have almost no contrast against the
     // glass.
     val tint = if (selected) Ink else Ink.copy(alpha = 0.62f)
-    Column(
-        Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 22.dp, vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+    // `LiquidBottomTab` rather than a Column of our own, and this is not
+    // cosmetic: it takes an equal share of the row, and the sliding indicator is
+    // positioned as `index * (barWidth / tabsCount)`. A tab sized by its own
+    // padding leaves the two disagreeing — labels packed to the left with the
+    // indicator sitting under empty space.
+    LiquidBottomTab(onClick = onClick) {
         Icon(
             imageVector = if (selected) filled else outlined,
             contentDescription = label,

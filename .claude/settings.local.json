@@ -56,7 +56,8 @@
       "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Frost the player glass, fix the white playing row *)",
       "Bash(sed -n '/^fun LiquidBottomTabs\\(/,/^\\) {/p' app/src/main/java/dev/emanuele/spot/ui/glass/LiquidBottomTabs.kt)",
       "Bash(sed -n '/^fun.*LiquidBottomTab\\\\b/,/^\\) {/p' app/src/main/java/dev/emanuele/spot/ui/glass/LiquidBottomTab.kt)",
-      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Restore the bottom bar'\\\\''s colours after the file rebuild *)"
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Restore the bottom bar'\\\\''s colours after the file rebuild *)",
+      "Bash(git -c user.name=Emanuele -c user.email=masonpsn00@gmail.com commit -qm 'Lay the bottom tabs out with LiquidBottomTab *)"
     ]
   }
 }
