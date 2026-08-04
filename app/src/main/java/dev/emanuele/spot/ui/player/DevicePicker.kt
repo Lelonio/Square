@@ -145,6 +145,86 @@ fun DevicePicker(
     }
 }
 
+/**
+ * The list itself, without a sheet around it.
+ *
+ * The player shows this in the panel it uses for the lyrics and the queue rather
+ * than as a modal over the transport; the modal form is still what the rest of
+ * the app gets.
+ */
+@Composable
+fun DeviceList(
+    state: MainViewModel.DevicesState,
+    onSelect: (String) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    Column(Modifier.padding(vertical = 18.dp)) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 22.dp, end = 14.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Riproduci su",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = GlassInk,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(50))
+                            .clickable(onClick = onRefresh),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            PhosphorIcons.Regular.ArrowClockwise,
+                            contentDescription = "Aggiorna",
+                            tint = GlassInkDim,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+
+                when {
+                    state.loading && state.devices.isEmpty() -> Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 26.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = GlassInkDim, strokeWidth = 2.dp)
+                    }
+
+                    state.error != null -> Text(
+                        state.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassInkDim,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                    )
+
+                    state.devices.isEmpty() -> Text(
+                        "Nessun dispositivo disponibile",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassInkDim,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                    )
+
+                    else -> Column(
+                        Modifier
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        state.devices.forEach { device ->
+                            DeviceRow(device) { onSelect(device.id) }
+                        }
+                    }
+                }
+            }
+}
+
 @Composable
 private fun DeviceRow(device: MainViewModel.SpotifyDevice, onClick: () -> Unit) {
     Row(

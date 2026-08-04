@@ -277,9 +277,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _addToPlaylist = MutableStateFlow(AddToPlaylistState())
     val addToPlaylist: StateFlow<AddToPlaylistState> = _addToPlaylist.asStateFlow()
 
-    fun openAddToPlaylist(trackUri: String?, trackTitle: String) {
+    /**
+     * @param asSheet whether to show the modal. False from the player, which
+     *   shows the same picker in its own panel and would otherwise get both.
+     */
+    fun openAddToPlaylist(trackUri: String?, trackTitle: String, asSheet: Boolean = true) {
         _addToPlaylist.value = AddToPlaylistState(
-            open = true,
+            open = asSheet,
             trackUri = trackUri,
             trackTitle = trackTitle,
             playlists = (_state.value as? UiState.Ready)?.playlists.orEmpty(),

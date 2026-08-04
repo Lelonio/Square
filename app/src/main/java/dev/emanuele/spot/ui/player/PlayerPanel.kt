@@ -54,7 +54,23 @@ import com.adamglin.phosphoricons.regular.VinylRecord
 import com.adamglin.phosphoricons.regular.X
 
 /** Which panel is open below the transport controls. */
-enum class PlayerPanel { NONE, QUEUE, LYRICS, EFFECTS }
+enum class PlayerPanel {
+    NONE,
+    QUEUE,
+    LYRICS,
+    EFFECTS,
+
+    /**
+     * The Connect device list and the playlist picker.
+     *
+     * Both used to open as modals over the transport. The player already has one
+     * place where a second thing is shown — the slot the cover lives in — and
+     * two mechanisms for the same job meant the screen sometimes dimmed itself
+     * and sometimes did not, depending on which button had been pressed.
+     */
+    DEVICES,
+    ADD_TO_PLAYLIST,
+}
 
 @Composable
 fun PlayerPanelSection(

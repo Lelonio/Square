@@ -173,6 +173,81 @@ fun AddToPlaylistSheet(
     }
 }
 
+/**
+ * The picker itself, without a sheet around it.
+ *
+ * The player puts this in the panel that shows the lyrics and the queue instead
+ * of opening a modal over the transport; everywhere else still gets the sheet.
+ */
+@Composable
+fun PlaylistPicker(
+    state: MainViewModel.AddToPlaylistState,
+    onSelect: (CatalogPlaylist) -> Unit,
+) {
+            Column(Modifier.padding(vertical = 18.dp)) {
+                Text(
+                    "Aggiungi a una playlist",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = GlassInk,
+                    modifier = Modifier.padding(start = 22.dp, end = 22.dp),
+                )
+                Text(
+                    // Says what is being added: the sheet can outlive the track
+                    // that opened it, since playback carries on underneath.
+                    state.trackTitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = GlassInkDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 2.dp, bottom = 12.dp),
+                )
+
+                if (state.error != null) {
+                    Text(
+                        state.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
+                    )
+                }
+
+                if (state.done != null) {
+                    Text(
+                        "Aggiunto a ${state.done}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
+                    )
+                }
+
+                if (state.playlists.isEmpty()) {
+                    Text(
+                        "Nessuna playlist nel tuo account",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = GlassInkDim,
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                    )
+                } else {
+                    Column(
+                        Modifier
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        state.playlists.forEach { playlist ->
+                            PlaylistRow(
+                                playlist = playlist,
+                                busy = state.busy == playlist.uri,
+                                added = state.done == playlist.name,
+                                enabled = state.trackUri != null && state.busy == null,
+                                onClick = { onSelect(playlist) },
+                            )
+                        }
+                    }
+                }
+            }
+}
+
 @Composable
 private fun PlaylistRow(
     playlist: CatalogPlaylist,

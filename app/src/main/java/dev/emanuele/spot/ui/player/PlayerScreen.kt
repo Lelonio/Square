@@ -16,6 +16,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -113,7 +115,7 @@ private const val PAUSED_DIM = 0.55f
  * back here as a full-bleed backdrop.
  */
 /** What occupies the middle of the player. */
-private enum class Stage { COVER, LYRICS, EFFECTS, QUEUE, CANVAS }
+private enum class Stage { COVER, LYRICS, EFFECTS, QUEUE, DEVICES, ADD_TO_PLAYLIST, CANVAS }
 
 @UnstableApi
 @Composable
@@ -165,6 +167,9 @@ fun PlayerScreen(
      * of one thing.
      */
     onAddToPlaylist: () -> Unit,
+    /** The playlist picker's state, shown in the panel rather than as a sheet. */
+    addToPlaylist: MainViewModel.AddToPlaylistState,
+    onPickPlaylist: (dev.emanuele.spot.data.CatalogPlaylist) -> Unit,
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
 
@@ -290,8 +295,12 @@ fun PlayerScreen(
             // read as the video having stalled rather than as playback having
             // stopped. Dimming it says the same thing the picture cannot.
             if (canvas != null) {
-                val pausedDim by animateFloatAsState(
-                    targetValue = if (state.isPlaying) 0f else 1f,
+                // Darkened for a paused track and for an open panel alike. Both
+                // are the same statement — the clip is not what you are looking
+                // at right now — and the blur alone left a bright moving picture
+                // behind a column of text.
+                val dim by animateFloatAsState(
+                    targetValue = if (state.isPlaying && !panelOpen) 0f else 1f,
                     animationSpec = tween(420),
                     label = "canvasDim",
                 )
@@ -309,7 +318,7 @@ fun PlayerScreen(
                         )
                         .drawWithContent {
                             drawContent()
-                            drawRect(Color.Black, alpha = pausedDim * PAUSED_DIM)
+                            drawRect(Color.Black, alpha = dim * PAUSED_DIM)
                         },
                 )
             }
@@ -327,7 +336,14 @@ fun PlayerScreen(
                         backdrop = glassBackdrop,
                         panel = panel,
                         onCollapse = onCollapse,
-                        onOpenDevices = onOpenDevices,
+                        onOpenDevices = {
+                            panel = if (panel == PlayerPanel.DEVICES) {
+                                PlayerPanel.NONE
+                            } else {
+                                onOpenDevices()
+                                PlayerPanel.DEVICES
+                            }
+                        },
                     )
 
                     // Everything sits at the bottom, as in the reference: the
@@ -367,6 +383,8 @@ fun PlayerScreen(
                                 PlayerPanel.LYRICS -> Stage.LYRICS
                                 PlayerPanel.EFFECTS -> Stage.EFFECTS
                                 PlayerPanel.QUEUE -> Stage.QUEUE
+                                PlayerPanel.DEVICES -> Stage.DEVICES
+                                PlayerPanel.ADD_TO_PLAYLIST -> Stage.ADD_TO_PLAYLIST
                                 PlayerPanel.NONE ->
                                     if (canvas == null || !canvasReady) {
                                         Stage.COVER
@@ -427,6 +445,29 @@ fun PlayerScreen(
 
                                 Stage.QUEUE -> Box(Modifier.fillMaxSize()) {
                                     QueueList(queue, onPlayQueueItem)
+                                }
+
+                                Stage.DEVICES -> Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState()),
+                                ) {
+                                    DeviceList(
+                                        state = devices,
+                                        onSelect = onSelectDevice,
+                                        onRefresh = onRefreshDevices,
+                                    )
+                                }
+
+                                Stage.ADD_TO_PLAYLIST -> Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState()),
+                                ) {
+                                    PlaylistPicker(
+                                        state = addToPlaylist,
+                                        onSelect = onPickPlaylist,
+                                    )
                                 }
 
                                 // The clip is the picture, and it is drawn
@@ -499,7 +540,14 @@ fun PlayerScreen(
                                 RoundGlassButton(
                                     backdrop = glassBackdrop,
                                     size = 40.dp,
-                                    onClick = onAddToPlaylist,
+                                    onClick = {
+                                        panel = if (panel == PlayerPanel.ADD_TO_PLAYLIST) {
+                                            PlayerPanel.NONE
+                                        } else {
+                                            onAddToPlaylist()
+                                            PlayerPanel.ADD_TO_PLAYLIST
+                                        }
+                                    },
                                 ) {
                                     Icon(
                                         PhosphorIcons.Regular.Plus,
@@ -564,18 +612,6 @@ fun PlayerScreen(
             }
         }
 
-        // Over everything, including the transport: it is a modal choice, and
-        // the controls underneath would be operating a device the user is in
-        // the middle of changing.
-        if (devices.open) {
-            DevicePicker(
-                state = devices,
-                backdrop = glassBackdrop,
-                onSelect = onSelectDevice,
-                onRefresh = onRefreshDevices,
-                onDismiss = onCloseDevices,
-            )
-        }
     }
 }
 
@@ -602,6 +638,8 @@ private fun TopBar(
                 PlayerPanel.LYRICS -> "Testo"
                 PlayerPanel.EFFECTS -> "Effetti"
                 PlayerPanel.QUEUE -> "In coda"
+                PlayerPanel.DEVICES -> "Riproduci su"
+                PlayerPanel.ADD_TO_PLAYLIST -> "Aggiungi a una playlist"
                 PlayerPanel.NONE -> "In riproduzione"
             },
             animationSpec = tween(220),

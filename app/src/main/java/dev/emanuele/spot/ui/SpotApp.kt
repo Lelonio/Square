@@ -543,8 +543,14 @@ fun SpotApp(
                                 onRefreshDevices = viewModel::refreshDevices,
                                 onSelectDevice = { viewModel.transferPlayback(it) },
                                 onAddToPlaylist = {
-                                    viewModel.openAddToPlaylist(playback.mediaId, playback.title)
+                                    viewModel.openAddToPlaylist(
+                                        playback.mediaId,
+                                        playback.title,
+                                        asSheet = false,
+                                    )
                                 },
+                                addToPlaylist = addToPlaylist,
+                                onPickPlaylist = viewModel::addToPlaylist,
                             )
                         },
                     )
