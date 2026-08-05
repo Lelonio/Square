@@ -115,10 +115,12 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoad
     index: jint,
     start_playing: jboolean,
     position_ms: jint,
+    context_uri: JString,
 ) {
     // JSON rather than a jobjectArray: the Kotlin side already serialises track
     // lists for the catalogue calls, and one decoder is easier to keep correct
     // than two ways of crossing the same boundary.
+    let context = read_string(&mut env, &context_uri).unwrap_or_default();
     let result = read_string(&mut env, &uris_json)
         .and_then(|raw| {
             serde_json::from_str::<Vec<String>>(&raw).map_err(|e| format!("bad queue: {e}"))
@@ -129,6 +131,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoad
                 index.max(0) as u32,
                 start_playing == JNI_TRUE,
                 position_ms.max(0) as u32,
+                context,
             )
         });
     or_throw(&mut env, result);

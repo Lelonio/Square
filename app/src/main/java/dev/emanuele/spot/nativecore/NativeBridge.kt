@@ -74,12 +74,20 @@ object NativeBridge {
      * queue belongs to the Connect state — it is what the account and every
      * other device see, and it is Spirc that advances at the end of a track.
      */
-    fun loadQueue(uris: List<String>, index: Int, startPlaying: Boolean, positionMs: Int = 0) =
+    fun loadQueue(
+        uris: List<String>,
+        index: Int,
+        startPlaying: Boolean,
+        positionMs: Int = 0,
+        /** The playlist or album the queue came from; empty when it came from none. */
+        contextUri: String = "",
+    ) =
         nativeLoadQueue(
             Json.encodeToString(ListSerializer(String.serializer()), uris),
             index,
             startPlaying,
             positionMs,
+            contextUri,
         )
 
     fun play() = nativePlay()
@@ -158,6 +166,7 @@ object NativeBridge {
         index: Int,
         startPlaying: Boolean,
         positionMs: Int,
+        contextUri: String,
     )
     private external fun nativeNext()
     private external fun nativePrevious()

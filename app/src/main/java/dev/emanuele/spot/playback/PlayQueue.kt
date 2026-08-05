@@ -2,6 +2,7 @@ package dev.emanuele.spot.playback
 
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import dev.emanuele.spot.ui.EXTRA_CONTEXT_URI
 
 /**
  * The queue the engine plays through.
@@ -162,8 +163,20 @@ class PlayQueue {
      * without one are dropped rather than queued and skipped later.
      */
     fun replaceFromMediaItems(mediaItems: List<MediaItem>, startIndex: Int) {
+        contextUri = mediaItems.firstNotNullOfOrNull {
+            it.mediaMetadata.extras?.getString(EXTRA_CONTEXT_URI)
+        }
         replace(mediaItems.mapNotNull(::toTrack), startIndex)
     }
+
+    /**
+     * The playlist or album this queue came from, when it came from one.
+     *
+     * Carried for the listening history: Spotify files a play under the context
+     * it happened in, and a queue of loose tracks is filed under nothing.
+     */
+    var contextUri: String? = null
+        private set
 
     /** Insert controller-supplied items; see [replaceFromMediaItems] for the id rule. */
     fun addFromMediaItems(index: Int, mediaItems: List<MediaItem>) {

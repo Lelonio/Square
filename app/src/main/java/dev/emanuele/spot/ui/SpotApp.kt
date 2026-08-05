@@ -153,7 +153,12 @@ private val BackdropBlur = BlurTransformation(radius = 14, passes = 2)
 @Composable
 fun SpotApp(
     player: Player?,
-    onPlay: (List<CatalogTrack>, Int) -> Unit,
+    /**
+     * Plays a queue. The third argument is the context it came from — a
+     * playlist or album URI — which is what the account's listening history is
+     * filed under; null when the tracks are a selection rather than a place.
+     */
+    onPlay: (List<CatalogTrack>, Int, String?) -> Unit,
     /** Appends one track to the end of the queue; see the swipe gesture on rows. */
     onEnqueue: (CatalogTrack) -> Unit,
     /**
@@ -383,7 +388,7 @@ fun SpotApp(
                                 onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
                                 playlistOrder = playlistOrder,
                                 recent = recent,
-                                onPlayRecent = onPlay,
+                                onPlayRecent = { tracks, index -> onPlay(tracks, index, null) },
                                 feed = feed,
                                 onOpenItem = { item ->
                                     viewModel.openContext(item.uri, item.title, item.artworkUrl)
@@ -403,7 +408,7 @@ fun SpotApp(
                                 onQueryChange = viewModel::onSearchQuery,
                                 onClientIdChange = viewModel::onWebApiClientIdChange,
                                 onConnectWebApi = { viewModel.connectWebApi() },
-                                onPlayTrack = onPlay,
+                                onPlayTrack = { tracks, index -> onPlay(tracks, index, null) },
                                 onEnqueue = onEnqueue,
                                 onOpenContext = { item ->
                                     viewModel.openContext(item.uri, item.title, item.artworkUrl)
@@ -455,14 +460,16 @@ fun SpotApp(
                                     contentPadding = listPadding,
                                     nowPlayingUri = playback.mediaId,
                                     onBack = { navController.popBackStack() },
-                                    onPlay = onPlay,
+                                    onPlay = { tracks, index ->
+                                        onPlay(tracks, index, playlist.uri)
+                                    },
                                     onEnqueue = onEnqueue,
                                     onShuffle = { tracks ->
                                         // Order does not matter: the player
                                         // treats shuffle as a mode and stamps it
                                         // onto whatever queue arrives next.
                                         player?.shuffleModeEnabled = true
-                                        onPlay(tracks, 0)
+                                        onPlay(tracks, 0, playlist.uri)
                                     },
                                     onAddToPlaylist = { track ->
                                         viewModel.openAddToPlaylist(track.uri, track.name)
@@ -618,7 +625,7 @@ fun SpotApp(
                     if (menu != null) {
                         TrackSheetAction("Riproduci", PhosphorIcons.Fill.Play) {
                             trackMenu = null
-                            onPlay(listOf(menu.track), 0)
+                            onPlay(listOf(menu.track), 0, null)
                         }
                         TrackSheetAction("Aggiungi alla coda", PhosphorIcons.Regular.Queue) {
                             trackMenu = null

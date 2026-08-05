@@ -465,11 +465,18 @@ impl History {
             return;
         }
 
-        // A context is opened once and every track played inside it is
-        // attributed to it. Playing a track on its own makes the track its own
-        // context, which is what the official client does too.
-        if self.context_uri.is_empty() {
-            self.context_uri = uri.clone();
+        // The playlist or album this queue came from, or the track itself when
+        // it came from neither — which is what the official client sends for a
+        // track played on its own.
+        let context = match current_context() {
+            context if context.is_empty() => uri.clone(),
+            context => context,
+        };
+        if self.context_uri != context {
+            self.context_uri = context;
+            // A context is a session: leaving one and starting another is a new
+            // session id, not a continuation of the last.
+            self.session_id = events::random_id();
             self.events
                 .new_session(&self.session_id, &self.context_uri, 1);
         }
@@ -575,11 +582,23 @@ fn emit(listener: &GlobalRef, kind: &str, uri: &str, position_ms: i64) -> Result
 ///
 /// `index` selects the starting track; anything out of range starts at the
 /// beginning, which is librespot's own behaviour rather than an error.
+/// The playlist or album the current queue came from, for the listening events.
+///
+/// A global rather than a field on the engine: the event pump reads it from its
+/// own thread, and it changes whenever a queue is loaded — which is a different
+/// lock from the one that owns playback.
+static CONTEXT_URI: Mutex<String> = Mutex::new(String::new());
+
+pub fn current_context() -> String {
+    CONTEXT_URI.lock().map(|c| c.clone()).unwrap_or_default()
+}
+
 pub fn load_queue(
     uris: Vec<String>,
     index: u32,
     start_playing: bool,
     position_ms: u32,
+    context_uri: String,
 ) -> EngineResult<()> {
     if uris.is_empty() {
         return Err("empty queue".into());
@@ -589,6 +608,10 @@ pub fn load_queue(
         if !parsed.is_playable() {
             return Err(format!("{uri} is not a playable item"));
         }
+    }
+
+    if let Ok(mut context) = CONTEXT_URI.lock() {
+        *context = context_uri;
     }
 
     let options = LoadRequestOptions {

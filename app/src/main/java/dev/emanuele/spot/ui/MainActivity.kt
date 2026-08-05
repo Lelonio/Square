@@ -100,9 +100,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Sends the visible list to the session, starting at the tapped track. */
-    private fun play(tracks: List<CatalogTrack>, index: Int) {
+    private fun play(tracks: List<CatalogTrack>, index: Int, contextUri: String? = null) {
         val player = controller ?: return
-        player.setMediaItems(tracks.map(::toMediaItem), index, 0L)
+        player.setMediaItems(tracks.map { toMediaItem(it, contextUri) }, index, 0L)
         player.prepare()
         player.play()
     }
@@ -123,7 +123,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun toMediaItem(track: CatalogTrack): MediaItem =
+    private fun toMediaItem(track: CatalogTrack, contextUri: String? = null): MediaItem =
         MediaItem.Builder()
             // The media id carries the Spotify URI; PlayQueue refuses anything else.
             .setMediaId(track.uri)
@@ -134,7 +134,18 @@ class MainActivity : ComponentActivity() {
                     .setAlbumTitle(track.album)
                     .setDurationMs(track.durationMs)
                     .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse))
+                    // Where the queue came from, carried with the item because
+                    // the engine lives in the service and this is the only
+                    // channel between them that survives the session boundary.
+                    .setExtras(
+                        contextUri?.let {
+                            android.os.Bundle().apply { putString(EXTRA_CONTEXT_URI, it) }
+                        },
+                    )
                     .build(),
             )
             .build()
 }
+
+/** Key for the context URI carried in a media item's metadata extras. */
+const val EXTRA_CONTEXT_URI = "dev.emanuele.spot.CONTEXT_URI"

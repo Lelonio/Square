@@ -68,7 +68,15 @@ class LibrespotPlayer(
         if (uris.isEmpty()) return
         val index = queue.currentIndex
         fadeOutThen {
-            runCatching { NativeBridge.loadQueue(uris, index, startPlaying, positionMs) }
+            runCatching {
+                NativeBridge.loadQueue(
+                    uris,
+                    index,
+                    startPlaying,
+                    positionMs,
+                    queue.contextUri.orEmpty(),
+                )
+            }
                 .onFailure { android.util.Log.e("SpotPlayer", "load failed: ${it.message}") }
             if (startPlaying) fadeIn()
         }
