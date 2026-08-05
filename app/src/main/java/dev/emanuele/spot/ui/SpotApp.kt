@@ -770,32 +770,6 @@ private fun BottomBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f)) {
-            // On any screen that is not one of the tabs, taps on them have to
-            // be caught here rather than by the bar.
-            //
-            // The bar draws its sliding indicator *over* the selected tab, and
-            // that indicator carries the drag gesture, so it swallows taps on
-            // whatever it is sitting on. Off the tabs the selection falls back
-            // to the last one used — so tapping it hit the indicator, matched
-            // the index the bar already held, and produced no event at all.
-            // That was search not closing, and a playlist or the settings not
-            // going back to the page the tab stands for.
-            if (routeIndex < 0) {
-                Row(Modifier.matchParentSize().zIndex(1f)) {
-                    routes.forEach { tab ->
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = null,
-                                    indication = null,
-                                ) { onSelect(tab) },
-                        )
-                    }
-                }
-            }
-
             LiquidBottomTabs(
             selectedTabIndex = selectedTabIndex,
             onTabSelected = { onSelect(routes[it]) },

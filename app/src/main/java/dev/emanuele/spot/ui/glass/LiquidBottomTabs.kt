@@ -130,6 +130,16 @@ fun LiquidBottomTabs(
                 onDragStarted = {},
                 onDragStopped = {
                     val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
+                    // LOCAL CHANGE: report a press that lands on the tab that is
+                    // already selected.
+                    //
+                    // Selection is reported by watching `currentIndex` change,
+                    // so releasing on the current tab reported nothing at all.
+                    // On a screen that is not a tab — a playlist, the settings,
+                    // search — the bar still shows one of them as selected, and
+                    // that is exactly the tab you press to get back to it. The
+                    // press animated and then did nothing.
+                    if (targetIndex == currentIndex) onTabSelected(targetIndex)
                     currentIndex = targetIndex
                     animateToValue(targetIndex.toFloat())
                     animationScope.launch {
