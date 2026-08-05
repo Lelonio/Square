@@ -54,7 +54,8 @@ import dev.emanuele.spot.ui.components.AppIcon
 import dev.emanuele.spot.ui.components.AppLockup
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.components.SquareWordmark
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.player.GlassFilm
 import dev.emanuele.spot.ui.theme.Ink
@@ -187,7 +188,7 @@ fun HomeScreen(
                 Header(
                     name = state.displayName,
                     avatarUrl = state.avatarUrl,
-                    collapse = collapse,
+                    collapse = { collapse },
                     filter = filter,
                     highlighted = if (filter == Feed.ALL) visibleSection ?: Feed.ALL else filter,
                     backdrop = backdrop,
@@ -291,7 +292,17 @@ fun HomeScreen(
 private fun Header(
     name: String,
     avatarUrl: String?,
-    collapse: Float,
+    /**
+     * How far collapsed, as a lambda rather than a value.
+     *
+     * Deliberate, and the whole reason this scrolls smoothly: a `Float`
+     * parameter is read when the header is composed, so every pixel of scroll
+     * invalidated the composable that produced it — the home page, list content
+     * lambdas included — several dozen times a second. Read inside `layout` and
+     * `graphicsLayer` blocks instead, the same movement costs a measure pass and
+     * no recomposition at all.
+     */
+    collapse: () -> Float,
     filter: Feed,
     /** The chip drawn as active, which follows the scroll while nothing is filtered. */
     highlighted: Feed,
@@ -316,32 +327,42 @@ private fun Header(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(
-                    start = 24.dp,
-                    end = 24.dp,
-                    top = lerp(18.dp, 2.dp, collapse),
-                ),
+                .padding(start = 24.dp, end = 24.dp)
+                // The top padding, as a layout pass: `padding()` takes a Dp,
+                // which would have to be computed while composing.
+                .layout { measurable, constraints ->
+                    val top = lerp(18.dp, 2.dp, collapse()).roundToPx()
+                    val placeable = measurable.measure(constraints)
+                    layout(placeable.width, placeable.height + top) {
+                        placeable.place(0, top)
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
+                // The name and the icon, where the greeting used to be. The
+                // home page carried nothing of the app on it — no name, no mark
+                // — so the first screen after the launcher looked like it
+                // belonged to nothing in particular.
+                //
                 // Height goes with the alpha. Fading it alone would leave the
                 // header the same size with a blank line in it.
-                if (collapse < 1f) {
-                    // The name and the icon, where the greeting used to be. The
-                    // home page carried nothing of the app on it — no name, no
-                    // mark — so the first screen after the launcher looked like
-                    // it belonged to nothing in particular.
-                    AppLockup(
-                        iconSize = 18.dp,
-                        nameHeight = 11.dp,
-                        modifier = Modifier
-                            .height(lerp(20.dp, 0.dp, collapse))
-                            // The icon is taller than the row gets on the way
-                            // out, and would otherwise spill over the name.
-                            .clipToBounds()
-                            .graphicsLayer { alpha = 1f - collapse },
-                    )
-                }
+                AppLockup(
+                    iconSize = 18.dp,
+                    nameHeight = 11.dp,
+                    modifier = Modifier
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            val height = lerp(LOCKUP_HEIGHT, 0.dp, collapse()).roundToPx()
+                            layout(placeable.width, height) { placeable.place(0, 0) }
+                        }
+                        // The icon is taller than the row gets on the way out,
+                        // and would otherwise spill over the name.
+                        .graphicsLayer {
+                            clip = true
+                            alpha = 1f - collapse()
+                        },
+                )
                 Text(
                     name,
                     style = MaterialTheme.typography.displayLarge,
@@ -350,7 +371,7 @@ private fun Header(
                     // Scaled rather than swapped for a smaller style: a style
                     // change is a jump, and this has to track a finger.
                     modifier = Modifier.graphicsLayer {
-                        val scale = 1f - 0.34f * collapse
+                        val scale = 1f - 0.34f * collapse()
                         scaleX = scale
                         scaleY = scale
                         transformOrigin = TransformOrigin(0f, 0.5f)
@@ -369,7 +390,13 @@ private fun Header(
                 title = name,
                 modifier = Modifier
                     .padding(start = 14.dp)
-                    .size(lerp(46.dp, 36.dp, collapse))
+                    // Measured from the scroll rather than sized in
+                    // composition; see the note on `collapse`.
+                    .layout { measurable, _ ->
+                        val side = lerp(46.dp, 36.dp, collapse()).roundToPx()
+                        val placeable = measurable.measure(Constraints.fixed(side, side))
+                        layout(side, side) { placeable.place(0, 0) }
+                    }
                     .clip(CircleShape)
                     .clickable(onClick = onOpenSettings)
                     .softShadow(CircleShape, elevation = 10.dp),
@@ -647,6 +674,9 @@ private val SelectedFilm = Color.White.copy(alpha = 0.26f)
  * be work for nothing.
  */
 private const val COLLAPSE_DISTANCE_PX = 140f
+
+/** The icon-and-name line above the account name, at rest. */
+private val LOCKUP_HEIGHT = 20.dp
 
 /** Comfortably under the 640px Spotify serves, so it is never upscaled. */
 private val COVER_SIZE = 210.dp

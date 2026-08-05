@@ -140,7 +140,8 @@
       "Bash(git commit -q -m 'The final icon artwork *)",
       "Bash(./gradlew :app:compileDebugKotlin -q)",
       "Bash(./gradlew :app:assembleDebug -q)",
-      "Bash(git commit -q -m ' *)"
+      "Bash(git commit -q -m ' *)",
+      "Bash(./gradlew :app:assembleRelease -q)"
     ]
   }
 }
