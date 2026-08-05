@@ -100,9 +100,14 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Sends the visible list to the session, starting at the tapped track. */
-    private fun play(tracks: List<CatalogTrack>, index: Int, contextUri: String? = null) {
+    private fun play(
+        tracks: List<CatalogTrack>,
+        index: Int,
+        contextUri: String? = null,
+        asContext: Boolean = false,
+    ) {
         val player = controller ?: return
-        player.setMediaItems(tracks.map { toMediaItem(it, contextUri) }, index, 0L)
+        player.setMediaItems(tracks.map { toMediaItem(it, contextUri, asContext) }, index, 0L)
         player.prepare()
         player.play()
     }
@@ -123,7 +128,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun toMediaItem(track: CatalogTrack, contextUri: String? = null): MediaItem =
+    private fun toMediaItem(
+        track: CatalogTrack,
+        contextUri: String? = null,
+        asContext: Boolean = false,
+    ): MediaItem =
         MediaItem.Builder()
             // The media id carries the Spotify URI; PlayQueue refuses anything else.
             .setMediaId(track.uri)
@@ -139,7 +148,10 @@ class MainActivity : ComponentActivity() {
                     // channel between them that survives the session boundary.
                     .setExtras(
                         contextUri?.let {
-                            android.os.Bundle().apply { putString(EXTRA_CONTEXT_URI, it) }
+                            android.os.Bundle().apply {
+                                putString(EXTRA_CONTEXT_URI, it)
+                                putBoolean(EXTRA_CONTEXT_ORDERED, asContext)
+                            }
                         },
                     )
                     .build(),
@@ -149,3 +161,6 @@ class MainActivity : ComponentActivity() {
 
 /** Key for the context URI carried in a media item's metadata extras. */
 const val EXTRA_CONTEXT_URI = "dev.emanuele.spot.CONTEXT_URI"
+
+/** Whether that queue is the context in its own order; see SpotApp's `onPlay`. */
+const val EXTRA_CONTEXT_ORDERED = "dev.emanuele.spot.CONTEXT_ORDERED"

@@ -116,6 +116,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoad
     start_playing: jboolean,
     position_ms: jint,
     context_uri: JString,
+    play_as_context: jboolean,
 ) {
     // JSON rather than a jobjectArray: the Kotlin side already serialises track
     // lists for the catalogue calls, and one decoder is easier to keep correct
@@ -132,6 +133,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoad
                 start_playing == JNI_TRUE,
                 position_ms.max(0) as u32,
                 context,
+                play_as_context == JNI_TRUE,
             )
         });
     or_throw(&mut env, result);

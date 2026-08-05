@@ -676,6 +676,7 @@ pub fn load_queue(
     start_playing: bool,
     position_ms: u32,
     context_uri: String,
+    play_as_context: bool,
 ) -> EngineResult<()> {
     if uris.is_empty() {
         return Err("empty queue".into());
@@ -687,8 +688,9 @@ pub fn load_queue(
         }
     }
 
-    if let Ok(mut context) = CONTEXT_URI.lock() {
-        *context = context_uri;
+    let context = context_uri.clone();
+    if let Ok(mut stored) = CONTEXT_URI.lock() {
+        *stored = context_uri;
     }
 
     let options = LoadRequestOptions {
@@ -698,12 +700,35 @@ pub fn load_queue(
         ..LoadRequestOptions::default()
     };
 
+    // Handed over as the context itself when the queue really is one.
+    //
+    // A list of URIs is not a place: played that way, the account sees a queue
+    // of loose tracks, other devices see no playlist, and the listen has
+    // nowhere to be filed. The caller says when the two agree — the rows on
+    // screen being the playlist in its own order — because only it can know.
+    let request = if play_as_context {
+        let start = uris
+            .get(index as usize)
+            .cloned()
+            .map(PlayingTrack::Uri)
+            .or(Some(PlayingTrack::Index(index)));
+        LoadRequest::from_context_uri(
+            context,
+            LoadRequestOptions {
+                playing_track: start,
+                ..options
+            },
+        )
+    } else {
+        LoadRequest::from_tracks(uris, options)
+    };
+
     with_engine(|e| {
         // Without this the device is registered but idle, and a load is
         // ignored: playback belongs to whichever device the account has
         // active, and taking that over is an explicit step.
         e.spirc.activate()?;
-        e.spirc.load(LoadRequest::from_tracks(uris, options))
+        e.spirc.load(request)
     })?
     .map_err(|e| format!("load failed: {e}"))
 }

@@ -2,6 +2,7 @@ package dev.emanuele.spot.playback
 
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import dev.emanuele.spot.ui.EXTRA_CONTEXT_ORDERED
 import dev.emanuele.spot.ui.EXTRA_CONTEXT_URI
 
 /**
@@ -166,6 +167,8 @@ class PlayQueue {
         contextUri = mediaItems.firstNotNullOfOrNull {
             it.mediaMetadata.extras?.getString(EXTRA_CONTEXT_URI)
         }
+        contextIsOrdered = mediaItems.firstOrNull()
+            ?.mediaMetadata?.extras?.getBoolean(EXTRA_CONTEXT_ORDERED) == true
         replace(mediaItems.mapNotNull(::toTrack), startIndex)
     }
 
@@ -176,6 +179,10 @@ class PlayQueue {
      * it happened in, and a queue of loose tracks is filed under nothing.
      */
     var contextUri: String? = null
+        private set
+
+    /** True when this queue is that context in its own order; see LibrespotPlayer. */
+    var contextIsOrdered: Boolean = false
         private set
 
     /** Insert controller-supplied items; see [replaceFromMediaItems] for the id rule. */

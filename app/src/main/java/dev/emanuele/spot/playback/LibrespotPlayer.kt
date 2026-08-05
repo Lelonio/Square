@@ -75,6 +75,10 @@ class LibrespotPlayer(
                     startPlaying,
                     positionMs,
                     queue.contextUri.orEmpty(),
+                    // Only when the queue is that context in its own order, and
+                    // not while shuffled: the engine would then play Spotify's
+                    // order and the list on screen would be someone else's.
+                    playAsContext = queue.contextIsOrdered && !queue.isShuffled,
                 )
             }
                 .onFailure { android.util.Log.e("SpotPlayer", "load failed: ${it.message}") }

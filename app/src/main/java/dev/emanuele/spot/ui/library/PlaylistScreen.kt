@@ -112,7 +112,12 @@ fun PlaylistScreen(
     contentPadding: PaddingValues,
     nowPlayingUri: String?,
     onBack: () -> Unit,
-    onPlay: (List<CatalogTrack>, Int) -> Unit,
+    /**
+     * Plays the list. The flag says whether what is being played is the context
+     * in its own order — false once the rows are sorted or filtered, when the
+     * queue is a selection out of the playlist rather than the playlist.
+     */
+    onPlay: (List<CatalogTrack>, Int, Boolean) -> Unit,
     onEnqueue: (CatalogTrack) -> Unit,
     onShuffle: (List<CatalogTrack>) -> Unit,
     /** Opens the app-wide "add to playlist" sheet for one track. */
@@ -141,6 +146,12 @@ fun PlaylistScreen(
         )
     }
     var sortOpen by remember { mutableStateOf(false) }
+
+    // Whether the rows on screen are the playlist itself, in its order. Sorting
+    // or searching makes them a selection out of it, and playing that as the
+    // context would have Spotify play the playlist's own order instead of the
+    // one on screen.
+    val asContext = sort == TrackSort.ORIGINAL && query.isBlank()
 
     // Derived, not stored: keeping a second list in state would leave the two
     // able to disagree after a reload.
@@ -265,7 +276,9 @@ fun PlaylistScreen(
             collapsedHeight = collapsedHeight,
             topPadding = topPadding,
             onBack = onBack,
-            onPlay = { visible.takeIf { it.isNotEmpty() }?.let { onPlay(it, 0) } },
+            onPlay = {
+                visible.takeIf { it.isNotEmpty() }?.let { onPlay(it, 0, asContext) }
+            },
             onShuffle = { visible.takeIf { it.isNotEmpty() }?.let(onShuffle) },
             onToggleSearch = {
                 searching = !searching
@@ -368,7 +381,7 @@ fun PlaylistScreen(
                             track = track,
                             position = index + 1,
                             isCurrent = track.uri == nowPlayingUri,
-                            onClick = { onPlay(visible, index) },
+                            onClick = { onPlay(visible, index, asContext) },
                             onMenu = { onTrackMenu(track) },
                         )
                     }

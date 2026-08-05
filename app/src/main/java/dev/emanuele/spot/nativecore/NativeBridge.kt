@@ -81,6 +81,8 @@ object NativeBridge {
         positionMs: Int = 0,
         /** The playlist or album the queue came from; empty when it came from none. */
         contextUri: String = "",
+        /** Hand playback to Spotify as that context rather than as loose tracks. */
+        playAsContext: Boolean = false,
     ) =
         nativeLoadQueue(
             Json.encodeToString(ListSerializer(String.serializer()), uris),
@@ -88,6 +90,7 @@ object NativeBridge {
             startPlaying,
             positionMs,
             contextUri,
+            playAsContext,
         )
 
     fun play() = nativePlay()
@@ -167,6 +170,7 @@ object NativeBridge {
         startPlaying: Boolean,
         positionMs: Int,
         contextUri: String,
+        playAsContext: Boolean,
     )
     private external fun nativeNext()
     private external fun nativePrevious()
