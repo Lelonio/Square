@@ -82,6 +82,7 @@ impl MercuryManager {
             uri: uri.into(),
             content_type: None,
             payload: Vec::new(),
+            user_fields: Vec::new(),
         })
     }
 
@@ -95,6 +96,23 @@ impl MercuryManager {
             uri: uri.into(),
             content_type: None,
             payload: vec![data],
+            user_fields: Vec::new(),
+        })
+    }
+
+    /// LOCAL CHANGE: a POST with header fields, for the event service.
+    pub fn post<T: Into<String>>(
+        &self,
+        uri: T,
+        data: Vec<u8>,
+        user_fields: Vec<(String, Vec<u8>)>,
+    ) -> Result<MercuryFuture<MercuryResponse>, Error> {
+        self.request(MercuryRequest {
+            method: MercuryMethod::Post,
+            uri: uri.into(),
+            content_type: None,
+            payload: vec![data],
+            user_fields,
         })
     }
 
@@ -113,6 +131,7 @@ impl MercuryManager {
             uri: uri.clone(),
             content_type: None,
             payload: Vec::new(),
+            user_fields: Vec::new(),
         });
 
         let manager = self.clone();

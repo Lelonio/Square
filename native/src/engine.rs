@@ -19,6 +19,7 @@ use librespot_playback::{
     mixer::{softmixer::SoftMixer, Mixer, MixerConfig},
     player::{Player, PlayerEvent},
 };
+use crate::events::{self, EndReason, EventService, Listen};
 use once_cell::sync::OnceCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -258,7 +259,13 @@ pub fn start(
         log::info!("connect device stopped");
     });
 
-    spawn_event_pump(&rt, player.clone(), listener, device_name.to_string());
+    spawn_event_pump(
+        &rt,
+        player.clone(),
+        listener,
+        device_name.to_string(),
+        session.clone(),
+    );
 
     *guard = Some(Engine {
         rt,
@@ -279,7 +286,13 @@ pub fn start(
 /// migrates between workers, so its `GlobalRef` could be released on a detached
 /// thread, where JNI cannot free it ("Dropping a GlobalRef in a detached
 /// thread").
-fn spawn_event_pump(rt: &Runtime, player: Arc<Player>, listener: GlobalRef, device_name: String) {
+fn spawn_event_pump(
+    rt: &Runtime,
+    player: Arc<Player>,
+    listener: GlobalRef,
+    device_name: String,
+    session: Session,
+) {
     let mut events = player.get_player_event_channel();
     // Keep the player alive for as long as we are reading its events.
     let _ = rt;
@@ -299,7 +312,12 @@ fn spawn_event_pump(rt: &Runtime, player: Arc<Player>, listener: GlobalRef, devi
             }
 
             log::info!("event pump started for device {device_name}");
+            // What the account's listening history is built from; see events.rs.
+            let mut history = History::new(session);
+
             while let Some(event) = events.blocking_recv() {
+                history.observe(&event);
+
                 let (kind, uri, position_ms) = match event {
                     PlayerEvent::Playing {
                         track_id,
@@ -339,6 +357,175 @@ fn spawn_event_pump(rt: &Runtime, player: Arc<Player>, listener: GlobalRef, devi
             log::info!("event pump ended");
         })
         .expect("failed to spawn the event pump thread");
+}
+
+/// Turns the player's events into the three Spotify wants for a listen.
+///
+/// Kept beside the pump rather than inside `events` because only here is the
+/// order of things known: a track is "finished" when the next one starts, when
+/// the player stops, or when it runs off the end, and only one of those is an
+/// event that says so.
+struct History {
+    events: EventService,
+    session_id: String,
+    /// The context every listen is attributed to, once one has been started.
+    context_uri: String,
+    current: Option<Playing>,
+    /// Durations seen so far, by track URI.
+    ///
+    /// `TrackChanged` is the only event carrying one and it arrives *before*
+    /// the track starts, so there is nothing to attach it to yet. Held here
+    /// until the matching `Playing` shows up. Without this the transition
+    /// reported the played time as the track's length — a three-minute song
+    /// skipped at forty seconds went to Spotify as a forty-second song played
+    /// to the end, and nothing about that was going to be believed.
+    durations: std::collections::HashMap<String, u32>,
+}
+
+struct Playing {
+    uri: String,
+    hex: String,
+    playback_id: String,
+    start_ms: u32,
+    position_ms: u32,
+    duration_ms: u32,
+    started_at: u128,
+    reason_start: &'static str,
+}
+
+impl History {
+    fn new(session: Session) -> Self {
+        let session_id = session.session_id();
+        History {
+            events: EventService::new(session),
+            session_id: if session_id.is_empty() {
+                events::random_id()
+            } else {
+                session_id
+            },
+            context_uri: String::new(),
+            current: None,
+            durations: std::collections::HashMap::new(),
+        }
+    }
+
+    fn observe(&mut self, event: &PlayerEvent) {
+        match event {
+            PlayerEvent::TrackChanged { audio_item } => {
+                // Kept for whenever this track starts; see `durations`. The map
+                // is bounded by the queue, and a queue is not unbounded.
+                if audio_item.duration_ms > 0 {
+                    self.durations
+                        .insert(audio_item.uri.clone(), audio_item.duration_ms);
+                }
+                if let Some(playing) = self.current.as_mut() {
+                    if playing.uri == audio_item.uri {
+                        playing.duration_ms = audio_item.duration_ms;
+                    }
+                }
+            }
+
+            PlayerEvent::Playing {
+                track_id,
+                position_ms,
+                ..
+            } => self.start(uri_string(track_id), *position_ms),
+
+            PlayerEvent::Paused { position_ms, .. }
+            | PlayerEvent::PositionChanged { position_ms, .. }
+            | PlayerEvent::Seeked { position_ms, .. } => {
+                if let Some(playing) = self.current.as_mut() {
+                    playing.position_ms = *position_ms;
+                }
+            }
+
+            // Ran to the end: the one that counts as a full listen.
+            PlayerEvent::EndOfTrack { .. } => self.finish(EndReason::TrackDone),
+            PlayerEvent::Stopped { .. } => self.finish(EndReason::EndPlay),
+            _ => {}
+        }
+    }
+
+    fn start(&mut self, uri: String, position_ms: u32) {
+        if let Some(playing) = self.current.as_ref() {
+            // Un-pausing and seeking both arrive as `Playing` on a track that is
+            // already open, and neither is a new listen.
+            if playing.uri == uri {
+                if let Some(playing) = self.current.as_mut() {
+                    playing.position_ms = position_ms;
+                }
+                return;
+            }
+            // A different track without an end event: something skipped.
+            self.finish(EndReason::Forward);
+        }
+
+        let hex = hex_id(&uri);
+        if hex.is_empty() {
+            return;
+        }
+
+        // A context is opened once and every track played inside it is
+        // attributed to it. Playing a track on its own makes the track its own
+        // context, which is what the official client does too.
+        if self.context_uri.is_empty() {
+            self.context_uri = uri.clone();
+            self.events
+                .new_session(&self.session_id, &self.context_uri, 1);
+        }
+
+        let playback_id = events::random_id();
+        self.events.new_playback(&playback_id, &self.session_id);
+
+        let duration_ms = self.durations.get(&uri).copied().unwrap_or(0);
+        self.current = Some(Playing {
+            uri,
+            hex,
+            playback_id,
+            start_ms: position_ms,
+            position_ms,
+            duration_ms,
+            started_at: events::now_ms(),
+            reason_start: "playbtn",
+        });
+    }
+
+    fn finish(&mut self, reason: EndReason) {
+        let Some(playing) = self.current.take() else {
+            return;
+        };
+        // Running off the end means the whole track was heard, whatever the
+        // last position report happened to say.
+        let end_ms = match reason {
+            EndReason::TrackDone if playing.duration_ms > 0 => playing.duration_ms,
+            _ => playing.position_ms.max(playing.start_ms),
+        };
+        let duration_ms = if playing.duration_ms > 0 {
+            playing.duration_ms
+        } else {
+            end_ms
+        };
+
+        self.events.track_transition(&Listen {
+            track_hex: &playing.hex,
+            playback_id: &playing.playback_id,
+            context_uri: &self.context_uri,
+            start_ms: playing.start_ms,
+            end_ms,
+            duration_ms,
+            reason_start: playing.reason_start,
+            reason_end: reason,
+            started_at: playing.started_at,
+        });
+    }
+}
+
+/// A track's gid in hex, which is what the events carry — not the base62 id.
+fn hex_id(uri: &str) -> String {
+    match SpotifyUri::from_uri(uri) {
+        Ok(SpotifyUri::Track { id }) => id.to_base16().unwrap_or_default(),
+        _ => String::new(),
+    }
 }
 
 fn uri_string(uri: &SpotifyUri) -> String {

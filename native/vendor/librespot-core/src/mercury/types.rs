@@ -12,6 +12,10 @@ pub enum MercuryMethod {
     Sub,
     Unsub,
     Send,
+    // LOCAL CHANGE: Spotify's event service — the one the listening history is
+    // built from — takes a POST carrying header fields, and neither the method
+    // nor the fields could be expressed with the upstream request type.
+    Post,
 }
 
 #[derive(Debug)]
@@ -20,6 +24,8 @@ pub struct MercuryRequest {
     pub uri: String,
     pub content_type: Option<String>,
     pub payload: Vec<Vec<u8>>,
+    /// LOCAL CHANGE: header fields, as the event service requires.
+    pub user_fields: Vec<(String, Vec<u8>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +62,7 @@ impl std::fmt::Display for MercuryMethod {
             MercuryMethod::Sub => "SUB",
             MercuryMethod::Unsub => "UNSUB",
             MercuryMethod::Send => "SEND",
+            MercuryMethod::Post => "POST",
         };
         write!(f, "{s}")
     }
@@ -65,7 +72,7 @@ impl MercuryMethod {
     pub fn command(&self) -> PacketType {
         use PacketType::*;
         match *self {
-            MercuryMethod::Get | MercuryMethod::Send => MercuryReq,
+            MercuryMethod::Get | MercuryMethod::Send | MercuryMethod::Post => MercuryReq,
             MercuryMethod::Sub => MercurySub,
             MercuryMethod::Unsub => MercuryUnsub,
         }
@@ -86,6 +93,13 @@ impl MercuryRequest {
 
         if let Some(ref content_type) = self.content_type {
             header.set_content_type(content_type.clone());
+        }
+
+        for (key, value) in &self.user_fields {
+            let mut field = protocol::mercury::UserField::new();
+            field.set_key(key.clone());
+            field.set_value(value.clone());
+            header.user_fields.push(field);
         }
 
         packet.write_u16::<BigEndian>(header.compute_size() as u16)?;

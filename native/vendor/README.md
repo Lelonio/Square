@@ -7,9 +7,26 @@ Copy of [`librespot-core` 0.8.0](https://github.com/librespot-org/librespot)
 `native/Cargo.toml` so that `librespot-playback` and `librespot-metadata`
 resolve to this copy as well.
 
-### The patch
+### The patches
 
-One line, in `src/config.rs`:
+#### 1. `src/mercury` — POST with header fields
+
+Spotify builds the account's listening history from events posted to
+`hm://event-service/v1/events`, and that request is a POST carrying
+`Accept-Language` and `X-ClientTimeStamp` as Mercury header fields. Upstream's
+Mercury client has neither: no POST method, and `MercuryRequest` has nowhere to
+put a header field. Both were added — a `MercuryMethod::Post`, a `user_fields`
+list on the request, and a `post()` on the manager.
+
+The alternative was building the packet by hand and calling `send_packet`
+directly, which works but throws the reply away: the sequence number would not
+be in Mercury's pending table, so there is no way to see whether Spotify
+accepted the event. On a format this app reverse-engineered, that answer is
+worth the patch.
+
+#### 2. `src/config.rs` — the advertised OS
+
+One line:
 
 ```rust
 -pub const OS: &str = std::env::consts::OS;

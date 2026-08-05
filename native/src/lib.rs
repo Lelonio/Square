@@ -7,6 +7,7 @@
 
 mod catalog;
 mod engine;
+mod events;
 mod ffi;
 mod sink;
 

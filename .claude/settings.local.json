@@ -156,7 +156,13 @@
       "Bash(git apply *)",
       "Bash(cp app/src/main/java/dev/emanuele/spot/data/SpotifyApi.kt /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/SpotifyApi.bak)",
       "Bash(cp app/src/main/java/dev/emanuele/spot/ui/MainViewModel.kt /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/MainViewModel.bak)",
-      "Bash(cp app/src/main/java/dev/emanuele/spot/ui/MainActivity.kt /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/MainActivity.bak)"
+      "Bash(cp app/src/main/java/dev/emanuele/spot/ui/MainActivity.kt /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/MainActivity.bak)",
+      "Bash(git checkout *)",
+      "Bash(gh api *)",
+      "Bash(curl -s \"https://api.github.com/search/code?q=EventService+repo:librespot-org/librespot-java\")",
+      "Bash(curl -s \"https://api.github.com/repos/librespot-org/librespot-java/git/trees/master?recursive=1\")",
+      "Bash(rm -rf lsj)",
+      "Bash(git clone *)"
     ]
   }
 }
