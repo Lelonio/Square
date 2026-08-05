@@ -67,6 +67,7 @@ import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.ui.MainViewModel
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.components.CHOICE_MENU_WIDTH
@@ -162,6 +163,9 @@ fun PlaylistScreen(
     // of an unrelated track while the page around them was tinted from this
     // cover.
     val pageBackdrop = rememberLayerBackdrop()
+
+    /** The rows, for the one piece of glass that opens over them. */
+    val listBackdrop = rememberLayerBackdrop()
 
     var sortAnchor by remember { mutableStateOf(IntOffset.Zero) }
 
@@ -272,7 +276,14 @@ fun PlaylistScreen(
 
         LazyColumn(
             state = listState,
-            modifier = Modifier.nestedScroll(headerScroll),
+            // Recorded so the sort menu has something to blur. It opens over
+            // the rows, and the page layer holds only the cover and the page
+            // colour — over a flat fill, glass has nothing to bend and comes
+            // out as a grey card. Safe to record: the menu is drawn outside the
+            // list, so nothing in this layer samples it.
+            modifier = Modifier
+                .layerBackdrop(listBackdrop)
+                .nestedScroll(headerScroll),
             contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
         ) {
             if (state.albums.isNotEmpty()) {
@@ -434,7 +445,7 @@ fun PlaylistScreen(
         GlassChoiceMenu(
             visible = sortOpen,
             anchor = sortAnchor.leftOf(density),
-            backdrop = pageBackdrop,
+            backdrop = rememberCombinedBackdrop(pageBackdrop, listBackdrop),
             onDismiss = { sortOpen = false },
         ) {
             TrackSort.entries.forEach { option ->

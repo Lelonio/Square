@@ -770,16 +770,17 @@ private fun BottomBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f)) {
-            // While the search screen is open, taps on the tabs have to be
-            // caught here rather than by the bar.
+            // On any screen that is not one of the tabs, taps on them have to
+            // be caught here rather than by the bar.
             //
             // The bar draws its sliding indicator *over* the selected tab, and
             // that indicator carries the drag gesture, so it swallows taps on
-            // whatever it is sitting on. Search is not one of the tabs, so the
-            // selection falls back to Home — and tapping Home then hit the
-            // indicator, matched the index the bar already held, and produced no
-            // event at all. That was the "search does not close" bug.
-            if (route == Routes.SEARCH) {
+            // whatever it is sitting on. Off the tabs the selection falls back
+            // to the last one used — so tapping it hit the indicator, matched
+            // the index the bar already held, and produced no event at all.
+            // That was search not closing, and a playlist or the settings not
+            // going back to the page the tab stands for.
+            if (routeIndex < 0) {
                 Row(Modifier.matchParentSize().zIndex(1f)) {
                     routes.forEach { tab ->
                         Box(

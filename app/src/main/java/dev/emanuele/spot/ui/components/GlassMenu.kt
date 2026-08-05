@@ -280,8 +280,12 @@ fun BoxScope.GlassChoiceMenu(
         GlassSurface(
             backdrop = backdrop,
             shape = shape,
-            surfaceColor = CapsuleFilm,
-            blurRadius = 20.dp,
+            // Dark, unlike the other glass in the app. This is the one pane
+            // that opens over a list of white titles, and a light film left
+            // them showing through its own labels — legibility beats keeping
+            // every surface the same film.
+            surfaceColor = ChoiceFilm,
+            blurRadius = 30.dp,
             modifier = Modifier
                 .width(CHOICE_MENU_WIDTH)
                 .clip(shape)
@@ -324,6 +328,9 @@ fun GlassChoiceItem(
         }
     }
 }
+
+/** Dark enough that a track title behind it never competes with a label. */
+private val ChoiceFilm = Color(0xFF121216).copy(alpha = 0.72f)
 
 /** Narrow on purpose; the longest label still fits on one line. */
 val CHOICE_MENU_WIDTH = 196.dp
