@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -320,11 +321,48 @@ fun SpotApp(
                 // actually beneath them, so they looked like frosted panels
                 // rather than like glass: nothing of the list underneath ever
                 // showed through.
-                Box(Modifier.fillMaxSize().layerBackdrop(overlayBackdrop)) {
+                // Recorded only while something samples it.
+                //
+                // A layer backdrop is not free to keep: the subtree draws into
+                // an offscreen buffer the size of the window and that buffer is
+                // then composited, every frame, whether or not anyone reads it.
+                // The sheets that read this one are shut most of the time, so
+                // the whole app was paying for a full-screen copy of itself for
+                // nothing.
+                val sheetsOpen = trackMenu != null || addToPlaylist.open
+                // Kept on a little past the close, or the layer would stop
+                // being recorded while the sheet is still fading out over it
+                // and the panel would go black on the way down.
+                var sheetsRecording by remember { mutableStateOf(false) }
+                LaunchedEffect(sheetsOpen) {
+                    if (sheetsOpen) sheetsRecording = true
+                    else {
+                        kotlinx.coroutines.delay(400)
+                        sheetsRecording = false
+                    }
+                }
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .layerBackdrop(pageBackdrop),
+                        .then(
+                            if (sheetsOpen || sheetsRecording) Modifier.layerBackdrop(overlayBackdrop)
+                            else Modifier,
+                        ),
+                ) {
+                // Same trade for the page layer: the only things that read it
+                // are the tab bar and the mini player, and a fully open player
+                // covers both. Derived so it flips once at the end of the
+                // animation rather than recomposing on every frame of it.
+                val barsVisible by remember {
+                    derivedStateOf { expand.value < 0.999f }
+                }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (barsVisible) Modifier.layerBackdrop(pageBackdrop)
+                            else Modifier,
+                        ),
                 ) {
                     Box(
                         Modifier

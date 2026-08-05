@@ -141,7 +141,18 @@
       "Bash(./gradlew :app:compileDebugKotlin -q)",
       "Bash(./gradlew :app:assembleDebug -q)",
       "Bash(git commit -q -m ' *)",
-      "Bash(./gradlew :app:assembleRelease -q)"
+      "Bash(./gradlew :app:assembleRelease -q)",
+      "Bash(sh /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/bench.sh)",
+      "Bash(md5 /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/base.apk /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/opt.apk)",
+      "Bash(sh /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/ab.sh)",
+      "Bash(awk '/^0,/{n++; t=\\($14-$5\\)/1e6; d=\\($8-$7\\)/1e6; sync=\\($10-$9\\)/1e6; iss=\\($12-$11\\)/1e6; sum+=t; sd+=d; ss+=sync; si+=iss} END{printf \"frames=%d total=%.1fms draw=%.1f sync=%.1f issue=%.1f\\\\n\", n, sum/n, sd/n, ss/n, si/n}')",
+      "Bash(awk -F, '/^0,/{n++; tot+=\\($14-$2\\)/1e6; inp+=\\($8-$6\\)/1e6; trav+=\\($9-$8\\)/1e6; rec+=\\($11-$9\\)/1e6; iss+=\\($13-$12\\)/1e6} END{printf \"frames=%d total=%.1f input+anim=%.1f measure/layout=%.1f record=%.1f issue=%.1f\\\\n\",n,tot/n,inp/n,trav/n,rec/n,iss/n}')",
+      "Bash(awk -F, '{print NF}')",
+      "Bash(awk -F, '/^0,/{n++; inp+=\\($8-$6\\)/1e6; trav+=\\($9-$8\\)/1e6; rec+=\\($15-$9\\)/1e6; sync+=\\($16-$15\\)/1e6; iss+=\\($17-$16\\)/1e6; gpu+=\\($21-$17\\)/1e6; tot+=\\($18-$3\\)/1e6} END{printf \"frames=%d total=%.1f anim=%.1f measure+layout=%.1f record=%.1f sync=%.1f issue=%.1f gpu=%.1f\\\\n\",n,tot/n,inp/n,trav/n,rec/n,sync/n,iss/n,gpu/n}')",
+      "Bash(unzip -o -q classes.jar -d cls)",
+      "Bash(javap -classpath cls com.kyant.backdrop.backdrops.CanvasBackdropKt com.kyant.backdrop.backdrops.LayerBackdropKt com.kyant.backdrop.backdrops.BackdropKt)",
+      "Bash(sed -i '' 's/                            if \\(sheetsOpen\\) Modifier.layerBackdrop\\(overlayBackdrop\\)/                            if \\(sheetsOpen || sheetsRecording\\) Modifier.layerBackdrop\\(overlayBackdrop\\)/' app/src/main/java/dev/emanuele/spot/ui/SpotApp.kt)",
+      "Bash(./gradlew :app:assembleRelease :app:assembleDebug -q)"
     ]
   }
 }

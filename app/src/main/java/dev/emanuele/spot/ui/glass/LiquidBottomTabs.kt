@@ -223,14 +223,25 @@ fun LiquidBottomTabs(
                     .drawBackdrop(
                         backdrop = backdrop,
                         shape = { Capsule() },
+                        // LOCAL CHANGE: only while pressed.
+                        //
+                        // This copy of the row is drawn at alpha 0 and exists to
+                        // feed the indicator; its glass is visible only through
+                        // the indicator, which is itself only lit while a finger
+                        // is down. Upstream blurs and refracts it on every frame
+                        // regardless, which is a second full pass over the bar
+                        // for something nobody can see — about a millisecond of
+                        // GPU per frame, spent while scrolling a list.
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
-                            vibrancy()
-                            blur(8f.dp.toPx())
-                            lens(
-                                lensDepth.toPx() * progress,
-                                lensDepth.toPx() * progress
-                            )
+                            if (progress > 0f) {
+                                vibrancy()
+                                blur(8f.dp.toPx())
+                                lens(
+                                    lensDepth.toPx() * progress,
+                                    lensDepth.toPx() * progress
+                                )
+                            }
                         },
                         highlight = {
                             val progress = dampedDragAnimation.pressProgress
@@ -261,13 +272,18 @@ fun LiquidBottomTabs(
                 .drawBackdrop(
                     backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
                     shape = { Capsule() },
+                    // LOCAL CHANGE: same reason as the row above. At rest the
+                    // refraction amount is zero, so the shader was running over
+                    // the indicator to displace nothing.
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
-                        lens(
-                            10f.dp.toPx() * progress,
-                            14f.dp.toPx() * progress,
-                            chromaticAberration = true
-                        )
+                        if (progress > 0f) {
+                            lens(
+                                10f.dp.toPx() * progress,
+                                14f.dp.toPx() * progress,
+                                chromaticAberration = true
+                            )
+                        }
                     },
                     highlight = {
                         val progress = dampedDragAnimation.pressProgress
