@@ -54,6 +54,21 @@ interface SpotifyApi {
     ): PageDto<PlaylistTrackDto>
 
     /**
+     * The playlist's version stamp, and nothing else.
+     *
+     * `snapshot_id` changes whenever the contents do, so this one small request
+     * answers "is the copy on disk still right?" — which is what lets a
+     * thousand-track playlist open without re-reading a dozen pages of it.
+     * `fields` keeps the response to the two values that matter instead of the
+     * whole playlist with its first hundred tracks inside.
+     */
+    @GET("v1/playlists/{id}")
+    suspend fun playlistSnapshot(
+        @Path("id") playlistId: String,
+        @Query("fields") fields: String = "snapshot_id,tracks(total)",
+    ): PlaylistSnapshotDto
+
+    /**
      * Albums and singles released recently.
      *
      * Not personalised — Spotify's own recommendation endpoints were closed to
@@ -178,6 +193,15 @@ data class SavedTrackDto(
     @SerialName("added_at") val addedAt: String? = null,
     val track: TrackDto,
 )
+
+@Serializable
+data class PlaylistSnapshotDto(
+    @SerialName("snapshot_id") val snapshotId: String? = null,
+    val tracks: TotalDto? = null,
+)
+
+@Serializable
+data class TotalDto(val total: Int = 0)
 
 @Serializable
 data class PlaylistTrackDto(

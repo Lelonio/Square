@@ -11,6 +11,7 @@ import dev.emanuele.spot.data.RemoveTracksRequestDto
 import dev.emanuele.spot.data.TrackUriDto
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.CatalogTrack
+import dev.emanuele.spot.data.ContextCacheStore
 import dev.emanuele.spot.data.SearchItem
 import dev.emanuele.spot.data.TransferRequestDto
 import dev.emanuele.spot.data.SearchResults
@@ -528,6 +529,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         container.tokenStore.clear()
         container.recentStore.clear()
         container.playlistOrder.clear()
+        // Somebody else's library must not be sitting in the cache when the
+        // next account signs in.
+        contextCache.clear()
+        viewModelScope.launch { container.contextCache.clear() }
         _playlist.value = PlaylistState()
         _feed.value = FeedState()
         _state.value = UiState.LoggedOut
@@ -644,10 +649,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * replaces it only when it has the whole thing, so reopening never takes a
      * finished list away and rebuilds it in front of the user.
      */
-    private val contextCache = object : LinkedHashMap<String, List<CatalogTrack>>(0, 0.75f, true) {
-        override fun removeEldestEntry(eldest: Map.Entry<String, List<CatalogTrack>>) =
-            size > CONTEXT_CACHE_SIZE
-    }
+    private val contextCache =
+        object : LinkedHashMap<String, ContextCacheStore.Entry>(0, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, ContextCacheStore.Entry>) =
+                size > CONTEXT_CACHE_SIZE
+        }
 
     fun openPlaylist(playlist: CatalogPlaylist) {
         // Reopening one counts as opening it, and that is exactly the playlist
@@ -663,14 +669,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             kind = kind,
         )
 
-        val cached = contextCache[playlist.uri].orEmpty()
-        _playlist.value = base.copy(tracks = cached, loading = cached.isEmpty())
+        val remembered = contextCache[playlist.uri]
+        _playlist.value = base.copy(
+            tracks = remembered?.tracks.orEmpty(),
+            loading = remembered == null,
+        )
 
         playlistJob = viewModelScope.launch {
+            // The disk copy, if this run has not opened the playlist yet. Read
+            // before anything is asked of the network: the whole point is that a
+            // list already known appears at once rather than filling in.
+            val entry = remembered ?: container.contextCache.read(playlist.uri)?.also {
+                contextCache[playlist.uri] = it
+                _playlist.value = base.copy(tracks = it.tracks, loading = false)
+            }
+            val cached = entry?.tracks.orEmpty()
+
             runCatching {
                 if (kind == DetailKind.ARTIST) {
                     val (tracks, albums) = loadArtist(playlist.uri)
                     _playlist.value = base.copy(tracks = tracks, albums = albums)
+                } else if (cached.isNotEmpty() && isUnchanged(playlist.uri, entry?.snapshotId)) {
+                    // Nothing to do: one small request said the copy on screen
+                    // is the current one.
+                    _playlist.value = base.copy(tracks = cached, loadingMore = false)
                 } else {
                     loadContextInto(base, playlist.uri, showProgress = cached.isEmpty())
                 }
@@ -683,6 +705,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         if (cached.isEmpty()) base.copy(error = describe(it)) else base.copy(tracks = cached)
                 }
         }
+    }
+
+    /**
+     * Whether the stored copy of a playlist is still the current one.
+     *
+     * Spotify changes a playlist's `snapshot_id` whenever its contents do, so
+     * this is one request against a dozen. False for anything without a stored
+     * stamp — an album, a list read through the access point — which simply
+     * means it is refreshed as before, silently, behind what is already shown.
+     */
+    private suspend fun isUnchanged(uri: String, snapshotId: String?): Boolean {
+        if (snapshotId == null) return false
+        if (!container.webApi.isReady || !uri.startsWith("spotify:playlist:")) return false
+        return runCatching {
+            container.api.playlistSnapshot(uri.substringAfterLast(':')).snapshotId == snapshotId
+        }
+            .onFailure { android.util.Log.w(TAG, "snapshot check failed: ${describe(it)}") }
+            .getOrDefault(false)
     }
 
     /**
@@ -718,9 +758,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Drops a context from the cache so the next open re-reads it. */
+    /** Drops a context from both caches so the next open re-reads it. */
     private fun invalidateContext(uri: String) {
         contextCache.remove(uri)
+        viewModelScope.launch { container.contextCache.remove(uri) }
     }
 
     /**
@@ -747,8 +788,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         val tracks = viaWebApi ?: accessPointTracks(base, uri, showProgress)
 
-        contextCache[uri] = tracks
         _playlist.value = base.copy(tracks = tracks, loadingMore = false)
+
+        // Stamped with the version it was read from, so the next open can ask
+        // one question instead of reading it all again. Without a stamp the
+        // entry still saves — it just gets refreshed silently every time.
+        val snapshotId = snapshotOf(uri)
+        contextCache[uri] = ContextCacheStore.Entry(tracks, snapshotId)
+        container.contextCache.write(uri, tracks, snapshotId)
+    }
+
+    /** The playlist's current version stamp, or null if it has none to give. */
+    private suspend fun snapshotOf(uri: String): String? {
+        if (!container.webApi.isReady || !uri.startsWith("spotify:playlist:")) return null
+        return runCatching {
+            container.api.playlistSnapshot(uri.substringAfterLast(':')).snapshotId
+        }.getOrNull()
     }
 
     /** Null when this is not something the Web API can page through. */

@@ -3,6 +3,7 @@ package dev.emanuele.spot
 import android.app.Application
 import dev.emanuele.spot.auth.TokenStore
 import dev.emanuele.spot.auth.WebApiAccount
+import dev.emanuele.spot.data.ContextCacheStore
 import dev.emanuele.spot.data.PlaylistOrderStore
 import dev.emanuele.spot.data.PreferencesStore
 import dev.emanuele.spot.data.RecentStore
@@ -25,6 +26,9 @@ class SpotApplication : Application() {
     /** Which playlists were opened most recently, for ordering the home page. */
     val playlistOrder: PlaylistOrderStore by lazy { PlaylistOrderStore(this) }
     val preferences: PreferencesStore by lazy { PreferencesStore(this) }
+
+    /** Track lists already resolved, so reopening a playlist is not a reload. */
+    val contextCache: ContextCacheStore by lazy { ContextCacheStore(this) }
 
     /**
      * The user's own Spotify application. Web API calls go through it so they
