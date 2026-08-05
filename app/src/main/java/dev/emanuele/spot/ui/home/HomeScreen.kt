@@ -24,6 +24,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,12 +73,10 @@ import java.util.Calendar
 /**
  * What the feed is showing.
  *
- * A filter rather than tabs: the sections keep their order and the chips only
- * decide which of them are on the page, so nothing moves around when you switch
- * and "Tutto" is genuinely the whole thing rather than a fourth view.
- *
- * The chips are in the sections' own order, so scrolling walks along them left
- * to right instead of jumping about.
+ * Chips rather than a second tab bar: they sit inside the page, under the name,
+ * and "Tutto" is genuinely the whole thing rather than a fourth view. The
+ * sections keep their order in every one of them, so switching never rearranges
+ * what stays on screen.
  */
 private enum class Feed(val label: String) {
     ALL("Tutto"),
@@ -148,10 +153,6 @@ fun HomeScreen(
             val playlists = remember(state.playlists, playlistOrder) {
                 state.playlists.sortedByRecentlyOpened(playlistOrder)
             }
-            val showReleases = filter == Feed.ALL || filter == Feed.RELEASES
-            val showArtists = filter == Feed.ALL || filter == Feed.ARTISTS
-            val showLibrary = filter == Feed.ALL || filter == Feed.LIBRARY
-
             val listState = rememberLazyListState()
 
             // How far the header has collapsed, 0 to 1.
@@ -170,32 +171,42 @@ fun HomeScreen(
                 }
             }
 
-            // Which section is being looked at, for the chips.
-            //
-            // Read from the item type rather than from an index: sections
-            // appear and disappear with the filter, so any arithmetic over
-            // positions would be wrong the moment one of them is empty.
-            val visibleSection by remember {
-                derivedStateOf {
-                    listState.layoutInfo.visibleItemsInfo
-                        .firstNotNullOfOrNull { info ->
-                            Feed.entries.firstOrNull { it.name == info.contentType }
-                        }
-                }
-            }
+            // Back to the top when the view changes. The lists have nothing in
+            // common, so keeping the old offset drops the new one in the middle
+            // of itself.
+            LaunchedEffect(filter) { listState.scrollToItem(0) }
 
             Column(Modifier.fillMaxSize()) {
                 Header(
                     name = state.displayName,
                     avatarUrl = state.avatarUrl,
                     collapse = { collapse },
-                    filter = filter,
-                    highlighted = if (filter == Feed.ALL) visibleSection ?: Feed.ALL else filter,
+                    // The chip that is lit is the one that was tapped. It used
+                    // to follow whichever section the scroll had reached, which
+                    // read as a control changing itself: the chips look like a
+                    // filter, so a lit one has to mean "this is what you are
+                    // looking at because you asked for it".
+                    highlighted = filter,
                     backdrop = backdrop,
                     topPadding = contentPadding.calculateTopPadding(),
                     onFilter = { filter = it },
                     onOpenSettings = onOpenSettings,
                 )
+
+                AnimatedContent(
+                    targetState = filter,
+                    transitionSpec = {
+                        // Short and vertical: the sections do not move sideways
+                        // when they are filtered, so neither should the change.
+                        (fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 14 })
+                            .togetherWith(fadeOut(tween(120)))
+                    },
+                    label = "feed",
+                ) { current ->
+                val showReleases = current == Feed.ALL || current == Feed.RELEASES
+                val showArtists = current == Feed.ALL || current == Feed.ARTISTS
+                val showLibrary = current == Feed.ALL || current == Feed.LIBRARY
+                val filter = current
 
                 LazyColumn(
                     Modifier
@@ -275,6 +286,7 @@ fun HomeScreen(
 
                 item(contentType = "tail") { Box(Modifier.height(24.dp)) }
                 }
+                }
             }
         }
     }
@@ -303,8 +315,7 @@ private fun Header(
      * no recomposition at all.
      */
     collapse: () -> Float,
-    filter: Feed,
-    /** The chip drawn as active, which follows the scroll while nothing is filtered. */
+    /** The chip drawn as active: the one that was tapped. */
     highlighted: Feed,
     backdrop: Backdrop,
     topPadding: Dp,
@@ -340,42 +351,43 @@ private fun Header(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                // The name and the icon, where the greeting used to be. The
-                // home page carried nothing of the app on it — no name, no mark
-                // — so the first screen after the launcher looked like it
-                // belonged to nothing in particular.
+                // What survives the collapse, along with the account picture.
                 //
-                // Height goes with the alpha. Fading it alone would leave the
-                // header the same size with a blank line in it.
+                // The account name is the greeting; the mark is what page you
+                // are on. Once the header is a bar, a bar carrying only a first
+                // name says nothing about where you are, so it is the name that
+                // leaves and the app that stays. It grows a little on the way
+                // in, since by then it is the only title on screen.
                 AppLockup(
-                    iconSize = 18.dp,
-                    nameHeight = 11.dp,
-                    modifier = Modifier
-                        .layout { measurable, constraints ->
-                            val placeable = measurable.measure(constraints)
-                            val height = lerp(LOCKUP_HEIGHT, 0.dp, collapse()).roundToPx()
-                            layout(placeable.width, height) { placeable.place(0, 0) }
-                        }
-                        // The icon is taller than the row gets on the way out,
-                        // and would otherwise spill over the name.
-                        .graphicsLayer {
-                            clip = true
-                            alpha = 1f - collapse()
-                        },
+                    iconSize = 26.dp,
+                    nameHeight = 15.dp,
+                    modifier = Modifier.graphicsLayer {
+                        val scale = 1f + 0.1f * collapse()
+                        scaleX = scale
+                        scaleY = scale
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                    },
                 )
+                // Height goes with the alpha. Fading it alone would leave the
+                // bar the same size with a blank line in it.
                 Text(
                     name,
                     style = MaterialTheme.typography.displayLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    // Scaled rather than swapped for a smaller style: a style
-                    // change is a jump, and this has to track a finger.
-                    modifier = Modifier.graphicsLayer {
-                        val scale = 1f - 0.34f * collapse()
-                        scaleX = scale
-                        scaleY = scale
-                        transformOrigin = TransformOrigin(0f, 0.5f)
-                    },
+                    modifier = Modifier
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            val height = ((1f - collapse()) * placeable.height).toInt()
+                            layout(placeable.width, height) { placeable.place(0, 0) }
+                        }
+                        .graphicsLayer {
+                            clip = true
+                            alpha = (1f - collapse() * 1.6f).coerceIn(0f, 1f)
+                            // Anchored to the mark above it rather than sliding
+                            // up from wherever it was.
+                            transformOrigin = TransformOrigin(0f, 0f)
+                        },
                 )
             }
 
@@ -675,8 +687,6 @@ private val SelectedFilm = Color.White.copy(alpha = 0.26f)
  */
 private const val COLLAPSE_DISTANCE_PX = 140f
 
-/** The icon-and-name line above the account name, at rest. */
-private val LOCKUP_HEIGHT = 20.dp
 
 /** Comfortably under the 640px Spotify serves, so it is never upscaled. */
 private val COVER_SIZE = 210.dp

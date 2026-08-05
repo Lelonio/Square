@@ -42,6 +42,8 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.Check
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 
@@ -229,3 +231,102 @@ fun GlassIconMenuItem(
 
 /** Light enough to stay glass; the capsule is small and never covers text. */
 private val CapsuleFilm = Color.White.copy(alpha = 0.14f)
+
+/**
+ * A short list of choices, in glass, drawn inside the screen.
+ *
+ * The opaque [GlassMenu] above is a popup, and a popup is a window of its own:
+ * it cannot sample another window's layer, so it can only fake the material with
+ * a dark fill. That is the right trade for a menu that has to sit over a track
+ * list near the bottom of the page, where the tab bar would otherwise cross it.
+ *
+ * This one is for menus that open high up, clear of the bars, and can therefore
+ * be drawn in the page and refract it properly. It is also narrower and tighter:
+ * these are variants of one setting, not a list of verbs, so each row is a word
+ * and a tick rather than a word and an icon.
+ */
+@Composable
+fun BoxScope.GlassChoiceMenu(
+    visible: Boolean,
+    anchor: IntOffset,
+    backdrop: Backdrop,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(120)),
+        exit = fadeOut(tween(120)),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clickable(interactionSource = null, indication = null, onClick = onDismiss),
+        )
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = scaleIn(tween(180), initialScale = 0.85f, transformOrigin = TopEnd) +
+            fadeIn(tween(120)),
+        exit = scaleOut(tween(130), targetScale = 0.9f, transformOrigin = TopEnd) +
+            fadeOut(tween(110)),
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .offset { anchor },
+    ) {
+        val shape = RoundedCornerShape(20.dp)
+        GlassSurface(
+            backdrop = backdrop,
+            shape = shape,
+            surfaceColor = CapsuleFilm,
+            blurRadius = 20.dp,
+            modifier = Modifier
+                .width(CHOICE_MENU_WIDTH)
+                .clip(shape)
+                .softShadow(shape, elevation = 18.dp, spot = 0.3f),
+        ) {
+            Column(Modifier.padding(vertical = 4.dp), content = content)
+        }
+    }
+}
+
+@Composable
+fun GlassChoiceItem(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(start = 16.dp, end = 12.dp, top = 9.dp, bottom = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (selected) Color.White else Color.White.copy(alpha = 0.72f),
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        // Only the chosen row carries a mark: a column of icons down the side
+        // would make four variants of one setting look like four commands.
+        if (selected) {
+            Icon(
+                CheckIcon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(15.dp),
+            )
+        }
+    }
+}
+
+/** Narrow on purpose; the longest label still fits on one line. */
+val CHOICE_MENU_WIDTH = 196.dp
+
+private val CheckIcon
+    get() = com.adamglin.PhosphorIcons.Regular.Check

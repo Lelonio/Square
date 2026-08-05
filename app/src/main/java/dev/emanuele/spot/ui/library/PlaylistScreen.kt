@@ -69,8 +69,9 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.emanuele.spot.ui.components.Artwork
-import dev.emanuele.spot.ui.components.GlassMenu
-import dev.emanuele.spot.ui.components.GlassMenuItem
+import dev.emanuele.spot.ui.components.CHOICE_MENU_WIDTH
+import dev.emanuele.spot.ui.components.GlassChoiceItem
+import dev.emanuele.spot.ui.components.GlassChoiceMenu
 import dev.emanuele.spot.ui.components.LazyScrollBar
 import dev.emanuele.spot.ui.components.SwipeToQueue
 import dev.emanuele.spot.ui.glass.LiquidButton
@@ -427,20 +428,17 @@ fun PlaylistScreen(
             )
         }
 
-        GlassMenu(
+        // In the page rather than in a popup of its own: the sort button is up
+        // by the header, well clear of the bars that would otherwise be drawn
+        // over this, so it can be real glass instead of a dark card.
+        GlassChoiceMenu(
             visible = sortOpen,
             anchor = sortAnchor.leftOf(density),
+            backdrop = pageBackdrop,
             onDismiss = { sortOpen = false },
         ) {
             TrackSort.entries.forEach { option ->
-                GlassMenuItem(
-                    option.label,
-                    if (option == sort) {
-                        PhosphorIcons.Regular.Check
-                    } else {
-                        PhosphorIcons.Regular.ArrowsDownUp
-                    },
-                ) {
+                GlassChoiceItem(option.label, selected = option == sort) {
                     sort = option
                     onSortChange(option.name)
                     sortOpen = false
@@ -457,7 +455,7 @@ fun PlaylistScreen(
  * those controls is at the right-hand edge of the screen.
  */
 private fun IntOffset.leftOf(density: androidx.compose.ui.unit.Density): IntOffset {
-    val width = with(density) { MENU_WIDTH.roundToPx() }
+    val width = with(density) { CHOICE_MENU_WIDTH.roundToPx() }
     val gap = with(density) { 8.dp.roundToPx() }
     return IntOffset((x - width + gap).coerceAtLeast(gap), y + gap)
 }
