@@ -299,14 +299,29 @@ pub fn playlist_cover(uri: &str) -> EngineResult<String> {
             .map_err(|e| format!("playlist was not a SelectedListContent: {e}"))?;
 
         let attributes = &list.attributes;
-        let cover = image_url(attributes.picture())
+
+        // Format attributes come first, and the exact `image_url` before any
+        // other key that merely ends in it.
+        //
+        // The generated lists — "i tuoi brani più ascoltati", the daily mixes —
+        // carry several: a header image, a background, and the cover the web
+        // client actually shows. Taking whichever came first put the wrong art
+        // on those tiles. Their `picture` is stale or empty, which is why this
+        // is preferred over it rather than used as a fallback.
+        let format_cover = attributes
+            .format_attributes
+            .iter()
+            .find(|attribute| attribute.key() == "image_url")
             .or_else(|| {
                 attributes
                     .format_attributes
                     .iter()
-                    .find(|attribute| attribute.key().contains("image_url"))
-                    .and_then(|attribute| cdn_url(attribute.value()))
+                    .find(|attribute| attribute.key().ends_with("image_url"))
             })
+            .and_then(|attribute| cdn_url(attribute.value()));
+
+        let cover = format_cover
+            .or_else(|| image_url(attributes.picture()))
             .or_else(|| {
                 // The sized variants, when there is no single picture: the
                 // largest is last in Spotify's own order, and any of them is a

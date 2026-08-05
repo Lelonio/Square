@@ -265,6 +265,7 @@ pub fn start(
         listener,
         device_name.to_string(),
         session.clone(),
+        cache_dir.to_string(),
     );
 
     *guard = Some(Engine {
@@ -292,6 +293,7 @@ fn spawn_event_pump(
     listener: GlobalRef,
     device_name: String,
     session: Session,
+    state_dir: String,
 ) {
     let mut events = player.get_player_event_channel();
     // Keep the player alive for as long as we are reading its events.
@@ -313,7 +315,7 @@ fn spawn_event_pump(
 
             log::info!("event pump started for device {device_name}");
             // What the account's listening history is built from; see events.rs.
-            let mut history = History::new(session);
+            let mut history = History::new(session, state_dir);
 
             while let Some(event) = events.blocking_recv() {
                 history.observe(&event);
@@ -367,6 +369,8 @@ fn spawn_event_pump(
 /// event that says so.
 struct History {
     events: EventService,
+    /// Where the in-progress listen is kept, so a killed process loses nothing.
+    state_dir: String,
     session_id: String,
     /// The context every listen is attributed to, once one has been started.
     context_uri: String,
@@ -394,10 +398,14 @@ struct Playing {
 }
 
 impl History {
-    fn new(session: Session) -> Self {
+    fn new(session: Session, state_dir: String) -> Self {
         let session_id = session.session_id();
+        let events = EventService::new(session);
+        // Whatever the last run was in the middle of when it went away.
+        events::pending::flush(&state_dir, &events);
         History {
-            events: EventService::new(session),
+            events,
+            state_dir,
             session_id: if session_id.is_empty() {
                 events::random_id()
             } else {
@@ -436,6 +444,8 @@ impl History {
                 if let Some(playing) = self.current.as_mut() {
                     playing.position_ms = *position_ms;
                 }
+                // Once a second, which is what this event arrives at.
+                self.remember();
             }
 
             // A pause ends the stretch that was being listened to.
@@ -526,6 +536,26 @@ impl History {
             started_at: events::now_ms(),
             reason_start: "playbtn",
         });
+        self.remember();
+    }
+
+    /// Keeps the in-progress listen on disk; see `events::pending`.
+    fn remember(&self) {
+        let Some(playing) = self.current.as_ref() else {
+            return;
+        };
+        events::pending::write(
+            &self.state_dir,
+            &events::pending::Pending {
+                track_hex: playing.hex.clone(),
+                playback_id: playing.playback_id.clone(),
+                context_uri: self.context_uri.clone(),
+                start_ms: playing.start_ms,
+                position_ms: playing.position_ms,
+                duration_ms: playing.duration_ms,
+                started_at: playing.started_at,
+            },
+        );
     }
 
     fn finish(&mut self, reason: EndReason) {
@@ -550,6 +580,9 @@ impl History {
         } else {
             end_ms
         };
+
+        // Sent, so it must not be sent again on the next start.
+        events::pending::clear(&self.state_dir);
 
         self.events.track_transition(&Listen {
             track_hex: &playing.hex,

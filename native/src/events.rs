@@ -263,6 +263,87 @@ fn kind_of(body: &[u8]) -> String {
         .unwrap_or_default()
 }
 
+/// A listen interrupted by the process going away.
+///
+/// Written to disk while a track plays and cleared as soon as the transition is
+/// sent. A phone kills a music app the moment it needs the memory, and until
+/// this existed everything heard since the last pause went with it: the event
+/// only ever left at a boundary, and being killed is not a boundary.
+///
+/// Reported on the next start, with the position it had reached and its
+/// original timestamp. Late, but true — the alternative was silence.
+pub mod pending {
+    use super::{EndReason, EventService, Listen};
+    use std::path::{Path, PathBuf};
+
+    const FILE_NAME: &str = "pending-listen";
+
+    pub struct Pending {
+        pub track_hex: String,
+        pub playback_id: String,
+        pub context_uri: String,
+        pub start_ms: u32,
+        pub position_ms: u32,
+        pub duration_ms: u32,
+        pub started_at: u128,
+    }
+
+    fn path(dir: &str) -> PathBuf {
+        Path::new(dir).join(FILE_NAME)
+    }
+
+    /// Tab-separated and hand-parsed: six values, written once a second.
+    pub fn write(dir: &str, listen: &Pending) {
+        let line = format!(
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            listen.track_hex,
+            listen.playback_id,
+            listen.context_uri,
+            listen.start_ms,
+            listen.position_ms,
+            listen.duration_ms,
+            listen.started_at,
+        );
+        let _ = std::fs::write(path(dir), line);
+    }
+
+    pub fn clear(dir: &str) {
+        let _ = std::fs::remove_file(path(dir));
+    }
+
+    /// Sends whatever the last run was in the middle of, and forgets it.
+    pub fn flush(dir: &str, events: &EventService) {
+        let Ok(raw) = std::fs::read_to_string(path(dir)) else {
+            return;
+        };
+        clear(dir);
+
+        let parts: Vec<&str> = raw.split('\t').collect();
+        if parts.len() != 7 {
+            return;
+        }
+        let number = |index: usize| parts[index].parse().unwrap_or(0);
+        let position_ms: u32 = number(4);
+        let start_ms: u32 = number(3);
+        if position_ms <= start_ms {
+            return;
+        }
+
+        log::info!("reporting a listen the last run did not finish");
+        events.track_transition(&Listen {
+            track_hex: parts[0],
+            playback_id: parts[1],
+            context_uri: parts[2],
+            start_ms,
+            end_ms: position_ms,
+            duration_ms: number(5),
+            reason_start: "playbtn",
+            reason_end: EndReason::EndPlay,
+            started_at: parts[6].parse().unwrap_or(0),
+        });
+    }
+}
+
 pub fn now_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
