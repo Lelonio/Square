@@ -3,6 +3,7 @@ package dev.emanuele.spot.playback
 import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import dev.emanuele.spot.ui.EXTRA_CONTEXT_LABEL
 import androidx.media3.common.Player
 import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
@@ -68,11 +69,17 @@ class LibrespotPlayer(
         if (uris.isEmpty()) return
         val index = queue.currentIndex
         fadeOutThen {
+            // Read now, not when this was scheduled. The fade takes a moment,
+            // and a tap on a track while paused arrives as "load this" followed
+            // immediately by "play": with the flag frozen at schedule time the
+            // load went out as paused, the play landed before it, and the track
+            // sat there selected and silent.
+            val wanted = startPlaying || playWhenReady
             runCatching {
                 NativeBridge.loadQueue(
                     uris,
                     index,
-                    startPlaying,
+                    wanted,
                     positionMs,
                     queue.contextUri.orEmpty(),
                     // Only when the queue is that context in its own order, and
@@ -82,7 +89,7 @@ class LibrespotPlayer(
                 )
             }
                 .onFailure { android.util.Log.e("SpotPlayer", "load failed: ${it.message}") }
-            if (startPlaying) fadeIn()
+            if (wanted) fadeIn()
         }
     }
 
@@ -519,6 +526,15 @@ class LibrespotPlayer(
                             .setTitle(track.title)
                             .setArtist(track.artist)
                             .setArtworkUri(track.artworkUri)
+                            // Put back, because this item is rebuilt rather
+                            // than passed through; see PlayQueue.contextLabel.
+                            .setExtras(
+                                queue.contextLabel.takeIf { it.isNotEmpty() }?.let {
+                                    android.os.Bundle().apply {
+                                        putString(EXTRA_CONTEXT_LABEL, it)
+                                    }
+                                },
+                            )
                             .build(),
                     )
                     .build(),

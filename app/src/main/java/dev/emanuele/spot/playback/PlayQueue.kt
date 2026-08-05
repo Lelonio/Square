@@ -2,6 +2,7 @@ package dev.emanuele.spot.playback
 
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import dev.emanuele.spot.ui.EXTRA_CONTEXT_LABEL
 import dev.emanuele.spot.ui.EXTRA_CONTEXT_ORDERED
 import dev.emanuele.spot.ui.EXTRA_CONTEXT_URI
 
@@ -169,6 +170,9 @@ class PlayQueue {
         }
         contextIsOrdered = mediaItems.firstOrNull()
             ?.mediaMetadata?.extras?.getBoolean(EXTRA_CONTEXT_ORDERED) == true
+        contextLabel = mediaItems.firstNotNullOfOrNull {
+            it.mediaMetadata.extras?.getString(EXTRA_CONTEXT_LABEL)
+        }.orEmpty()
         replace(mediaItems.mapNotNull(::toTrack), startIndex)
     }
 
@@ -183,6 +187,18 @@ class PlayQueue {
 
     /** True when this queue is that context in its own order; see LibrespotPlayer. */
     var contextIsOrdered: Boolean = false
+        private set
+
+    /**
+     * What the player shows as the source: "Playlist · Estate 2025".
+     *
+     * Kept here and put back on every item the player publishes. The items that
+     * arrive from a controller carry it in their extras, but the ones handed
+     * *back* are rebuilt from this queue, and a rebuilt item has whatever is put
+     * into it — which is how the label reached the service and never came out
+     * the other side.
+     */
+    var contextLabel: String = ""
         private set
 
     /** Insert controller-supplied items; see [replaceFromMediaItems] for the id rule. */

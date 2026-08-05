@@ -300,37 +300,41 @@ pub fn playlist_cover(uri: &str) -> EngineResult<String> {
 
         let attributes = &list.attributes;
 
-        // Format attributes come first, and the exact `image_url` before any
-        // other key that merely ends in it.
+        // Order matters, and the obvious order is wrong.
         //
-        // The generated lists — "i tuoi brani più ascoltati", the daily mixes —
-        // carry several: a header image, a background, and the cover the web
-        // client actually shows. Taking whichever came first put the wrong art
-        // on those tiles. Their `picture` is stale or empty, which is why this
-        // is preferred over it rather than used as a fallback.
-        let format_cover = attributes
-            .format_attributes
-            .iter()
-            .find(|attribute| attribute.key() == "image_url")
+        // `picture` is the ordinary cover, and comes first when there is one.
+        // Failing that, the sized variants: those are the square art the web
+        // client shows, largest first.
+        //
+        // The `image_url` among the format attributes is *not* the cover. On the
+        // generated lists it is the header or the phone wallpaper —
+        // `atts-desktop`, `yts-mobile`, `..._MOBILE_WALLPAPER.jpg` — a wide
+        // image where a square one belongs, and often of a different year than
+        // the playlist carrying it. Last resort, for lists with nothing else.
+        let sized = |target: &str| {
+            attributes
+                .picture_size
+                .iter()
+                .find(|size| size.target_name() == target)
+                .and_then(|size| cdn_url(size.url()))
+        };
+
+        let cover = image_url(attributes.picture())
+            .or_else(|| sized("xlarge"))
+            .or_else(|| sized("large"))
+            .or_else(|| sized("default"))
+            .or_else(|| {
+                attributes
+                    .picture_size
+                    .last()
+                    .and_then(|size| cdn_url(size.url()))
+            })
             .or_else(|| {
                 attributes
                     .format_attributes
                     .iter()
-                    .find(|attribute| attribute.key().ends_with("image_url"))
-            })
-            .and_then(|attribute| cdn_url(attribute.value()));
-
-        let cover = format_cover
-            .or_else(|| image_url(attributes.picture()))
-            .or_else(|| {
-                // The sized variants, when there is no single picture: the
-                // largest is last in Spotify's own order, and any of them is a
-                // better tile than none.
-                attributes
-                    .picture_size
-                    .iter()
-                    .last()
-                    .and_then(|size| cdn_url(size.url()))
+                    .find(|attribute| attribute.key() == "image_url")
+                    .and_then(|attribute| cdn_url(attribute.value()))
             });
 
         Ok(json!(cover).to_string())
