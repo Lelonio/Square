@@ -46,10 +46,14 @@ import dev.emanuele.spot.ui.glass.LiquidSlider
 import kotlin.math.ln
 import kotlin.math.roundToInt
 import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.SlidersHorizontal
 import com.adamglin.phosphoricons.regular.TextAlignLeft
+import com.adamglin.phosphoricons.fill.SlidersHorizontal
+import com.adamglin.phosphoricons.fill.TextAlignLeft
+import com.adamglin.phosphoricons.fill.VinylRecord
 import com.adamglin.phosphoricons.regular.VinylRecord
 import com.adamglin.phosphoricons.regular.X
 
@@ -132,13 +136,24 @@ fun PlayerPanelSection(
                 .fillMaxWidth(0.72f)
                 .padding(top = 14.dp),
         ) {
-            PanelTab(PhosphorIcons.Regular.VinylRecord, "Copertina", selected == 0) { onSelect(PlayerPanel.NONE) }
-            PanelTab(PhosphorIcons.Regular.TextAlignLeft, "Testo", selected == 1) {
-                onSelect(PlayerPanel.LYRICS)
-            }
-            PanelTab(PhosphorIcons.Regular.SlidersHorizontal, "Effetti", selected == 2) {
-                onSelect(PlayerPanel.EFFECTS)
-            }
+            PanelTab(
+                icon = PhosphorIcons.Regular.VinylRecord,
+                activeIcon = PhosphorIcons.Fill.VinylRecord,
+                label = "Copertina",
+                selected = selected == 0,
+            ) { onSelect(PlayerPanel.NONE) }
+            PanelTab(
+                icon = PhosphorIcons.Regular.TextAlignLeft,
+                activeIcon = PhosphorIcons.Fill.TextAlignLeft,
+                label = "Testo",
+                selected = selected == 1,
+            ) { onSelect(PlayerPanel.LYRICS) }
+            PanelTab(
+                icon = PhosphorIcons.Regular.SlidersHorizontal,
+                activeIcon = PhosphorIcons.Fill.SlidersHorizontal,
+                label = "Effetti",
+                selected = selected == 2,
+            ) { onSelect(PlayerPanel.EFFECTS) }
         }
 
     }
@@ -147,13 +162,19 @@ fun PlayerPanelSection(
 @Composable
 private fun RowScope.PanelTab(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    /** The filled cut of the same glyph, for the view being shown. */
+    activeIcon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
     LiquidBottomTab(onClick = onClick) {
         Icon(
-            imageVector = icon,
+            // Filled rather than only brighter. The indicator behind the icon
+            // moves, so at a glance the two states differed by a shade of grey
+            // sliding around; a solid glyph says which view you are in without
+            // being read against its neighbours.
+            imageVector = if (selected) activeIcon else icon,
             contentDescription = label,
             tint = if (selected) GlassInk else GlassInkDim,
             modifier = Modifier.size(19.dp),

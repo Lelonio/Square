@@ -162,7 +162,7 @@ fun SpotApp(
      * the queue *is* that context in its own order, in which case playback is
      * handed to Spotify as the context itself.
      */
-    onPlay: (List<CatalogTrack>, Int, String?, Boolean) -> Unit,
+    onPlay: (List<CatalogTrack>, Int, String?, Boolean, String) -> Unit,
     /** Appends one track to the end of the queue; see the swipe gesture on rows. */
     onEnqueue: (CatalogTrack) -> Unit,
     /**
@@ -393,7 +393,7 @@ fun SpotApp(
                                 playlistOrder = playlistOrder,
                                 recent = recent,
                                 onPlayRecent = { tracks, index ->
-                                    onPlay(tracks, index, null, false)
+                                    onPlay(tracks, index, null, false, "Riascolta")
                                 },
                                 feed = feed,
                                 onOpenItem = { item ->
@@ -415,7 +415,7 @@ fun SpotApp(
                                 onClientIdChange = viewModel::onWebApiClientIdChange,
                                 onConnectWebApi = { viewModel.connectWebApi() },
                                 onPlayTrack = { tracks, index ->
-                                    onPlay(tracks, index, null, false)
+                                    onPlay(tracks, index, null, false, "Ricerca")
                                 },
                                 onEnqueue = onEnqueue,
                                 onOpenContext = { item ->
@@ -469,7 +469,13 @@ fun SpotApp(
                                     nowPlayingUri = playback.mediaId,
                                     onBack = { navController.popBackStack() },
                                     onPlay = { tracks, index, asContext ->
-                                        onPlay(tracks, index, playlist.uri, asContext)
+                                        onPlay(
+                                            tracks,
+                                            index,
+                                            playlist.uri,
+                                            asContext,
+                                            playlist.sourceLabel(),
+                                        )
                                     },
                                     onEnqueue = onEnqueue,
                                     onShuffle = { tracks ->
@@ -480,7 +486,13 @@ fun SpotApp(
                                         // Shuffled: the order on screen is not
                                         // the one that will play, so this is a
                                         // selection rather than the context.
-                                        onPlay(tracks, 0, playlist.uri, false)
+                                        onPlay(
+                                            tracks,
+                                            0,
+                                            playlist.uri,
+                                            false,
+                                            playlist.sourceLabel(),
+                                        )
                                     },
                                     onAddToPlaylist = { track ->
                                         viewModel.openAddToPlaylist(track.uri, track.name)
@@ -636,7 +648,7 @@ fun SpotApp(
                     if (menu != null) {
                         TrackSheetAction("Riproduci", PhosphorIcons.Fill.Play) {
                             trackMenu = null
-                            onPlay(listOf(menu.track), 0, null, false)
+                            onPlay(listOf(menu.track), 0, null, false, "")
                         }
                         TrackSheetAction("Aggiungi alla coda", PhosphorIcons.Regular.Queue) {
                             trackMenu = null
@@ -890,6 +902,15 @@ private fun NavHostController.openPlaylist(viewModel: MainViewModel, playlist: C
  * Without popping back to the start, tapping between tabs would grow the back
  * stack forever and the system back button would walk the entire history.
  */
+/**
+ * What the player says the track is coming from: "Playlist · Estate 2025".
+ *
+ * The kind first, because the name alone reads as a title and the two are worth
+ * telling apart at a glance while a cover is filling the screen.
+ */
+private fun MainViewModel.PlaylistState.sourceLabel(): String =
+    if (name.isBlank()) kind.label else "${kind.label} · $name"
+
 private fun NavHostController.switchTab(route: String) {
     if (currentDestination?.route == route) return
     navigate(route) {

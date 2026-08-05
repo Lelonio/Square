@@ -105,9 +105,14 @@ class MainActivity : ComponentActivity() {
         index: Int,
         contextUri: String? = null,
         asContext: Boolean = false,
+        contextLabel: String = "",
     ) {
         val player = controller ?: return
-        player.setMediaItems(tracks.map { toMediaItem(it, contextUri, asContext) }, index, 0L)
+        player.setMediaItems(
+            tracks.map { toMediaItem(it, contextUri, asContext, contextLabel) },
+            index,
+            0L,
+        )
         player.prepare()
         player.play()
     }
@@ -132,6 +137,7 @@ class MainActivity : ComponentActivity() {
         track: CatalogTrack,
         contextUri: String? = null,
         asContext: Boolean = false,
+        contextLabel: String = "",
     ): MediaItem =
         MediaItem.Builder()
             // The media id carries the Spotify URI; PlayQueue refuses anything else.
@@ -147,10 +153,11 @@ class MainActivity : ComponentActivity() {
                     // the engine lives in the service and this is the only
                     // channel between them that survives the session boundary.
                     .setExtras(
-                        contextUri?.let {
-                            android.os.Bundle().apply {
-                                putString(EXTRA_CONTEXT_URI, it)
-                                putBoolean(EXTRA_CONTEXT_ORDERED, asContext)
+                        android.os.Bundle().apply {
+                            contextUri?.let { putString(EXTRA_CONTEXT_URI, it) }
+                            putBoolean(EXTRA_CONTEXT_ORDERED, asContext)
+                            if (contextLabel.isNotEmpty()) {
+                                putString(EXTRA_CONTEXT_LABEL, contextLabel)
                             }
                         },
                     )
@@ -164,3 +171,6 @@ const val EXTRA_CONTEXT_URI = "dev.emanuele.spot.CONTEXT_URI"
 
 /** Whether that queue is the context in its own order; see SpotApp's `onPlay`. */
 const val EXTRA_CONTEXT_ORDERED = "dev.emanuele.spot.CONTEXT_ORDERED"
+
+/** What to show the listener: "Playlist · Estate 2025", "Ricerca". */
+const val EXTRA_CONTEXT_LABEL = "dev.emanuele.spot.CONTEXT_LABEL"

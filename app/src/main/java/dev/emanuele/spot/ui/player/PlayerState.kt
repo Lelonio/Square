@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.media3.common.Player
+import dev.emanuele.spot.ui.EXTRA_CONTEXT_LABEL
 import kotlinx.coroutines.delay
 
 /**
@@ -36,6 +37,15 @@ data class PlaybackState(
     val speed: Float = 1f,
     /** Pitch, independent of [speed]. */
     val pitch: Float = 1f,
+    /**
+     * Where this queue came from, ready to read: "Playlist · Estate 2025".
+     *
+     * Carried on the media item rather than derived here, because by the time
+     * the player sees a track the only thing left of the tap that started it is
+     * a URI, and a URI does not say whether it was reached from a playlist, an
+     * album, an artist or a search.
+     */
+    val source: String = "",
 )
 
 /** Mirrors the slow-changing part of a [Player] into Compose state. */
@@ -66,6 +76,7 @@ fun rememberPlaybackState(player: Player?): State<PlaybackState> {
                 repeatMode = player.repeatMode,
                 speed = player.playbackParameters.speed,
                 pitch = player.playbackParameters.pitch,
+                source = metadata.extras?.getString(EXTRA_CONTEXT_LABEL).orEmpty(),
             )
             // Equality check, not blind assignment: the player emits events far
             // more often than these fields actually change.

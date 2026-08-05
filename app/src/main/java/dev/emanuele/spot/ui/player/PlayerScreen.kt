@@ -335,6 +335,7 @@ fun PlayerScreen(
                     TopBar(
                         backdrop = glassBackdrop,
                         panel = panel,
+                        source = state.source,
                         onCollapse = onCollapse,
                         onOpenDevices = {
                             panel = if (panel == PlayerPanel.DEVICES) {
@@ -528,11 +529,11 @@ fun PlayerScreen(
                                     Icon(
                                         PhosphorIcons.Regular.Queue,
                                         contentDescription = "Coda",
-                                        tint = if (panel == PlayerPanel.QUEUE) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            GlassInk
-                                        },
+                                        // Coloured while its panel is the one
+                                        // open: these buttons stay on screen
+                                        // with the panel showing, and nothing
+                                        // else said which of them put it there.
+                                        tint = panelTint(panel == PlayerPanel.QUEUE),
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
@@ -552,7 +553,7 @@ fun PlayerScreen(
                                     Icon(
                                         PhosphorIcons.Regular.Plus,
                                         contentDescription = "Aggiungi a una playlist",
-                                        tint = GlassInk,
+                                        tint = panelTint(panel == PlayerPanel.ADD_TO_PLAYLIST),
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
@@ -619,6 +620,8 @@ fun PlayerScreen(
 private fun TopBar(
     backdrop: Backdrop,
     panel: PlayerPanel,
+    /** Where the queue came from: "Playlist · Estate 2025", "Ricerca". */
+    source: String,
     onCollapse: () -> Unit,
     onOpenDevices: () -> Unit,
 ) {
@@ -640,7 +643,12 @@ private fun TopBar(
                 PlayerPanel.QUEUE -> "In coda"
                 PlayerPanel.DEVICES -> "Riproduci su"
                 PlayerPanel.ADD_TO_PLAYLIST -> "Aggiungi a una playlist"
-                PlayerPanel.NONE -> "In riproduzione"
+                // The source in place of the words "in riproduzione", which
+                // said nothing the screen was not already saying. What is worth
+                // knowing here is where the track came from — the playlist you
+                // opened, the album, the search — and this is the one line of
+                // the player not already spoken for.
+                PlayerPanel.NONE -> source.ifBlank { "In riproduzione" }
             },
             animationSpec = tween(220),
             label = "topBarTitle",
@@ -660,7 +668,7 @@ private fun TopBar(
             Icon(
                 PhosphorIcons.Regular.Devices,
                 contentDescription = "Dispositivi",
-                tint = GlassInk,
+                tint = panelTint(panel == PlayerPanel.DEVICES),
             )
         }
 
@@ -913,6 +921,11 @@ private fun GlassButton(
 ) {
     RoundGlassButton(backdrop = backdrop, size = 44.dp, onClick = onClick) { content() }
 }
+
+/** A control that opened the panel currently showing is coloured, not just lit. */
+@Composable
+private fun panelTint(active: Boolean) =
+    if (active) MaterialTheme.colorScheme.primary else GlassInk
 
 @Composable
 private fun ToggleIcon(
