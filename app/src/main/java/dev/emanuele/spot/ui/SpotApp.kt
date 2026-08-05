@@ -901,9 +901,17 @@ private fun NavHostController.openPlaylist(viewModel: MainViewModel, playlist: C
 private fun NavHostController.switchTab(route: String) {
     if (currentDestination?.route == route) return
     navigate(route) {
-        popUpTo(Routes.HOME) { saveState = true }
+        // No `saveState`/`restoreState`, and that is the fix rather than a
+        // simplification. With them, leaving Home for a playlist saved the pair
+        // [home, playlist] under Home's id, and tapping Home restored exactly
+        // that — the playlist came straight back and the tab looked dead.
+        //
+        // Popping to the start destination without saving leaves Home on top
+        // and, for Library, one entry over it. What a tab loses is its scroll
+        // position, which is the right thing to lose when the tap means "take
+        // me back to this page".
+        popUpTo(Routes.HOME)
         launchSingleTop = true
-        restoreState = true
     }
 }
 
