@@ -431,11 +431,42 @@ impl History {
                 ..
             } => self.start(uri_string(track_id), *position_ms),
 
-            PlayerEvent::Paused { position_ms, .. }
-            | PlayerEvent::PositionChanged { position_ms, .. }
+            PlayerEvent::PositionChanged { position_ms, .. }
             | PlayerEvent::Seeked { position_ms, .. } => {
                 if let Some(playing) = self.current.as_mut() {
                     playing.position_ms = *position_ms;
+                }
+            }
+
+            // A pause ends the stretch that was being listened to.
+            //
+            // Reported straight away rather than held until the track finishes,
+            // because most of the time it never does: the track is paused, the
+            // app is left, and the process goes away with the listen still
+            // sitting in memory. That is why only one of a session's tracks
+            // ever reached the account's history.
+            //
+            // Resuming opens a *new* playback at the position it resumes from,
+            // so what is reported is always a stretch that really was heard —
+            // never one invented to make a pause look like a full play.
+            PlayerEvent::Paused { position_ms, .. } => {
+                if let Some(playing) = self.current.as_mut() {
+                    playing.position_ms = *position_ms;
+                }
+                // Not when the pause is the track running out: the end of a
+                // track is reported as one, and reporting it here first would
+                // take the completed listen away and leave a stopped one in its
+                // place.
+                let at_end = self
+                    .current
+                    .as_ref()
+                    .map(|playing| {
+                        playing.duration_ms > 0
+                            && playing.position_ms + END_MARGIN_MS >= playing.duration_ms
+                    })
+                    .unwrap_or(false);
+                if !at_end {
+                    self.finish(EndReason::EndPlay);
                 }
             }
 
@@ -501,6 +532,13 @@ impl History {
         let Some(playing) = self.current.take() else {
             return;
         };
+        // A stretch too short to have been listened to at all — a pause landing
+        // in the same instant as the start, a track that failed to open.
+        if playing.position_ms.saturating_sub(playing.start_ms) < MIN_LISTEN_MS
+            && !matches!(reason, EndReason::TrackDone)
+        {
+            return;
+        }
         // Running off the end means the whole track was heard, whatever the
         // last position report happened to say.
         let end_ms = match reason {
@@ -526,6 +564,12 @@ impl History {
         });
     }
 }
+
+/// How close to the end counts as the track finishing rather than being paused.
+const END_MARGIN_MS: u32 = 2_000;
+
+/// Below this, a stretch is a mis-tap rather than a listen.
+const MIN_LISTEN_MS: u32 = 1_000;
 
 /// A track's gid in hex, which is what the events carry — not the base62 id.
 fn hex_id(uri: &str) -> String {
