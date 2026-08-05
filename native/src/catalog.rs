@@ -270,6 +270,73 @@ fn track_json(track: &Track) -> Value {
     })
 }
 
+/// The cover of one playlist, as a URL, or `null`.
+///
+/// The rootlist carries a picture for playlists the user made and nothing for
+/// the ones Spotify makes — the editorial and algorithmic lists keep their art
+/// on the playlist itself rather than in the account's index of it, so the tiles
+/// for those came out blank.
+///
+/// Two places to look. `attributes.picture` is the ordinary cover. Algorithmic
+/// lists — Discover Weekly, the daily mixes — instead carry theirs among the
+/// format attributes as a key/value pair, sometimes already a URL and sometimes
+/// a `spotify:image:` URI, so both spellings are accepted.
+pub fn playlist_cover(uri: &str) -> EngineResult<String> {
+    let parsed = SpotifyUri::from_uri(uri).map_err(|e| format!("bad uri: {e}"))?;
+    let SpotifyUri::Playlist { id, .. } = parsed else {
+        return Ok("null".into());
+    };
+
+    let session = with_session(|s| s.clone())?;
+    block_on(async move {
+        let bytes = session
+            .spclient()
+            .get_playlist(&id)
+            .await
+            .map_err(|e| format!("playlist read failed: {e}"))?;
+
+        let list = SelectedListContent::parse_from_bytes(&bytes)
+            .map_err(|e| format!("playlist was not a SelectedListContent: {e}"))?;
+
+        let attributes = &list.attributes;
+        let cover = image_url(attributes.picture())
+            .or_else(|| {
+                attributes
+                    .format_attributes
+                    .iter()
+                    .find(|attribute| attribute.key().contains("image_url"))
+                    .and_then(|attribute| cdn_url(attribute.value()))
+            })
+            .or_else(|| {
+                // The sized variants, when there is no single picture: the
+                // largest is last in Spotify's own order, and any of them is a
+                // better tile than none.
+                attributes
+                    .picture_size
+                    .iter()
+                    .last()
+                    .and_then(|size| cdn_url(size.url()))
+            });
+
+        Ok(json!(cover).to_string())
+    })
+}
+
+/// Accepts either a URL or a `spotify:image:<hex>` URI, and returns a URL.
+fn cdn_url(value: &str) -> Option<String> {
+    if value.is_empty() {
+        None
+    } else if value.starts_with("http") {
+        Some(value.to_string())
+    } else {
+        value
+            .rsplit(':')
+            .next()
+            .filter(|id| !id.is_empty())
+            .map(|id| format!("{IMAGE_CDN}{id}"))
+    }
+}
+
 /// A CDN URL for a raw image id, or None when the field is empty.
 ///
 /// Playlist artwork arrives as the image's raw file id rather than a URL, and

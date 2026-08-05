@@ -160,6 +160,18 @@ object Catalog {
     }
 
     /**
+     * The cover of one playlist, fetched on its own.
+     *
+     * Only worth calling for playlists the rootlist gave no artwork for — see
+     * the note on the native side. Null both when Spotify has no cover and when
+     * the lookup fails: a missing tile falls back to the generated one either
+     * way, and a playlist list should not fail over an image.
+     */
+    suspend fun playlistCover(uri: String): String? = withContext(Dispatchers.IO) {
+        runCatching { json.decodeFromString<String?>(NativeBridge.playlistCover(uri)) }.getOrNull()
+    }
+
+    /**
      * Tracks of the account's first playlist.
      *
      * A placeholder for a real browse screen, and currently the only listing

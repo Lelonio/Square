@@ -281,6 +281,16 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeCont
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePlaylistCover(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+) -> jstring {
+    let result = read_string(&mut env, &uri).and_then(|uri| catalog::playlist_cover(&uri));
+    string_or_throw(&mut env, result)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeCanvas(
     mut env: JNIEnv,
     _class: JClass,

@@ -133,6 +133,15 @@ object NativeBridge {
      */
     fun canvas(trackUri: String): String = nativeCanvas(trackUri)
 
+    /**
+     * A playlist's cover URL as a JSON string, or the string `null`.
+     *
+     * The account's index of its playlists carries a picture only for the ones
+     * the user made; Spotify's own keep theirs on the playlist itself.
+     */
+    fun playlistCover(uri: String): String = nativePlaylistCover(uri)
+
+    private external fun nativePlaylistCover(uri: String): String
     private external fun nativeInitContext(context: android.content.Context)
     private external fun nativeSetAudioOutput(output: Any)
     private external fun nativeStart(

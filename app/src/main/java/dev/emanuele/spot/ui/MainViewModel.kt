@@ -564,6 +564,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .onSuccess {
                 _state.value = it
                 loadProfile()
+                loadMissingCovers()
             }
             .onFailure {
                 android.util.Log.e(TAG, "library load failed: ${chain(it)}", it)
@@ -602,6 +603,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             .getOrThrow()
+
+    /** Covers already looked up, so a second visit to the home page is free. */
+    private val coverCache = mutableMapOf<String, String>()
+
+    /**
+     * Fills in the covers the rootlist did not carry.
+     *
+     * Spotify's own playlists — the editorial ones, the daily mixes — keep their
+     * art on the playlist rather than in the account's index of it, so those
+     * tiles came out blank while the user's own were fine. One lookup each,
+     * after the page is already on screen, and a failure just leaves the
+     * generated tile in place.
+     */
+    private fun loadMissingCovers() = viewModelScope.launch {
+        val ready = _state.value as? UiState.Ready ?: return@launch
+        val missing = ready.playlists.filter { it.artworkUrl == null }
+        if (missing.isEmpty()) return@launch
+
+        missing.forEach { playlist ->
+            val cover = coverCache[playlist.uri] ?: Catalog.playlistCover(playlist.uri)
+            if (cover.isNullOrEmpty()) return@forEach
+            coverCache[playlist.uri] = cover
+
+            // Re-read each time: the list can have been replaced by a refresh
+            // while these were being fetched, one at a time.
+            val current = _state.value as? UiState.Ready ?: return@launch
+            _state.value = current.copy(
+                playlists = current.playlists.map {
+                    if (it.uri == playlist.uri) it.copy(artworkUrl = cover) else it
+                },
+            )
+        }
+    }
 
     private fun loadProfile() = viewModelScope.launch {
         if (!container.webApi.isReady) return@launch
