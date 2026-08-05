@@ -444,6 +444,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 scopes = listOf(
                     // The home feed's "artisti che ascolti".
                     "user-top-read",
+                    // Reading what the account has actually played, which is a
+                    // different permission from the top artists above.
+                    "user-read-recently-played",
                     // The Connect device picker: one to list them, one to move
                     // playback.
                     "user-read-playback-state",

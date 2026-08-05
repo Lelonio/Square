@@ -363,6 +363,7 @@ private fun RowDivider() {
 /** Kept next to the request that asks for them; see MainViewModel.connectWebApi. */
 private val SCOPES = listOf(
     "user-top-read" to "Artisti che ascolti",
+    "user-read-recently-played" to "Cronologia dell'account",
     "user-read-playback-state" to "Elenco dispositivi",
     "user-modify-playback-state" to "Sposta la riproduzione",
     "playlist-modify-private" to "Aggiungi a playlist private",

@@ -153,7 +153,10 @@
       "Bash(javap -classpath cls com.kyant.backdrop.backdrops.CanvasBackdropKt com.kyant.backdrop.backdrops.LayerBackdropKt com.kyant.backdrop.backdrops.BackdropKt)",
       "Bash(sed -i '' 's/                            if \\(sheetsOpen\\) Modifier.layerBackdrop\\(overlayBackdrop\\)/                            if \\(sheetsOpen || sheetsRecording\\) Modifier.layerBackdrop\\(overlayBackdrop\\)/' app/src/main/java/dev/emanuele/spot/ui/SpotApp.kt)",
       "Bash(./gradlew :app:assembleRelease :app:assembleDebug -q)",
-      "Bash(git apply *)"
+      "Bash(git apply *)",
+      "Bash(cp app/src/main/java/dev/emanuele/spot/data/SpotifyApi.kt /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/SpotifyApi.bak)",
+      "Bash(cp app/src/main/java/dev/emanuele/spot/ui/MainViewModel.kt /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/MainViewModel.bak)",
+      "Bash(cp app/src/main/java/dev/emanuele/spot/ui/MainActivity.kt /private/tmp/claude-501/-Users-emanuele-Progetto-Spotify/f8b439da-53e4-49c2-8d23-91a1d07d3cdc/scratchpad/MainActivity.bak)"
     ]
   }
 }
