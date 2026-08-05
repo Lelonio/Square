@@ -71,6 +71,7 @@ fun SettingsScreen(
     onConnectWebApi: () -> Unit,
     onDisconnectWebApi: () -> Unit,
     onLogOut: () -> Unit,
+    onShowTutorial: () -> Unit,
     onBack: () -> Unit,
 ) {
     val ready = state as? MainViewModel.UiState.Ready
@@ -161,6 +162,14 @@ fun SettingsScreen(
                     // connected search does not work at all and the reason is
                     // not something anyone would guess.
                     WebApiSetup(webApi, backdrop, onClientIdChange, onConnectWebApi)
+                }
+            }
+        }
+
+        item("tutorial") {
+            Section("Guida") {
+                ActionRow("Rivedi la configurazione guidata", destructive = false) {
+                    onShowTutorial()
                 }
             }
         }

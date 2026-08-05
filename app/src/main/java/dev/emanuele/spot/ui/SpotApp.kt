@@ -98,6 +98,7 @@ import dev.emanuele.spot.ui.player.rememberPlaybackState
 import dev.emanuele.spot.ui.player.rememberPositionMs
 import dev.emanuele.spot.ui.player.rememberQueue
 import dev.emanuele.spot.ui.search.SearchScreen
+import dev.emanuele.spot.ui.onboarding.OnboardingScreen
 import dev.emanuele.spot.ui.settings.SettingsScreen
 import dev.emanuele.spot.ui.theme.Ink
 import dev.emanuele.spot.ui.theme.SpotTheme
@@ -180,6 +181,10 @@ fun SpotApp(
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val addToPlaylist by viewModel.addToPlaylist.collectAsStateWithLifecycle()
     val trackSort by viewModel.trackSort.collectAsStateWithLifecycle()
+    val onboarded by viewModel.onboarded.collectAsStateWithLifecycle()
+
+    // Asked for again from the settings, after it has already been finished.
+    var showTutorial by remember { mutableStateOf(false) }
 
     // The open track menu, if any. Held here because the menu is drawn above
     // everything the app puts over its screens.
@@ -394,6 +399,7 @@ fun SpotApp(
                                 onConnectWebApi = viewModel::connectWebApi,
                                 onDisconnectWebApi = viewModel::disconnectWebApi,
                                 onLogOut = viewModel::logOut,
+                                onShowTutorial = { showTutorial = true },
                                 onBack = { navController.popBackStack() },
                             )
                         }
@@ -610,6 +616,24 @@ fun SpotApp(
                     onSelect = viewModel::addToPlaylist,
                     onDismiss = viewModel::closeAddToPlaylist,
                 )
+
+                // Above everything, bars and player included: until it is done
+                // there is nothing underneath worth reaching, and on a fresh
+                // install most of what is underneath does not work yet.
+                if (!onboarded || showTutorial) {
+                    OnboardingScreen(
+                        state = state,
+                        webApi = webApi,
+                        backdrop = artBackdrop,
+                        onLogIn = viewModel::logIn,
+                        onClientIdChange = viewModel::onWebApiClientIdChange,
+                        onConnectWebApi = { viewModel.connectWebApi() },
+                        onFinish = {
+                            showTutorial = false
+                            viewModel.setOnboarded(true)
+                        },
+                    )
+                }
             }
         }
     }

@@ -70,6 +70,25 @@ internal fun WebApiSetup(
             }
         }
 
+        WebApiSetupInline(state, backdrop, onClientIdChange, onConnect)
+    }
+}
+
+/**
+ * Just the field and the button.
+ *
+ * Split out for the welcome tutorial, which has already spent two screens
+ * explaining why this is needed and where the id comes from, and would
+ * otherwise say all of it twice on the screen that asks for it.
+ */
+@Composable
+internal fun WebApiSetupInline(
+    state: MainViewModel.WebApiState,
+    backdrop: Backdrop,
+    onClientIdChange: (String) -> Unit,
+    onConnect: () -> Unit,
+) {
+    Column {
         OutlinedTextField(
             value = state.clientId,
             onValueChange = onClientIdChange,

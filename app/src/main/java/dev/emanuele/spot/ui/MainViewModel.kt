@@ -620,6 +620,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setTrackSort(value: String) = container.preferences.setTrackSort(value)
 
+    /** False until the welcome tutorial has been finished once. */
+    val onboarded: StateFlow<Boolean> get() = container.preferences.onboarded
+
+    fun setOnboarded(value: Boolean) = container.preferences.setOnboarded(value)
+
     /**
      * Loads a playlist's tracks.
      *

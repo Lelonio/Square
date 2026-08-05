@@ -27,8 +27,26 @@ class PreferencesStore(context: Context) {
         prefs.edit().putString(KEY_TRACK_SORT, value).apply()
     }
 
+    private val _onboarded = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDED, false))
+
+    /**
+     * Whether the welcome tutorial has been finished at least once.
+     *
+     * Kept apart from "is the app configured": the setup can be undone later —
+     * logging out, unlinking the Web API application — and re-running the whole
+     * tutorial at that point would be answering a question nobody asked. The
+     * tutorial stays reachable from the settings instead.
+     */
+    val onboarded: StateFlow<Boolean> = _onboarded.asStateFlow()
+
+    fun setOnboarded(value: Boolean) {
+        _onboarded.value = value
+        prefs.edit().putBoolean(KEY_ONBOARDED, value).apply()
+    }
+
     private companion object {
         const val FILE_NAME = "spot_preferences"
         const val KEY_TRACK_SORT = "track_sort"
+        const val KEY_ONBOARDED = "onboarded"
     }
 }
