@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Sampled from the icon's own plate by tools/icon.py, so the
-         adaptive icon's background and its artwork meet invisibly. -->
-    <color name="ic_launcher_background">#1C1C1E</color>
-</resources>

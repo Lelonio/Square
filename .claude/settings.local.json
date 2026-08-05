@@ -136,7 +136,8 @@
       "Bash(python3 tools/icon.py)",
       "Bash(git commit -q -m 'Regenerate icons from source, sized by the wave *)",
       "Bash(git commit -q -m 'New light icon artwork *)",
-      "Bash(git commit -q -m 'Fall back to the Web API when rootlist is down *)"
+      "Bash(git commit -q -m 'Fall back to the Web API when rootlist is down *)",
+      "Bash(git commit -q -m 'The final icon artwork *)"
     ]
   }
 }

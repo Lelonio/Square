@@ -2,5 +2,5 @@
 <resources>
     <!-- Sampled from the icon's own plate by tools/icon.py, so the
          adaptive icon's background and its artwork meet invisibly. -->
-    <color name="ic_launcher_background">#C8C8CD</color>
+    <color name="ic_launcher_background">#222222</color>
 </resources>
