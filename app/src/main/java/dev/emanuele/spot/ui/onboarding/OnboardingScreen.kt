@@ -1,13 +1,5 @@
 package dev.emanuele.spot.ui.onboarding
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.res.painterResource
-import dev.emanuele.spot.R
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -61,6 +53,8 @@ import com.adamglin.phosphoricons.regular.ArrowUpRight
 import com.adamglin.phosphoricons.regular.Check
 import com.kyant.backdrop.Backdrop
 import dev.emanuele.spot.ui.MainViewModel
+import dev.emanuele.spot.ui.components.AppIcon
+import dev.emanuele.spot.ui.components.SquareWordmark
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.settings.WebApiSetupInline
 import dev.emanuele.spot.ui.theme.Ink
@@ -160,10 +154,14 @@ fun OnboardingScreen(
                 ) {
                     when (current) {
                         0 -> Welcome()
-                        1 -> LogIn(loggedIn = loggedIn, connecting = state is MainViewModel.UiState.Loading, backdrop = backdrop, onLogIn = onLogIn)
-                        2 -> WhyOwnApp()
-                        3 -> Dashboard(redirectUri = webApi.redirectUri)
-                        4 -> ClientId(webApi, backdrop, onClientIdChange, onConnectWebApi)
+                        1 -> LogIn(
+                            loggedIn = loggedIn,
+                            connecting = state is MainViewModel.UiState.Loading,
+                            backdrop = backdrop,
+                            onLogIn = onLogIn,
+                        )
+                        2 -> Dashboard(redirectUri = webApi.redirectUri)
+                        3 -> ClientId(webApi, backdrop, onClientIdChange, onConnectWebApi)
                         else -> Done()
                     }
                     Spacer(Modifier.height(28.dp))
@@ -206,39 +204,17 @@ fun OnboardingScreen(
     }
 }
 
-private const val STEP_COUNT = 6
+private const val STEP_COUNT = 5
 
 @Composable
 private fun Welcome() {
-    Spacer(Modifier.height(20.dp))
-    // The launcher art itself, not a drawing of it: this is the first screen
-    // after tapping the icon, and showing the same thing they just tapped is
-    // what says the two are one app.
-    Image(
-        painter = painterResource(R.mipmap.ic_launcher_foreground),
-        contentDescription = null,
-        modifier = Modifier
-            .size(104.dp)
-            .clip(RoundedCornerShape(26.dp)),
-    )
-    Spacer(Modifier.height(20.dp))
-    SquareWordmark(Modifier.height(34.dp))
-    Body("Benvenuto.")
-    Body(
-        "Square riproduce la tua libreria Spotify con un motore audio proprio: " +
-            "stream diretto, time-stretch, riverbero, canvas e testi sincronizzati.",
-    )
+    Spacer(Modifier.height(24.dp))
+    AppIcon(104.dp)
+    Spacer(Modifier.height(22.dp))
+    SquareWordmark(height = 34.dp)
+    Body("La tua musica Spotify, con testi, canvas ed effetti audio.")
     Note("Serve un account Spotify Premium.")
-    Body(
-        "Non è una preferenza nostra: il protocollo di riproduzione rifiuta gli " +
-            "account free, e con uno di quelli l'accesso riesce ma nessun brano parte.",
-    )
-    Body(
-        "La configurazione è in due parti — l'accesso al tuo account e una " +
-            "applicazione Spotify registrata da te — e questo tutorial le percorre " +
-            "entrambe. Cinque minuti, una volta sola.",
-    )
-    Note("Square non è un'app ufficiale e non è affiliata a Spotify.")
+    Body("Due passaggi e sei pronto. Ci vogliono cinque minuti, una volta sola.")
 }
 
 @Composable
@@ -248,20 +224,9 @@ private fun LogIn(
     backdrop: Backdrop,
     onLogIn: () -> Unit,
 ) {
-    StepTitle("1. Accedi al tuo account")
-    Body(
-        "Si apre il browser sulla pagina di accesso di Spotify. Autorizzi e torni " +
-            "qui da solo.",
-    )
-    Note(
-        "La password la inserisci nella pagina di Spotify, dentro il browser. " +
-            "Square non la vede e non la conserva: riceve solo il token che " +
-            "Spotify gli consegna dopo.",
-    )
-    Body(
-        "Questo accesso serve alla riproduzione. Da qui arrivano le tue playlist, " +
-            "i brani e il controllo Connect.",
-    )
+    StepTitle("1. Accedi a Spotify")
+    Body("Si apre il browser sulla pagina di Spotify. Autorizzi e torni qui da solo.")
+    Note("La password la scrivi solo nella pagina di Spotify: Square non la vede.")
 
     Spacer(Modifier.height(20.dp))
     if (loggedIn) {
@@ -287,36 +252,16 @@ private fun LogIn(
 }
 
 @Composable
-private fun WhyOwnApp() {
-    StepTitle("2. Perché serve una tua applicazione")
-    Body(
-        "La riproduzione si autentica come librespot, il client open source su cui " +
-            "Square è costruito. Quel client id è condiviso da ogni applicazione " +
-            "basata su librespot al mondo, e la sua quota di richieste alle API web " +
-            "di Spotify è esaurita da tempo.",
-    )
-    Body(
-        "Le API web servono per: ricerca, artisti che ascolti, elenco dei " +
-            "dispositivi Connect, aggiunta di brani a una playlist e caricamento " +
-            "veloce delle playlist lunghe.",
-    )
-    Body(
-        "Registrando un'applicazione tua, quella quota è solo tua e nessun altro " +
-            "la consuma. È gratis, non richiede una carta e si fa dal dashboard per " +
-            "sviluppatori con lo stesso account Spotify di prima.",
-    )
-    Note(
-        "Senza questo passo l'app funziona ma a metà: la riproduzione va, la " +
-            "ricerca no.",
-    )
-}
-
-@Composable
 private fun Dashboard(redirectUri: String) {
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
 
-    StepTitle("3. Crea l'applicazione")
+    StepTitle("2. Crea la tua chiave")
+    Body(
+        "La ricerca e i consigli passano dalle API di Spotify, che vanno usate con " +
+            "una chiave personale. Si crea in un minuto, è gratis e non serve " +
+            "nessuna carta.",
+    )
 
     Row(
         Modifier
@@ -344,23 +289,17 @@ private fun Dashboard(redirectUri: String) {
         )
     }
 
-    Numbered(1, "Accedi con lo stesso account Spotify Premium che hai usato prima.")
+    Numbered(1, "Accedi con lo stesso account Spotify.")
     Numbered(2, "In alto a destra premi «Create app».")
     Numbered(
         3,
-        "App name: quello che vuoi, per esempio Square. App description: una " +
-            "riga qualsiasi. Sono etichette, nessuno le controlla.",
+        "App name e App description: scrivi quello che vuoi, per esempio Square. " +
+            "Website: lascia vuoto.",
     )
     Numbered(
         4,
-        "Website: lascia vuoto.",
-    )
-    Numbered(
-        5,
-        "Redirect URI: incolla esattamente la riga qui sotto e premi «Add». " +
-            "Deve comparire nell'elenco sotto al campo: se resta solo scritta nel " +
-            "campo non viene salvata, ed è l'errore che poi fa fallire il " +
-            "collegamento con INVALID_CLIENT: Invalid redirect URI.",
+        "Redirect URI: incolla la riga qui sotto e premi «Add». Controlla che " +
+            "compaia nell'elenco sotto al campo, altrimenti non viene salvata.",
     )
 
     Row(
@@ -381,28 +320,18 @@ private fun Dashboard(redirectUri: String) {
             Text("Copia")
         }
     }
-    Body(
-        "È un indirizzo locale: al ritorno dal browser risponde Square stessa, " +
-            "sul telefono. Non esce nulla dal dispositivo.",
-    )
 
     Numbered(
-        6,
-        "Alla voce «Which API/SDKs are you planning to use?» spunta Web API. " +
-            "Le altre non servono.",
+        5,
+        "Alla voce «Which API/SDKs are you planning to use?» spunta Web API.",
     )
-    Numbered(7, "Accetta i termini per sviluppatori e premi «Save».")
+    Numbered(6, "Accetta i termini e premi «Save».")
     Numbered(
-        8,
-        "Si apre la pagina dell'app: premi «Settings». Sotto «Basic Information» " +
-            "trovi il Client ID. Copialo.",
+        7,
+        "Nella pagina dell'app premi «Settings»: sotto «Basic Information» trovi " +
+            "il Client ID. Copialo.",
     )
-    Note(
-        "Il Client secret non serve e non va inserito da nessuna parte in " +
-            "Square: l'accesso usa PKCE, che è fatto apposta per non tenere un " +
-            "segreto dentro un'app installata. Se lo hai già mostrato in giro, " +
-            "rigeneralo dal dashboard.",
-    )
+    Note("Il Client secret non serve: non copiarlo e non inserirlo da nessuna parte.")
 }
 
 @Composable
@@ -412,17 +341,15 @@ private fun ClientId(
     onClientIdChange: (String) -> Unit,
     onConnectWebApi: () -> Unit,
 ) {
-    StepTitle("4. Collega l'applicazione")
+    StepTitle("3. Incolla il Client ID")
     if (webApi.connected) {
-        Body("L'applicazione è collegata: ricerca, feed e dispositivi funzionano.")
+        Body("Fatto: ricerca e consigli sono attivi.")
         Spacer(Modifier.height(16.dp))
-        DoneRow("Applicazione collegata")
+        DoneRow("Chiave collegata")
     } else {
         Body(
-            "Incolla qui il Client ID copiato dal dashboard e premi Collega. Si " +
-                "riapre il browser una seconda volta: è la stessa autorizzazione di " +
-                "prima ma verso la tua applicazione, perché un token vale solo per " +
-                "l'app a cui è stato rilasciato.",
+            "Incolla qui il Client ID e premi Collega. Il browser si apre un'ultima " +
+                "volta per confermare.",
         )
         // The same form the settings screen shows, so what is learned here is
         // where it stays.
@@ -430,101 +357,26 @@ private fun ClientId(
             WebApiSetupInline(webApi, backdrop, onClientIdChange, onConnectWebApi)
         }
         Note(
-            "Se il browser dice INVALID_CLIENT, il redirect URI nel dashboard non " +
-                "corrisponde: torna indietro di un passo e ricontrolla che sia " +
-                "nell'elenco, senza spazi e senza barra finale.",
+            "Se il browser dà errore, torna al passo prima: quasi sempre il " +
+                "Redirect URI non è stato aggiunto all'elenco.",
         )
     }
 }
 
 @Composable
 private fun Done() {
+    Spacer(Modifier.height(16.dp))
+    AppIcon(72.dp)
     StepTitle("Tutto pronto")
+    Body("In home ci sono le tue playlist, con la lente cerchi in tutto il catalogo.")
     Body(
-        "La home mostra le tue playlist e cosa hai ascoltato di recente, la lente " +
-            "cerca in tutto il catalogo, e toccando un brano parte la riproduzione.",
+        "Nel player scorri per cambiare brano e apri testi, coda ed effetti dalla " +
+            "barra sotto la copertina.",
     )
-    Body(
-        "Nel player: scorri per cambiare brano, apri testi, coda ed effetti dalla " +
-            "barra sotto la copertina, e il più aggiunge il brano a una playlist.",
-    )
-    Note("Puoi rivedere questo tutorial da Impostazioni, dall'avatar in alto nella home.")
+    Note("Puoi rivedere questa guida da Impostazioni, toccando la tua foto in home.")
 }
 
 /* ---- pieces ---- */
-
-/**
- * The name, drawn rather than typeset.
- *
- * The icon is a square wave: one stroke width, right angles only, no curve
- * anywhere. No font shipped with Android says that — a bold sans still has
- * round bowls on S and Q and a diagonal on R — and pulling in a display face
- * for six letters costs more than the six letters do.
- *
- * So the letterforms are the same primitive as the icon: polylines on a 6×10
- * grid, orthogonal segments, square caps and joins. The Q's tail drops below
- * the baseline, which is the one thing that keeps it from reading as an O.
- */
-@Composable
-private fun SquareWordmark(modifier: Modifier = Modifier) {
-    val ink = Ink
-    Canvas(modifier.fillMaxWidth()) {
-        // The grid: glyphs are 6 wide on a 9.5-unit advance, 10 tall with 2 more
-        // for the descender. The stroke stays under 1.2 units and the advance
-        // well over the glyph width, or the counters close up and the whole
-        // word turns into one dark block.
-        val unit = size.height / 12f
-        val stroke = unit * 1.15f
-        val path = Path()
-        GLYPHS.forEachIndexed { index, lines ->
-            val originX = index * 9.5f * unit + stroke / 2f
-            lines.forEach { points ->
-                points.forEachIndexed { at, (gx, gy) ->
-                    val x = originX + gx * unit
-                    val y = gy * unit + stroke / 2f
-                    if (at == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-            }
-        }
-        drawPath(
-            path,
-            color = ink,
-            style = Stroke(
-                width = stroke,
-                cap = StrokeCap.Square,
-                join = StrokeJoin.Miter,
-            ),
-        )
-    }
-}
-
-/** S Q U A R E, as polylines on the grid described in [SquareWordmark]. */
-private val GLYPHS: List<List<List<Pair<Float, Float>>>> = listOf(
-    // S
-    listOf(listOf(6f to 0f, 0f to 0f, 0f to 5f, 6f to 5f, 6f to 10f, 0f to 10f)),
-    // Q: a closed box with the tail dropped out of the bottom right.
-    listOf(
-        listOf(0f to 0f, 6f to 0f, 6f to 10f, 0f to 10f, 0f to 0f),
-        listOf(4f to 8f, 4f to 12f),
-    ),
-    // U
-    listOf(listOf(0f to 0f, 0f to 10f, 6f to 10f, 6f to 0f)),
-    // A: the apex is a corner, not a point.
-    listOf(
-        listOf(0f to 10f, 0f to 0f, 6f to 0f, 6f to 10f),
-        listOf(0f to 6f, 6f to 6f),
-    ),
-    // R: the leg comes straight down instead of splaying.
-    listOf(
-        listOf(0f to 10f, 0f to 0f, 6f to 0f, 6f to 5f, 0f to 5f),
-        listOf(3f to 5f, 3f to 10f),
-    ),
-    // E
-    listOf(
-        listOf(6f to 0f, 0f to 0f, 0f to 10f, 6f to 10f),
-        listOf(0f to 5f, 4f to 5f),
-    ),
-)
 
 @Composable
 private fun StepTitle(text: String) {
@@ -591,13 +443,12 @@ private fun DoneRow(label: String) {
             PhosphorIcons.Regular.Check,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.padding(end = 10.dp).size(20.dp),
         )
         Text(
             label,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 10.dp),
         )
     }
 }

@@ -50,7 +50,11 @@ import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.data.SearchItem
 import dev.emanuele.spot.data.sortedByRecentlyOpened
 import dev.emanuele.spot.ui.MainViewModel
+import dev.emanuele.spot.ui.components.AppIcon
+import dev.emanuele.spot.ui.components.AppLockup
 import dev.emanuele.spot.ui.components.Artwork
+import dev.emanuele.spot.ui.components.SquareWordmark
+import androidx.compose.ui.draw.clipToBounds
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.player.GlassFilm
 import dev.emanuele.spot.ui.theme.Ink
@@ -105,7 +109,8 @@ fun HomeScreen(
 ) {
     when (state) {
         MainViewModel.UiState.LoggedOut -> Centered {
-            Text("Spot", style = MaterialTheme.typography.displayLarge)
+            AppIcon(84.dp)
+            SquareWordmark(height = 28.dp)
             Text(
                 "Client non ufficiale per account Premium",
                 style = MaterialTheme.typography.bodyMedium,
@@ -322,13 +327,18 @@ private fun Header(
                 // Height goes with the alpha. Fading it alone would leave the
                 // header the same size with a blank line in it.
                 if (collapse < 1f) {
-                    Text(
-                        greeting().uppercase(),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = InkDim,
-                        maxLines = 1,
+                    // The name and the icon, where the greeting used to be. The
+                    // home page carried nothing of the app on it — no name, no
+                    // mark — so the first screen after the launcher looked like
+                    // it belonged to nothing in particular.
+                    AppLockup(
+                        iconSize = 18.dp,
+                        nameHeight = 11.dp,
                         modifier = Modifier
-                            .height(lerp(18.dp, 0.dp, collapse))
+                            .height(lerp(20.dp, 0.dp, collapse))
+                            // The icon is taller than the row gets on the way
+                            // out, and would otherwise spill over the name.
+                            .clipToBounds()
                             .graphicsLayer { alpha = 1f - collapse },
                     )
                 }
