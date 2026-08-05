@@ -204,13 +204,22 @@ fun PlaylistScreen(
         }
     }
 
+    val heroPx = with(density) { HERO_HEIGHT.roundToPx() }
+    val collapsedPx = with(density) { collapsedHeight.roundToPx() }
+
     Box(Modifier.fillMaxSize()) {
-        // The page colour, and only the page colour.
+        // The page, without the things that sample it.
         //
-        // The layer has to hold nothing that samples it. Recording the whole
-        // screen — content included — put the glass buttons inside the layer
-        // those same buttons draw from, and the render tree recursed until it
-        // overflowed the stack. Every one of them lives above this box.
+        // The layer must hold nothing that draws from it: recording the whole
+        // screen put the glass buttons inside the layer those same buttons read,
+        // and the render tree recursed until it overflowed the stack.
+        //
+        // It cannot hold *only* the page colour either, which is what it did
+        // until now. A flat fill refracts to a flat fill, so the buttons came
+        // out as plain translucent discs — the glass had nothing to bend. The
+        // cover behind them is the thing worth bending, so it lives here, below
+        // the layer boundary, and the header above draws only the text and the
+        // controls over it.
         Box(
             Modifier
                 .fillMaxSize()
@@ -229,16 +238,23 @@ fun PlaylistScreen(
                     ),
                 )
                 .layerBackdrop(pageBackdrop),
-        )
+        ) {
+            HeroArt(
+                artworkUrl = state.artworkUrl,
+                name = state.name,
+                pageColor = pageColor,
+                heroPx = heroPx,
+                collapsedPx = collapsedPx,
+                collapse = collapseFraction,
+            )
+        }
 
         Column(Modifier.fillMaxSize()) {
         DetailHeader(
             name = state.name,
-            artworkUrl = state.artworkUrl,
             kind = state.kind,
             trackCount = state.tracks.size,
             totalMs = state.tracks.sumOf { it.durationMs },
-            pageColor = pageColor,
             backdrop = pageBackdrop,
             collapse = collapseFraction,
             collapsedHeight = collapsedHeight,
@@ -459,11 +475,9 @@ private fun IntOffset.leftOf(density: androidx.compose.ui.unit.Density): IntOffs
 @Composable
 private fun DetailHeader(
     name: String,
-    artworkUrl: String?,
     kind: MainViewModel.DetailKind,
     trackCount: Int,
     totalMs: Long,
-    pageColor: Color,
     backdrop: Backdrop,
     /** 0 fully open, 1 collapsed into the bar. A lambda, so reading it costs a
      * re-layout rather than a recomposition of the header on every frame. */
@@ -483,47 +497,10 @@ private fun DetailHeader(
     Box(
         Modifier
             .fillMaxWidth()
-            // The header genuinely shrinks. Everything inside keeps its full
-            // size and is clipped by it, which is what makes the cover look like
-            // it is being rolled up rather than moved off.
-            .layout { measurable, constraints ->
-                val height = androidx.compose.ui.util.lerp(heroPx, collapsedPx, collapse())
-                val placeable = measurable.measure(
-                    constraints.copy(minHeight = heroPx, maxHeight = heroPx),
-                )
-                layout(constraints.maxWidth, height) {
-                    // Anchored to the bottom of the picture, so what stays
-                    // visible as it closes is the part the title sits on.
-                    placeable.place(0, height - heroPx)
-                }
-            }
-            .clipToBounds(),
+            .heroCollapse(heroPx, collapsedPx, collapse),
     ) {
-        Artwork(
-            url = artworkUrl,
-            title = name,
-            modifier = Modifier.fillMaxSize(),
-            corner = 0.dp,
-        )
-
-        // The bottom stops fade to the page colour itself, not to black. That is
-        // what makes the cover run into the page instead of ending on an edge:
-        // the last row of the image and the first row of the background are the
-        // same colour. Fading to black over a page that is not black just moves
-        // the seam and adds a dark band.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.35f),
-                        0.28f to Color.Transparent,
-                        0.58f to pageColor.copy(alpha = 0.55f),
-                        0.82f to pageColor.copy(alpha = 0.94f),
-                        1f to pageColor,
-                    ),
-                ),
-        )
+        // No cover here: it is drawn below, inside the layer these controls
+        // refract. See the note where that layer is recorded.
 
         Column(
             Modifier
@@ -654,6 +631,76 @@ private fun DetailHeader(
         }
     }
 }
+
+/**
+ * The cover at the top of the page, and the fade that ends it.
+ *
+ * Drawn below the header rather than in it, because the header holds the glass
+ * controls and glass cannot sample a layer it is part of. Both use
+ * [heroCollapse], so the picture and the title it sits under close together.
+ */
+@Composable
+private fun HeroArt(
+    artworkUrl: String?,
+    name: String,
+    pageColor: Color,
+    heroPx: Int,
+    collapsedPx: Int,
+    collapse: () -> Float,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .heroCollapse(heroPx, collapsedPx, collapse),
+    ) {
+        Artwork(
+            url = artworkUrl,
+            title = name,
+            modifier = Modifier.fillMaxSize(),
+            corner = 0.dp,
+        )
+
+        // The bottom stops fade to the page colour itself, not to black. That is
+        // what makes the cover run into the page instead of ending on an edge:
+        // the last row of the image and the first row of the background are the
+        // same colour. Fading to black over a page that is not black just moves
+        // the seam and adds a dark band.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.35f),
+                        0.28f to Color.Transparent,
+                        0.58f to pageColor.copy(alpha = 0.55f),
+                        0.82f to pageColor.copy(alpha = 0.94f),
+                        1f to pageColor,
+                    ),
+                ),
+        )
+    }
+}
+
+/**
+ * The header genuinely shrinks: the content keeps its full size and is clipped
+ * by the box around it, which is what makes the cover look like it is being
+ * rolled up rather than moved off.
+ */
+private fun Modifier.heroCollapse(
+    heroPx: Int,
+    collapsedPx: Int,
+    collapse: () -> Float,
+): Modifier = layout { measurable, constraints ->
+    val height = androidx.compose.ui.util.lerp(heroPx, collapsedPx, collapse())
+    val placeable = measurable.measure(
+        constraints.copy(minHeight = heroPx, maxHeight = heroPx),
+    )
+    layout(constraints.maxWidth, height) {
+        // Anchored to the bottom of the picture, so what stays visible as it
+        // closes is the part the title sits on.
+        placeable.place(0, height - heroPx)
+    }
+}.clipToBounds()
 
 @Composable
 private fun CircleAction(
