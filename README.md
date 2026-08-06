@@ -1,8 +1,16 @@
-# Square
+<p align="center">
+  <img src="docs/icon.png" width="112" alt="">
+</p>
 
-An unofficial Android client for Spotify Premium, built on
-[librespot](https://github.com/librespot-org/librespot). The official app is not
-needed and is not used: audio is streamed in-process by a native Rust core.
+<h1 align="center">Square</h1>
+
+<p align="center">
+  An unofficial Android client for Spotify Premium, built in Liquid Glass.
+</p>
+
+Built on [librespot](https://github.com/librespot-org/librespot). The official
+app is not needed and is not used: audio is streamed in-process by a native Rust
+core.
 
 | Player | Effects | Home |
 | --- | --- | --- |
