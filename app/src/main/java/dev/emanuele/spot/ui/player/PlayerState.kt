@@ -114,7 +114,10 @@ fun rememberQueue(player: Player?): State<List<QueueEntry>> {
 
         fun rebuild() {
             val current = player.currentMediaItemIndex
-            queue.value = (0 until player.mediaItemCount).map { index ->
+            // From the playing track onwards. What has already been heard is
+            // not a queue — it is history, and it pushed what comes next off
+            // the bottom of the panel on any list longer than a screen.
+            queue.value = (current until player.mediaItemCount).map { index ->
                 val metadata = player.getMediaItemAt(index).mediaMetadata
                 QueueEntry(
                     index = index,

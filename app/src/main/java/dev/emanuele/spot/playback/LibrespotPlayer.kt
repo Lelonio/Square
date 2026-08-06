@@ -219,6 +219,9 @@ class LibrespotPlayer(
     /** A skip the user has made and the engine has not been told about yet. */
     private var skipPending = false
 
+    /** A skip already handed to the engine, still to be confirmed by an event. */
+    private var skipInFlight = false
+
     /**
      * Moves to a track, without making the user wait for the engine.
      *
@@ -235,13 +238,22 @@ class LibrespotPlayer(
      */
     private fun requestSkipTo(index: Int, positionMs: Long) {
         queue.currentIndex = index.coerceIn(0, maxOf(0, queue.items.lastIndex))
-        this.positionMs = positionMs
+        // A skip starts the new track at its beginning. Media3 sends
+        // C.TIME_UNSET for "wherever it starts", which as a number is very
+        // negative and made the bar draw itself backwards.
+        this.positionMs = positionMs.coerceAtLeast(0)
         playbackState = Player.STATE_BUFFERING
         skipPending = true
         invalidateState()
 
+        // The first skip of a burst goes out at once; only the ones on top of
+        // it wait. Waiting for the first was a fifth of a second between the
+        // tap and anything happening at all — the delay this settle exists to
+        // avoid, spent on the one skip that never needed it.
+        val delay = if (skipInFlight) SKIP_SETTLE_MS else 0L
+        skipInFlight = true
         handler.removeCallbacks(settleSkip)
-        handler.postDelayed(settleSkip, SKIP_SETTLE_MS)
+        handler.postDelayed(settleSkip, delay)
     }
 
     private val settleSkip = Runnable {
@@ -547,11 +559,27 @@ class LibrespotPlayer(
             val index = queue.items.indexOfFirst { it.uri == uri }
             if (index >= 0) {
                 engineIndex = index
-                // Not while the user is mid-skip: those events describe the
-                // track being left, and adopting them would drag the screen
-                // back to it between taps.
-                if (!skipPending && index != queue.currentIndex) {
+                if (index == queue.currentIndex) {
+                    skipInFlight = false
+                    if (type == "playing" || type == "loading") positionMs = 0
+                } else if (
+                    !skipPending &&
+                    (type == "playing" || (!skipInFlight && type == "loading"))
+                ) {
+                    // The engine is the truth about what is coming out of the
+                    // speaker. While a skip is on its way its events are about
+                    // the track being left, and following them dragged the
+                    // screen backwards — but once nothing is outstanding, the
+                    // screen was simply wrong to disagree.
+                    //
+                    // Loading counts, not only playing: a run of tracks the
+                    // account cannot play — region-locked, delisted — is
+                    // skipped by the engine one after another, and each of
+                    // those is a load with no play. Following only plays left
+                    // the app three songs behind what was in the speaker,
+                    // which is exactly how the two came apart.
                     queue.currentIndex = index
+                    skipInFlight = false
                     positionMs = 0
                 }
             }
@@ -564,7 +592,7 @@ class LibrespotPlayer(
             "playing" -> {
                 playbackState = Player.STATE_READY
                 playWhenReady = true
-                positionMs = eventPositionMs
+                if (!skipInFlight) positionMs = eventPositionMs
                 // Here as well as in handleSetPlayWhenReady: a pause can arrive
                 // from the notification, from a headset button or from another
                 // Connect device, and only this path sees all of them.
@@ -573,11 +601,14 @@ class LibrespotPlayer(
             "paused" -> {
                 playbackState = Player.STATE_READY
                 playWhenReady = false
-                positionMs = eventPositionMs
+                if (!skipInFlight) positionMs = eventPositionMs
                 onPlaybackActive(false)
             }
             "position" -> {
-                if (skipPending) return
+                // The old track goes on reporting until the new one starts.
+                // Taking those would run the bar forward on a song that is no
+                // longer the one on screen.
+                if (skipPending || skipInFlight) return
                 positionMs = eventPositionMs
             }
             "stopped" -> {

@@ -327,6 +327,11 @@ fn spawn_event_pump(
             while let Some(event) = events.blocking_recv() {
                 history.observe(&event);
 
+                // As soon as something starts, fetch what comes after it.
+                if let PlayerEvent::Playing { track_id, .. } = &event {
+                    preload_after(&player, &uri_string(track_id));
+                }
+
                 let (kind, uri, position_ms) = match event {
                     PlayerEvent::Playing {
                         track_id,
@@ -673,6 +678,33 @@ fn emit(listener: &GlobalRef, kind: &str, uri: &str, position_ms: i64) -> Result
 /// lock from the one that owns playback.
 static CONTEXT_URI: Mutex<String> = Mutex::new(String::new());
 
+/// The queue as the app handed it over, in play order.
+///
+/// Kept so the engine can fetch the next track before it is asked for; see
+/// [`preload_after`].
+static QUEUE: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Warms up the track after `uri`, so a skip does not start from nothing.
+///
+/// librespot preloads on its own, but only in the last thirty seconds of a
+/// track — that is for gapless playback, and it does nothing for someone
+/// skipping. Between the tap and the first sound there was most of a second of
+/// audio key and first chunk; fetched now, while the current track plays, the
+/// skip has them already.
+fn preload_after(player: &Player, uri: &str) {
+    let next = {
+        let Ok(queue) = QUEUE.lock() else { return };
+        let Some(position) = queue.iter().position(|item| item == uri) else {
+            return;
+        };
+        queue.get(position + 1).cloned()
+    };
+    let Some(next) = next else { return };
+    if let Ok(parsed) = SpotifyUri::from_uri(&next) {
+        player.preload(parsed);
+    }
+}
+
 pub fn current_context() -> String {
     CONTEXT_URI.lock().map(|c| c.clone()).unwrap_or_default()
 }
@@ -698,6 +730,9 @@ pub fn load_queue(
     let context = context_uri.clone();
     if let Ok(mut stored) = CONTEXT_URI.lock() {
         *stored = context_uri;
+    }
+    if let Ok(mut stored) = QUEUE.lock() {
+        *stored = uris.clone();
     }
 
     let options = LoadRequestOptions {

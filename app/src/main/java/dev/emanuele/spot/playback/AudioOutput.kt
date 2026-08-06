@@ -289,6 +289,10 @@ class AudioOutput {
      * called from the main looper.
      */
     fun fadeOutThen(action: () -> Unit) {
+        fadeOutThen(SKIP_FADE_OUT_MS, action)
+    }
+
+    fun fadeOutThen(durationMs: Long, action: () -> Unit) {
         val output = synchronized(this) {
             track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
         }
@@ -296,8 +300,9 @@ class AudioOutput {
             action()
             return
         }
+        val generation = fadeGeneration.incrementAndGet()
         fadeExecutor.execute {
-            ramp(output, 0f, FADE_OUT_MS)
+            ramp(output, 0f, durationMs, generation)
             // Order matters: the gate closes before the buffer is emptied, so
             // nothing can slip back in between the two.
             discarding = true
@@ -311,13 +316,25 @@ class AudioOutput {
         val output = synchronized(this) {
             track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
         } ?: return
+        val generation = fadeGeneration.incrementAndGet()
         fadeExecutor.execute {
             // Whatever arrived while the gate was closing is still old audio.
             discardBuffered(output)
             discarding = false
-            ramp(output, 1f, FADE_IN_MS)
+            ramp(output, 1f, FADE_IN_MS, generation)
         }
     }
+
+    /**
+     * Which fade is the current one.
+     *
+     * Fades run one at a time on a single thread, and a fade-in takes a quarter
+     * of a second: a skip during one used to wait for it to finish before its
+     * own fade could even start, which is a quarter of a second between the tap
+     * and the engine hearing about it. A ramp now stops as soon as a later one
+     * is asked for, and the later one begins immediately.
+     */
+    private val fadeGeneration = java.util.concurrent.atomic.AtomicLong(0)
 
     /**
      * Empties the track's buffer and leaves it running again.
@@ -348,10 +365,17 @@ class AudioOutput {
      * scaling the PCM on the way in would leave whatever is already buffered
      * playing at full level after the fade had supposedly finished.
      */
-    private fun ramp(output: AudioTrack, target: Float, durationMs: Long) {
+    private fun ramp(
+        output: AudioTrack,
+        target: Float,
+        durationMs: Long,
+        /** Which fade this is; see [fadeGeneration]. Zero means "cannot be superseded". */
+        generation: Long = 0,
+    ) {
         val steps = (durationMs / FADE_STEP_MS).toInt().coerceAtLeast(1)
         val start = currentGain
         for (step in 1..steps) {
+            if (generation != 0L && fadeGeneration.get() != generation) return
             val gain = start + (target - start) * step / steps
             currentGain = gain
             if (runCatching { output.setVolume(gain) }.isFailure) return
@@ -560,6 +584,15 @@ class AudioOutput {
          */
         const val FADE_IN_MS = 260L
         const val FADE_OUT_MS = 200L
+
+        /**
+         * The fade before a skip, which is shorter than the one before a pause.
+         *
+         * It is time the listener waits between asking for the next track and
+         * hearing it, and a skip is a request to be somewhere else now. A pause
+         * has no such hurry, so it keeps the longer, softer fade.
+         */
+        const val SKIP_FADE_OUT_MS = 70L
         const val FADE_STEP_MS = 10L
 
         /** Decay range, in milliseconds: a live room up to a large hall. */
