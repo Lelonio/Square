@@ -84,6 +84,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStar
     access_token: JString,
     credentials_dir: JString,
     cache_dir: JString,
+    language: JString,
     listener: JObject,
 ) {
     let result = (|| {
@@ -92,6 +93,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStar
         let access_token = read_string(&mut env, &access_token)?;
         let credentials_dir = read_string(&mut env, &credentials_dir)?;
         let cache_dir = read_string(&mut env, &cache_dir)?;
+        let language = read_string(&mut env, &language).unwrap_or_default();
         let listener = env
             .new_global_ref(&listener)
             .map_err(|e| format!("failed to pin listener: {e}"))?;
@@ -101,6 +103,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStar
             &access_token,
             &credentials_dir,
             &cache_dir,
+            &language,
             listener,
         )
     })();

@@ -33,7 +33,7 @@ One line:
 +pub const OS: &str = "linux";
 ```
 
-### Why
+#### Why
 
 `OS` decides three things at once: the default client id, the `platform` field
 librespot sends to Spotify, and the HTTP user agent. On Android the real value
@@ -56,6 +56,21 @@ consistent desktop identity, which is what the desktop client id expects.
 The same fix exists in the librespot fork behind
 [Outify](https://github.com/iTomKo/Outify) — commit *"Fixed login5 errors by
 mocking linux"* — which is how it was found.
+
+#### 3. `src/spclient.rs` and `src/config.rs` — the language to answer in
+
+Spotify localises the artwork of its generated playlists: the cover of "Your
+All-Time Top Songs" is served from a URL ending in the language, and the
+Italian one is a different picture from the English one. librespot sends no
+`Accept-Language` at all, so everything came back English regardless of what
+the app was set to.
+
+A `language` field was added to `SessionConfig` (default `"en"`, so behaviour
+for anyone not setting it is unchanged), and the spclient request builder now
+sends it as `Accept-Language`. The app fills it from the device locale.
+
+Not everything follows it: the charts, daylist, blend and seed-mix covers are
+picked by the server from the account's own language and stay English.
 
 ### Maintenance
 

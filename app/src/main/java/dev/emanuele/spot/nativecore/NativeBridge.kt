@@ -64,8 +64,18 @@ object NativeBridge {
         accessToken: String,
         credentialsDir: String,
         cacheDir: String,
+        /** What language Spotify should answer in, as a bare tag: `it`, `en`. */
+        language: String,
         listener: NativeEvents,
-    ) = nativeStart(clientId, deviceName, accessToken, credentialsDir, cacheDir, listener)
+    ) = nativeStart(
+        clientId,
+        deviceName,
+        accessToken,
+        credentialsDir,
+        cacheDir,
+        language,
+        listener,
+    )
 
     /**
      * Hands the whole queue to the Connect device, starting at [index].
@@ -161,6 +171,7 @@ object NativeBridge {
         accessToken: String,
         credentialsDir: String,
         cacheDir: String,
+        language: String,
         listener: NativeEvents,
     )
 

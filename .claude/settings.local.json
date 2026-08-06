@@ -162,7 +162,10 @@
       "Bash(curl -s \"https://api.github.com/search/code?q=EventService+repo:librespot-org/librespot-java\")",
       "Bash(curl -s \"https://api.github.com/repos/librespot-org/librespot-java/git/trees/master?recursive=1\")",
       "Bash(rm -rf lsj)",
-      "Bash(git clone *)"
+      "Bash(git clone *)",
+      "Bash(./gradlew :app:assembleDebug)",
+      "Bash(./gradlew :app:installDebug)",
+      "Bash(./gradlew :app:installRelease)"
     ]
   }
 }

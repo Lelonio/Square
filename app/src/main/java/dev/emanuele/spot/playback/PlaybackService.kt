@@ -152,6 +152,11 @@ class PlaybackService : MediaSessionService() {
                     // catalogue access until the user logs in again.
                     credentialsDir = filesDir.resolve("librespot").absolutePath,
                     cacheDir = cacheDir.absolutePath,
+                    // The app's own language, not the account's. Spotify
+                    // localises what it answers with, artwork included: the
+                    // generated playlists carry the language in the cover's
+                    // URL, so the tiles came back in English.
+                    language = appLanguage(),
                     listener = player,
                 )
             }
@@ -348,3 +353,13 @@ class PlaybackService : MediaSessionService() {
         }
     }
 }
+
+/**
+ * The language Spotify should answer in.
+ *
+ * Read from the resources rather than from the device, so it follows what the
+ * app is actually showing: today that is Italian for everyone, and the day it
+ * has more languages this keeps pointing at the one in use.
+ */
+private fun android.content.Context.appLanguage(): String =
+    resources.configuration.locales[0]?.language?.takeIf { it.isNotEmpty() } ?: "it"

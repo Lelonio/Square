@@ -110,6 +110,7 @@ pub fn start(
     access_token: &str,
     credentials_dir: &str,
     cache_dir: &str,
+    language: &str,
     listener: GlobalRef,
 ) -> EngineResult<()> {
     let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
@@ -131,6 +132,12 @@ pub fn start(
     // but be rejected at the access point.
     let mut session_config = SessionConfig::default();
     session_config.tmp_dir = std::path::PathBuf::from(cache_dir);
+    // What Spotify should answer in. Artwork for the generated playlists is
+    // localised — the language is in the cover's own URL — so a client that
+    // never says which one it wants gets English tiles.
+    if !language.is_empty() {
+        session_config.language = language.to_string();
+    }
     if !client_id.is_empty() {
         session_config.client_id = client_id.to_string();
     }

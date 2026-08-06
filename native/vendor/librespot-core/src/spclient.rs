@@ -32,7 +32,7 @@ use futures_util::future::IntoStream;
 use http::{Uri, header::HeaderValue};
 use hyper::{
     HeaderMap, Method, Request,
-    header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, HeaderName, RANGE},
+    header::{ACCEPT, ACCEPT_LANGUAGE, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, HeaderName, RANGE},
 };
 use hyper_util::client::legacy::ResponseFuture;
 use protobuf::{Enum, EnumOrUnknown, Message, MessageFull};
@@ -498,6 +498,11 @@ impl SpClient {
                 for (name, value) in headers {
                     headers_mut.insert(name, value.clone());
                 }
+            }
+
+            // LOCAL CHANGE: what language to answer in; see SessionConfig.
+            if let Ok(language) = HeaderValue::from_str(&self.session().config().language) {
+                headers_mut.insert(ACCEPT_LANGUAGE, language);
             }
 
             headers_mut.insert(

@@ -34,6 +34,12 @@ pub fn os_version() -> String {
 #[derive(Clone, Debug)]
 pub struct SessionConfig {
     pub client_id: String,
+    /// LOCAL CHANGE: sent as `Accept-Language` on spclient requests.
+    ///
+    /// Spotify localises what it answers with, and that includes artwork: the
+    /// generated playlists' covers carry the language in the URL, so without
+    /// this the tiles came back in English on an Italian app.
+    pub language: String,
     pub device_id: String,
     pub proxy: Option<Url>,
     pub ap_port: Option<u16>,
@@ -53,6 +59,7 @@ impl SessionConfig {
 
         Self {
             client_id,
+            language: "en".to_string(),
             device_id,
             proxy: None,
             ap_port: None,
