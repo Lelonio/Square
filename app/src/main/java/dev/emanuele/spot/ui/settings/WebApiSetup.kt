@@ -15,10 +15,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
+import dev.emanuele.spot.R
 import dev.emanuele.spot.ui.MainViewModel
 import dev.emanuele.spot.ui.glass.LiquidButton
 
@@ -40,18 +42,16 @@ internal fun WebApiSetup(
 ) {
     val clipboard = LocalClipboardManager.current
     Column(Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
-        Text("ATTIVA LA RICERCA", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        Text(stringResource(R.string.turn_on_search), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         Text(
-            "La ricerca usa le API web di Spotify, che hanno un limite di richieste " +
-                "per applicazione. Registra un'app nel dashboard per sviluppatori e " +
-                "incolla qui il suo client id: così il limite è solo tuo.",
+            stringResource(R.string.web_api_explainer),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 8.dp),
         )
 
         Text(
-            "Nell'app va aggiunto questo Redirect URI, identico:",
+            stringResource(R.string.redirect_uri_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 18.dp),
@@ -66,7 +66,7 @@ internal fun WebApiSetup(
                 modifier = Modifier.weight(1f),
             )
             TextButton(onClick = { clipboard.setText(AnnotatedString(state.redirectUri)) }) {
-                Text("Copia")
+                Text(stringResource(R.string.copy))
             }
         }
 
@@ -92,7 +92,7 @@ internal fun WebApiSetupInline(
         OutlinedTextField(
             value = state.clientId,
             onValueChange = onClientIdChange,
-            label = { Text("Client id") },
+            label = { Text(stringResource(R.string.client_id)) },
             singleLine = true,
             enabled = !state.connecting,
             shape = RoundedCornerShape(16.dp),
@@ -125,7 +125,7 @@ internal fun WebApiSetupInline(
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
             } else {
-                Text("Collega", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.connect), style = MaterialTheme.typography.titleMedium)
             }
         }
     }

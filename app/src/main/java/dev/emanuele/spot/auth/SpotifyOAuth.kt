@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import dev.emanuele.spot.R
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -128,7 +129,7 @@ object SpotifyOAuth {
         val challenge = challengeFor(verifier)
         val state = randomState()
 
-        LoopbackReceiver(REDIRECT_PORT).use { receiver ->
+        LoopbackReceiver(REDIRECT_PORT, context.getString(R.string.browser_return)).use { receiver ->
             val redirectUri = receiver.redirectUri
             // The port is ephemeral, so without this there is no way to tell a
             // listener that never accepted from a browser that refused to load
@@ -240,7 +241,7 @@ object SpotifyOAuth {
  * Binds an ephemeral port on 127.0.0.1, serves exactly one request, and closes.
  * Only the device's own browser can reach it.
  */
-private class LoopbackReceiver(port: Int) : AutoCloseable {
+private class LoopbackReceiver(port: Int, private val doneMessage: String) : AutoCloseable {
 
     data class Callback(val code: String?, val state: String?, val error: String?)
 
@@ -253,6 +254,16 @@ private class LoopbackReceiver(port: Int) : AutoCloseable {
      * redirect with ERR_CONNECTION_REFUSED.
      */
     private val server = ServerSocket(port, 1, InetAddress.getByName("127.0.0.1"))
+
+    /** The one line the browser shows once the redirect lands, in the app's language. */
+    private val response: String = buildString {
+        val page = "<html><body><h2>$doneMessage</h2></body></html>"
+        append("HTTP/1.1 200 OK\r\n")
+        append("Content-Type: text/html; charset=utf-8\r\n")
+        append("Content-Length: ${page.toByteArray().size}\r\n")
+        append("Connection: close\r\n\r\n")
+        append(page)
+    }
 
     /** Derived from the socket, so the URI can never disagree with the bind. */
     val redirectUri: String =
@@ -274,7 +285,7 @@ private class LoopbackReceiver(port: Int) : AutoCloseable {
             val uri = Uri.parse("http://127.0.0.1$target")
 
             it.getOutputStream().writer().apply {
-                write(RESPONSE)
+                write(response)
                 flush()
             }
 
@@ -292,14 +303,5 @@ private class LoopbackReceiver(port: Int) : AutoCloseable {
 
     private companion object {
         const val REDIRECT_TIMEOUT_MS = 5 * 60 * 1000
-
-        val RESPONSE = buildString {
-            val page = "<html><body><h2>Puoi tornare all'app.</h2></body></html>"
-            append("HTTP/1.1 200 OK\r\n")
-            append("Content-Type: text/html; charset=utf-8\r\n")
-            append("Content-Length: ${page.toByteArray().size}\r\n")
-            append("Connection: close\r\n\r\n")
-            append(page)
-        }
     }
 }

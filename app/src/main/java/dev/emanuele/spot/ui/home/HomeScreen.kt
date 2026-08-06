@@ -1,5 +1,6 @@
 package dev.emanuele.spot.ui.home
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -46,12 +47,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import com.kyant.backdrop.Backdrop
+import dev.emanuele.spot.R
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.data.SearchItem
@@ -78,11 +81,12 @@ import java.util.Calendar
  * sections keep their order in every one of them, so switching never rearranges
  * what stays on screen.
  */
-private enum class Feed(val label: String) {
-    ALL("Tutto"),
-    LIBRARY("Libreria"),
-    RELEASES("Novità"),
-    ARTISTS("Artisti"),
+private enum class Feed(@StringRes val label: Int) {
+    ALL(R.string.feed_all),
+    FOR_YOU(R.string.feed_for_you),
+    LIBRARY(R.string.library),
+    RELEASES(R.string.feed_releases),
+    ARTISTS(R.string.artists),
 }
 
 /**
@@ -107,6 +111,8 @@ fun HomeScreen(
     playlistOrder: List<String>,
     recent: List<CatalogTrack>,
     onPlayRecent: (List<CatalogTrack>, Int) -> Unit,
+    /** Plays a row of the feed, told which row it was so the player can say so. */
+    onPlayFeed: (List<CatalogTrack>, Int, String) -> Unit,
     feed: MainViewModel.FeedState,
     onOpenItem: (SearchItem) -> Unit,
     onOpenSettings: () -> Unit,
@@ -118,13 +124,13 @@ fun HomeScreen(
             AppIcon(84.dp)
             SquareWordmark(height = 28.dp)
             Text(
-                "Client non ufficiale per account Premium",
+                stringResource(R.string.unofficial_client),
                 style = MaterialTheme.typography.bodyMedium,
                 color = InkDim,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 40.dp),
             )
-            GlassAction("Accedi con Spotify", backdrop, onLogIn)
+            GlassAction(stringResource(R.string.log_in_with_spotify), backdrop, onLogIn)
         }
 
         MainViewModel.UiState.Connecting,
@@ -141,12 +147,17 @@ fun HomeScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 40.dp),
             )
-            GlassAction("Riprova", backdrop, onRetry)
-            GlassAction("Esci", backdrop, onLogOut)
+            GlassAction(stringResource(R.string.retry), backdrop, onRetry)
+            GlassAction(stringResource(R.string.log_out), backdrop, onLogOut)
         }
 
         is MainViewModel.UiState.Ready -> {
             var filter by remember { mutableStateOf(Feed.ALL) }
+            // Read once here rather than inside the rows: the label travels
+            // with the play so the player can say where the song came from,
+            // and that is a plain string by the time it leaves this screen.
+            val onRepeatLabel = stringResource(R.string.on_repeat)
+            val classicsLabel = stringResource(R.string.all_time_favourites)
             // Spotify's rootlist arrives in the order the account added them,
             // which for an old account is close to arbitrary — the playlist
             // opened every day can sit thirtieth.
@@ -206,6 +217,7 @@ fun HomeScreen(
                 val showReleases = current == Feed.ALL || current == Feed.RELEASES
                 val showArtists = current == Feed.ALL || current == Feed.ARTISTS
                 val showLibrary = current == Feed.ALL || current == Feed.LIBRARY
+                val showForYou = current == Feed.ALL || current == Feed.FOR_YOU
                 val filter = current
 
                 LazyColumn(
@@ -233,8 +245,29 @@ fun HomeScreen(
                         bottom = contentPadding.calculateBottomPadding(),
                     ),
                 ) {
+                // First on the page, and deliberately: what the account is
+                // playing this month is the one row that is different every
+                // time it is opened.
+                if (showForYou && feed.topTracks.isNotEmpty()) {
+                    item(contentType = Feed.FOR_YOU.name) { Heading(stringResource(R.string.on_repeat)) }
+                    item(contentType = Feed.FOR_YOU.name) {
+                        TrackRow(feed.topTracks) { index ->
+                            onPlayFeed(feed.topTracks, index, onRepeatLabel)
+                        }
+                    }
+                }
+
+                if (showForYou && feed.jumpBackIn.isNotEmpty()) {
+                    item(contentType = Feed.FOR_YOU.name) { Heading(stringResource(R.string.jump_back_in)) }
+                    item(contentType = Feed.FOR_YOU.name) {
+                        Carousel(feed.jumpBackIn, key = { it.uri }) { item ->
+                            FeedTile(item) { onOpenItem(item) }
+                        }
+                    }
+                }
+
                 if (showLibrary || filter == Feed.ALL) {
-                    item(contentType = Feed.LIBRARY.name) { Heading("Le tue playlist") }
+                    item(contentType = Feed.LIBRARY.name) { Heading(stringResource(R.string.your_playlists)) }
                     item(contentType = Feed.LIBRARY.name) {
                         Carousel(
                             playlists.take(if (showLibrary) LIBRARY_SIZE else CAROUSEL_SIZE),
@@ -246,7 +279,7 @@ fun HomeScreen(
                 }
 
                 if (showReleases && feed.newReleases.isNotEmpty()) {
-                    item(contentType = Feed.RELEASES.name) { Heading("Novità") }
+                    item(contentType = Feed.RELEASES.name) { Heading(stringResource(R.string.feed_releases)) }
                     // Cards rather than another row of thumbnails. A carousel
                     // says "here is a list, pick one"; this is meant to be
                     // looked at, so each release gets the width of the page and
@@ -260,8 +293,20 @@ fun HomeScreen(
                     }
                 }
 
+                // Novità, but only from artists the account listens to. Sits
+                // under the catalogue-wide releases on purpose: it is the
+                // narrower of the two and the one worth reaching first.
+                if ((showReleases || showForYou) && feed.fromYourArtists.isNotEmpty()) {
+                    item(contentType = Feed.FOR_YOU.name) { Heading(stringResource(R.string.new_from_your_artists)) }
+                    item(contentType = Feed.FOR_YOU.name) {
+                        Carousel(feed.fromYourArtists, key = { it.uri }) { item ->
+                            FeedTile(item) { onOpenItem(item) }
+                        }
+                    }
+                }
+
                 if (showArtists && feed.topArtists.isNotEmpty()) {
-                    item(contentType = Feed.ARTISTS.name) { Heading("Artisti che ascolti") }
+                    item(contentType = Feed.ARTISTS.name) { Heading(stringResource(R.string.listening_artists)) }
                     item(contentType = Feed.ARTISTS.name) {
                         Carousel(feed.topArtists, key = { it.uri }) { artist ->
                             ArtistTile(artist) { onOpenItem(artist) }
@@ -270,7 +315,7 @@ fun HomeScreen(
                 }
 
                 if (recent.isNotEmpty() && filter != Feed.ARTISTS) {
-                    item(contentType = Feed.LIBRARY.name) { Heading("Riascolta") }
+                    item(contentType = Feed.LIBRARY.name) { Heading(stringResource(R.string.play_again)) }
                     item(contentType = Feed.LIBRARY.name) {
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 20.dp),
@@ -280,6 +325,17 @@ fun HomeScreen(
                             itemsIndexed(recent, key = { _, track -> track.uri }) { index, track ->
                                 TrackTile(track) { onPlayRecent(recent, index) }
                             }
+                        }
+                    }
+                }
+
+                // Last, because it is the least of a surprise: everything above
+                // changes month to month, this is the account's own constants.
+                if (showForYou && feed.allTimeTracks.isNotEmpty()) {
+                    item(contentType = Feed.FOR_YOU.name) { Heading(stringResource(R.string.all_time_favourites)) }
+                    item(contentType = Feed.FOR_YOU.name) {
+                        TrackRow(feed.allTimeTracks) { index ->
+                            onPlayFeed(feed.allTimeTracks, index, classicsLabel)
                         }
                     }
                 }
@@ -442,7 +498,7 @@ private fun FilterRow(selected: Feed, backdrop: Backdrop, onSelect: (Feed) -> Un
                 surfaceColor = if (isSelected) SelectedFilm else GlassFilm,
             ) {
                 Text(
-                    entry.label,
+                    stringResource(entry.label),
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (isSelected) Ink else InkDim,
                 )
@@ -620,6 +676,54 @@ private fun TrackTile(track: CatalogTrack, onClick: () -> Unit) {
     }
 }
 
+/** A row of tracks that play where they are tapped. */
+@Composable
+private fun TrackRow(tracks: List<CatalogTrack>, onPlay: (Int) -> Unit) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.padding(top = 14.dp),
+    ) {
+        itemsIndexed(tracks, key = { _, track -> track.uri }) { index, track ->
+            TrackTile(track) { onPlay(index) }
+        }
+    }
+}
+
+/** An album or a playlist in a carousel: square art, name, who it is by. */
+@Composable
+private fun FeedTile(item: SearchItem, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .width(152.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Artwork(
+            url = item.artworkUrl,
+            title = item.title,
+            modifier = Modifier
+                .size(152.dp)
+                .softShadow(RoundedCornerShape(20.dp), elevation = 18.dp),
+            corner = 20.dp,
+        )
+        Text(
+            item.title,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 10.dp, start = 2.dp, end = 2.dp),
+        )
+        Text(
+            item.subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 2.dp, end = 2.dp),
+        )
+    }
+}
+
 @Composable
 private fun <T> Carousel(
     items: List<T>,
@@ -669,10 +773,11 @@ private fun Centered(content: @Composable () -> Unit) {
     }
 }
 
-private fun greeting(): String = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
-    in 5..12 -> "Buongiorno"
-    in 13..17 -> "Buon pomeriggio"
-    else -> "Buonasera"
+@StringRes
+private fun greeting(): Int = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
+    in 5..12 -> R.string.good_morning
+    in 13..17 -> R.string.good_afternoon
+    else -> R.string.good_evening
 }
 
 /** A harder film for the chip that is on; see the note at the call site. */

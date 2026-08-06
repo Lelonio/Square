@@ -1,5 +1,6 @@
 package dev.emanuele.spot.ui.library
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
+import dev.emanuele.spot.R
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.data.sortedByRecentlyOpened
 import dev.emanuele.spot.ui.MainViewModel
@@ -53,10 +56,10 @@ import com.adamglin.phosphoricons.regular.SquaresFour
 private enum class Layout { GRID, LIST }
 
 /** What the library is sorted by. */
-private enum class Order(val label: String) {
-    RECENT("Aperte di recente"),
-    NAME("Nome"),
-    ADDED("Ordine di Spotify"),
+private enum class Order(@StringRes val label: Int) {
+    RECENT(R.string.recently_opened),
+    NAME(R.string.name),
+    ADDED(R.string.spotify_order),
 }
 
 /**
@@ -82,15 +85,15 @@ fun LibraryScreen(
 ) {
     when (state) {
         MainViewModel.UiState.LoggedOut -> Centered {
-            Text("Spot", style = MaterialTheme.typography.displayLarge)
+            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.displayLarge)
             Text(
-                "Client non ufficiale per account Premium",
+                stringResource(R.string.unofficial_client),
                 style = MaterialTheme.typography.bodyMedium,
                 color = InkDim,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 40.dp),
             )
-            GlassAction("Accedi con Spotify", backdrop, onLogIn)
+            GlassAction(stringResource(R.string.log_in_with_spotify), backdrop, onLogIn)
         }
 
         MainViewModel.UiState.Connecting,
@@ -107,8 +110,8 @@ fun LibraryScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 40.dp),
             )
-            GlassAction("Riprova", backdrop, onRetry)
-            GlassAction("Esci", backdrop, onLogOut)
+            GlassAction(stringResource(R.string.retry), backdrop, onRetry)
+            GlassAction(stringResource(R.string.log_out), backdrop, onLogOut)
         }
 
         is MainViewModel.UiState.Ready -> {
@@ -195,9 +198,9 @@ private fun Header(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Libreria", style = MaterialTheme.typography.displayLarge)
+                Text(stringResource(R.string.library), style = MaterialTheme.typography.displayLarge)
                 Text(
-                    "$count playlist",
+                    stringResource(R.string.playlist_count, count),
                     style = MaterialTheme.typography.bodySmall,
                     color = InkDim,
                 )
@@ -218,7 +221,7 @@ private fun Header(
                 Icon(
                     if (layout == Layout.GRID) PhosphorIcons.Regular.ListBullets
                     else PhosphorIcons.Regular.SquaresFour,
-                    contentDescription = "Cambia disposizione",
+                    contentDescription = stringResource(R.string.change_layout),
                     tint = Ink,
                     modifier = Modifier.size(20.dp),
                 )
@@ -244,7 +247,7 @@ private fun Header(
                     surfaceColor = if (selected) SelectedFilm else GlassFilm,
                 ) {
                     Text(
-                        entry.label,
+                        stringResource(entry.label),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (selected) Ink else InkDim,
                         maxLines = 1,

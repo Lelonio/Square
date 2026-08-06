@@ -1,5 +1,6 @@
 package dev.emanuele.spot.ui.library
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -63,6 +65,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.layout.BoxScope
+import dev.emanuele.spot.R
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.ui.MainViewModel
 import com.kyant.backdrop.Backdrop
@@ -98,12 +101,12 @@ import com.adamglin.phosphoricons.regular.Trash
 import com.adamglin.phosphoricons.regular.X
 
 /** How the track list is ordered. */
-enum class TrackSort(val label: String) {
-    ORIGINAL("Ordine della playlist"),
-    TITLE("Titolo"),
-    ARTIST("Artista"),
-    ADDED("Aggiunti di recente"),
-    DURATION("Durata"),
+enum class TrackSort(@StringRes val label: Int) {
+    ORIGINAL(R.string.playlist_order),
+    TITLE(R.string.title),
+    ARTIST(R.string.artist),
+    ADDED(R.string.recently_added),
+    DURATION(R.string.duration),
 }
 
 @Composable
@@ -308,11 +311,10 @@ fun PlaylistScreen(
             if (state.tracks.isNotEmpty()) {
                 item(contentType = "sectionTitle") {
                     SectionHeader(
-                        title = if (state.kind == MainViewModel.DetailKind.ARTIST) {
-                            "Brani principali"
-                        } else {
-                            "Brani"
-                        },
+                        title = stringResource(
+                            if (state.kind == MainViewModel.DetailKind.ARTIST) R.string.top_tracks
+                            else R.string.tracks,
+                        ),
                         sort = sort,
                         onSortOpen = { sortOpen = it },
                         onAnchor = { sortAnchor = it },
@@ -324,13 +326,13 @@ fun PlaylistScreen(
                         OutlinedTextField(
                             value = query,
                             onValueChange = { query = it },
-                            placeholder = { Text("Cerca fra i brani") },
+                            placeholder = { Text(stringResource(R.string.search_in_tracks)) },
                             singleLine = true,
                             leadingIcon = { Icon(PhosphorIcons.Fill.MagnifyingGlass, contentDescription = null) },
                             trailingIcon = {
                                 if (query.isNotEmpty()) {
                                     IconButton(onClick = { query = "" }) {
-                                        Icon(PhosphorIcons.Regular.X, contentDescription = "Cancella")
+                                        Icon(PhosphorIcons.Regular.X, contentDescription = stringResource(R.string.clear))
                                     }
                                 }
                             },
@@ -362,7 +364,8 @@ fun PlaylistScreen(
                 visible.isEmpty() -> item(contentType = "status") {
                     StatusBox {
                         Text(
-                            if (query.isBlank()) "Nessun brano" else "Nessun risultato per “$query”",
+                            if (query.isBlank()) stringResource(R.string.no_tracks)
+                            else stringResource(R.string.no_results_for, query),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -407,7 +410,7 @@ fun PlaylistScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            "Altri brani in arrivo",
+                            stringResource(R.string.more_tracks_coming),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 10.dp),
@@ -446,7 +449,7 @@ fun PlaylistScreen(
         ) {
             Icon(
                 PhosphorIcons.Regular.ArrowLeft,
-                contentDescription = "Indietro",
+                contentDescription = stringResource(R.string.back),
                 tint = Color.White,
                 modifier = Modifier.size(20.dp),
             )
@@ -462,7 +465,7 @@ fun PlaylistScreen(
             onDismiss = { sortOpen = false },
         ) {
             TrackSort.entries.forEach { option ->
-                GlassChoiceItem(option.label, selected = option == sort) {
+                GlassChoiceItem(stringResource(option.label), selected = option == sort) {
                     sort = option
                     onSortChange(option.name)
                     sortOpen = false
@@ -536,9 +539,10 @@ private fun DetailHeader(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = buildString {
-                    append(kind.label)
-                    if (trackCount > 0) append(" · $trackCount brani · ${formatTotal(totalMs)}")
+                text = stringResource(kind.label) + if (trackCount > 0) {
+                    stringResource(R.string.track_count_and_length, trackCount, formatTotal(totalMs))
+                } else {
+                    ""
                 },
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White.copy(alpha = 0.72f),
@@ -561,7 +565,7 @@ private fun DetailHeader(
             ) {
                 CircleAction(
                     icon = PhosphorIcons.Regular.Shuffle,
-                    description = "Casuale",
+                    description = stringResource(R.string.shuffle),
                     size = 46.dp,
                     backdrop = backdrop,
                     onClick = onShuffle,
@@ -580,14 +584,14 @@ private fun DetailHeader(
                 ) {
                     Icon(
                         PhosphorIcons.Fill.Play,
-                        contentDescription = "Riproduci",
+                        contentDescription = stringResource(R.string.play),
                         tint = Color.Black,
                         modifier = Modifier.size(34.dp),
                     )
                 }
                 CircleAction(
                     icon = if (searching) PhosphorIcons.Regular.X else PhosphorIcons.Fill.MagnifyingGlass,
-                    description = "Cerca fra i brani",
+                    description = stringResource(R.string.search_in_tracks),
                     size = 46.dp,
                     backdrop = backdrop,
                     onClick = onToggleSearch,
@@ -611,7 +615,7 @@ private fun DetailHeader(
             IconButton(onClick = onBack) {
                 Icon(
                     PhosphorIcons.Regular.ArrowLeft,
-                    contentDescription = "Indietro",
+                    contentDescription = stringResource(R.string.back),
                     tint = Color.White,
                     modifier = Modifier.size(20.dp),
                 )
@@ -629,7 +633,7 @@ private fun DetailHeader(
             IconButton(onClick = onToggleSearch) {
                 Icon(
                     if (searching) PhosphorIcons.Regular.X else PhosphorIcons.Fill.MagnifyingGlass,
-                    contentDescription = "Cerca fra i brani",
+                    contentDescription = stringResource(R.string.search_in_tracks),
                     tint = Color.White,
                     modifier = Modifier.size(18.dp),
                 )
@@ -637,7 +641,7 @@ private fun DetailHeader(
             IconButton(onClick = onShuffle) {
                 Icon(
                     PhosphorIcons.Regular.Shuffle,
-                    contentDescription = "Casuale",
+                    contentDescription = stringResource(R.string.shuffle),
                     tint = Color.White,
                     modifier = Modifier.size(18.dp),
                 )
@@ -645,7 +649,7 @@ private fun DetailHeader(
             IconButton(onClick = onPlay) {
                 Icon(
                     PhosphorIcons.Fill.Play,
-                    contentDescription = "Riproduci",
+                    contentDescription = stringResource(R.string.play),
                     tint = Color.White,
                     modifier = Modifier.size(22.dp),
                 )
@@ -756,7 +760,7 @@ private fun AlbumStrip(
 ) {
     Column(Modifier.padding(top = 18.dp)) {
         Text(
-            "Album",
+            stringResource(R.string.albums),
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(start = 24.dp, bottom = 10.dp),
         )
@@ -825,7 +829,7 @@ private fun SectionHeader(
             run {
                 Icon(
                     PhosphorIcons.Regular.ArrowsDownUp,
-                    contentDescription = "Ordina",
+                    contentDescription = stringResource(R.string.sort),
                     tint = if (sort == TrackSort.ORIGINAL) {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     } else {
@@ -901,7 +905,7 @@ private fun TrackRow(
             if (isCurrent) {
                 Icon(
                     PhosphorIcons.Fill.Waveform,
-                    contentDescription = "In riproduzione",
+                    contentDescription = stringResource(R.string.now_playing),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp),
                 )
@@ -943,7 +947,7 @@ private fun TrackRow(
         IconButton(onClick = onMenu, modifier = Modifier.size(32.dp)) {
             Icon(
                 PhosphorIcons.Regular.DotsThree,
-                contentDescription = "Altro",
+                contentDescription = stringResource(R.string.more),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 modifier = Modifier.size(18.dp),
             )
@@ -1003,8 +1007,10 @@ fun formatDuration(ms: Long): String {
 }
 
 /** Total playlist length, in hours and minutes rather than a running clock. */
+@Composable
 private fun formatTotal(ms: Long): String {
     val hours = TimeUnit.MILLISECONDS.toHours(ms)
     val minutes = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
-    return if (hours > 0) "${hours}h ${minutes}min" else "${minutes}min"
+    return if (hours > 0) stringResource(R.string.hours_minutes, hours, minutes)
+    else stringResource(R.string.minutes_only, minutes)
 }

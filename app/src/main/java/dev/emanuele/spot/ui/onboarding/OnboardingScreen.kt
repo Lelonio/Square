@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -52,6 +53,7 @@ import com.adamglin.phosphoricons.regular.ArrowLeft
 import com.adamglin.phosphoricons.regular.ArrowUpRight
 import com.adamglin.phosphoricons.regular.Check
 import com.kyant.backdrop.Backdrop
+import dev.emanuele.spot.R
 import dev.emanuele.spot.ui.MainViewModel
 import dev.emanuele.spot.ui.components.AppIcon
 import dev.emanuele.spot.ui.components.SquareWordmark
@@ -121,12 +123,12 @@ fun OnboardingScreen(
             ) {
                 if (step > 0) {
                     LiquidButton(onClick = { step-- }, backdrop = backdrop) {
-                        Icon(PhosphorIcons.Regular.ArrowLeft, contentDescription = "Indietro")
+                        Icon(PhosphorIcons.Regular.ArrowLeft, contentDescription = stringResource(R.string.back))
                     }
                 }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onFinish) {
-                    Text(if (step == last) "Chiudi" else "Salta", color = InkDim)
+                    Text(stringResource(if (step == last) R.string.close else R.string.skip), color = InkDim)
                 }
             }
 
@@ -195,7 +197,7 @@ fun OnboardingScreen(
                     contentPadding = 26.dp,
                 ) {
                     Text(
-                        if (step == last) "Inizia ad ascoltare" else "Avanti",
+                        stringResource(if (step == last) R.string.onboarding_start else R.string.next_step),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
@@ -212,9 +214,9 @@ private fun Welcome() {
     AppIcon(104.dp)
     Spacer(Modifier.height(22.dp))
     SquareWordmark(height = 34.dp)
-    Body("La tua musica Spotify, con testi, canvas ed effetti audio.")
-    Note("Serve un account Spotify Premium.")
-    Body("Due passaggi e sei pronto. Ci vogliono cinque minuti, una volta sola.")
+    Body(stringResource(R.string.onboarding_welcome_1))
+    Note(stringResource(R.string.onboarding_welcome_2))
+    Body(stringResource(R.string.onboarding_welcome_3))
 }
 
 @Composable
@@ -224,13 +226,13 @@ private fun LogIn(
     backdrop: Backdrop,
     onLogIn: () -> Unit,
 ) {
-    StepTitle("1. Accedi a Spotify")
-    Body("Si apre il browser sulla pagina di Spotify. Autorizzi e torni qui da solo.")
-    Note("La password la scrivi solo nella pagina di Spotify: Square non la vede.")
+    StepTitle(stringResource(R.string.onboarding_login_title))
+    Body(stringResource(R.string.onboarding_login_1))
+    Note(stringResource(R.string.onboarding_login_2))
 
     Spacer(Modifier.height(20.dp))
     if (loggedIn) {
-        DoneRow("Accesso completato")
+        DoneRow(stringResource(R.string.onboarding_login_done))
     } else {
         LiquidButton(
             onClick = { if (!connecting) onLogIn() },
@@ -245,7 +247,7 @@ private fun LogIn(
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
             } else {
-                Text("Accedi con Spotify", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.log_in_with_spotify), style = MaterialTheme.typography.titleMedium)
             }
         }
     }
@@ -256,12 +258,8 @@ private fun Dashboard(redirectUri: String) {
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
 
-    StepTitle("2. Crea la tua chiave")
-    Body(
-        "La ricerca e i consigli passano dalle API di Spotify, che vanno usate con " +
-            "una chiave personale. Si crea in un minuto, è gratis e non serve " +
-            "nessuna carta.",
-    )
+    StepTitle(stringResource(R.string.onboarding_key_title))
+    Body(stringResource(R.string.onboarding_key_intro))
 
     Row(
         Modifier
@@ -274,7 +272,7 @@ private fun Dashboard(redirectUri: String) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("Apri il dashboard", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.onboarding_open_dashboard), style = MaterialTheme.typography.titleMedium)
             Text(
                 DASHBOARD_URL.removePrefix("https://"),
                 style = MaterialTheme.typography.bodySmall,
@@ -289,18 +287,10 @@ private fun Dashboard(redirectUri: String) {
         )
     }
 
-    Numbered(1, "Accedi con lo stesso account Spotify.")
-    Numbered(2, "In alto a destra premi «Create app».")
-    Numbered(
-        3,
-        "App name e App description: scrivi quello che vuoi, per esempio Square. " +
-            "Website: lascia vuoto.",
-    )
-    Numbered(
-        4,
-        "Redirect URI: incolla la riga qui sotto e premi «Add». Controlla che " +
-            "compaia nell'elenco sotto al campo, altrimenti non viene salvata.",
-    )
+    Numbered(1, stringResource(R.string.onboarding_step_login))
+    Numbered(2, stringResource(R.string.onboarding_step_create))
+    Numbered(3, stringResource(R.string.onboarding_step_names))
+    Numbered(4, stringResource(R.string.onboarding_step_redirect))
 
     Row(
         Modifier
@@ -317,21 +307,14 @@ private fun Dashboard(redirectUri: String) {
             modifier = Modifier.weight(1f),
         )
         TextButton(onClick = { clipboard.setText(AnnotatedString(redirectUri)) }) {
-            Text("Copia")
+            Text(stringResource(R.string.copy))
         }
     }
 
-    Numbered(
-        5,
-        "Alla voce «Which API/SDKs are you planning to use?» spunta Web API.",
-    )
-    Numbered(6, "Accetta i termini e premi «Save».")
-    Numbered(
-        7,
-        "Nella pagina dell'app premi «Settings»: sotto «Basic Information» trovi " +
-            "il Client ID. Copialo.",
-    )
-    Note("Il Client secret non serve: non copiarlo e non inserirlo da nessuna parte.")
+    Numbered(5, stringResource(R.string.onboarding_step_api))
+    Numbered(6, stringResource(R.string.onboarding_step_terms))
+    Numbered(7, stringResource(R.string.onboarding_step_client_id))
+    Note(stringResource(R.string.onboarding_step_secret))
 }
 
 @Composable
@@ -341,25 +324,19 @@ private fun ClientId(
     onClientIdChange: (String) -> Unit,
     onConnectWebApi: () -> Unit,
 ) {
-    StepTitle("3. Incolla il Client ID")
+    StepTitle(stringResource(R.string.onboarding_paste_title))
     if (webApi.connected) {
-        Body("Fatto: ricerca e consigli sono attivi.")
+        Body(stringResource(R.string.onboarding_paste_done))
         Spacer(Modifier.height(16.dp))
-        DoneRow("Chiave collegata")
+        DoneRow(stringResource(R.string.onboarding_key_linked))
     } else {
-        Body(
-            "Incolla qui il Client ID e premi Collega. Il browser si apre un'ultima " +
-                "volta per confermare.",
-        )
+        Body(stringResource(R.string.onboarding_paste_hint))
         // The same form the settings screen shows, so what is learned here is
         // where it stays.
         Box(Modifier.padding(top = 8.dp, start = 0.dp)) {
             WebApiSetupInline(webApi, backdrop, onClientIdChange, onConnectWebApi)
         }
-        Note(
-            "Se il browser dà errore, torna al passo prima: quasi sempre il " +
-                "Redirect URI non è stato aggiunto all'elenco.",
-        )
+        Note(stringResource(R.string.onboarding_paste_error))
     }
 }
 
@@ -367,13 +344,10 @@ private fun ClientId(
 private fun Done() {
     Spacer(Modifier.height(16.dp))
     AppIcon(72.dp)
-    StepTitle("Tutto pronto")
-    Body("In home ci sono le tue playlist, con la lente cerchi in tutto il catalogo.")
-    Body(
-        "Nel player scorri per cambiare brano e apri testi, coda ed effetti dalla " +
-            "barra sotto la copertina.",
-    )
-    Note("Puoi rivedere questa guida da Impostazioni, toccando la tua foto in home.")
+    StepTitle(stringResource(R.string.onboarding_done_title))
+    Body(stringResource(R.string.onboarding_done_1))
+    Body(stringResource(R.string.onboarding_done_2))
+    Note(stringResource(R.string.onboarding_done_3))
 }
 
 /* ---- pieces ---- */

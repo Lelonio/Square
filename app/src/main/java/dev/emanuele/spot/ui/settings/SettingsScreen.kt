@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +40,7 @@ import com.adamglin.phosphoricons.regular.CaretDown
 import com.adamglin.phosphoricons.regular.CaretUp
 import com.kyant.backdrop.Backdrop
 import dev.emanuele.spot.BuildConfig
+import dev.emanuele.spot.R
 import dev.emanuele.spot.ui.MainViewModel
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.glass.LiquidButton
@@ -91,10 +93,10 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 LiquidButton(onClick = onBack, backdrop = backdrop) {
-                    Icon(PhosphorIcons.Regular.ArrowLeft, contentDescription = "Indietro")
+                    Icon(PhosphorIcons.Regular.ArrowLeft, contentDescription = stringResource(R.string.back))
                 }
                 Text(
-                    "Impostazioni",
+                    stringResource(R.string.settings),
                     style = MaterialTheme.typography.displayLarge,
                     modifier = Modifier.padding(start = 14.dp),
                 )
@@ -102,7 +104,7 @@ fun SettingsScreen(
         }
 
         item("account") {
-            Section("Account") {
+            Section(stringResource(R.string.account)) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -124,16 +126,16 @@ fun SettingsScreen(
                             .padding(start = 14.dp),
                     ) {
                         Text(
-                            ready?.displayName ?: "Non connesso",
+                            ready?.displayName ?: stringResource(R.string.not_connected),
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             if (ready != null) {
-                                "${ready.playlists.size} playlist"
+                                stringResource(R.string.playlist_count, ready.playlists.size)
                             } else {
-                                "Accedi per riprendere"
+                                stringResource(R.string.log_in_to_resume)
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = InkDim,
@@ -142,21 +144,21 @@ fun SettingsScreen(
                 }
 
                 RowDivider()
-                InfoRow("Dispositivo Connect", deviceName)
+                InfoRow(stringResource(R.string.connect_device), deviceName)
             }
         }
 
         item("webapi") {
-            Section("API web") {
+            Section(stringResource(R.string.web_api)) {
                 if (webApi.connected) {
-                    InfoRow("Applicazione", "Collegata")
+                    InfoRow(stringResource(R.string.application), stringResource(R.string.connected))
                     RowDivider()
                     InfoRow(
-                        "Client id",
+                        stringResource(R.string.client_id),
                         webApi.clientId.take(8) + if (webApi.clientId.length > 8) "…" else "",
                     )
                     RowDivider()
-                    ActionRow("Scollega", destructive = true, onClick = onDisconnectWebApi)
+                    ActionRow(stringResource(R.string.disconnect), destructive = true, onClick = onDisconnectWebApi)
                 } else {
                     // The full explanation, because with no application
                     // connected search does not work at all and the reason is
@@ -167,32 +169,30 @@ fun SettingsScreen(
         }
 
         item("tutorial") {
-            Section("Guida") {
-                ActionRow("Rivedi la configurazione guidata", destructive = false) {
+            Section(stringResource(R.string.guide)) {
+                ActionRow(stringResource(R.string.see_setup_again), destructive = false) {
                     onShowTutorial()
                 }
             }
         }
 
         item("permissions") {
-            Section("Permessi richiesti") {
+            Section(stringResource(R.string.permissions_asked)) {
                 Text(
-                    "Un'applicazione collegata prima di un aggiornamento va ricollegata " +
-                        "per concedere i permessi aggiunti dopo: le sezioni che li usano " +
-                        "restano vuote finché non lo fai.",
+                    stringResource(R.string.permissions_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = InkDim,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
                 )
                 SCOPES.forEach { (scope, why) ->
                     RowDivider()
-                    InfoRow(scope, why)
+                    InfoRow(scope, stringResource(why))
                 }
             }
         }
 
         item("author") {
-            Section("Sviluppato da") {
+            Section(stringResource(R.string.developed_by)) {
                 val uriHandler = LocalUriHandler.current
                 Row(
                     Modifier
@@ -236,8 +236,8 @@ fun SettingsScreen(
         }
 
         item("about") {
-            Section("Informazioni") {
-                InfoRow("Versione", "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE})")
+            Section(stringResource(R.string.about)) {
+                InfoRow(stringResource(R.string.version), "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE})")
                 RowDivider()
                 Licences()
             }
@@ -246,7 +246,7 @@ fun SettingsScreen(
         if (ready != null) {
             item("logout") {
                 Section(null) {
-                    ActionRow("Esci", destructive = true, onClick = onLogOut)
+                    ActionRow(stringResource(R.string.log_out), destructive = true, onClick = onLogOut)
                 }
             }
         }
@@ -272,7 +272,7 @@ private fun Licences() {
                 .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Licenze", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.licences), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Icon(
                 if (open) PhosphorIcons.Regular.CaretUp else PhosphorIcons.Regular.CaretDown,
                 contentDescription = null,
@@ -362,12 +362,12 @@ private fun RowDivider() {
 
 /** Kept next to the request that asks for them; see MainViewModel.connectWebApi. */
 private val SCOPES = listOf(
-    "user-top-read" to "Artisti che ascolti",
-    "user-read-recently-played" to "Cronologia dell'account",
-    "user-read-playback-state" to "Elenco dispositivi",
-    "user-modify-playback-state" to "Sposta la riproduzione",
-    "playlist-modify-private" to "Aggiungi a playlist private",
-    "playlist-modify-public" to "Aggiungi a playlist pubbliche",
+    "user-top-read" to R.string.scope_top_artists,
+    "user-read-recently-played" to R.string.scope_history,
+    "user-read-playback-state" to R.string.scope_devices,
+    "user-modify-playback-state" to R.string.scope_transfer,
+    "playlist-modify-private" to R.string.scope_private_playlists,
+    "playlist-modify-public" to R.string.scope_public_playlists,
 )
 
 private val LICENCES = listOf(

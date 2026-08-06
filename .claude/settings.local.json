@@ -165,7 +165,12 @@
       "Bash(git clone *)",
       "Bash(./gradlew :app:assembleDebug)",
       "Bash(./gradlew :app:installDebug)",
-      "Bash(./gradlew :app:installRelease)"
+      "Bash(./gradlew :app:installRelease)",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Bash(grep -rn '\"[A-ZÀ-Ù][a-zà-ù ]\\\\{3,\\\\}' app/src/main/java --include=\"*.kt\")",
+      "Bash(grep -rn --include=\"*.kt\" -oE '\"[^\"]{2,}\"' app/src/main/java)",
+      "Bash(grep -viE '\"\\(spotify:|https?:|hm://|[a-z0-9_.-]+\"$|[a-z]+-[a-z-]+\"$\\)')",
+      "Bash(grep -rn --include=\"*.kt\" -oE '\"[A-ZÀ-Ù][a-zà-ù]{2,}\"' app/src/main/java)"
     ]
   }
 }

@@ -1,8 +1,10 @@
 package dev.emanuele.spot.ui
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -38,6 +40,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
@@ -67,6 +70,7 @@ import dev.emanuele.spot.ui.components.BlurTransformation
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import dev.emanuele.spot.R
 import dev.emanuele.spot.data.CanvasClip
 import dev.emanuele.spot.data.Catalog
 import dev.emanuele.spot.data.CatalogPlaylist
@@ -298,6 +302,11 @@ fun SpotApp(
         lyricsLoading = false
     }
 
+    // Read once, up here: these travel with a play as plain text, and the rows
+    // that start one are not composables of their own.
+    val playAgainLabel = stringResource(R.string.play_again)
+    val searchLabel = stringResource(R.string.search)
+
     SpotTheme(seed = accent) {
         // Material's default content colour is black, and it used to arrive from
         // the Surface that wrapped this tree. That Surface is gone — it painted
@@ -313,12 +322,26 @@ fun SpotApp(
                 val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
+                // Settings is not a place you listen from: it is a full page of
+                // its own, and the tab bar and the now-playing bar step out of
+                // the way for it instead of floating over a form.
+                val chromeHidden = route == Routes.SETTINGS
+                val chrome by animateFloatAsState(
+                    if (chromeHidden) 0f else 1f,
+                    tween(220),
+                    label = "chrome",
+                )
+
                 // Lists end above the bottom bar and the mini player rather than
                 // scrolling behind them.
                 val listPadding = PaddingValues(
                     top = statusBar,
                     bottom = barHeight + if (playback.hasItem) MiniPlayerHeight else 0.dp,
                 )
+
+                // Nothing floats over settings, so nothing has to be left free
+                // beneath it either.
+                val settingsPadding = PaddingValues(top = statusBar, bottom = navBar + 24.dp)
 
                 // The screens are recorded into the backdrop layer along with
                 // the artwork behind them, and the bars that float over them are
@@ -393,7 +416,10 @@ fun SpotApp(
                                 playlistOrder = playlistOrder,
                                 recent = recent,
                                 onPlayRecent = { tracks, index ->
-                                    onPlay(tracks, index, null, false, "Riascolta")
+                                    onPlay(tracks, index, null, false, playAgainLabel)
+                                },
+                                onPlayFeed = { tracks, index, label ->
+                                    onPlay(tracks, index, null, false, label)
                                 },
                                 feed = feed,
                                 onOpenItem = { item ->
@@ -415,7 +441,7 @@ fun SpotApp(
                                 onClientIdChange = viewModel::onWebApiClientIdChange,
                                 onConnectWebApi = { viewModel.connectWebApi() },
                                 onPlayTrack = { tracks, index ->
-                                    onPlay(tracks, index, null, false, "Ricerca")
+                                    onPlay(tracks, index, null, false, searchLabel)
                                 },
                                 onEnqueue = onEnqueue,
                                 onOpenContext = { item ->
@@ -443,7 +469,7 @@ fun SpotApp(
                             SettingsScreen(
                                 state = state,
                                 webApi = webApi,
-                                contentPadding = listPadding,
+                                contentPadding = settingsPadding,
                                 backdrop = artBackdrop,
                                 deviceName = android.os.Build.MODEL ?: "Android",
                                 onClientIdChange = viewModel::onWebApiClientIdChange,
@@ -462,6 +488,9 @@ fun SpotApp(
                             // wrong here: an album page tinted by an unrelated
                             // track reads as belonging to something else.
                             val detailAccent by rememberArtworkColor(playlist.artworkUrl)
+                            // Resolved here rather than inside the play
+                            // callbacks: those are not composables.
+                            val source = playlist.sourceLabel()
                             SpotTheme(seed = detailAccent) {
                                 PlaylistScreen(
                                     state = playlist,
@@ -474,7 +503,7 @@ fun SpotApp(
                                             index,
                                             playlist.uri,
                                             asContext,
-                                            playlist.sourceLabel(),
+                                            source,
                                         )
                                     },
                                     onEnqueue = onEnqueue,
@@ -491,7 +520,7 @@ fun SpotApp(
                                             0,
                                             playlist.uri,
                                             false,
-                                            playlist.sourceLabel(),
+                                            source,
                                         )
                                     },
                                     onAddToPlaylist = { track ->
@@ -526,7 +555,9 @@ fun SpotApp(
                 // stylistic: these refract `pageBackdrop`, and a pane drawn
                 // inside the layer it samples recurses on the render thread
                 // until the process dies.
-                Box(
+                // Faded out *and* taken out: a transparent bar still swallows
+                // the taps meant for the page underneath it.
+                if (chrome > 0.01f) Box(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
@@ -534,7 +565,9 @@ fun SpotApp(
                         // before it covers it: a tab bar under a full-screen
                         // player still swallows the taps meant for the
                         // transport.
-                        .graphicsLayer { alpha = (1f - expand.value * 3f).coerceIn(0f, 1f) }
+                        .graphicsLayer {
+                            alpha = (1f - expand.value * 3f).coerceIn(0f, 1f) * chrome
+                        }
                         .onSizeChanged { barHeight = with(density) { it.height.toDp() } },
                 ) {
                     BottomBar(
@@ -545,7 +578,8 @@ fun SpotApp(
                     )
                 }
 
-                if (playback.hasItem) {
+                if (playback.hasItem && chrome > 0.01f) {
+                    Box(Modifier.fillMaxSize().graphicsLayer { alpha = chrome }) {
                     NowPlayingSheet(
                         progress = expand,
                         // The measured bar already carries the navigation
@@ -628,6 +662,7 @@ fun SpotApp(
                             )
                         },
                     )
+                    }
                 }
 
                 }
@@ -646,25 +681,25 @@ fun SpotApp(
                     onDismiss = { trackMenu = null },
                 ) {
                     if (menu != null) {
-                        TrackSheetAction("Riproduci", PhosphorIcons.Fill.Play) {
+                        TrackSheetAction(stringResource(R.string.play), PhosphorIcons.Fill.Play) {
                             trackMenu = null
                             onPlay(listOf(menu.track), 0, null, false, "")
                         }
-                        TrackSheetAction("Aggiungi alla coda", PhosphorIcons.Regular.Queue) {
+                        TrackSheetAction(stringResource(R.string.add_to_queue), PhosphorIcons.Regular.Queue) {
                             trackMenu = null
                             onEnqueue(menu.track)
                         }
-                        TrackSheetAction("Aggiungi a una playlist", PhosphorIcons.Regular.Plus) {
+                        TrackSheetAction(stringResource(R.string.add_to_playlist), PhosphorIcons.Regular.Plus) {
                             trackMenu = null
                             viewModel.openAddToPlaylist(menu.track.uri, menu.track.name)
                         }
-                        TrackSheetAction("Copia link", PhosphorIcons.Regular.LinkSimple) {
+                        TrackSheetAction(stringResource(R.string.copy_link), PhosphorIcons.Regular.LinkSimple) {
                             trackMenu = null
                             clipboard.setText(AnnotatedString(menu.track.openLink()))
                         }
                         if (menu.removable) {
                             TrackSheetAction(
-                                "Rimuovi dalla playlist",
+                                stringResource(R.string.remove_from_playlist),
                                 PhosphorIcons.Regular.Trash,
                                 destructive = true,
                             ) {
@@ -811,11 +846,16 @@ private fun BottomBar(
             accentColor = Ink,
             containerColor = GlassFilm,
         ) {
-            BottomItem("Home", PhosphorIcons.Fill.House, PhosphorIcons.Regular.House, selected == 0) {
+            BottomItem(
+                stringResource(R.string.home),
+                PhosphorIcons.Fill.House,
+                PhosphorIcons.Regular.House,
+                selected == 0,
+            ) {
                 onSelect(Routes.HOME)
             }
             BottomItem(
-                "Libreria",
+                stringResource(R.string.library),
                 PhosphorIcons.Fill.MusicNotes,
                 PhosphorIcons.Regular.MusicNotes,
                 selected == 1,
@@ -840,7 +880,7 @@ private fun BottomBar(
         ) {
             Icon(
                 imageVector = if (searching) PhosphorIcons.Fill.MagnifyingGlass else PhosphorIcons.Regular.MagnifyingGlass,
-                contentDescription = "Cerca",
+                contentDescription = stringResource(R.string.search),
                 tint = Ink,
                 modifier = Modifier.size(24.dp),
             )
@@ -908,8 +948,11 @@ private fun NavHostController.openPlaylist(viewModel: MainViewModel, playlist: C
  * The kind first, because the name alone reads as a title and the two are worth
  * telling apart at a glance while a cover is filling the screen.
  */
-private fun MainViewModel.PlaylistState.sourceLabel(): String =
-    if (name.isBlank()) kind.label else "${kind.label} · $name"
+@Composable
+private fun MainViewModel.PlaylistState.sourceLabel(): String {
+    val kindName = stringResource(kind.label)
+    return if (name.isBlank()) kindName else "$kindName · $name"
+}
 
 private fun NavHostController.switchTab(route: String) {
     if (currentDestination?.route == route) return

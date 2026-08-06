@@ -48,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
@@ -66,6 +67,7 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import dev.emanuele.spot.R
 import dev.emanuele.spot.ui.MainViewModel
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.glass.LiquidButton
@@ -528,7 +530,7 @@ fun PlayerScreen(
                                 ) {
                                     Icon(
                                         PhosphorIcons.Regular.Queue,
-                                        contentDescription = "Coda",
+                                        contentDescription = stringResource(R.string.queue),
                                         // Coloured while its panel is the one
                                         // open: these buttons stay on screen
                                         // with the panel showing, and nothing
@@ -552,7 +554,7 @@ fun PlayerScreen(
                                 ) {
                                     Icon(
                                         PhosphorIcons.Regular.Plus,
-                                        contentDescription = "Aggiungi a una playlist",
+                                        contentDescription = stringResource(R.string.add_to_playlist),
                                         tint = panelTint(panel == PlayerPanel.ADD_TO_PLAYLIST),
                                         modifier = Modifier.size(20.dp),
                                     )
@@ -632,23 +634,23 @@ private fun TopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         GlassButton(backdrop, onClick = onCollapse) {
-            Icon(PhosphorIcons.Regular.CaretDown, contentDescription = "Chiudi")
+            Icon(PhosphorIcons.Regular.CaretDown, contentDescription = stringResource(R.string.close))
         }
         // Names whatever the middle of the screen is currently showing, so the
         // switch below has a label without carrying one.
         Crossfade(
             targetState = when (panel) {
-                PlayerPanel.LYRICS -> "Testo"
-                PlayerPanel.EFFECTS -> "Effetti"
-                PlayerPanel.QUEUE -> "In coda"
-                PlayerPanel.DEVICES -> "Riproduci su"
-                PlayerPanel.ADD_TO_PLAYLIST -> "Aggiungi a una playlist"
+                PlayerPanel.LYRICS -> stringResource(R.string.lyrics)
+                PlayerPanel.EFFECTS -> stringResource(R.string.effects)
+                PlayerPanel.QUEUE -> stringResource(R.string.queued)
+                PlayerPanel.DEVICES -> stringResource(R.string.play_on)
+                PlayerPanel.ADD_TO_PLAYLIST -> stringResource(R.string.add_to_playlist)
                 // The source in place of the words "in riproduzione", which
                 // said nothing the screen was not already saying. What is worth
                 // knowing here is where the track came from — the playlist you
                 // opened, the album, the search — and this is the one line of
                 // the player not already spoken for.
-                PlayerPanel.NONE -> source.ifBlank { "In riproduzione" }
+                PlayerPanel.NONE -> source.ifBlank { stringResource(R.string.now_playing) }
             },
             animationSpec = tween(220),
             label = "topBarTitle",
@@ -667,7 +669,7 @@ private fun TopBar(
         GlassButton(backdrop, onClick = onOpenDevices) {
             Icon(
                 PhosphorIcons.Regular.Devices,
-                contentDescription = "Dispositivi",
+                contentDescription = stringResource(R.string.devices),
                 tint = panelTint(panel == PlayerPanel.DEVICES),
             )
         }
@@ -813,7 +815,7 @@ private fun Controls(
     ) {
         ToggleIcon(
             icon = PhosphorIcons.Regular.Shuffle,
-            description = "Riproduzione casuale",
+            description = stringResource(R.string.shuffle_play),
             active = state.shuffleEnabled,
             onClick = onToggleShuffle,
         )
@@ -830,7 +832,7 @@ private fun Controls(
         ) {
             Icon(
                 PhosphorIcons.Fill.SkipBack,
-                contentDescription = "Precedente",
+                contentDescription = stringResource(R.string.previous),
                 modifier = Modifier.size(30.dp),
             )
         }
@@ -843,7 +845,7 @@ private fun Controls(
             ) { playing ->
                 Icon(
                     imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
-                    contentDescription = if (playing) "Pausa" else "Riproduci",
+                    contentDescription = stringResource(if (playing) R.string.pause else R.string.play),
                     modifier = Modifier.size(34.dp),
                 )
             }
@@ -857,7 +859,7 @@ private fun Controls(
         ) {
             Icon(
                 PhosphorIcons.Fill.SkipForward,
-                contentDescription = "Successivo",
+                contentDescription = stringResource(R.string.next),
                 modifier = Modifier.size(30.dp),
             )
         }
@@ -868,7 +870,7 @@ private fun Controls(
             } else {
                 PhosphorIcons.Regular.Repeat
             },
-            description = "Ripeti",
+            description = stringResource(R.string.repeat),
             active = state.repeatMode != Player.REPEAT_MODE_OFF,
             onClick = onCycleRepeat,
         )
@@ -986,7 +988,7 @@ private fun LyricsStage(
             )
 
             lyrics == null -> Text(
-                "Nessun testo per questo brano",
+                stringResource(R.string.no_lyrics),
                 style = MaterialTheme.typography.bodyMedium,
                 color = GlassInkDim,
             )

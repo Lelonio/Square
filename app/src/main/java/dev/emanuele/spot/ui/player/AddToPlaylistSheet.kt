@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +39,7 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.Check
 import com.kyant.backdrop.Backdrop
+import dev.emanuele.spot.R
 import dev.emanuele.spot.data.CatalogPlaylist
 import dev.emanuele.spot.ui.MainViewModel
 import dev.emanuele.spot.ui.components.Artwork
@@ -108,7 +110,7 @@ fun AddToPlaylistSheet(
         ) {
             Column(Modifier.padding(vertical = 18.dp)) {
                 Text(
-                    "Aggiungi a una playlist",
+                    stringResource(R.string.add_to_playlist),
                     style = MaterialTheme.typography.titleLarge,
                     color = GlassInk,
                     modifier = Modifier.padding(start = 22.dp, end = 22.dp),
@@ -135,7 +137,7 @@ fun AddToPlaylistSheet(
 
                 if (state.done != null) {
                     Text(
-                        "Aggiunto a ${state.done}",
+                        stringResource(R.string.added_to, state.done.orEmpty()),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
@@ -144,7 +146,7 @@ fun AddToPlaylistSheet(
 
                 if (state.playlists.isEmpty()) {
                     Text(
-                        "Nessuna playlist nel tuo account",
+                        stringResource(R.string.no_playlists_in_account),
                         style = MaterialTheme.typography.bodyMedium,
                         color = GlassInkDim,
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
@@ -186,7 +188,7 @@ fun PlaylistPicker(
 ) {
             Column(Modifier.padding(vertical = 18.dp)) {
                 Text(
-                    "Aggiungi a una playlist",
+                    stringResource(R.string.add_to_playlist),
                     style = MaterialTheme.typography.titleLarge,
                     color = GlassInk,
                     modifier = Modifier.padding(start = 22.dp, end = 22.dp),
@@ -213,7 +215,7 @@ fun PlaylistPicker(
 
                 if (state.done != null) {
                     Text(
-                        "Aggiunto a ${state.done}",
+                        stringResource(R.string.added_to, state.done.orEmpty()),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
@@ -222,7 +224,7 @@ fun PlaylistPicker(
 
                 if (state.playlists.isEmpty()) {
                     Text(
-                        "Nessuna playlist nel tuo account",
+                        stringResource(R.string.no_playlists_in_account),
                         style = MaterialTheme.typography.bodyMedium,
                         color = GlassInkDim,
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),

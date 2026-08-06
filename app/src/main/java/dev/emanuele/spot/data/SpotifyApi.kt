@@ -89,6 +89,29 @@ interface SpotifyApi {
     ): PageDto<ArtistDto>
 
     /**
+     * The account's own most-played tracks. Same scope as the artists above.
+     *
+     * The time range is the whole point of having both: `short_term` is what is
+     * on repeat now, `long_term` is what the account has always come back to,
+     * and they are rarely the same list.
+     */
+    @GET("v1/me/top/tracks")
+    suspend fun topTracks(
+        @Query("limit") limit: Int = 20,
+        @Query("time_range") timeRange: String = "short_term",
+    ): PageDto<TrackDto>
+
+    /**
+     * What the account played last, wherever it played it.
+     *
+     * Different from the app's own recent list, which only knows what was
+     * played here: this is the phone, the desktop and the speaker together.
+     * Needs `user-read-recently-played`.
+     */
+    @GET("v1/me/player/recently-played")
+    suspend fun recentlyPlayed(@Query("limit") limit: Int = 30): PageDto<PlayHistoryDto>
+
+    /**
      * An artist's most-played tracks.
      *
      * The access point serves playlists and albums as contexts, but an artist is
@@ -246,6 +269,17 @@ data class AlbumDto(
 
 @Serializable
 data class TopTracksDto(val tracks: List<TrackDto> = emptyList())
+
+/** One entry of the account's play history: the track and where it was played from. */
+@Serializable
+data class PlayHistoryDto(
+    val track: TrackDto,
+    @SerialName("played_at") val playedAt: String? = null,
+    val context: PlayContextDto? = null,
+)
+
+@Serializable
+data class PlayContextDto(val uri: String? = null, val type: String? = null)
 
 @Serializable
 data class NewReleasesDto(val albums: PageDto<AlbumDto>? = null)

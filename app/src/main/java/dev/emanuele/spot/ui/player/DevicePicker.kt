@@ -21,12 +21,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
+import dev.emanuele.spot.R
 import dev.emanuele.spot.ui.MainViewModel
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
@@ -84,7 +86,7 @@ fun DevicePicker(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "Riproduci su",
+                        stringResource(R.string.play_on),
                         style = MaterialTheme.typography.titleLarge,
                         color = GlassInk,
                         modifier = Modifier.weight(1f),
@@ -98,7 +100,7 @@ fun DevicePicker(
                     ) {
                         Icon(
                             PhosphorIcons.Regular.ArrowClockwise,
-                            contentDescription = "Aggiorna",
+                            contentDescription = stringResource(R.string.refresh),
                             tint = GlassInkDim,
                             modifier = Modifier.size(20.dp),
                         )
@@ -123,7 +125,7 @@ fun DevicePicker(
                     )
 
                     state.devices.isEmpty() -> Text(
-                        "Nessun dispositivo disponibile",
+                        stringResource(R.string.no_devices),
                         style = MaterialTheme.typography.bodyMedium,
                         color = GlassInkDim,
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
@@ -166,7 +168,7 @@ fun DeviceList(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "Riproduci su",
+                        stringResource(R.string.play_on),
                         style = MaterialTheme.typography.titleLarge,
                         color = GlassInk,
                         modifier = Modifier.weight(1f),
@@ -180,7 +182,7 @@ fun DeviceList(
                     ) {
                         Icon(
                             PhosphorIcons.Regular.ArrowClockwise,
-                            contentDescription = "Aggiorna",
+                            contentDescription = stringResource(R.string.refresh),
                             tint = GlassInkDim,
                             modifier = Modifier.size(20.dp),
                         )
@@ -205,7 +207,7 @@ fun DeviceList(
                     )
 
                     state.devices.isEmpty() -> Text(
-                        "Nessun dispositivo disponibile",
+                        stringResource(R.string.no_devices),
                         style = MaterialTheme.typography.bodyMedium,
                         color = GlassInkDim,
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
@@ -255,7 +257,7 @@ private fun DeviceRow(device: MainViewModel.SpotifyDevice, onClick: () -> Unit) 
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (device.isActive) "In riproduzione" else device.type,
+                if (device.isActive) stringResource(R.string.now_playing) else device.type,
                 style = MaterialTheme.typography.bodySmall,
                 color = GlassInkDim,
                 maxLines = 1,

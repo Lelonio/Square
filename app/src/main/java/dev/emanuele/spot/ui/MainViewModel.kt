@@ -1,10 +1,12 @@
 package dev.emanuele.spot.ui
 
 import android.app.Application
+import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.emanuele.spot.SpotApplication
 import dev.emanuele.spot.auth.SpotifyOAuth
+import dev.emanuele.spot.R
 import dev.emanuele.spot.data.Catalog
 import dev.emanuele.spot.data.AddTracksRequestDto
 import dev.emanuele.spot.data.RemoveTracksRequestDto
@@ -63,10 +65,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** What kind of thing the detail screen is showing. */
-    enum class DetailKind(val label: String) {
-        PLAYLIST("Playlist"),
-        ALBUM("Album"),
-        ARTIST("Artista"),
+    enum class DetailKind(@StringRes val label: Int) {
+        PLAYLIST(R.string.playlist),
+        ALBUM(R.string.album),
+        ARTIST(R.string.artist),
     }
 
     /**
@@ -99,6 +101,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val container get() = getApplication<SpotApplication>()
 
+    /** The app's own text, which lives in resources so it can be translated. */
+    private fun string(@StringRes id: Int, vararg args: Any): String =
+        getApplication<SpotApplication>().getString(id, *args)
+
     private var inFlight: Job? = null
     private var playlistJob: Job? = null
 
@@ -117,6 +123,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     data class FeedState(
         val newReleases: List<SearchItem> = emptyList(),
         val topArtists: List<SearchItem> = emptyList(),
+        /** On repeat this month. */
+        val topTracks: List<CatalogTrack> = emptyList(),
+        /** What the account has come back to over the years. */
+        val allTimeTracks: List<CatalogTrack> = emptyList(),
+        /** Records the artists the account listens to have put out lately. */
+        val fromYourArtists: List<SearchItem> = emptyList(),
+        /** Playlists and albums the account played last, on any device. */
+        val jumpBackIn: List<SearchItem> = emptyList(),
         val loading: Boolean = false,
     )
 
@@ -155,16 +169,103 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     SearchItem(
                         uri = artist.uri ?: return@mapNotNull null,
                         title = artist.name,
-                        subtitle = "Artista",
+                        subtitle = string(R.string.artist),
                         artworkUrl = artist.images.firstOrNull()?.url,
                     )
                 }
             }.onFailure { android.util.Log.w(TAG, "top artists unavailable: ${describe(it)}") }
                 .getOrDefault(emptyList())
 
-            _feed.value = FeedState(newReleases = releases, topArtists = artists, loading = false)
+            val onRepeat = topTracks("short_term")
+            val allTime = topTracks("long_term")
+
+            // Built from the artists the account actually listens to rather
+            // than from the catalogue-wide new releases above: those are the
+            // same for everyone, and half of them are records the account would
+            // never open.
+            val fresh = freshFromArtists(artists)
+
+            val jumpBackIn = jumpBackIn()
+
+            _feed.value = FeedState(
+                newReleases = releases,
+                topArtists = artists,
+                topTracks = onRepeat,
+                allTimeTracks = allTime,
+                fromYourArtists = fresh,
+                jumpBackIn = jumpBackIn,
+                loading = false,
+            )
         }
     }
+
+    private suspend fun topTracks(range: String): List<CatalogTrack> = runCatching {
+        container.api.topTracks(timeRange = range).items.map { it.toCatalogTrack() }
+    }.onFailure { android.util.Log.w(TAG, "top tracks ($range) unavailable: ${describe(it)}") }
+        .getOrDefault(emptyList())
+
+    /**
+     * Records from the account's own artists, newest first.
+     *
+     * One request per artist, so only the first few are asked: this runs on the
+     * home page's first load and a dozen round trips would be felt. Anything
+     * older than a year is dropped — "new from artists you listen to" that
+     * opens on a 2019 album is just a discography.
+     */
+    private suspend fun freshFromArtists(artists: List<SearchItem>): List<SearchItem> {
+        val cutoff = java.time.LocalDate.now().minusMonths(12).toString()
+        return artists.take(FRESH_ARTISTS).flatMap { artist ->
+            runCatching {
+                container.api.artistAlbums(artist.uri.substringAfterLast(':'), limit = 6).items
+            }.getOrDefault(emptyList())
+        }
+            .filter { (it.releaseDate ?: "") >= cutoff }
+            .sortedByDescending { it.releaseDate }
+            .distinctBy { it.uri }
+            .mapNotNull { album ->
+                SearchItem(
+                    uri = album.uri ?: return@mapNotNull null,
+                    title = album.name,
+                    subtitle = album.artists.joinToString(", ") { it.name }
+                        .ifBlank { album.releaseDate?.take(4).orEmpty() },
+                    artworkUrl = album.images.firstOrNull()?.url,
+                )
+            }
+    }
+
+    /**
+     * Where the account was listening last, on any device.
+     *
+     * The history gives the *context* a track was played from but not its name
+     * or its cover, and resolving each one would be a request apiece. Albums
+     * carry both on the track itself, and a playlist of the account's own is
+     * already in the rootlist — so those two are shown and anything else (an
+     * editorial playlist, a radio) is left out rather than guessed at.
+     */
+    private suspend fun jumpBackIn(): List<SearchItem> = runCatching {
+        val mine = (_state.value as? UiState.Ready)?.playlists.orEmpty().associateBy { it.uri }
+        container.api.recentlyPlayed().items.mapNotNull { play ->
+            val context = play.context?.uri
+            when {
+                context != null && mine.containsKey(context) -> mine[context]?.let {
+                    SearchItem(it.uri, it.name, string(R.string.playlist), it.artworkUrl)
+                }
+
+                context != null && context.startsWith("spotify:album:") ->
+                    play.track.album?.let { album ->
+                        SearchItem(
+                            uri = context,
+                            title = album.name,
+                            subtitle = play.track.artists.joinToString(", ") { it.name },
+                            artworkUrl = album.images.firstOrNull()?.url,
+                        )
+                    }
+
+                else -> null
+            }
+        }.distinctBy { it.uri }.take(FEED_ROW)
+    }.onFailure { android.util.Log.w(TAG, "play history unavailable: ${describe(it)}") }
+        .getOrDefault(emptyList())
 
     /** The Spotify Connect device picker. */
     data class DevicesState(
@@ -206,7 +307,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!container.webApi.isReady) {
             _devices.value = _devices.value.copy(
                 loading = false,
-                error = "Serve la tua applicazione Spotify: configurala in Cerca.",
+                error = string(R.string.needs_your_app),
             )
             return
         }
@@ -290,9 +391,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             playlists = (_state.value as? UiState.Ready)?.playlists.orEmpty(),
             error = when {
                 trackUri?.startsWith("spotify:track:") != true ->
-                    "Questo brano non può essere aggiunto."
+                    string(R.string.track_cannot_be_added)
                 !container.webApi.isReady ->
-                    "Collega la tua applicazione nelle impostazioni."
+                    string(R.string.connect_app_in_settings)
                 else -> null
             },
         )
@@ -335,8 +436,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         // A playlist the account follows but does not own is the
                         // one failure worth naming: it looks identical to the
                         // user's own in every list the app draws.
-                        error = "Non è stato possibile aggiungere a ${playlist.name}. " +
-                            "Se la playlist non è tua, non puoi modificarla.",
+                        error = string(R.string.add_failed, playlist.name),
                     )
                 }
         }
@@ -382,7 +482,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch {
             delay(SEARCH_DEBOUNCE_MS)
             _search.value = _search.value.copy(loading = true, error = null)
-            runCatching { container.api.search(query.trim()).toResults() }
+            runCatching { container.api.search(query.trim()).toResults(
+                    artistLabel = string(R.string.artist),
+                    albumLabel = string(R.string.album),
+                    playlistLabel = string(R.string.playlist),
+                ) }
                 .onSuccess { results ->
                     _search.value = _search.value.copy(loading = false, results = results)
                 }
@@ -425,7 +529,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun connectWebApi() = viewModelScope.launch {
         val clientId = _webApi.value.clientId.trim()
         if (clientId.isEmpty()) {
-            _webApi.value = _webApi.value.copy(error = "Inserisci il client id.")
+            _webApi.value = _webApi.value.copy(error = string(R.string.enter_client_id))
             return@launch
         }
 
@@ -555,7 +659,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = UiState.Connecting
         if (!awaitEngine()) {
             _state.value = if (container.tokenStore.isLoggedIn) {
-                UiState.Failed("Impossibile connettersi a Spotify.")
+                UiState.Failed(string(R.string.cannot_connect))
             } else {
                 UiState.LoggedOut
             }
@@ -596,7 +700,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { Catalog.playlists() }
             .onFailure { android.util.Log.w(TAG, "rootlist unavailable: ${describe(it)}") }
             .recoverCatching {
-                check(container.webApi.isReady) { it.message ?: "rootlist non disponibile" }
+                check(container.webApi.isReady) { it.message ?: string(R.string.rootlist_unavailable) }
                 container.api.playlists(limit = WEB_API_PAGE).items.map { dto ->
                     CatalogPlaylist(
                         uri = dto.uri,
@@ -912,7 +1016,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private suspend fun loadArtist(uri: String): Pair<List<CatalogTrack>, List<SearchItem>> {
         if (!container.webApi.isReady) {
-            error("Per aprire un artista serve la tua applicazione Spotify, configurala in Cerca.")
+            error(string(R.string.artist_needs_app))
         }
         val id = uri.substringAfterLast(':')
         val tracks = container.api.artistTopTracks(id).tracks.map { it.toCatalogTrack() }
@@ -970,6 +1074,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val TAG = "SpotUi"
+
+        /** Artists asked for new records on the home page; one request each. */
+        const val FRESH_ARTISTS = 6
+
+        /** How long a home row gets before it stops being worth scrolling. */
+        const val FEED_ROW = 12
+
         const val ENGINE_TIMEOUT_MS = 30_000L
         const val POLL_INTERVAL_MS = 250L
 

@@ -1,5 +1,6 @@
 package dev.emanuele.spot.ui.search
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,11 +25,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.emanuele.spot.R
 import dev.emanuele.spot.data.CatalogTrack
 import dev.emanuele.spot.data.SearchItem
 import dev.emanuele.spot.ui.MainViewModel
@@ -67,18 +70,18 @@ fun SearchScreen(
     LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding) {
         item(contentType = "field") {
             Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 36.dp, bottom = 10.dp)) {
-                Text("Cerca", style = MaterialTheme.typography.displayLarge)
+                Text(stringResource(R.string.search), style = MaterialTheme.typography.displayLarge)
                 OutlinedTextField(
                     enabled = !state.needsSetup,
                     value = state.query,
                     onValueChange = onQueryChange,
-                    placeholder = { Text("Brani, artisti, album, playlist") },
+                    placeholder = { Text(stringResource(R.string.search_placeholder)) },
                     singleLine = true,
                     leadingIcon = { Icon(PhosphorIcons.Fill.MagnifyingGlass, contentDescription = null) },
                     trailingIcon = {
                         if (state.query.isNotEmpty()) {
                             IconButton(onClick = { onQueryChange("") }) {
-                                Icon(PhosphorIcons.Regular.X, contentDescription = "Cancella")
+                                Icon(PhosphorIcons.Regular.X, contentDescription = stringResource(R.string.clear))
                             }
                         }
                     },
@@ -113,7 +116,7 @@ fun SearchScreen(
             state.query.isBlank() -> item(contentType = "status") {
                 StatusBox {
                     Text(
-                        "Cerca qualcosa da ascoltare",
+                        stringResource(R.string.search_prompt),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -123,7 +126,7 @@ fun SearchScreen(
             state.results.isEmpty -> item(contentType = "status") {
                 StatusBox {
                     Text(
-                        "Nessun risultato per “${state.query}”",
+                        stringResource(R.string.no_results_for, state.query),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -134,7 +137,7 @@ fun SearchScreen(
             else -> {
                 val tracks = state.results.tracks
                 if (tracks.isNotEmpty()) {
-                    item(contentType = "section") { SectionTitle("Brani") }
+                    item(contentType = "section") { SectionTitle(stringResource(R.string.tracks)) }
                     items(
                         count = tracks.size,
                         key = { "track-${tracks[it].uri}-$it" },
@@ -154,22 +157,22 @@ fun SearchScreen(
                     }
                 }
 
-                section("Artisti", state.results.artists, round = true, onOpenContext)
-                section("Album", state.results.albums, round = false, onOpenContext)
-                section("Playlist", state.results.playlists, round = false, onOpenContext)
+                section(R.string.artists, state.results.artists, round = true, onOpenContext)
+                section(R.string.albums, state.results.albums, round = false, onOpenContext)
+                section(R.string.playlists, state.results.playlists, round = false, onOpenContext)
             }
         }
     }
 }
 
 private fun LazyListScope.section(
-    title: String,
+    @StringRes title: Int,
     items: List<SearchItem>,
     round: Boolean,
     onOpen: (SearchItem) -> Unit,
 ) {
     if (items.isEmpty()) return
-    item(contentType = "section") { SectionTitle(title) }
+    item(contentType = "section") { SectionTitle(stringResource(title)) }
     items(
         count = items.size,
         key = { "$title-${items[it].uri}" },

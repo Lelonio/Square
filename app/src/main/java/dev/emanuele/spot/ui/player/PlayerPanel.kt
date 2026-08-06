@@ -33,10 +33,12 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.emanuele.spot.R
 import dev.emanuele.spot.data.Lyrics
 import dev.emanuele.spot.playback.EffectPreset
 import androidx.compose.foundation.layout.RowScope
@@ -139,19 +141,19 @@ fun PlayerPanelSection(
             PanelTab(
                 icon = PhosphorIcons.Regular.VinylRecord,
                 activeIcon = PhosphorIcons.Fill.VinylRecord,
-                label = "Copertina",
+                label = stringResource(R.string.cover),
                 selected = selected == 0,
             ) { onSelect(PlayerPanel.NONE) }
             PanelTab(
                 icon = PhosphorIcons.Regular.TextAlignLeft,
                 activeIcon = PhosphorIcons.Fill.TextAlignLeft,
-                label = "Testo",
+                label = stringResource(R.string.lyrics),
                 selected = selected == 1,
             ) { onSelect(PlayerPanel.LYRICS) }
             PanelTab(
                 icon = PhosphorIcons.Regular.SlidersHorizontal,
                 activeIcon = PhosphorIcons.Fill.SlidersHorizontal,
-                label = "Effetti",
+                label = stringResource(R.string.effects),
                 selected = selected == 2,
             ) { onSelect(PlayerPanel.EFFECTS) }
         }
@@ -188,7 +190,7 @@ data class QueueEntry(val index: Int, val title: String, val artist: String, val
 @Composable
 internal fun QueueList(queue: List<QueueEntry>, onPlay: (Int) -> Unit) {
     if (queue.isEmpty()) {
-        EmptyPanel("La coda è vuota")
+        EmptyPanel(stringResource(R.string.queue_empty))
         return
     }
 
@@ -273,7 +275,7 @@ internal fun EffectsPanel(
         }
 
         EffectSlider(
-            label = "Velocità",
+            label = stringResource(R.string.speed),
             value = speed,
             // Below half speed the stretcher smears badly and above double the
             // track stops being recognisable; both ends are past the useful part.
@@ -285,7 +287,7 @@ internal fun EffectsPanel(
         )
 
         EffectSlider(
-            label = "Tonalità",
+            label = stringResource(R.string.pitch),
             value = pitch,
             range = 0.5f..2f,
             // Semitones read better than a ratio for pitch: "+3" is a musical
@@ -297,10 +299,10 @@ internal fun EffectsPanel(
         )
 
         EffectSlider(
-            label = "Riverbero",
+            label = stringResource(R.string.reverb),
             value = reverb,
             range = 0f..1f,
-            reading = if (reverb <= 0f) "Off" else "${(reverb * 100).roundToInt()}%",
+            reading = if (reverb <= 0f) stringResource(R.string.off) else "${(reverb * 100).roundToInt()}%",
             backdrop = backdrop,
             onChange = onReverb,
             onReset = { onReverb(0f) },
@@ -357,7 +359,11 @@ private fun PresetRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    preset.name,
+                    // "Slowed + Reverb" and "Sped Up" are the names these edits
+                    // go by everywhere and are left alone; "Original" is a plain
+                    // word and is read from resources.
+                    if (preset.id == "original") stringResource(R.string.preset_original)
+                    else preset.name,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     color = if (selected) GlassInk else GlassInkDim,
@@ -365,7 +371,7 @@ private fun PresetRow(
                 if (selected && !preset.builtIn) {
                     Icon(
                         PhosphorIcons.Regular.X,
-                        contentDescription = "Elimina ${preset.name}",
+                        contentDescription = stringResource(R.string.delete_preset, preset.name),
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier
                             .padding(start = 4.dp)
@@ -391,7 +397,7 @@ private fun PresetRow(
                 modifier = Modifier.size(16.dp),
             )
             Text(
-                "Salva",
+                stringResource(R.string.save),
                 style = MaterialTheme.typography.bodySmall,
                 color = GlassInk,
                 modifier = Modifier.padding(start = 4.dp),
@@ -405,20 +411,20 @@ private fun SavePresetDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit)
     var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Salva preimpostazione") },
+        title = { Text(stringResource(R.string.save_preset)) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 singleLine = true,
-                label = { Text("Nome") },
+                label = { Text(stringResource(R.string.name)) },
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name) }) { Text("Salva") }
+            TextButton(onClick = { onConfirm(name) }) { Text(stringResource(R.string.save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Annulla") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         },
     )
 }
@@ -446,7 +452,7 @@ private fun EffectSlider(
             // is fiddly, and a stuck-off-centre value is the kind of thing that
             // gets mistaken for broken playback.
             Text(
-                "Azzera",
+                stringResource(R.string.reset),
                 style = MaterialTheme.typography.bodySmall,
                 color = GlassInk,
                 modifier = Modifier

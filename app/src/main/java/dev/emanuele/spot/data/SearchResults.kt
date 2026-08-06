@@ -25,13 +25,18 @@ data class SearchResults(
  * a song is what a search box in a music player is mostly for, and burying it
  * under artist and album rows makes the common case the slow one.
  */
-fun SearchDto.toResults(): SearchResults = SearchResults(
+fun SearchDto.toResults(
+    /** What each kind is called, in the app's language; see MainViewModel. */
+    artistLabel: String,
+    albumLabel: String,
+    playlistLabel: String,
+): SearchResults = SearchResults(
     tracks = tracks?.items.orEmpty().map { it.toCatalogTrack() },
     artists = artists?.items.orEmpty().mapNotNull { artist ->
         SearchItem(
             uri = artist.uri ?: return@mapNotNull null,
             title = artist.name,
-            subtitle = "Artista",
+            subtitle = artistLabel,
             artworkUrl = artist.images.firstOrNull()?.url,
         )
     },
@@ -39,7 +44,7 @@ fun SearchDto.toResults(): SearchResults = SearchResults(
         SearchItem(
             uri = album.uri ?: return@mapNotNull null,
             title = album.name,
-            subtitle = "Album",
+            subtitle = albumLabel,
             artworkUrl = album.images.firstOrNull()?.url,
         )
     },
@@ -50,7 +55,7 @@ fun SearchDto.toResults(): SearchResults = SearchResults(
         SearchItem(
             uri = playlist.uri,
             title = playlist.name,
-            subtitle = "Playlist",
+            subtitle = playlistLabel,
             artworkUrl = playlist.images.firstOrNull()?.url,
         )
     },

@@ -1,6 +1,7 @@
 package dev.emanuele.spot.playback
 
 import android.content.Context
+import dev.emanuele.spot.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -94,6 +95,7 @@ val BuiltInPresets = listOf(
  */
 class EffectPresetStore(context: Context) {
 
+    private val app = context.applicationContext
     private val prefs = context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -105,7 +107,7 @@ class EffectPresetStore(context: Context) {
     fun save(name: String, speed: Float, pitch: Float, reverb: Float): EffectPreset {
         val preset = EffectPreset(
             id = java.util.UUID.randomUUID().toString(),
-            name = name.trim().ifEmpty { "Senza nome" },
+            name = name.trim().ifEmpty { app.getString(R.string.unnamed) },
             speed = speed,
             pitch = pitch,
             reverbAmount = reverb,

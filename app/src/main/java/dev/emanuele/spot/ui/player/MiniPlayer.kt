@@ -29,11 +29,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
+import dev.emanuele.spot.R
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.glass.LiquidButton
 import dev.emanuele.spot.ui.theme.softShadow
@@ -197,7 +199,7 @@ fun MiniPlayer(
                 IconButton(onClick = onNext, enabled = state.hasNext) {
                     Icon(
                         PhosphorIcons.Fill.SkipForward,
-                        contentDescription = "Successivo",
+                        contentDescription = stringResource(R.string.next),
                         tint = MiniPlayerInkDim,
                     )
                 }
@@ -220,7 +222,7 @@ fun MiniPlayer(
                     ) { playing ->
                         Icon(
                             imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
-                            contentDescription = if (playing) "Pausa" else "Riproduci",
+                            contentDescription = if (playing) stringResource(R.string.pause) else stringResource(R.string.play),
                             tint = MiniPlayerInk,
                             modifier = Modifier.size(20.dp),
                         )
