@@ -1,8 +1,28 @@
 # Square
 
-An unofficial Liquid Glass Android client for Spotify Premium, built on
+An unofficial Android client for Spotify Premium, built on
 [librespot](https://github.com/librespot-org/librespot). The official app is not
 needed and is not used: audio is streamed in-process by a native Rust core.
+
+| Player | Effects | Home |
+| --- | --- | --- |
+| ![The player](docs/screenshots/player.png) | ![The effects panel](docs/screenshots/effects.png) | ![The home page](docs/screenshots/home.png) |
+
+## Why use this instead of the official app
+
+**It is built in Liquid Glass.** Every control — the tab bar, the player, the
+sheets, the menus — is drawn on one refracting material that bends the artwork
+and the canvas video behind it. Nothing on Spotify for Android looks like this,
+and it is the reason the app exists.
+
+**It can bend the music.** Speed and pitch move independently, there is a real
+reverb on the output, and the three save as presets — so "slowed + reverb" is a
+single tap on any track in the catalogue rather than a file someone else made.
+
+**It is fast.** A skip is sound in about a third of a second, because the engine
+fetches the next track while the current one plays and the app never waits on it
+to move. The playing list is cached rather than rebuilt, so scrolling stays at
+the screen's own frame rate.
 
 > **Read this before you install it.** Square re-implements Spotify's protocol,
 > which their Terms of Service forbid. It cannot go on the Play Store, it needs

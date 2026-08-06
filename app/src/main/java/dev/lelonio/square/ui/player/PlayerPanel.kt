@@ -328,7 +328,7 @@ private fun PresetRow(
     onSaveCurrent: () -> Unit,
 ) {
     Text(
-        "PREIMPOSTAZIONI",
+        stringResource(R.string.presets),
         style = MaterialTheme.typography.labelLarge,
         color = GlassInkDim,
         modifier = Modifier.padding(bottom = 8.dp),

@@ -167,4 +167,5 @@
     <string name="browser_return">Você já pode voltar ao app.</string>
     <string name="language">Idioma</string>
     <string name="system_language">Idioma do telefone</string>
+    <string name="presets">PREDEFINIÇÕES</string>
 </resources>
