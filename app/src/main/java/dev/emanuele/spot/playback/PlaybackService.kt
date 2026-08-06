@@ -91,6 +91,15 @@ class PlaybackService : MediaSessionService() {
             )
             .build()
 
+        // The app's own mark in the shade, instead of Media3's generic note.
+        // The provider is built rather than subclassed: the small icon is the
+        // only thing being changed.
+        setMediaNotificationProvider(
+            androidx.media3.session.DefaultMediaNotificationProvider.Builder(this)
+                .build()
+                .apply { setSmallIcon(dev.emanuele.spot.R.drawable.ic_notification) },
+        )
+
         AudioEffects.load(this)
         // Applied straight to the output rather than waiting for the UI: the
         // service can be running with no activity attached at all.

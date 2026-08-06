@@ -15,7 +15,7 @@ use librespot_core::{
     session::Session, spotify_uri::SpotifyUri,
 };
 use librespot_playback::{
-    config::{AudioFormat, Bitrate, PlayerConfig},
+    config::{AudioFormat, Bitrate, NormalisationMethod, PlayerConfig},
     mixer::{softmixer::SoftMixer, Mixer, MixerConfig},
     player::{Player, PlayerEvent},
 };
@@ -156,7 +156,19 @@ pub fn start(
 
     let player_config = PlayerConfig {
         bitrate: Bitrate::Bitrate320,
+        // Loudness normalisation, which is what keeps one track from being
+        // twice as loud as the next.
+        //
+        // On its own it made the app quieter than everything else on the phone:
+        // it pulls every track down towards a target and nothing puts the level
+        // back. The pregain is what puts it back — Spotify's own "loud" setting
+        // is about three decibels over its normal one, and a couple more brings
+        // this level with apps that do no normalisation at all.
         normalisation: true,
+        normalisation_pregain_db: 5.0,
+        // The limiter, not a flat scale: with five decibels added, the loudest
+        // moments of a loud master would otherwise clip.
+        normalisation_method: NormalisationMethod::Dynamic,
         // Dithering runs per sample — 88200 times a second at 44.1 kHz stereo —
         // for a noise-floor benefit nobody hears on a phone. Off, to leave the
         // decoder more headroom against output underruns.

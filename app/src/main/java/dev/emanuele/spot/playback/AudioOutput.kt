@@ -268,11 +268,19 @@ class AudioOutput {
             setAuxEffectSendLevel(0f)
             attachAuxEffect(0)
         }
-        // Released, not just disabled. Disabling stops the effect processing but
-        // leaves it on the output mix, and the tail already inside it went on
-        // ringing out over whatever the phone played next. Releasing it takes it
-        // off the mix entirely; the next play builds a fresh one, which starts
-        // silent by definition.
+        dropReverb()
+    }
+
+    /**
+     * Throws away the reverb, and with it whatever is still ringing inside it.
+     *
+     * Released, not just disabled. Disabling stops the effect processing but
+     * leaves it on the output mix, and the tail already inside it went on
+     * ringing out over whatever came next. Releasing it takes it off the mix
+     * entirely; the next play builds a fresh one, which starts silent by
+     * definition.
+     */
+    private fun dropReverb() {
         reverb?.runCatching {
             enabled = false
             release()
@@ -354,6 +362,13 @@ class AudioOutput {
             // moments of the next one.
             stretcher?.release()
             stretcher = null
+
+            // And the reverb holds seconds of it. Emptying the track's buffer
+            // says nothing to an effect that has already been fed: the tail of
+            // the song being left went on ringing over the opening of the one
+            // being chosen. It is rebuilt, silent, when the engine says the new
+            // track is playing.
+            dropReverb()
         }
     }
 

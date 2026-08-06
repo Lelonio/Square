@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The square wave, for the media notification.
+
+    White and flat on purpose: Android draws a notification's small icon as a
+    silhouette from its alpha channel alone, so any colour in here would be
+    thrown away. Traced from app/icon-src/wave-square.svg, which is where the
+    app's own mark comes from.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M240,128v56a8,8,0,0,1,-8,8H128a8,8,0,0,1,-8,-8V80H32v48a8,8,0,0,1,-16,0V72a8,8,0,0,1,8,-8H128a8,8,0,0,1,8,8V176h88V128a8,8,0,0,1,16,0Z" />
+</vector>
