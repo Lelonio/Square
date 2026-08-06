@@ -61,7 +61,7 @@ constexpr float kInt16Scale = 32768.f;
 extern "C" {
 
 JNIEXPORT jlong JNICALL
-Java_dev_emanuele_spot_playback_Stretcher_nativeCreate(
+Java_dev_lelonio_square_playback_Stretcher_nativeCreate(
 	JNIEnv *, jclass, jint sampleRate, jint channels, jint maxInputFrames, jint maxOutputFrames)
 {
 	if (sampleRate <= 0 || channels <= 0 || maxInputFrames <= 0 || maxOutputFrames <= 0)
@@ -72,7 +72,7 @@ Java_dev_emanuele_spot_playback_Stretcher_nativeCreate(
 }
 
 JNIEXPORT void JNICALL
-Java_dev_emanuele_spot_playback_Stretcher_nativeDestroy(JNIEnv *, jclass, jlong handle)
+Java_dev_lelonio_square_playback_Stretcher_nativeDestroy(JNIEnv *, jclass, jlong handle)
 {
 	delete reinterpret_cast<Context *>(handle);
 }
@@ -83,7 +83,7 @@ Java_dev_emanuele_spot_playback_Stretcher_nativeDestroy(JNIEnv *, jclass, jlong 
  * @return frames written to `outputBuffer`, or -1 if the call was rejected.
  */
 JNIEXPORT jint JNICALL
-Java_dev_emanuele_spot_playback_Stretcher_nativeProcess(
+Java_dev_lelonio_square_playback_Stretcher_nativeProcess(
 	JNIEnv *env,
 	jclass,
 	jlong handle,
