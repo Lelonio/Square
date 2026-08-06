@@ -184,11 +184,18 @@ pub fn start(
     // falls back to the platform default id instead, which no longer matches the
     // id the OAuth token was minted for, and every spclient call fails with
     // "Login request was denied: BAD_REQUEST".
+    // Bounded, and swept before it is opened.
+    //
+    // It was neither: an audio cache with no limit had grown past a gigabyte on
+    // the test phone, and the half-finished downloads librespot writes next to
+    // it — one temporary file per interrupted load, and skipping interrupts a
+    // lot of loads — were never collected at all.
+    sweep_stale_downloads(cache_dir);
     let cache = Cache::new(
         Some(std::path::Path::new(credentials_dir)),
         None,
         Some(std::path::Path::new(cache_dir)),
-        None,
+        Some(AUDIO_CACHE_LIMIT),
     )
     .map_err(|e| format!("cache failed: {e}"))?;
 
@@ -323,13 +330,33 @@ fn spawn_event_pump(
             log::info!("event pump started for device {device_name}");
             // What the account's listening history is built from; see events.rs.
             let mut history = History::new(session, state_dir);
+            // The track whose successor has already been fetched.
+            let mut preloaded: Option<String> = None;
 
             while let Some(event) = events.blocking_recv() {
                 history.observe(&event);
 
-                // As soon as something starts, fetch what comes after it.
-                if let PlayerEvent::Playing { track_id, .. } = &event {
-                    preload_after(&player, &uri_string(track_id));
+                // Warm up the next track — but not the instant this one
+                // starts.
+                //
+                // Preloading on the first note meant a run of skips fired a
+                // burst of audio-key requests, Spotify refused them
+                // ("error audio key"), and librespot went on to decode the
+                // still-encrypted bytes: megabytes of noise through the
+                // decoder, thousands of log lines, and an app that looked
+                // frozen. A few seconds in, a track is one the listener is
+                // actually on, and a skipped-past track asks for nothing.
+                if let PlayerEvent::PositionChanged {
+                    track_id,
+                    position_ms,
+                    ..
+                } = &event
+                {
+                    let uri = uri_string(track_id);
+                    if *position_ms > PRELOAD_AFTER_MS && preloaded.as_deref() != Some(&uri) {
+                        preload_after(&player, &uri);
+                        preloaded = Some(uri);
+                    }
                 }
 
                 let (kind, uri, position_ms) = match event {
@@ -683,6 +710,49 @@ static CONTEXT_URI: Mutex<String> = Mutex::new(String::new());
 /// Kept so the engine can fetch the next track before it is asked for; see
 /// [`preload_after`].
 static QUEUE: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// How much of the phone the cached audio may take: 512 MB.
+const AUDIO_CACHE_LIMIT: u64 = 512 * 1024 * 1024;
+
+/// Deletes the temporary files left behind by downloads that never finished.
+///
+/// librespot writes each download to a `.tmp…` file beside the cache and
+/// renames it when it completes; a skip mid-download leaves the temporary file
+/// where it is, several megabytes at a time, for ever.
+fn sweep_stale_downloads(dir: &str) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.starts_with(".tmp") {
+            continue;
+        }
+        // Only the ones nothing is writing any more. An hour is far longer than
+        // any download and short enough that they do not pile up.
+        let stale = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .map(|modified| {
+                modified
+                    .elapsed()
+                    .map(|age| age.as_secs() > 3600)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        if stale && std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        log::info!("swept {removed} unfinished downloads");
+    }
+}
+
+/// How far into a track its successor is fetched, in milliseconds.
+const PRELOAD_AFTER_MS: u32 = 5_000;
 
 /// Warms up the track after `uri`, so a skip does not start from nothing.
 ///
