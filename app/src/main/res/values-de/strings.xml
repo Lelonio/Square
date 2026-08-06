@@ -165,4 +165,6 @@
     <string name="onboarding_done_3">Diese Anleitung findest du wieder in den Einstellungen — tippe auf der Startseite auf dein Bild.</string>
 
     <string name="browser_return">Du kannst zur App zurückgehen.</string>
+    <string name="language">Sprache</string>
+    <string name="system_language">Sprache des Telefons</string>
 </resources>

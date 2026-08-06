@@ -166,4 +166,6 @@
     <string name="onboarding_done_3">Puoi rivedere questa guida da Impostazioni, toccando la tua foto in home.</string>
 
     <string name="browser_return">Puoi tornare all\'app.</string>
+    <string name="language">Lingua</string>
+    <string name="system_language">Lingua del telefono</string>
 </resources>

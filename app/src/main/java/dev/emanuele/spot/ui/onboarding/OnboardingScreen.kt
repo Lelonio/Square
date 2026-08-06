@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import dev.emanuele.spot.data.AppLanguages
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -90,6 +92,9 @@ fun OnboardingScreen(
     onLogIn: () -> Unit,
     onClientIdChange: (String) -> Unit,
     onConnectWebApi: () -> Unit,
+    /** The chosen language tag, empty for the phone's own. */
+    language: String,
+    onLanguage: (String) -> Unit,
     onFinish: () -> Unit,
 ) {
     var step by remember { mutableIntStateOf(0) }
@@ -155,7 +160,7 @@ fun OnboardingScreen(
                         .padding(horizontal = 26.dp),
                 ) {
                     when (current) {
-                        0 -> Welcome()
+                        0 -> Welcome(language, onLanguage)
                         1 -> LogIn(
                             loggedIn = loggedIn,
                             connecting = state is MainViewModel.UiState.Loading,
@@ -209,7 +214,7 @@ fun OnboardingScreen(
 private const val STEP_COUNT = 5
 
 @Composable
-private fun Welcome() {
+private fun Welcome(language: String, onLanguage: (String) -> Unit) {
     Spacer(Modifier.height(24.dp))
     AppIcon(104.dp)
     Spacer(Modifier.height(22.dp))
@@ -217,6 +222,11 @@ private fun Welcome() {
     Body(stringResource(R.string.onboarding_welcome_1))
     Note(stringResource(R.string.onboarding_welcome_2))
     Body(stringResource(R.string.onboarding_welcome_3))
+
+    // First screen, before a word of the setup: someone who cannot read this
+    // page is exactly the person who needs the picker, and asking them to
+    // finish the tutorial first to find it would be the wrong way round.
+    LanguageChips(language, onLanguage)
 }
 
 @Composable
@@ -348,6 +358,37 @@ private fun Done() {
     Body(stringResource(R.string.onboarding_done_1))
     Body(stringResource(R.string.onboarding_done_2))
     Note(stringResource(R.string.onboarding_done_3))
+}
+
+/**
+ * The languages, as a row of pills.
+ *
+ * Chips rather than the list the settings screen uses: this is one line of a
+ * page that is mostly prose, and a seven-row list here would read as the first
+ * task rather than as a choice already made for most people.
+ */
+@Composable
+private fun LanguageChips(language: String, onLanguage: (String) -> Unit) {
+    Row(
+        Modifier
+            .padding(top = 22.dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        AppLanguages.forEach { (tag, name) ->
+            val selected = tag == language
+            Text(
+                name.ifEmpty { stringResource(R.string.system_language) },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) Ink else InkDim,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Ink.copy(alpha = if (selected) 0.18f else 0.07f))
+                    .clickable { onLanguage(tag) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
+    }
 }
 
 /* ---- pieces ---- */

@@ -32,6 +32,15 @@ class MainActivity : ComponentActivity() {
     private var controller by mutableStateOf<MediaController?>(null)
 
     /**
+     * Below Android 13 nothing applies the chosen language for us, so every
+     * resource this activity reads has to come from a context that carries it.
+     */
+    override fun attachBaseContext(base: android.content.Context) {
+        val store = (base.applicationContext as dev.emanuele.spot.SpotApplication).language
+        super.attachBaseContext(store.wrap(base))
+    }
+
+    /**
      * Bumped when something asks for the player to be open — the notification,
      * for now.
      *

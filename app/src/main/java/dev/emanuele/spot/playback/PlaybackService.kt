@@ -361,5 +361,12 @@ class PlaybackService : MediaSessionService() {
  * app is actually showing: today that is Italian for everyone, and the day it
  * has more languages this keeps pointing at the one in use.
  */
+/**
+ * The language to ask Spotify to answer in.
+ *
+ * Read from the app's own setting rather than from this context's resources: a
+ * service is not re-created when the language changes, and its configuration
+ * would still be yesterday's.
+ */
 private fun android.content.Context.appLanguage(): String =
-    resources.configuration.locales[0]?.language?.takeIf { it.isNotEmpty() } ?: "it"
+    (applicationContext as dev.emanuele.spot.SpotApplication).language.language()

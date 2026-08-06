@@ -165,4 +165,6 @@
     <string name="onboarding_done_3">Vous pouvez revoir ce guide depuis les Réglages, en touchant votre photo sur l\'accueil.</string>
 
     <string name="browser_return">Vous pouvez revenir à l\'app.</string>
+    <string name="language">Langue</string>
+    <string name="system_language">Langue du téléphone</string>
 </resources>

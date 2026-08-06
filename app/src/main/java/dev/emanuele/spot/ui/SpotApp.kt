@@ -302,6 +302,23 @@ fun SpotApp(
         lyricsLoading = false
     }
 
+    // The language the app is read in. Changing it re-creates the activity,
+    // which is the only way a Compose tree already built out of one set of
+    // resources can be rebuilt out of another.
+    val context = LocalContext.current
+    val languageStore = remember(context) {
+        (context.applicationContext as dev.emanuele.spot.SpotApplication).language
+    }
+    val language by languageStore.tag.collectAsStateWithLifecycle()
+    val setLanguage: (String) -> Unit = remember(languageStore, context) {
+        { tag ->
+            if (tag != languageStore.tag.value) {
+                languageStore.set(tag)
+                (context as? android.app.Activity)?.recreate()
+            }
+        }
+    }
+
     // Read once, up here: these travel with a play as plain text, and the rows
     // that start one are not composables of their own.
     val playAgainLabel = stringResource(R.string.play_again)
@@ -477,6 +494,8 @@ fun SpotApp(
                                 onDisconnectWebApi = viewModel::disconnectWebApi,
                                 onLogOut = viewModel::logOut,
                                 onShowTutorial = { showTutorial = true },
+                                language = language,
+                                onLanguage = setLanguage,
                                 onBack = { navController.popBackStack() },
                             )
                         }
@@ -731,6 +750,8 @@ fun SpotApp(
                         onLogIn = viewModel::logIn,
                         onClientIdChange = viewModel::onWebApiClientIdChange,
                         onConnectWebApi = { viewModel.connectWebApi() },
+                        language = language,
+                        onLanguage = setLanguage,
                         onFinish = {
                             showTutorial = false
                             viewModel.setOnboarded(true)

@@ -35,12 +35,14 @@ import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowLeft
+import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.ArrowUpRight
 import com.adamglin.phosphoricons.regular.CaretDown
 import com.adamglin.phosphoricons.regular.CaretUp
 import com.kyant.backdrop.Backdrop
 import dev.emanuele.spot.BuildConfig
 import dev.emanuele.spot.R
+import dev.emanuele.spot.data.AppLanguages
 import dev.emanuele.spot.ui.MainViewModel
 import dev.emanuele.spot.ui.components.Artwork
 import dev.emanuele.spot.ui.glass.LiquidButton
@@ -74,6 +76,9 @@ fun SettingsScreen(
     onDisconnectWebApi: () -> Unit,
     onLogOut: () -> Unit,
     onShowTutorial: () -> Unit,
+    /** The chosen language tag, empty for the phone's own. */
+    language: String,
+    onLanguage: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val ready = state as? MainViewModel.UiState.Ready
@@ -172,6 +177,18 @@ fun SettingsScreen(
             Section(stringResource(R.string.guide)) {
                 ActionRow(stringResource(R.string.see_setup_again), destructive = false) {
                     onShowTutorial()
+                }
+            }
+        }
+
+        item("language") {
+            Section(stringResource(R.string.language)) {
+                AppLanguages.forEachIndexed { index, (tag, name) ->
+                    if (index > 0) RowDivider()
+                    ChoiceRow(
+                        label = name.ifEmpty { stringResource(R.string.system_language) },
+                        selected = tag == language,
+                    ) { onLanguage(tag) }
                 }
             }
         }
@@ -347,6 +364,33 @@ private fun ActionRow(label: String, destructive: Boolean, onClick: () -> Unit) 
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 16.dp),
     )
+}
+
+/** A row of a list where one is picked, with a tick on the one that is. */
+@Composable
+private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (selected) Ink else InkDim,
+            modifier = Modifier.weight(1f),
+        )
+        if (selected) {
+            Icon(
+                PhosphorIcons.Regular.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
 }
 
 @Composable

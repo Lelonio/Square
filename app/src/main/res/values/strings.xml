@@ -186,4 +186,6 @@
 
     <!-- Auth -->
     <string name="browser_return">You can go back to the app.</string>
+    <string name="language">Language</string>
+    <string name="system_language">Phone language</string>
 </resources>
