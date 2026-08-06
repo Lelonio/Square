@@ -42,6 +42,46 @@ fn or_throw<T: Default>(env: &mut JNIEnv, result: engine::EngineResult<T>) -> T 
     }
 }
 
+
+/// Runs `f`, turning a panic into a Java exception rather than an abort.
+///
+/// The Rust side owns audio decoding, the Connect state machine and a good deal
+/// of reverse-engineered parsing, and a panic in any of it used to end the
+/// process: the crash was a track change away and left nothing to read. A
+/// panic is still a bug, but it should cost the action, not the app.
+fn guard<T: Default>(
+    env: &mut JNIEnv,
+    what: &str,
+    f: impl FnOnce() -> engine::EngineResult<T>,
+) -> T {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(result) => or_throw(env, result),
+        Err(_) => {
+            // The payload is not logged: a panic message can carry whatever was
+            // being processed, and that is the user's listening.
+            log::error!("panic in {what}");
+            let _ = env.throw_new(EXCEPTION, format!("{what} failed"));
+            T::default()
+        }
+    }
+}
+
+/// [guard] for the calls that answer with a string.
+fn guard_string(
+    env: &mut JNIEnv,
+    what: &str,
+    f: impl FnOnce() -> engine::EngineResult<String>,
+) -> jstring {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(result) => string_or_throw(env, result),
+        Err(_) => {
+            log::error!("panic in {what}");
+            let _ = env.throw_new(EXCEPTION, format!("{what} failed"));
+            JObject::null().into_raw() as jstring
+        }
+    }
+}
+
 fn read_string(env: &mut JNIEnv, s: &JString) -> engine::EngineResult<String> {
     env.get_string(s)
         .map(|v| v.into())
@@ -54,8 +94,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeInit
     _class: JClass,
     context: JObject,
 ) {
-    let result = engine::init_android_context(&context);
-    or_throw(&mut env, result);
+    guard(&mut env, "InitContext", || engine::init_android_context(&context));
 }
 
 /// Register the Kotlin `AudioOutput` the sink writes PCM to.
@@ -68,11 +107,11 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetA
     _class: JClass,
     output: JObject,
 ) {
-    let result = env
+    // Read outside the guard: these borrow `env`, and the guard borrows it too.
+    let output = env
         .new_global_ref(&output)
-        .map_err(|e| format!("failed to pin the audio output: {e}"))
-        .map(sink::set_output);
-    or_throw(&mut env, result);
+        .map_err(|e| format!("failed to pin the audio output: {e}"));
+    guard(&mut env, "SetAudioOutput", || output.map(sink::set_output));
 }
 
 #[no_mangle]
@@ -87,16 +126,32 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStar
     language: JString,
     listener: JObject,
 ) {
-    let result = (|| {
-        let client_id = read_string(&mut env, &client_id)?;
-        let device_name = read_string(&mut env, &device_name)?;
-        let access_token = read_string(&mut env, &access_token)?;
-        let credentials_dir = read_string(&mut env, &credentials_dir)?;
-        let cache_dir = read_string(&mut env, &cache_dir)?;
-        let language = read_string(&mut env, &language).unwrap_or_default();
-        let listener = env
-            .new_global_ref(&listener)
-            .map_err(|e| format!("failed to pin listener: {e}"))?;
+    // Every argument is read before the guard: reading borrows `env`, and so
+    // does the guard itself.
+    let arguments: engine::EngineResult<(
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        jni::objects::GlobalRef,
+    )> = (|| {
+        Ok((
+            read_string(&mut env, &client_id)?,
+            read_string(&mut env, &device_name)?,
+            read_string(&mut env, &access_token)?,
+            read_string(&mut env, &credentials_dir)?,
+            read_string(&mut env, &cache_dir)?,
+            read_string(&mut env, &language).unwrap_or_default(),
+            env.new_global_ref(&listener)
+                .map_err(|e| format!("failed to pin listener: {e}"))?,
+        ))
+    })();
+
+    guard(&mut env, "Start", || {
+        let (client_id, device_name, access_token, credentials_dir, cache_dir, language, listener) =
+            arguments?;
         engine::start(
             &client_id,
             &device_name,
@@ -106,8 +161,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStar
             &language,
             listener,
         )
-    })();
-    or_throw(&mut env, result);
+    });
 }
 
 #[no_mangle]
@@ -125,11 +179,17 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoad
     // lists for the catalogue calls, and one decoder is easier to keep correct
     // than two ways of crossing the same boundary.
     let context = read_string(&mut env, &context_uri).unwrap_or_default();
-    let result = read_string(&mut env, &uris_json)
-        .and_then(|raw| {
-            serde_json::from_str::<Vec<String>>(&raw).map_err(|e| format!("bad queue: {e}"))
-        })
-        .and_then(|uris| {
+    let raw = match read_string(&mut env, &uris_json) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return;
+        }
+    };
+    guard(&mut env, "LoadQueue", || {
+        serde_json::from_str::<Vec<String>>(&raw)
+            .map_err(|e| format!("bad queue: {e}"))
+            .and_then(|uris| {
             engine::load_queue(
                 uris,
                 index.max(0) as u32,
@@ -138,8 +198,8 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoad
                 context,
                 play_as_context == JNI_TRUE,
             )
-        });
-    or_throw(&mut env, result);
+        })
+    });
 }
 
 #[no_mangle]
@@ -147,8 +207,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeNext
     mut env: JNIEnv,
     _class: JClass,
 ) {
-    let result = engine::next();
-    or_throw(&mut env, result);
+    guard(&mut env, "Next", || engine::next());
 }
 
 #[no_mangle]
@@ -156,8 +215,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePrev
     mut env: JNIEnv,
     _class: JClass,
 ) {
-    let result = engine::previous();
-    or_throw(&mut env, result);
+    guard(&mut env, "Previous", || engine::previous());
 }
 
 #[no_mangle]
@@ -166,8 +224,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetS
     _class: JClass,
     shuffle: jboolean,
 ) {
-    let result = engine::set_shuffle(shuffle == JNI_TRUE);
-    or_throw(&mut env, result);
+    guard(&mut env, "SetShuffle", || engine::set_shuffle(shuffle == JNI_TRUE));
 }
 
 #[no_mangle]
@@ -177,8 +234,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetR
     repeat_context: jboolean,
     repeat_track: jboolean,
 ) {
-    let result = engine::set_repeat(repeat_context == JNI_TRUE, repeat_track == JNI_TRUE);
-    or_throw(&mut env, result);
+    guard(&mut env, "SetRepeat", || engine::set_repeat(repeat_context == JNI_TRUE, repeat_track == JNI_TRUE));
 }
 
 #[no_mangle]
@@ -186,8 +242,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePlay
     mut env: JNIEnv,
     _class: JClass,
 ) {
-    let result = engine::play();
-    or_throw(&mut env, result);
+    guard(&mut env, "Play", || engine::play());
 }
 
 #[no_mangle]
@@ -195,8 +250,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePaus
     mut env: JNIEnv,
     _class: JClass,
 ) {
-    let result = engine::pause();
-    or_throw(&mut env, result);
+    guard(&mut env, "Pause", || engine::pause());
 }
 
 #[no_mangle]
@@ -204,8 +258,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStop
     mut env: JNIEnv,
     _class: JClass,
 ) {
-    let result = engine::stop();
-    or_throw(&mut env, result);
+    guard(&mut env, "Stop", || engine::stop());
 }
 
 #[no_mangle]
@@ -214,8 +267,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSeek
     _class: JClass,
     position_ms: jlong,
 ) {
-    let result = engine::seek(position_ms.clamp(0, u32::MAX as jlong) as u32);
-    or_throw(&mut env, result);
+    guard(&mut env, "Seek", || engine::seek(position_ms.clamp(0, u32::MAX as jlong) as u32));
 }
 
 #[no_mangle]
@@ -224,8 +276,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetV
     _class: JClass,
     volume: jint,
 ) {
-    let result = engine::set_volume(volume.clamp(0, u16::MAX as jint) as u16);
-    or_throw(&mut env, result);
+    guard(&mut env, "SetVolume", || engine::set_volume(volume.clamp(0, u16::MAX as jint) as u16));
 }
 
 #[no_mangle]
@@ -233,8 +284,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeVolu
     mut env: JNIEnv,
     _class: JClass,
 ) -> jint {
-    let result = engine::volume().map(|v| v as jint);
-    or_throw(&mut env, result)
+    guard(&mut env, "Volume", || engine::volume().map(|v| v as jint))
 }
 
 #[no_mangle]
@@ -256,8 +306,8 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeUser
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    let result = catalog::username();
-    string_or_throw(&mut env, result)
+    guard_string(&mut env, "Username", || catalog::username())
+
 }
 
 #[no_mangle]
@@ -265,8 +315,8 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeColl
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    let result = catalog::collection_uri();
-    string_or_throw(&mut env, result)
+    guard_string(&mut env, "CollectionUri", || catalog::collection_uri())
+
 }
 
 #[no_mangle]
@@ -274,8 +324,8 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeRoot
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    let result = catalog::rootlist();
-    string_or_throw(&mut env, result)
+    guard_string(&mut env, "Rootlist", || catalog::rootlist())
+
 }
 
 #[no_mangle]
@@ -284,8 +334,15 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeCont
     _class: JClass,
     uri: JString,
 ) -> jstring {
-    let result = read_string(&mut env, &uri).and_then(|uri| catalog::context_tracks(&uri));
-    string_or_throw(&mut env, result)
+    let uri = match read_string(&mut env, &uri) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "ContextTracks", || catalog::context_tracks(&uri))
+
 }
 
 #[no_mangle]
@@ -294,8 +351,15 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePlay
     _class: JClass,
     uri: JString,
 ) -> jstring {
-    let result = read_string(&mut env, &uri).and_then(|uri| catalog::playlist_cover(&uri));
-    string_or_throw(&mut env, result)
+    let uri = match read_string(&mut env, &uri) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "PlaylistCover", || catalog::playlist_cover(&uri))
+
 }
 
 #[no_mangle]
@@ -304,8 +368,15 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeCanv
     _class: JClass,
     track_uri: JString,
 ) -> jstring {
-    let result = read_string(&mut env, &track_uri).and_then(|uri| catalog::canvas(&uri));
-    string_or_throw(&mut env, result)
+    let uri = match read_string(&mut env, &track_uri) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "Canvas", || catalog::canvas(&uri))
+
 }
 
 #[no_mangle]
@@ -314,8 +385,15 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLyri
     _class: JClass,
     track_uri: JString,
 ) -> jstring {
-    let result = read_string(&mut env, &track_uri).and_then(|uri| catalog::lyrics(&uri));
-    string_or_throw(&mut env, result)
+    let uri = match read_string(&mut env, &track_uri) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "Lyrics", || catalog::lyrics(&uri))
+
 }
 
 #[no_mangle]
@@ -324,8 +402,15 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeTrac
     _class: JClass,
     uris_json: JString,
 ) -> jstring {
-    let result = read_string(&mut env, &uris_json).and_then(|json| catalog::tracks_metadata(&json));
-    string_or_throw(&mut env, result)
+    let json = match read_string(&mut env, &uris_json) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "TracksMetadata", || catalog::tracks_metadata(&json))
+
 }
 
 #[no_mangle]
@@ -333,5 +418,5 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeShut
     _env: JNIEnv,
     _class: JClass,
 ) {
-    engine::shutdown();
+    let _ = std::panic::catch_unwind(engine::shutdown);
 }

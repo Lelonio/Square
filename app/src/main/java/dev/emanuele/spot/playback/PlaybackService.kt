@@ -196,6 +196,9 @@ class PlaybackService : MediaSessionService() {
             index = saved.index,
             positionMs = saved.positionMs,
             repeatMode = saved.repeatMode,
+            contextUri = saved.contextUri,
+            contextIsOrdered = saved.contextOrdered,
+            contextLabel = saved.contextLabel,
         )
         android.util.Log.i(TAG, "restored ${saved.tracks.size} tracks at ${saved.index}")
     }
@@ -256,6 +259,9 @@ class PlaybackService : MediaSessionService() {
                 index = queue.currentIndex,
                 positionMs = player.currentPosition.coerceAtLeast(0),
                 repeatMode = player.repeatMode,
+                contextUri = queue.contextUri,
+                contextOrdered = queue.contextIsOrdered,
+                contextLabel = queue.contextLabel,
             ),
         )
     }

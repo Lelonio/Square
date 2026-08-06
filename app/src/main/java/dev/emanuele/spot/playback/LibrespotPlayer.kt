@@ -68,28 +68,40 @@ class LibrespotPlayer(
         val uris = queue.items.map { it.uri }
         if (uris.isEmpty()) return
         val index = queue.currentIndex
+        val contextUri = queue.contextUri.orEmpty()
+        // Only when the queue is that context in its own order, and not while
+        // shuffled: the engine would then play Spotify's order and the list on
+        // screen would be someone else's.
+        val asContext = queue.contextIsOrdered && !queue.isShuffled
+
         fadeOutThen {
-            // Read now, not when this was scheduled. The fade takes a moment,
-            // and a tap on a track while paused arrives as "load this" followed
-            // immediately by "play": with the flag frozen at schedule time the
-            // load went out as paused, the play landed before it, and the track
-            // sat there selected and silent.
-            val wanted = startPlaying || playWhenReady
-            runCatching {
-                NativeBridge.loadQueue(
-                    uris,
-                    index,
-                    wanted,
-                    positionMs,
-                    queue.contextUri.orEmpty(),
-                    // Only when the queue is that context in its own order, and
-                    // not while shuffled: the engine would then play Spotify's
-                    // order and the list on screen would be someone else's.
-                    playAsContext = queue.contextIsOrdered && !queue.isShuffled,
-                )
+            // Back on the player's looper before anything is read or called.
+            // The fade runs on its own thread, and everything here — the queue,
+            // playWhenReady, the engine's own idea of what is loaded — belongs
+            // to the looper. Reading it from the fade thread is a race, and a
+            // race in the middle of a track change is exactly the rare crash
+            // that skipping quickly could produce.
+            handler.post {
+                if (released) return@post
+                // Read now, not when this was scheduled. The fade takes a
+                // moment, and a tap on a track while paused arrives as "load
+                // this" followed immediately by "play": with the flag frozen at
+                // schedule time the load went out as paused, the play landed
+                // before it, and the track sat there selected and silent.
+                val wanted = startPlaying || playWhenReady
+                runCatching {
+                    NativeBridge.loadQueue(
+                        uris,
+                        index,
+                        wanted,
+                        positionMs,
+                        contextUri,
+                        playAsContext = asContext,
+                    )
+                }
+                    .onFailure { android.util.Log.e("SpotPlayer", "load failed: ${it.message}") }
+                if (wanted) fadeIn()
             }
-                .onFailure { android.util.Log.e("SpotPlayer", "load failed: ${it.message}") }
-            if (wanted) fadeIn()
         }
     }
 
@@ -197,6 +209,76 @@ class LibrespotPlayer(
     }
 
     /**
+     * Where the engine actually is in the queue; -1 until it says.
+     *
+     * Kept apart from [PlayQueue.currentIndex], which now moves as soon as the
+     * user asks rather than when the engine catches up.
+     */
+    private var engineIndex = -1
+
+    /** A skip the user has made and the engine has not been told about yet. */
+    private var skipPending = false
+
+    /**
+     * Moves to a track, without making the user wait for the engine.
+     *
+     * Every skip used to be a command of its own: ten taps were ten loads, each
+     * behind its own fade, and the engine spent seconds working through a queue
+     * of decisions the user had already changed their mind about. Worse, the
+     * screen only moved when the engine did, so a fast run of skips felt stuck.
+     *
+     * Now the queue position moves immediately — the screen follows the taps —
+     * and the engine is told once the tapping stops. What it is told depends on
+     * where it ended up: one step either way is a real skip, which keeps the
+     * context playing on the account and on other devices; anything further is
+     * a load at the target, which is one request instead of a dozen.
+     */
+    private fun requestSkipTo(index: Int, positionMs: Long) {
+        queue.currentIndex = index.coerceIn(0, maxOf(0, queue.items.lastIndex))
+        this.positionMs = positionMs
+        playbackState = Player.STATE_BUFFERING
+        skipPending = true
+        invalidateState()
+
+        handler.removeCallbacks(settleSkip)
+        handler.postDelayed(settleSkip, SKIP_SETTLE_MS)
+    }
+
+    private val settleSkip = Runnable {
+        if (released) return@Runnable
+        skipPending = false
+        val target = queue.currentIndex
+        val from = engineIndex
+
+        when {
+            from == target -> {
+                if (positionMs > 0) NativeBridge.seek(positionMs)
+            }
+
+            // A step either way is a skip, and Spirc has to be the one making
+            // it: reloading the queue for a skip would restart the context and
+            // show up on other devices as a new session rather than a next.
+            from >= 0 && target == from + 1 -> fadeOutThen {
+                handler.post {
+                    if (released) return@post
+                    runCatching { NativeBridge.next() }
+                    fadeIn()
+                }
+            }
+
+            from >= 0 && target == from - 1 -> fadeOutThen {
+                handler.post {
+                    if (released) return@post
+                    runCatching { NativeBridge.previous() }
+                    fadeIn()
+                }
+            }
+
+            else -> pushQueue(startPlaying = playWhenReady, positionMs = positionMs.toInt())
+        }
+    }
+
+    /**
      * Restores the shuffled order after the queue has been rebuilt.
      *
      * A new queue arrives unshuffled, and the mode has to be stamped back onto
@@ -269,36 +351,16 @@ class LibrespotPlayer(
         newPositionMs: Long,
         seekCommand: @Player.Command Int,
     ): ListenableFuture<*> {
-        val target = queue.items.getOrNull(mediaItemIndex)
-            ?: return Futures.immediateVoidFuture()
+        queue.items.getOrNull(mediaItemIndex) ?: return Futures.immediateVoidFuture()
 
-        when {
-            mediaItemIndex == queue.currentIndex -> NativeBridge.seek(newPositionMs)
-
-            // A step either way is a skip, and Spirc has to be the one making
-            // it: reloading the queue for a skip would restart the context and
-            // show up on other devices as a new session rather than a next.
-            mediaItemIndex == queue.currentIndex + 1 -> {
-                queue.currentIndex = mediaItemIndex
-                fadeOutThen {
-                    NativeBridge.next()
-                    fadeIn()
-                }
-            }
-
-            mediaItemIndex == queue.currentIndex - 1 -> {
-                queue.currentIndex = mediaItemIndex
-                fadeOutThen {
-                    NativeBridge.previous()
-                    fadeIn()
-                }
-            }
-
-            else -> {
-                queue.currentIndex = mediaItemIndex
-                pushQueue(startPlaying = true, positionMs = newPositionMs.toInt())
-            }
+        if (mediaItemIndex == queue.currentIndex && !skipPending) {
+            NativeBridge.seek(newPositionMs)
+            positionMs = newPositionMs
+            invalidateState()
+            return Futures.immediateVoidFuture()
         }
+
+        requestSkipTo(mediaItemIndex, newPositionMs)
         positionMs = newPositionMs
         return Futures.immediateVoidFuture()
     }
@@ -309,6 +371,9 @@ class LibrespotPlayer(
         startPositionMs: Long,
     ): ListenableFuture<*> {
         queue.replaceFromMediaItems(mediaItems, startIndex)
+        // A new queue: whatever the engine was playing is no longer at any
+        // index of this one.
+        engineIndex = -1
         // Shuffle before picking the track to load: with the mode on, the tapped
         // track moves to the front and the rest are reordered behind it.
         reapplyShuffle()
@@ -393,10 +458,21 @@ class LibrespotPlayer(
         index: Int,
         positionMs: Long,
         repeatMode: @Player.RepeatMode Int,
+        /** The playlist or album the queue came from; see PlayQueue. */
+        contextUri: String?,
+        contextIsOrdered: Boolean,
+        contextLabel: String,
     ) {
         if (tracks.isEmpty()) return
 
+        // Put back before the queue is loaded: the load itself hands the
+        // context to the engine, and a restored session with no context is one
+        // whose listens are filed under nothing and whose player has no source
+        // to show.
+        queue.restoreContext(contextUri, contextIsOrdered, contextLabel)
+
         queue.replace(tracks, 0)
+        engineIndex = -1
         shuffleOrder?.let(queue::applyShuffleOrder)
         queue.currentIndex = index.coerceIn(0, queue.items.lastIndex)
 
@@ -449,6 +525,7 @@ class LibrespotPlayer(
 
     override fun handleRelease(): ListenableFuture<*> {
         released = true
+        handler.removeCallbacks(settleSkip)
         focus.release()
         NativeBridge.shutdown()
         return Futures.immediateVoidFuture()
@@ -468,9 +545,15 @@ class LibrespotPlayer(
         // device and a local one all arrive here the same way.
         if (uri.isNotEmpty()) {
             val index = queue.items.indexOfFirst { it.uri == uri }
-            if (index >= 0 && index != queue.currentIndex) {
-                queue.currentIndex = index
-                positionMs = 0
+            if (index >= 0) {
+                engineIndex = index
+                // Not while the user is mid-skip: those events describe the
+                // track being left, and adopting them would drag the screen
+                // back to it between taps.
+                if (!skipPending && index != queue.currentIndex) {
+                    queue.currentIndex = index
+                    positionMs = 0
+                }
             }
         }
 
@@ -494,6 +577,7 @@ class LibrespotPlayer(
                 onPlaybackActive(false)
             }
             "position" -> {
+                if (skipPending) return
                 positionMs = eventPositionMs
             }
             "stopped" -> {
@@ -545,6 +629,14 @@ class LibrespotPlayer(
             .build()
 
     private companion object {
+        /**
+         * How long skips are gathered for before the engine is told.
+         *
+         * Long enough that a run of taps becomes one decision, short enough
+         * that a single skip does not feel delayed.
+         */
+        const val SKIP_SETTLE_MS = 220L
+
         /** Ducked volume, as a fraction of the current one. */
         const val DUCK_FACTOR = 0.3
 

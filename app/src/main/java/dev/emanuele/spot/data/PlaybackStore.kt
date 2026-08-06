@@ -20,6 +20,12 @@ data class SavedPlayback(
     val index: Int,
     val positionMs: Long,
     val repeatMode: Int = 0,
+    /** The playlist or album the queue came from, when it came from one. */
+    val contextUri: String? = null,
+    /** Whether the queue is that context in its own order. */
+    val contextOrdered: Boolean = false,
+    /** What the player shows as the source: "Playlist · Estate 2025". */
+    val contextLabel: String = "",
 )
 
 /**

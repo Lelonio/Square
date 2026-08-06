@@ -47,4 +47,11 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
-panic = "abort"
+# Deliberately unwinding, not aborting.
+#
+# With `abort`, any panic anywhere in the engine — a poisoned mutex, an
+# arithmetic edge in a decoder — takes the whole app down with no message the
+# user can act on. Unwinding lets the JNI boundary turn a panic into an
+# ordinary Java exception (see ffi::guard) and lets a panic on one of
+# librespot's own worker threads kill that task instead of the process.
+panic = "unwind"

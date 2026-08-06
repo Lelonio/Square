@@ -201,6 +201,19 @@ class PlayQueue {
     var contextLabel: String = ""
         private set
 
+    /**
+     * Puts back a context read from disk.
+     *
+     * The queue survives a restart and the context did not, so a paused song
+     * came back belonging to nothing: no source in the player, and a listen
+     * that Spotify would file outside the playlist it actually came from.
+     */
+    fun restoreContext(uri: String?, ordered: Boolean, label: String) {
+        contextUri = uri
+        contextIsOrdered = ordered
+        contextLabel = label
+    }
+
     /** Insert controller-supplied items; see [replaceFromMediaItems] for the id rule. */
     fun addFromMediaItems(index: Int, mediaItems: List<MediaItem>) {
         add(index, mediaItems.mapNotNull(::toTrack))
