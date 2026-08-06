@@ -1,4 +1,4 @@
-//! Raw JNI exports for `dev.emanuele.spot.nativecore.NativeBridge`.
+//! Raw JNI exports for `dev.lelonio.square.nativecore.NativeBridge`.
 //!
 //! Every function follows the same contract: do the work, and on failure throw
 //! `java.lang.IllegalStateException` with the engine's error message. Kotlin
@@ -89,7 +89,7 @@ fn read_string(env: &mut JNIEnv, s: &JString) -> engine::EngineResult<String> {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeInitContext(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeInitContext(
     mut env: JNIEnv,
     _class: JClass,
     context: JObject,
@@ -102,7 +102,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeInit
 /// Must be called before playback starts; without it the sink has nowhere to
 /// send audio and every write fails.
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetAudioOutput(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetAudioOutput(
     mut env: JNIEnv,
     _class: JClass,
     output: JObject,
@@ -115,7 +115,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetA
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStart(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeStart(
     mut env: JNIEnv,
     _class: JClass,
     client_id: JString,
@@ -165,7 +165,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStar
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoadQueue(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeLoadQueue(
     mut env: JNIEnv,
     _class: JClass,
     uris_json: JString,
@@ -203,7 +203,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLoad
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeNext(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeNext(
     mut env: JNIEnv,
     _class: JClass,
 ) {
@@ -211,7 +211,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeNext
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePrevious(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePrevious(
     mut env: JNIEnv,
     _class: JClass,
 ) {
@@ -219,7 +219,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePrev
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetShuffle(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetShuffle(
     mut env: JNIEnv,
     _class: JClass,
     shuffle: jboolean,
@@ -228,7 +228,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetS
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetRepeat(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetRepeat(
     mut env: JNIEnv,
     _class: JClass,
     repeat_context: jboolean,
@@ -238,7 +238,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetR
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePlay(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlay(
     mut env: JNIEnv,
     _class: JClass,
 ) {
@@ -246,7 +246,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePlay
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePause(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePause(
     mut env: JNIEnv,
     _class: JClass,
 ) {
@@ -254,7 +254,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePaus
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStop(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeStop(
     mut env: JNIEnv,
     _class: JClass,
 ) {
@@ -262,7 +262,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeStop
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSeek(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSeek(
     mut env: JNIEnv,
     _class: JClass,
     position_ms: jlong,
@@ -271,7 +271,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSeek
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetVolume(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetVolume(
     mut env: JNIEnv,
     _class: JClass,
     volume: jint,
@@ -280,7 +280,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeSetV
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeVolume(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeVolume(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jint {
@@ -288,7 +288,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeVolu
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeIsConnected(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeIsConnected(
     _env: JNIEnv,
     _class: JClass,
 ) -> jboolean {
@@ -302,7 +302,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeIsCo
 // --- Catalogue lookups, all over the access point rather than the Web API ---
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeUsername(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeUsername(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -311,7 +311,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeUser
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeCollectionUri(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeCollectionUri(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -320,7 +320,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeColl
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeRootlist(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRootlist(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -329,7 +329,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeRoot
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeContextTracks(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeContextTracks(
     mut env: JNIEnv,
     _class: JClass,
     uri: JString,
@@ -346,7 +346,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeCont
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePlaylistCover(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlaylistCover(
     mut env: JNIEnv,
     _class: JClass,
     uri: JString,
@@ -363,7 +363,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativePlay
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeCanvas(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeCanvas(
     mut env: JNIEnv,
     _class: JClass,
     track_uri: JString,
@@ -380,7 +380,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeCanv
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLyrics(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeLyrics(
     mut env: JNIEnv,
     _class: JClass,
     track_uri: JString,
@@ -397,7 +397,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeLyri
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeTracksMetadata(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeTracksMetadata(
     mut env: JNIEnv,
     _class: JClass,
     uris_json: JString,
@@ -414,7 +414,7 @@ pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeTrac
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_emanuele_spot_nativecore_NativeBridge_nativeShutdown(
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeShutdown(
     _env: JNIEnv,
     _class: JClass,
 ) {

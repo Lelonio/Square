@@ -1,11 +1,11 @@
 [package]
-name = "spotcore"
+name = "squarecore"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.81"
 
 [lib]
-name = "spotcore"
+name = "squarecore"
 crate-type = ["cdylib"]
 
 [dependencies]

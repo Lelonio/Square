@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -24,13 +26,27 @@ val rustTargets = mapOf(
     "x86_64" to "x86_64-linux-android",
 )
 
+/**
+ * The release signing details, when there are any.
+ *
+ * Kept in `keystore.properties` beside the project and never committed: a
+ * keystore in a repository is a keystore anyone can sign as you with. When the
+ * file is absent — a fresh clone, or anyone building this who is not its
+ * author — the release build falls back to the debug key, which is fine for
+ * running it and useless for distributing it.
+ */
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
 android {
-    namespace = "dev.emanuele.spot"
+    namespace = "dev.lelonio.square"
     compileSdk = 37
     ndkVersion = ndkVersionForCargo
 
     defaultConfig {
-        applicationId = "dev.emanuele.spot"
+        applicationId = "dev.lelonio.square"
         // cpal's Android host is AAudio, which the ndk crate gates at API 26.
         minSdk = 26
         targetSdk = 35
@@ -42,6 +58,17 @@ android {
         }
     }
 
+    signingConfigs {
+        if (keystoreProperties.isNotEmpty()) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -50,11 +77,12 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so a release build can be installed and
-            // measured locally. Compose is much slower in a debuggable build, so
-            // judging scroll performance on `debug` is misleading; replace this
-            // with a real key before distributing anything.
-            signingConfig = signingConfigs.getByName("debug")
+            // The real key when there is one, the debug key otherwise — see
+            // keystoreProperties above. A build signed with the debug key runs
+            // and can be measured; it must never be the one handed to anyone,
+            // because every machine's debug key is the same well-known one.
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
         }
 
         /**
@@ -104,7 +132,7 @@ android {
 
     buildFeatures {
         compose = true
-        // Off by default since AGP 8; SpotApplication reads BuildConfig.DEBUG.
+        // Off by default since AGP 8; SquareApplication reads BuildConfig.DEBUG.
         buildConfig = true
     }
 
@@ -121,7 +149,7 @@ android {
     packaging {
         // The Rust cdylib is already stripped by the release profile; letting
         // Gradle re-strip it with the wrong tool breaks the arm64 build.
-        jniLibs.keepDebugSymbols += "**/libspotcore.so"
+        jniLibs.keepDebugSymbols += "**/libsquarecore.so"
     }
 }
 

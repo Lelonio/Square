@@ -1,1 +1,0 @@
-/Users/emanuele/Progetto Spotify/app/src/main/cpp/CMakeLists.txt
