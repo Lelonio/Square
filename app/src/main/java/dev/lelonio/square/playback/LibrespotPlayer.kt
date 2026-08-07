@@ -100,6 +100,7 @@ class LibrespotPlayer(
                     )
                 }
                     .onFailure { android.util.Log.e("SquarePlayer", "load failed: ${it.message}") }
+                    .onSuccess { engineQueueStale = false }
                 if (wanted) fadeIn()
             }
         }
@@ -236,6 +237,17 @@ class LibrespotPlayer(
      */
     private var engineIndex = -1
 
+    /**
+     * True when the list the engine was given no longer matches ours.
+     *
+     * Spirc holds the track list it was loaded with and advances through it by
+     * itself; there is no way to hand it an insertion. So a local edit is
+     * invisible to it until the whole queue is loaded again, and until then its
+     * "next" is not ours — which is why a skip cannot be delegated while this
+     * is set.
+     */
+    private var engineQueueStale = false
+
     /** A skip the user has made and the engine has not been told about yet. */
     private var skipPending = false
 
@@ -290,7 +302,7 @@ class LibrespotPlayer(
             // A step either way is a skip, and Spirc has to be the one making
             // it: reloading the queue for a skip would restart the context and
             // show up on other devices as a new session rather than a next.
-            from >= 0 && target == from + 1 -> fadeOutThen {
+            !engineQueueStale && from >= 0 && target == from + 1 -> fadeOutThen {
                 handler.post {
                     if (released) return@post
                     runCatching { NativeBridge.next() }
@@ -298,7 +310,7 @@ class LibrespotPlayer(
                 }
             }
 
-            from >= 0 && target == from - 1 -> fadeOutThen {
+            !engineQueueStale && from >= 0 && target == from - 1 -> fadeOutThen {
                 handler.post {
                     if (released) return@post
                     runCatching { NativeBridge.previous() }
@@ -450,6 +462,7 @@ class LibrespotPlayer(
         mediaItems: List<MediaItem>,
     ): ListenableFuture<*> {
         queue.addFromMediaItems(index, mediaItems)
+        engineQueueStale = true
         reapplyShuffle()
         onQueueChanged()
         invalidateState()
@@ -458,6 +471,7 @@ class LibrespotPlayer(
 
     override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> {
         queue.remove(fromIndex, toIndex)
+        engineQueueStale = true
         reapplyShuffle()
         onQueueChanged()
         invalidateState()
@@ -470,6 +484,7 @@ class LibrespotPlayer(
         newIndex: Int,
     ): ListenableFuture<*> {
         queue.move(fromIndex, toIndex, newIndex)
+        engineQueueStale = true
         reapplyShuffle()
         onQueueChanged()
         invalidateState()
@@ -569,6 +584,21 @@ class LibrespotPlayer(
         handler.post { applyEvent(type, uri, positionMs) }
     }
 
+    /**
+     * Jumps to the next track if it is one the engine cannot know about.
+     *
+     * Called as the current track ends, not when the track was queued: a reload
+     * mid-playback restarts what is playing, while here there is a moment of
+     * silence to do it in anyway.
+     */
+    private fun takeOverForQueued(): Boolean {
+        val next = queue.currentIndex + 1
+        if (!engineQueueStale || next > queue.items.lastIndex) return false
+        if (!queue.items[next].queued) return false
+        requestSkipTo(next, 0L)
+        return true
+    }
+
     private fun applyEvent(type: String, uri: String, eventPositionMs: Long) {
         if (released) return
 
@@ -639,7 +669,16 @@ class LibrespotPlayer(
             // Both used to advance the queue from here. The engine does it now
             // — it owns the queue — so acting on them as well would skip two
             // tracks for every one that ended.
-            "end_of_track", "unavailable" -> return
+            //
+            // Except for a track put here by "add to queue": the engine's list
+            // does not contain it, so left alone it would play the playlist's
+            // own next one and the queued track would never be heard. Taking
+            // over reloads the queue, which is the only way to tell Spirc about
+            // an insertion.
+            "end_of_track", "unavailable" -> {
+                takeOverForQueued()
+                return
+            }
             else -> return
         }
         invalidateState()

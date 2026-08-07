@@ -135,7 +135,10 @@ class MainActivity : ComponentActivity() {
     private fun enqueue(track: CatalogTrack) {
         val player = controller ?: return
         val wasEmpty = player.mediaItemCount == 0
-        player.addMediaItem(toMediaItem(track))
+        // The index is a formality: the item asks to play next and the queue in
+        // the service picks the place, because only it knows where the run of
+        // already-queued tracks ends.
+        player.addMediaItem(toMediaItem(track, playNext = true))
         if (wasEmpty) {
             player.prepare()
             player.play()
@@ -147,6 +150,7 @@ class MainActivity : ComponentActivity() {
         contextUri: String? = null,
         asContext: Boolean = false,
         contextLabel: String = "",
+        playNext: Boolean = false,
     ): MediaItem =
         MediaItem.Builder()
             // The media id carries the Spotify URI; PlayQueue refuses anything else.
@@ -168,6 +172,7 @@ class MainActivity : ComponentActivity() {
                             if (contextLabel.isNotEmpty()) {
                                 putString(EXTRA_CONTEXT_LABEL, contextLabel)
                             }
+                            if (playNext) putBoolean(EXTRA_PLAY_NEXT, true)
                         },
                     )
                     .build(),
@@ -180,6 +185,12 @@ const val EXTRA_CONTEXT_URI = "dev.lelonio.square.CONTEXT_URI"
 
 /** Whether that queue is the context in its own order; see SquareApp's `onPlay`. */
 const val EXTRA_CONTEXT_ORDERED = "dev.lelonio.square.CONTEXT_ORDERED"
+
+/**
+ * Set by "add to queue": play this right after the current track rather than at
+ * the end of the queue.
+ */
+const val EXTRA_PLAY_NEXT = "dev.lelonio.square.PLAY_NEXT"
 
 /** What to show the listener: "Playlist · Estate 2025", "Ricerca". */
 const val EXTRA_CONTEXT_LABEL = "dev.lelonio.square.CONTEXT_LABEL"

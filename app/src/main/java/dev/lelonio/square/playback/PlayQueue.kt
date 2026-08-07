@@ -5,6 +5,7 @@ import androidx.media3.common.MediaItem
 import dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL
 import dev.lelonio.square.ui.EXTRA_CONTEXT_ORDERED
 import dev.lelonio.square.ui.EXTRA_CONTEXT_URI
+import dev.lelonio.square.ui.EXTRA_PLAY_NEXT
 
 /**
  * The queue the engine plays through.
@@ -29,6 +30,16 @@ class PlayQueue {
         val artist: String,
         val durationMs: Long,
         val artworkUri: Uri?,
+        /**
+         * Put here by "add to queue" rather than by the list this came from.
+         *
+         * Kept on the track so the insertion point never has to be remembered:
+         * a queued run is simply the tracks marked this way sitting right after
+         * the current one, and playing past them removes them from it by
+         * itself. Not persisted — a queue survives a restart, the distinction
+         * between "queued" and "in the playlist" does not.
+         */
+        val queued: Boolean = false,
     )
 
     private val _items = mutableListOf<Track>()
@@ -116,6 +127,51 @@ class PlayQueue {
         if (at <= currentIndex) currentIndex += tracks.size
         // The saved order no longer describes this queue.
         clearShuffle()
+    }
+
+    /**
+     * Inserts tracks to play right after the current one.
+     *
+     * Queueing two tracks in a row has to play them in the order they were
+     * queued, so the second goes *after* the first rather than in front of it:
+     * the insertion point is the end of the run of already-queued tracks
+     * following the current one, which is why [Track.queued] exists.
+     *
+     * Unlike [add] this keeps a shuffled queue shuffled. Dropping the
+     * permutation would make the caller re-shuffle, and the track just placed
+     * behind the current one would land somewhere random — the one thing the
+     * gesture promises not to do.
+     */
+    fun insertNext(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        val marked = tracks.map { it.copy(queued = true) }
+        val at = nextInsertIndex()
+
+        val order = originalIndices
+        val original = originalOrder
+        if (order != null && original != null) {
+            // Appended to the pre-shuffle order rather than inserted into it:
+            // every existing index in the permutation then stays valid.
+            originalOrder = original + marked
+            originalIndices = order.toMutableList().apply {
+                addAll(at, (original.size until original.size + marked.size).toList())
+            }
+        }
+
+        _items.addAll(at, marked)
+
+        // The queue is no longer the context in its own order, so it must not
+        // be handed to the engine as one: played that way Spotify supplies the
+        // playlist's own track list and the inserted track is nowhere in it.
+        contextIsOrdered = false
+    }
+
+    /** Just past the queued run that follows the current track. */
+    fun nextInsertIndex(): Int {
+        if (_items.isEmpty()) return 0
+        var at = (currentIndex + 1).coerceAtMost(_items.size)
+        while (at < _items.size && _items[at].queued) at++
+        return at
     }
 
     fun remove(fromIndex: Int, toIndex: Int) {
@@ -214,9 +270,18 @@ class PlayQueue {
         contextLabel = label
     }
 
-    /** Insert controller-supplied items; see [replaceFromMediaItems] for the id rule. */
+    /**
+     * Insert controller-supplied items; see [replaceFromMediaItems] for the id
+     * rule.
+     *
+     * An item asking to play next ignores the index the controller gave: a
+     * `MediaController` lives in another process and cannot know where the
+     * queued run ends, so it states the intent and the queue decides the place.
+     */
     fun addFromMediaItems(index: Int, mediaItems: List<MediaItem>) {
-        add(index, mediaItems.mapNotNull(::toTrack))
+        val tracks = mediaItems.mapNotNull(::toTrack)
+        if (tracks.isNotEmpty() && tracks.all { it.queued }) insertNext(tracks)
+        else add(index, tracks)
     }
 
     private fun toTrack(item: MediaItem): Track? {
@@ -228,6 +293,7 @@ class PlayQueue {
             artist = metadata.artist?.toString().orEmpty(),
             durationMs = metadata.durationMs ?: 0L,
             artworkUri = metadata.artworkUri,
+            queued = metadata.extras?.getBoolean(EXTRA_PLAY_NEXT) == true,
         )
     }
 }
