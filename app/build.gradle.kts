@@ -50,8 +50,8 @@ android {
         // cpal's Android host is AAudio, which the ndk crate gates at API 26.
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4.0"
+        versionCode = 6
+        versionName = "1.4.1"
 
         ndk {
             abiFilters += nativeAbis
@@ -108,7 +108,12 @@ android {
             initWith(getByName("release"))
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.getByName("debug")
+            // The real key when there is one: a build signed with a different
+            // key than the copy already on the phone cannot replace it, and
+            // uninstalling first would take the login and the saved queue with
+            // it every time.
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
         }
     }
 
