@@ -168,4 +168,13 @@
     <string name="language">Langue</string>
     <string name="system_language">Langue du téléphone</string>
     <string name="presets">PRÉRÉGLAGES</string>
+    <string name="check_for_updates">Rechercher des mises à jour</string>
+    <string name="update_checking">Vérification…</string>
+    <string name="update_none">À jour</string>
+    <string name="update_available">%1$s disponible</string>
+    <string name="update_install">Installer la mise à jour</string>
+    <string name="update_downloading">Téléchargement…</string>
+    <string name="update_installing">En attente de votre confirmation</string>
+    <string name="update_needs_permission">Autorisez l\'installation — touchez</string>
+    <string name="update_failed">Pas maintenant — touchez pour réessayer</string>
 </resources>

@@ -168,4 +168,13 @@
     <string name="language">Idioma</string>
     <string name="system_language">Idioma del teléfono</string>
     <string name="presets">AJUSTES</string>
+    <string name="check_for_updates">Buscar actualizaciones</string>
+    <string name="update_checking">Comprobando…</string>
+    <string name="update_none">Ya está al día</string>
+    <string name="update_available">%1$s disponible</string>
+    <string name="update_install">Instalar la actualización</string>
+    <string name="update_downloading">Descargando…</string>
+    <string name="update_installing">Esperando tu confirmación</string>
+    <string name="update_needs_permission">Permite la instalación — toca</string>
+    <string name="update_failed">Ahora no — toca para reintentar</string>
 </resources>

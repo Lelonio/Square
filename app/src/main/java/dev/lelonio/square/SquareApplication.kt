@@ -42,6 +42,11 @@ class SquareApplication : Application() {
 
     val api: SpotifyApi by lazy { ApiFactory.create(webApi.tokens, debug = BuildConfig.DEBUG) }
 
+    /** Checks the project's own releases; there is no store to do it. */
+    val updater: dev.lelonio.square.update.Updater by lazy {
+        dev.lelonio.square.update.Updater(this)
+    }
+
     /** The user's saved speed / pitch / reverb combinations. */
     val effectPresets: EffectPresetStore by lazy { EffectPresetStore(this) }
 }

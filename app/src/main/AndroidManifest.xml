@@ -10,6 +10,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- Required from API 33 for the playback notification to be visible. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      Square updates itself: it re-implements Spotify's protocol, so the Play
+      Store is out and its own releases are the only channel there is. The user
+      still confirms every install in Android's own dialog.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".SquareApplication"
@@ -47,6 +53,10 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+
+        <receiver
+            android:name=".update.InstallReceiver"
+            android:exported="false" />
 
         <meta-data
             android:name="com.google.android.gms.car.application"

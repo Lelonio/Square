@@ -169,4 +169,13 @@
     <string name="language">Lingua</string>
     <string name="system_language">Lingua del telefono</string>
     <string name="presets">PREIMPOSTAZIONI</string>
+    <string name="check_for_updates">Cerca aggiornamenti</string>
+    <string name="update_checking">Controllo…</string>
+    <string name="update_none">Già aggiornata</string>
+    <string name="update_available">%1$s disponibile</string>
+    <string name="update_install">Installa l\'aggiornamento</string>
+    <string name="update_downloading">Scarico…</string>
+    <string name="update_installing">Aspetto la tua conferma</string>
+    <string name="update_needs_permission">Consenti l\'installazione — tocca</string>
+    <string name="update_failed">Non adesso — tocca per riprovare</string>
 </resources>

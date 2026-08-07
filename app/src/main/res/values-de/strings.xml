@@ -168,4 +168,13 @@
     <string name="language">Sprache</string>
     <string name="system_language">Sprache des Telefons</string>
     <string name="presets">VOREINSTELLUNGEN</string>
+    <string name="check_for_updates">Nach Updates suchen</string>
+    <string name="update_checking">Wird geprüft…</string>
+    <string name="update_none">Aktuell</string>
+    <string name="update_available">%1$s verfügbar</string>
+    <string name="update_install">Update installieren</string>
+    <string name="update_downloading">Wird geladen…</string>
+    <string name="update_installing">Warte auf deine Bestätigung</string>
+    <string name="update_needs_permission">Installation erlauben — tippen</string>
+    <string name="update_failed">Gerade nicht — zum Wiederholen tippen</string>
 </resources>

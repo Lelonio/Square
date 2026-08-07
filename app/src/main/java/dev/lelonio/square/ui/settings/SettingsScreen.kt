@@ -28,7 +28,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.lelonio.square.update.Updater
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -256,6 +261,8 @@ fun SettingsScreen(
             Section(stringResource(R.string.about)) {
                 InfoRow(stringResource(R.string.version), "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE})")
                 RowDivider()
+                UpdateRow()
+                RowDivider()
                 Licences()
             }
         }
@@ -266,6 +273,78 @@ fun SettingsScreen(
                     ActionRow(stringResource(R.string.log_out), destructive = true, onClick = onLogOut)
                 }
             }
+        }
+    }
+}
+
+/**
+ * Checking for, and installing, a new version.
+ *
+ * A button rather than something that happens on its own: the check is a
+ * request to GitHub carrying the user's address, made for the app's benefit
+ * rather than theirs, and nothing here needs it badly enough to make it
+ * automatic.
+ */
+@Composable
+private fun UpdateRow() {
+    val context = LocalContext.current
+    val updater = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).updater
+    }
+    val state by updater.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+
+    val status = when (val current = state) {
+        is Updater.State.Idle -> null
+        is Updater.State.Checking -> stringResource(R.string.update_checking)
+        is Updater.State.UpToDate -> stringResource(R.string.update_none)
+        is Updater.State.Available -> stringResource(R.string.update_available, current.version)
+        is Updater.State.Downloading ->
+            current.progress?.let { "${(it * 100).toInt()}%" } ?: stringResource(R.string.update_downloading)
+        is Updater.State.Installing -> stringResource(R.string.update_installing)
+        is Updater.State.Failed ->
+            if (current.reason == Updater.REASON_PERMISSION) stringResource(R.string.update_needs_permission)
+            else stringResource(R.string.update_failed)
+    }
+
+    val busy = state is Updater.State.Checking || state is Updater.State.Downloading
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !busy) {
+                when (val current = state) {
+                    is Updater.State.Available -> scope.launch { updater.install(current) }
+                    is Updater.State.Failed ->
+                        if (current.reason == Updater.REASON_PERMISSION) {
+                            context.startActivity(updater.permissionIntent())
+                            updater.dismiss()
+                        } else {
+                            scope.launch { updater.check() }
+                        }
+                    else -> scope.launch { updater.check() }
+                }
+            }
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            stringResource(
+                if (state is Updater.State.Available) R.string.update_install
+                else R.string.check_for_updates,
+            ),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (state is Updater.State.Available) FontWeight.Medium else FontWeight.Normal,
+            modifier = Modifier.weight(1f),
+        )
+        if (status != null) {
+            Text(
+                status,
+                style = MaterialTheme.typography.bodyMedium,
+                color = InkDim,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            )
         }
     }
 }
