@@ -197,4 +197,11 @@
     <string name="update_installing">Waiting for you to confirm</string>
     <string name="update_needs_permission">Allow installing — tap</string>
     <string name="update_failed">Not now — tap to retry</string>
+    <string name="quality">Audio quality</string>
+    <string name="quality_auto">Automatic</string>
+    <string name="quality_high">High</string>
+    <string name="quality_medium">Medium</string>
+    <string name="quality_low">Low</string>
+    <string name="quality_auto_note">Full quality on wi-fi, one step down on a metered connection.</string>
+    <string name="quality_restarts">Changing this reloads what is playing.</string>
 </resources>

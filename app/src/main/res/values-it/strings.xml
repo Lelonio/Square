@@ -177,4 +177,11 @@
     <string name="update_installing">Aspetto la tua conferma</string>
     <string name="update_needs_permission">Consenti l\'installazione — tocca</string>
     <string name="update_failed">Non adesso — tocca per riprovare</string>
+    <string name="quality">Qualità audio</string>
+    <string name="quality_auto">Automatica</string>
+    <string name="quality_high">Alta</string>
+    <string name="quality_medium">Media</string>
+    <string name="quality_low">Bassa</string>
+    <string name="quality_auto_note">Qualità piena sul wi-fi, un gradino sotto con la rete a consumo.</string>
+    <string name="quality_restarts">Cambiandola, la canzone in corso viene ricaricata.</string>
 </resources>

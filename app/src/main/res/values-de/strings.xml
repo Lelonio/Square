@@ -176,4 +176,11 @@
     <string name="update_installing">Warte auf deine Bestätigung</string>
     <string name="update_needs_permission">Installation erlauben — tippen</string>
     <string name="update_failed">Gerade nicht — zum Wiederholen tippen</string>
+    <string name="quality">Audioqualität</string>
+    <string name="quality_auto">Automatisch</string>
+    <string name="quality_high">Hoch</string>
+    <string name="quality_medium">Mittel</string>
+    <string name="quality_low">Niedrig</string>
+    <string name="quality_auto_note">Volle Qualität im WLAN, eine Stufe darunter bei getakteten Verbindungen.</string>
+    <string name="quality_restarts">Beim Ändern wird der laufende Titel neu geladen.</string>
 </resources>

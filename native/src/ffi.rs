@@ -124,6 +124,7 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSta
     credentials_dir: JString,
     cache_dir: JString,
     language: JString,
+    bitrate_kbps: jni::sys::jint,
     listener: JObject,
 ) {
     // Every argument is read before the guard: reading borrows `env`, and so
@@ -159,6 +160,7 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSta
             &credentials_dir,
             &cache_dir,
             &language,
+            bitrate_kbps,
             listener,
         )
     });

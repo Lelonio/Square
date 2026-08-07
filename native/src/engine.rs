@@ -111,6 +111,7 @@ pub fn start(
     credentials_dir: &str,
     cache_dir: &str,
     language: &str,
+    bitrate_kbps: i32,
     listener: GlobalRef,
 ) -> EngineResult<()> {
     let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
@@ -155,7 +156,14 @@ pub fn start(
     mixer.set_volume(u16::MAX);
 
     let player_config = PlayerConfig {
-        bitrate: Bitrate::Bitrate320,
+        // Chosen by the caller. The bitrate is read when a track is loaded but
+        // the player owns its config for its whole life, so changing this means
+        // building a new engine: see PlaybackService.
+        bitrate: match bitrate_kbps {
+            96 => Bitrate::Bitrate96,
+            160 => Bitrate::Bitrate160,
+            _ => Bitrate::Bitrate320,
+        },
         // Loudness normalisation, which is what keeps one track from being
         // twice as loud as the next.
         //

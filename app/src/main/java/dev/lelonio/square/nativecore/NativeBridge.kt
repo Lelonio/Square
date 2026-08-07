@@ -66,6 +66,14 @@ object NativeBridge {
         cacheDir: String,
         /** What language Spotify should answer in, as a bare tag: `it`, `en`. */
         language: String,
+        /**
+         * Which file to ask for: 96, 160 or 320 kbps.
+         *
+         * Fixed for the life of the engine. The player reads it when a track
+         * loads but owns its configuration until it is dropped, so changing the
+         * setting means starting a new engine.
+         */
+        bitrateKbps: Int,
         listener: NativeEvents,
     ) = nativeStart(
         clientId,
@@ -74,6 +82,7 @@ object NativeBridge {
         credentialsDir,
         cacheDir,
         language,
+        bitrateKbps,
         listener,
     )
 
@@ -172,6 +181,7 @@ object NativeBridge {
         credentialsDir: String,
         cacheDir: String,
         language: String,
+        bitrateKbps: Int,
         listener: NativeEvents,
     )
 

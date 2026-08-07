@@ -50,6 +50,7 @@ import com.kyant.backdrop.Backdrop
 import dev.lelonio.square.BuildConfig
 import dev.lelonio.square.R
 import dev.lelonio.square.data.AppLanguages
+import dev.lelonio.square.data.Quality
 import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
 import dev.lelonio.square.ui.glass.LiquidButton
@@ -188,6 +189,10 @@ fun SettingsScreen(
             }
         }
 
+        item("quality") {
+            QualitySection()
+        }
+
         item("language") {
             Section(stringResource(R.string.language)) {
                 AppLanguages.forEachIndexed { index, (tag, name) ->
@@ -276,6 +281,40 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Which file the engine asks Spotify for.
+ *
+ * The three fixed steps are the ones the account is offered, and there is no
+ * fourth: this client is served Ogg Vorbis at 320 kbps and below, never a
+ * lossless file, so a "lossless" row would be a promise nothing can keep.
+ */
+@Composable
+private fun QualitySection() {
+    val context = LocalContext.current
+    val store = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).quality
+    }
+    val chosen by store.quality.collectAsStateWithLifecycle()
+
+    Section(stringResource(R.string.quality)) {
+        Quality.entries.forEachIndexed { index, quality ->
+            if (index > 0) RowDivider()
+            ChoiceRow(
+                label = stringResource(quality.label),
+                selected = quality == chosen,
+            ) { store.set(quality) }
+        }
+        RowDivider()
+        Text(
+            stringResource(R.string.quality_auto_note) + " " +
+                stringResource(R.string.quality_restarts),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+        )
     }
 }
 

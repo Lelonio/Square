@@ -28,6 +28,11 @@ class SquareApplication : Application() {
     val playlistOrder: PlaylistOrderStore by lazy { PlaylistOrderStore(this) }
     val preferences: PreferencesStore by lazy { PreferencesStore(this) }
 
+    /** Which file the engine asks Spotify for. */
+    val quality: dev.lelonio.square.data.QualityStore by lazy {
+        dev.lelonio.square.data.QualityStore(this)
+    }
+
     /** What language the app is read in, and what the engine asks Spotify for. */
     val language: LanguageStore by lazy { LanguageStore(this) }
 

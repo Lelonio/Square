@@ -176,4 +176,11 @@
     <string name="update_installing">En attente de votre confirmation</string>
     <string name="update_needs_permission">Autorisez l\'installation — touchez</string>
     <string name="update_failed">Pas maintenant — touchez pour réessayer</string>
+    <string name="quality">Qualité audio</string>
+    <string name="quality_auto">Automatique</string>
+    <string name="quality_high">Haute</string>
+    <string name="quality_medium">Moyenne</string>
+    <string name="quality_low">Basse</string>
+    <string name="quality_auto_note">Qualité maximale en wi-fi, un cran en dessous sur une connexion facturée.</string>
+    <string name="quality_restarts">La changer recharge le titre en cours.</string>
 </resources>

@@ -13,6 +13,7 @@ import dev.lelonio.square.nativecore.NativeBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -47,12 +48,14 @@ class PlaybackService : MediaLibraryService() {
     private val audioOutput = AudioOutput()
 
     private lateinit var playbackStore: PlaybackStore
+    private lateinit var quality: dev.lelonio.square.data.QualityStore
     private var saveJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
         tokens = TokenStore(this)
         playbackStore = PlaybackStore(this)
+        quality = (application as dev.lelonio.square.SquareApplication).quality
         queue = PlayQueue()
         player = LibrespotPlayer(
             this,
@@ -113,7 +116,39 @@ class PlaybackService : MediaLibraryService() {
             AudioEffects.reverb.collect(audioOutput::setReverbAmount)
         }
 
+        // The bitrate is fixed when the player is built, so a change means a new
+        // engine. Watched here rather than acted on from the settings screen:
+        // the service owns the engine's lifetime, and it is the only place that
+        // can put playback back afterwards.
+        scope.launch {
+            quality.quality.drop(1).collect { restartForQuality() }
+        }
+
         connectEngine()
+    }
+
+    /**
+     * Rebuilds the engine so a new bitrate takes effect.
+     *
+     * librespot reads the bitrate when a track loads but the player owns its
+     * configuration until it is dropped, so there is nothing to set: the
+     * session is torn down and started again. The queue and position are saved
+     * first and put back after, which is the same path a cold start takes.
+     */
+    private fun restartForQuality() {
+        val wasPlaying = player.playWhenReady
+        runCatching { savePlayback() }
+
+        runCatching { NativeBridge.shutdown() }
+        engineStarted = false
+        player.clearForRestart()
+
+        scope.launch {
+            connectEngine().join()
+            // restoreQueue, run by connectEngine, puts the queue back at the
+            // position that was just saved, paused.
+            if (wasPlaying && player.mediaItemCount > 0) player.play()
+        }
     }
 
     /**
@@ -162,6 +197,7 @@ class PlaybackService : MediaLibraryService() {
                     // generated playlists carry the language in the cover's
                     // URL, so the tiles came back in English.
                     language = appLanguage(),
+                    bitrateKbps = quality.bitrateKbps(),
                     listener = player,
                 )
             }
