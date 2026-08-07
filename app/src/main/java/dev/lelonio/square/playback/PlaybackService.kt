@@ -208,7 +208,16 @@ class PlaybackService : MediaLibraryService() {
             // longer usable, so send the user back through OAuth rather than
             // retrying with the same credentials. A revoked refresh token is
             // already cleared by TokenStore before it gets here.
-            if (error.message?.contains("login failed") == true) {
+            if (error.message?.contains(PREMIUM_REQUIRED) == true) {
+                // Back to the login screen, with a reason. Staying signed in
+                // would leave an app that looks connected and plays nothing.
+                tokens.clear()
+                android.widget.Toast.makeText(
+                    this@PlaybackService,
+                    getString(dev.lelonio.square.R.string.premium_required),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            } else if (error.message?.contains("login failed") == true) {
                 tokens.clear()
             }
         }.onSuccess {
@@ -355,6 +364,9 @@ class PlaybackService : MediaLibraryService() {
 
         /** How often the position is written back while playing. */
         private const val SAVE_INTERVAL_MS = 10_000L
+
+        /** What the engine reports for an account it cannot stream to. */
+        private const val PREMIUM_REQUIRED = "premium account required"
 
         /** Tells the service a Spotify session now exists. */
         const val ACTION_CONNECT = "dev.lelonio.square.action.CONNECT"

@@ -283,6 +283,18 @@ pub fn start(
             cache.save_credentials(&credentials);
         }
 
+        // Checked here rather than left to the library. The vendored
+        // librespot-core used to call exit(1) on a non-premium account, which
+        // took the app's process down and left Android restarting the service
+        // in a loop; it now only logs, so the refusal has to be made an error
+        // the caller can show.
+        if let Some(account_type) = session.get_user_attribute("type") {
+            if account_type != "premium" {
+                session.shutdown();
+                return Err(PREMIUM_REQUIRED.to_string());
+            }
+        }
+
         Ok::<_, String>((session, player, spirc, spirc_task))
     })?;
 
@@ -770,6 +782,11 @@ fn sweep_stale_downloads(dir: &str) {
         log::info!("swept {removed} unfinished downloads");
     }
 }
+
+/// What `start` returns for an account Spotify does not stream to this client.
+///
+/// Matched by the Kotlin side, so it stays a stable string.
+pub const PREMIUM_REQUIRED: &str = "premium account required";
 
 /// How far into a track its successor is fetched, in milliseconds.
 const PRELOAD_AFTER_MS: u32 = 5_000;

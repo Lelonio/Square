@@ -72,6 +72,27 @@ sends it as `Accept-Language`. The app fills it from the device locale.
 Not everything follows it: the charts, daylist, blend and seed-mix covers are
 picked by the server from the account's own language and stay English.
 
+#### 4. `src/session.rs` — a non-premium account is not a reason to exit
+
+Upstream refuses to run on a free account, and does it by calling
+`std::process::exit(1)` from inside `check_catalogue`, with a TODO of its own
+saying it should log out instead:
+
+```rust
+-                // TODO: logout instead of exiting
+-                exit(1);
+```
+
+That ends a command-line daemon tidily. Inside an Android app it takes the whole
+process down: the service dies mid-login, Android restarts it, the same account
+authenticates again, and the loop repeats with a growing backoff and no message
+anywhere. From the outside the app simply vanishes.
+
+The check now only logs, and `engine::start` reads the `type` attribute itself
+and returns `premium account required`, which the service turns into a message
+and a return to the login screen. The refusal is unchanged; what changed is that
+it is an error the caller can handle rather than a process exit.
+
 ### Maintenance
 
 Re-apply this patch when bumping `librespot-core`. If the whole file is replaced,

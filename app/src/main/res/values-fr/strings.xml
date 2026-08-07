@@ -183,4 +183,5 @@
     <string name="quality_low">Basse</string>
     <string name="quality_auto_note">Qualité maximale en wi-fi, un cran en dessous sur une connexion facturée.</string>
     <string name="quality_restarts">La changer recharge le titre en cours.</string>
+    <string name="premium_required">Square demande Spotify Premium. Un compte gratuit peut se connecter, mais Spotify ne diffuse pas vers un client comme celui-ci.</string>
 </resources>

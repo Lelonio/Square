@@ -184,4 +184,5 @@
     <string name="quality_low">Bassa</string>
     <string name="quality_auto_note">Qualità piena sul wi-fi, un gradino sotto con la rete a consumo.</string>
     <string name="quality_restarts">Cambiandola, la canzone in corso viene ricaricata.</string>
+    <string name="premium_required">Square richiede Spotify Premium. Un account free riesce ad accedere, ma Spotify non trasmette a un client come questo.</string>
 </resources>

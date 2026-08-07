@@ -3,7 +3,6 @@ use std::{
     future::Future,
     io,
     pin::Pin,
-    process::exit,
     sync::{Arc, OnceLock, RwLock, Weak},
     task::{Context, Poll},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -361,14 +360,17 @@ impl Session {
         );
     }
 
+    /// Local patch: reports the account type instead of killing the process.
+    ///
+    /// Upstream calls `exit(1)` here, with a TODO of its own saying it should
+    /// log out instead. That ends a command-line daemon; inside an Android app
+    /// it takes the whole process down, and the system then restarts the
+    /// service in a loop with no message anywhere. The caller reads the `type`
+    /// attribute and decides.
     fn check_catalogue(attributes: &UserAttributes) {
         if let Some(account_type) = attributes.get("type") {
             if account_type != "premium" {
-                error!("librespot does not support {account_type:?} accounts.");
-                info!("Please support Spotify and your artists and sign up for a premium account.");
-
-                // TODO: logout instead of exiting
-                exit(1);
+                error!("account type is {account_type:?}, not premium.");
             }
         }
     }
