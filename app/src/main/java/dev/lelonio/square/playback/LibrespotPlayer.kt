@@ -88,7 +88,7 @@ class LibrespotPlayer(
                 // this" followed immediately by "play": with the flag frozen at
                 // schedule time the load went out as paused, the play landed
                 // before it, and the track sat there selected and silent.
-                val wanted = startPlaying || playWhenReady
+                val wanted = startPlaying || playWhenReady || wantPlay
                 runCatching {
                     NativeBridge.loadQueue(
                         uris,
@@ -235,6 +235,20 @@ class LibrespotPlayer(
      * Kept apart from [PlayQueue.currentIndex], which now moves as soon as the
      * user asks rather than when the engine catches up.
      */
+    /**
+     * Whether the listener has asked for sound, as opposed to whether there is
+     * any yet.
+     *
+     * [playWhenReady] cannot answer this: it is only ever set from the engine's
+     * own events, so that the seek bar never runs ahead of the speaker. But a
+     * tap on a track sends "load this" and "play" one after the other, the load
+     * is deferred by the fade, and the play lands on an engine that has not been
+     * given the new queue yet. With only the reported state to go on the load
+     * then went out as paused, and the tapped track sat there selected and
+     * silent.
+     */
+    private var wantPlay = false
+
     private var engineIndex = -1
 
     /**
@@ -347,6 +361,7 @@ class LibrespotPlayer(
 
     override fun handleStop(): ListenableFuture<*> {
         engine("stop") { NativeBridge.stop() }
+        wantPlay = false
         focus.abandonFocus()
         playbackState = Player.STATE_IDLE
         playWhenReady = false
@@ -359,9 +374,11 @@ class LibrespotPlayer(
             // Refusing focus means something else owns the output — starting
             // anyway would talk over it.
             if (!focus.requestFocus()) return Futures.immediateVoidFuture()
+            wantPlay = true
             onPlaybackActive(true)
             engine("play") { NativeBridge.play() }
         } else {
+            wantPlay = false
             engine("pause") { NativeBridge.pause() }
             onPlaybackActive(false)
             focus.abandonFocus()
@@ -499,6 +516,28 @@ class LibrespotPlayer(
      * would draw a fresh random order instead of the one that was saved, so the
      * whole thing has to be applied as a unit.
      */
+    /**
+     * Empties the player so a rebuilt engine can be restored into it.
+     *
+     * Not a stop: nothing is sent to the engine, which by this point no longer
+     * exists. It clears what the app believes about it, so the queue coming
+     * back from storage is loaded rather than skipped as "already playing".
+     */
+    fun clearForRestart() {
+        queue.replace(emptyList(), 0)
+        wantPlay = false
+        engineIndex = -1
+        engineQueueStale = false
+        skipPending = false
+        skipInFlight = false
+        handler.removeCallbacks(settleSkip)
+        positionMs = 0
+        playWhenReady = false
+        playbackState = Player.STATE_IDLE
+        onQueueChanged()
+        invalidateState()
+    }
+
     fun restore(
         tracks: List<PlayQueue.Track>,
         shuffleOrder: List<Int>?,
@@ -527,6 +566,7 @@ class LibrespotPlayer(
         this.repeatMode = repeatMode
         this.positionMs = positionMs
         playWhenReady = false
+        wantPlay = false
         playbackState = Player.STATE_READY
         onQueueChanged()
 
