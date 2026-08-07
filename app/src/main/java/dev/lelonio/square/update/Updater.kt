@@ -79,6 +79,28 @@ class Updater(context: Context) {
         _state.value = State.Available(result.version, result.url, result.bytes)
     }
 
+    /**
+     * Checks, and installs whatever it finds, as one action.
+     *
+     * Split in two internally but never in the interface: "there is an update"
+     * is not a decision the user has anything to decide with — they pressed a
+     * row that says update, and being asked again is a step, not a safeguard.
+     * The safeguard is Android's own dialog, which no app can skip.
+     *
+     * @return the update it could not install without permission, so the caller
+     *   can ask for it and come back here rather than starting over.
+     */
+    suspend fun checkAndInstall(): State.Available? {
+        check()
+        val update = _state.value as? State.Available ?: return null
+        if (!canInstall()) {
+            _state.value = State.Failed(REASON_PERMISSION)
+            return update
+        }
+        install(update)
+        return null
+    }
+
     private data class Release(val version: String, val url: String, val bytes: Long)
 
     private fun latestRelease(): Release? {
@@ -193,11 +215,16 @@ class Updater(context: Context) {
     fun canInstall(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.O || app.packageManager.canRequestPackageInstalls()
 
-    /** The settings page where that permission is granted. */
+    /**
+     * The settings page where that permission is granted.
+     *
+     * No `NEW_TASK` flag: it is started for a result, so the caller is told when
+     * the user comes back and can carry on with the install they already asked
+     * for rather than making them press the row a second time.
+     */
     fun permissionIntent(): Intent =
         Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
             .setData(Uri.parse("package:${app.packageName}"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     fun dismiss() {
         _state.value = State.Idle

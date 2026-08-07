@@ -193,7 +193,6 @@
     <string name="update_checking">Checking…</string>
     <string name="update_none">Up to date</string>
     <string name="update_available">%1$s available</string>
-    <string name="update_install">Install the update</string>
     <string name="update_downloading">Downloading…</string>
     <string name="update_installing">Waiting for you to confirm</string>
     <string name="update_needs_permission">Allow installing — tap</string>

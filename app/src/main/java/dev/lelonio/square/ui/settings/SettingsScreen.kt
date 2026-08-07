@@ -28,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -307,22 +309,29 @@ private fun UpdateRow() {
             else stringResource(R.string.update_failed)
     }
 
-    val busy = state is Updater.State.Checking || state is Updater.State.Downloading
+    val busy = state is Updater.State.Checking ||
+        state is Updater.State.Downloading ||
+        state is Updater.State.Installing
+
+    // Held across the trip to the system settings, so granting the permission
+    // continues the install instead of ending in a row that has to be pressed
+    // again.
+    var pending by remember { mutableStateOf<Updater.State.Available?>(null) }
+    val permission = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        val update = pending ?: return@rememberLauncherForActivityResult
+        pending = null
+        scope.launch { if (updater.canInstall()) updater.install(update) }
+    }
 
     Row(
         Modifier
             .fillMaxWidth()
             .clickable(enabled = !busy) {
-                when (val current = state) {
-                    is Updater.State.Available -> scope.launch { updater.install(current) }
-                    is Updater.State.Failed ->
-                        if (current.reason == Updater.REASON_PERMISSION) {
-                            context.startActivity(updater.permissionIntent())
-                            updater.dismiss()
-                        } else {
-                            scope.launch { updater.check() }
-                        }
-                    else -> scope.launch { updater.check() }
+                scope.launch {
+                    pending = updater.checkAndInstall()
+                    pending?.let { permission.launch(updater.permissionIntent()) }
                 }
             }
             .padding(horizontal = 18.dp, vertical = 14.dp),
@@ -330,12 +339,8 @@ private fun UpdateRow() {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            stringResource(
-                if (state is Updater.State.Available) R.string.update_install
-                else R.string.check_for_updates,
-            ),
+            stringResource(R.string.check_for_updates),
             style = MaterialTheme.typography.bodyLarge,
-            fontWeight = if (state is Updater.State.Available) FontWeight.Medium else FontWeight.Normal,
             modifier = Modifier.weight(1f),
         )
         if (status != null) {

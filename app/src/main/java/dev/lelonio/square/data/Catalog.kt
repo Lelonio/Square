@@ -154,9 +154,19 @@ object Catalog {
         )
     }
 
+    /**
+     * Spotify's DJ, which is not a playlist.
+     *
+     * The access point lists it among them, but it is a generated stream: it has
+     * no track list to open, and opening it is the one thing a row in a library
+     * promises. The same id for every account.
+     */
+    private const val DJ_URI = "spotify:playlist:37i9dQZF1EYkqdzj48dyYq"
+
     /** The account's own playlists. */
     suspend fun playlists(): List<CatalogPlaylist> = withContext(Dispatchers.IO) {
         json.decodeFromString<List<CatalogPlaylist>>(NativeBridge.rootlist())
+            .filterNot { it.uri == DJ_URI }
     }
 
     /**
