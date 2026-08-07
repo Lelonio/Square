@@ -33,6 +33,7 @@
     <string name="off">Off</string>
     <string name="queue">Fila</string>
     <string name="lyrics">Letra</string>
+    <string name="watch_video">Ver o vídeo</string>
     <string name="effects">Efeitos</string>
     <string name="cover">Capa</string>
     <string name="devices">Dispositivos</string>
@@ -177,6 +178,22 @@
     <string name="update_needs_permission">Permite a instalação — toca</string>
     <string name="update_failed">Agora não — toca para tentar de novo</string>
     <string name="quality">Qualidade de áudio</string>
+    <string name="backend">Fonte</string>
+    <string name="backend_spotify">Spotify</string>
+    <string name="backend_youtube">YouTube Music</string>
+    <string name="backend_note">O Spotify reproduz a tua conta: a sua biblioteca, as suas playlists, os seus dispositivos. O YouTube Music aqui é anónimo — a pesquisa e a reprodução funcionam, a biblioteca de uma conta não. Mudar isto reinicia a reprodução.</string>
+    <string name="backend_choice_title">De onde queres ouvir?</string>
+    <string name="backend_choice_subtitle">Podes escolher a outra mais tarde, nas definições.</string>
+    <string name="backend_choice_spotify_note">A tua conta: a tua biblioteca, as tuas playlists, os teus dispositivos Connect. Requer início de sessão e alguma configuração.</string>
+    <string name="backend_choice_youtube_note">Todo o catálogo, pesquisável e reproduzível de imediato. Sem conta, por isso não há biblioteca tua para ler.</string>
+    <string name="backend_choice_changeable">Pode ser alterado a qualquer momento nas definições.</string>
+    <string name="youtube_home_empty">Pesquisa algo para começares a ouvir. O que reproduzires aparece aqui.</string>
+    <string name="trending_now">Tendências</string>
+    <string name="popular_playlists">Playlists populares</string>
+    <string name="youtube_account">Conta YouTube</string>
+    <string name="youtube_sign_in">Iniciar sessão com Google</string>
+    <string name="youtube_sign_in_note">Opcional. A pesquisa e a reprodução funcionam sem isto; iniciar sessão acrescenta as tuas playlists.</string>
+    <string name="youtube_sign_out">Terminar sessão</string>
     <string name="quality_auto">Automática</string>
     <string name="quality_high">Alta</string>
     <string name="quality_medium">Média</string>
@@ -184,4 +201,9 @@
     <string name="quality_auto_note">Qualidade máxima no wi-fi, um degrau abaixo em ligação tarifada.</string>
     <string name="quality_restarts">Ao mudá-la, a faixa em curso é recarregada.</string>
     <string name="premium_required">O Square precisa de Spotify Premium. Uma conta gratuita consegue entrar, mas o Spotify não transmite para um cliente como este.</string>
+    <string name="new_playlist">Nova playlist</string>
+    <string name="rename">Renomear</string>
+    <string name="delete">Eliminar</string>
+    <string name="playlist_name">Nome da playlist</string>
+    <string name="create">Criar</string>
 </resources>

@@ -6,6 +6,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.lelonio.square.SquareApplication
 import dev.lelonio.square.auth.SpotifyOAuth
+import dev.lelonio.square.backend.BackendAuthState
+import dev.lelonio.square.backend.BackendId
+import dev.lelonio.square.backend.HomeRow
+import dev.lelonio.square.backend.SearchLabels
 import dev.lelonio.square.R
 import dev.lelonio.square.data.Catalog
 import dev.lelonio.square.data.AddTracksRequestDto
@@ -29,6 +33,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -137,6 +143,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _feed = MutableStateFlow(FeedState())
     val feed: StateFlow<FeedState> = _feed.asStateFlow()
     private var feedJob: Job? = null
+
+    /** YouTube Music's own home page, as it laid it out; see [MusicBackend.homeRows]. */
+    data class YouTubeHomeState(
+        val rows: List<HomeRow> = emptyList(),
+        val loading: Boolean = false,
+        val error: String? = null,
+    )
+
+    private val _youtubeHome = MutableStateFlow(YouTubeHomeState())
+    val youtubeHome: StateFlow<YouTubeHomeState> = _youtubeHome.asStateFlow()
+    private var youtubeHomeJob: Job? = null
+
+    /**
+     * Loads it, once per sign-in state.
+     *
+     * Re-read after signing in rather than cached for the session: the page is
+     * a different page once YouTube knows whose it is, and leaving the
+     * signed-out one up would make the login look like it did nothing.
+     */
+    fun loadYouTubeHome(force: Boolean = false) {
+        val backend = container.activeBackend
+        if (backend.id != BackendId.YOUTUBE_MUSIC) return
+        if (youtubeHomeJob?.isActive == true) return
+        if (!force && _youtubeHome.value.rows.isNotEmpty()) return
+
+        _youtubeHome.value = _youtubeHome.value.copy(loading = true, error = null)
+        youtubeHomeJob = viewModelScope.launch {
+            runCatching { backend.homeRows() }
+                .onSuccess { _youtubeHome.value = YouTubeHomeState(rows = it, loading = false) }
+                .onFailure {
+                    android.util.Log.e(TAG, "youtube home failed: ${chain(it)}", it)
+                    _youtubeHome.value = YouTubeHomeState(loading = false, error = describe(it))
+                }
+        }
+    }
 
     /**
      * Loads the feed, quietly.
@@ -459,7 +500,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val needsSetup: Boolean = false,
     )
 
-    private val _search = MutableStateFlow(SearchState(needsSetup = !container.webApi.isReady))
+    private val _search = MutableStateFlow(
+        SearchState(
+            needsSetup = container.activeBackend.id == BackendId.SPOTIFY &&
+                !container.webApi.isReady,
+        ),
+    )
     val search: StateFlow<SearchState> = _search.asStateFlow()
     private var searchJob: Job? = null
 
@@ -470,7 +516,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * word, mostly on prefixes nobody wanted results for.
      */
     fun onSearchQuery(query: String) {
-        val ready = container.webApi.isReady
+        val backend = container.activeBackend
+        // Only Spotify needs a registered application to search; YouTube Music
+        // is anonymous, so the setup prompt would be asking for nothing.
+        val ready = backend.id != BackendId.SPOTIFY || container.webApi.isReady
         _search.value = _search.value.copy(query = query, needsSetup = !ready)
         searchJob?.cancel()
 
@@ -482,11 +531,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch {
             delay(SEARCH_DEBOUNCE_MS)
             _search.value = _search.value.copy(loading = true, error = null)
-            runCatching { container.api.search(query.trim()).toResults(
-                    artistLabel = string(R.string.artist),
-                    albumLabel = string(R.string.album),
-                    playlistLabel = string(R.string.playlist),
-                ) }
+            runCatching {
+                backend.search(
+                    query,
+                    SearchLabels(
+                        artist = string(R.string.artist),
+                        album = string(R.string.album),
+                        playlist = string(R.string.playlist),
+                    ),
+                )
+            }
                 .onSuccess { results ->
                     _search.value = _search.value.copy(loading = false, results = results)
                 }
@@ -602,7 +656,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteEffectPreset(id: String) = container.effectPresets.delete(id)
 
     /** Locally recorded listening history; see [dev.lelonio.square.data.RecentStore]. */
-    val recent: StateFlow<List<CatalogTrack>> get() = container.recentStore.tracks
+    /**
+     * Recently played, filtered to the source in use.
+     *
+     * One list on disk, two catalogues drawing from it: a Spotify URI in the
+     * YouTube page is a tile that cannot be played, and the other way round.
+     * Filtered rather than kept apart so that switching back finds the history
+     * still there.
+     */
+    val recent: StateFlow<List<CatalogTrack>> =
+        combine(container.recentStore.tracks, container.preferences.backend) { tracks, _ ->
+            tracks.filter { container.activeBackend.owns(it.uri) }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Called when a track starts, to keep the home page's history current. */
     fun recordPlayed(track: CatalogTrack) = viewModelScope.launch {
@@ -610,7 +675,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        if (container.tokenStore.isLoggedIn) {
+        // Everything on screen belongs to one source, so a change of source
+        // starts the app's data over rather than patching it: the library, the
+        // feed, the search results, the open detail page and the recent list all
+        // describe a catalogue that is no longer the one being used.
+        viewModelScope.launch {
+            container.preferences.backend.drop(1).collect { reload() }
+        }
+
+        if (container.activeBackend.id != BackendId.SPOTIFY) {
+            // No engine to authenticate, so nothing to send the service.
+            refresh()
+        } else if (container.tokenStore.isLoggedIn) {
             PlaybackService.connect(app)
             refresh()
         }
@@ -645,12 +721,60 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = UiState.LoggedOut
     }
 
+    /** Starts over on the newly chosen source; see the note in `init`. */
+    private fun reload() {
+        inFlight?.cancel()
+        feedJob?.cancel()
+        searchJob?.cancel()
+        contextCache.clear()
+        _playlist.value = PlaylistState()
+        _feed.value = FeedState()
+        _search.value = SearchState()
+        _youtubeHome.value = YouTubeHomeState()
+        _state.value = UiState.Loading
+        if (container.activeBackend.id == BackendId.SPOTIFY && container.tokenStore.isLoggedIn) {
+            PlaybackService.connect(getApplication())
+        }
+        refresh()
+        if (container.activeBackend.id == BackendId.SPOTIFY) {
+            // The home page's own sections, which nothing else asks for again:
+            // the screen is already composed, so its one-shot load will not run
+            // a second time.
+            loadFeed()
+        } else {
+            loadYouTubeHome(force = true)
+        }
+    }
+
     fun refresh(): Job {
         inFlight?.takeIf { it.isActive }?.let { return it }
         return launchRefresh().also { inFlight = it }
     }
 
     private fun launchRefresh() = viewModelScope.launch {
+        val backend = container.activeBackend
+        if (backend.id != BackendId.SPOTIFY) {
+            // No access point to wait for and no Premium account to check: this
+            // backend is usable at once, and signing in only adds the library.
+            _state.value = UiState.Loading
+            val name = (backend.authState.value as? BackendAuthState.LoggedIn)?.displayName
+            runCatching { backend.playlists() }
+                .onSuccess { playlists ->
+                    _state.value = UiState.Ready(
+                        displayName = name.orEmpty(),
+                        playlists = playlists,
+                    )
+                }
+                .onFailure {
+                    android.util.Log.w(TAG, "youtube library unavailable: ${describe(it)}")
+                    // Not a failure worth a whole error screen: the library is
+                    // the one part that needs an account, and everything else
+                    // on this backend works without one.
+                    _state.value = UiState.Ready(displayName = name.orEmpty(), playlists = emptyList())
+                }
+            return@launch
+        }
+
         if (!container.tokenStore.isLoggedIn) {
             _state.value = UiState.LoggedOut
             return@launch
@@ -827,7 +951,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val cached = entry?.tracks.orEmpty()
 
             runCatching {
-                if (kind == DetailKind.ARTIST) {
+                if (!playlist.uri.startsWith("spotify:")) {
+                    // Another backend's context. Resolved in one call rather
+                    // than page by page: the Spotify paths below are built
+                    // around the Web API's paging and the access point's
+                    // per-track lookups, neither of which exists here.
+                    val tracks = container.activeBackend.tracksOf(playlist.uri)
+                    _playlist.value = base.copy(tracks = tracks, loading = false)
+                } else if (kind == DetailKind.ARTIST) {
                     val (tracks, albums) = loadArtist(playlist.uri)
                     _playlist.value = base.copy(tracks = tracks, albums = albums)
                 } else if (cached.isNotEmpty() && isUnchanged(playlist.uri, entry?.snapshotId)) {
@@ -897,6 +1028,72 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    /** Whether the active source lets the account make and change playlists. */
+    val canEditPlaylists: Boolean get() = container.activeBackend.canEditPlaylists
+
+    /**
+     * Makes a playlist and puts it at the top of the library.
+     *
+     * Inserted locally rather than by refetching: the service takes a moment to
+     * list a playlist it has just created, and a new playlist that does not
+     * appear reads as the button having failed.
+     */
+    fun createPlaylist(name: String) = viewModelScope.launch {
+        runCatching { container.activeBackend.createPlaylist(name.trim()) }
+            .onSuccess { created ->
+                val ready = _state.value as? UiState.Ready ?: return@onSuccess
+                _state.value = ready.copy(playlists = listOf(created) + ready.playlists)
+            }
+            .onFailure { android.util.Log.e(TAG, "create playlist failed: ${chain(it)}", it) }
+    }
+
+    fun renamePlaylist(uri: String, name: String) = viewModelScope.launch {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return@launch
+        // Renamed on screen first: this is one field on a row, the failure is
+        // rare, and putting the old name back is all an undo needs to be.
+        val ready = _state.value as? UiState.Ready
+        val before = ready?.playlists
+        if (ready != null) {
+            _state.value = ready.copy(
+                playlists = ready.playlists.map {
+                    if (it.uri == uri) it.copy(name = trimmed) else it
+                },
+            )
+        }
+        if (_playlist.value.uri == uri) {
+            _playlist.value = _playlist.value.copy(name = trimmed)
+        }
+
+        runCatching { container.activeBackend.renamePlaylist(uri, trimmed) }
+            .onFailure {
+                android.util.Log.e(TAG, "rename playlist failed: ${chain(it)}", it)
+                val current = _state.value as? UiState.Ready
+                if (before != null && current != null) {
+                    _state.value = current.copy(playlists = before)
+                }
+            }
+        invalidateContext(uri)
+    }
+
+    fun deletePlaylist(uri: String) = viewModelScope.launch {
+        val ready = _state.value as? UiState.Ready
+        val before = ready?.playlists
+        if (ready != null) {
+            _state.value = ready.copy(playlists = ready.playlists.filterNot { it.uri == uri })
+        }
+
+        runCatching { container.activeBackend.deletePlaylist(uri) }
+            .onFailure {
+                android.util.Log.e(TAG, "delete playlist failed: ${chain(it)}", it)
+                val current = _state.value as? UiState.Ready
+                if (before != null && current != null) {
+                    _state.value = current.copy(playlists = before)
+                }
+            }
+        invalidateContext(uri)
     }
 
     /** Drops a context from both caches so the next open re-reads it. */

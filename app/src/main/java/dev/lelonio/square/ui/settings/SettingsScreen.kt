@@ -50,6 +50,7 @@ import com.kyant.backdrop.Backdrop
 import dev.lelonio.square.BuildConfig
 import dev.lelonio.square.R
 import dev.lelonio.square.data.AppLanguages
+import dev.lelonio.square.backend.BackendId
 import dev.lelonio.square.data.Quality
 import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
@@ -88,8 +89,24 @@ fun SettingsScreen(
     language: String,
     onLanguage: (String) -> Unit,
     onBack: () -> Unit,
+    /** Opens the Google sign-in web view; see YouTubeLoginScreen. */
+    onYouTubeSignIn: () -> Unit = {},
 ) {
     val ready = state as? MainViewModel.UiState.Ready
+    val context = LocalContext.current
+    val app = remember(context) {
+        context.applicationContext as dev.lelonio.square.SquareApplication
+    }
+    /**
+     * Spotify's own settings are hidden while another source is playing.
+     *
+     * Not disabled — removed. The account, the registered Web API application,
+     * the Connect device and the tutorial that explains all three describe a
+     * service the app is not currently using, and leaving them on screen makes
+     * the two sources look like one confused one.
+     */
+    val spotifyActive by app.preferences.backend.collectAsStateWithLifecycle()
+    val showSpotify = spotifyActive == BackendId.SPOTIFY
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -116,7 +133,7 @@ fun SettingsScreen(
             }
         }
 
-        item("account") {
+        if (showSpotify) item("account") {
             Section(stringResource(R.string.account)) {
                 Row(
                     Modifier
@@ -161,7 +178,7 @@ fun SettingsScreen(
             }
         }
 
-        item("webapi") {
+        if (showSpotify) item("webapi") {
             Section(stringResource(R.string.web_api)) {
                 if (webApi.connected) {
                     InfoRow(stringResource(R.string.application), stringResource(R.string.connected))
@@ -181,7 +198,7 @@ fun SettingsScreen(
             }
         }
 
-        item("tutorial") {
+        if (showSpotify) item("tutorial") {
             Section(stringResource(R.string.guide)) {
                 ActionRow(stringResource(R.string.see_setup_again), destructive = false) {
                     onShowTutorial()
@@ -189,7 +206,16 @@ fun SettingsScreen(
             }
         }
 
-        item("quality") {
+        item("backend") {
+            BackendSection()
+        }
+
+        item("youtube-account") {
+            YouTubeAccountSection(onSignIn = onYouTubeSignIn)
+        }
+
+        // The bitrate is librespot's; ExoPlayer takes what YouTube serves.
+        if (showSpotify) item("quality") {
             QualitySection()
         }
 
@@ -291,6 +317,110 @@ fun SettingsScreen(
  * fourth: this client is served Ogg Vorbis at 320 kbps and below, never a
  * lossless file, so a "lossless" row would be a promise nothing can keep.
  */
+/**
+ * Which service the app plays from.
+ *
+ * The two are not equivalent and the note says so rather than letting the user
+ * find out: Spotify is the account's own library, its playlists and its Connect
+ * devices, while YouTube Music here is anonymous — the catalogue and search
+ * work, an account's own library does not exist to read.
+ *
+ * Changing it restarts playback, so it is a setting rather than a switch in the
+ * player.
+ */
+@Composable
+private fun BackendSection() {
+    val context = LocalContext.current
+    val store = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+    }
+    val chosen by store.backend.collectAsStateWithLifecycle()
+
+    Section(stringResource(R.string.backend)) {
+        BackendId.entries.forEachIndexed { index, backend ->
+            if (index > 0) RowDivider()
+            ChoiceRow(
+                label = stringResource(
+                    when (backend) {
+                        BackendId.SPOTIFY -> R.string.backend_spotify
+                        BackendId.YOUTUBE_MUSIC -> R.string.backend_youtube
+                    },
+                ),
+                selected = backend == chosen,
+            ) { store.setBackend(backend) }
+        }
+        RowDivider()
+        Text(
+            stringResource(R.string.backend_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+        )
+    }
+}
+
+/**
+ * The Google account YouTube Music reads a library with.
+ *
+ * Only shown while that backend is the active one: on Spotify it would be an
+ * account for a service the app is not currently playing from.
+ *
+ * Signing in is optional and the section says so. Search and playback work
+ * without it; what it adds is the user's own playlists.
+ */
+@Composable
+private fun YouTubeAccountSection(onSignIn: () -> Unit) {
+    val context = LocalContext.current
+    val app = remember(context) {
+        context.applicationContext as dev.lelonio.square.SquareApplication
+    }
+    val backend by app.preferences.backend.collectAsStateWithLifecycle()
+    if (backend != BackendId.YOUTUBE_MUSIC) return
+
+    val account = remember(app) { app.youtubeAccount }
+    val name by account.accountName.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+
+    Section(stringResource(R.string.youtube_account)) {
+        if (name == null) {
+            ChoiceRow(
+                label = stringResource(R.string.youtube_sign_in),
+                selected = false,
+                onClick = onSignIn,
+            )
+            RowDivider()
+            Text(
+                stringResource(R.string.youtube_sign_in_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDim,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+            )
+        } else {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    name.orEmpty(),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 1,
+                )
+            }
+            RowDivider()
+            ChoiceRow(
+                label = stringResource(R.string.youtube_sign_out),
+                selected = false,
+            ) {
+                scope.launch { app.youtubeBackend.logOut() }
+            }
+        }
+    }
+}
+
 @Composable
 private fun QualitySection() {
     val context = LocalContext.current

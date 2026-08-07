@@ -13,6 +13,8 @@ package dev.lelonio.square.ui.glass
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -89,6 +91,13 @@ fun LiquidBottomTabs(
     // leave a hard horizontal seam across the glass. Keep it below half the
     // height.
     lensDepth: Dp = 24f.dp,
+    // LOCAL CHANGE: hides the moving capsule without moving it.
+    //
+    // The bar always has a selected index — it is what the indicator is drawn
+    // at — but the app has screens that are none of the tabs, and on those the
+    // indicator claimed the app was somewhere it was not. Faded rather than
+    // removed, so it comes back where it left and the drag target stays alive.
+    indicatorVisible: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
     val isLightTheme = !isSystemInDarkTheme()
@@ -258,10 +267,17 @@ fun LiquidBottomTabs(
             )
         }
 
+        val indicatorAlpha by animateFloatAsState(
+            targetValue = if (indicatorVisible) 1f else 0f,
+            animationSpec = tween(220),
+            label = "indicatorAlpha",
+        )
+
         Box(
             Modifier
                 .padding(horizontal = 4f.dp)
                 .graphicsLayer {
+                    alpha = indicatorAlpha
                     translationX =
                         if (isLtr) dampedDragAnimation.value * tabWidth + panelOffset
                         else size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset

@@ -125,6 +125,8 @@ android {
     }
 
     compileOptions {
+        // Required by the vendored :innertube module, which reads java.time.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -185,12 +187,16 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.retrofit)
     implementation(libs.retrofit.serialization)
+    implementation(libs.newpipe.extractor)
+    implementation(project(":innertube"))
     implementation(libs.coil.compose)
     implementation(libs.androidx.palette)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.backdrop)
     implementation(libs.kyant.shapes)
     implementation(libs.phosphor)
+
+    coreLibraryDesugaring(libs.desugaring)
 }
 
 /** Pinned so a build is not at the mercy of upstream's next commit. */

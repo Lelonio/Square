@@ -50,14 +50,31 @@ data class PlaybackState(
 
 /** Mirrors the slow-changing part of a [Player] into Compose state. */
 @Composable
-fun rememberPlaybackState(player: Player?): State<PlaybackState> {
-    val state = remember { mutableStateOf(PlaybackState()) }
+fun rememberPlaybackState(
+    player: Player?,
+    /**
+     * What to report until the media controller connects.
+     *
+     * Connecting takes a few hundred milliseconds, and the whole player is left
+     * uncomposed while there is no item, so without this the app came back from
+     * the launcher showing the home page underneath until the controller
+     * landed. Read from the saved session, which already holds the track.
+     */
+    seed: PlaybackState? = null,
+): State<PlaybackState> {
+    val state = remember { mutableStateOf(seed ?: PlaybackState()) }
+    // Whether a live player has ever answered. Once one has, the saved session
+    // is out of date by definition — going back to it when the controller drops
+    // is what made the player flash the previous track on the way back into the
+    // app.
+    val seenLive = remember { mutableStateOf(false) }
 
     DisposableEffect(player) {
         if (player == null) {
-            state.value = PlaybackState()
+            if (!seenLive.value) state.value = seed ?: PlaybackState()
             return@DisposableEffect onDispose {}
         }
+        seenLive.value = true
 
         fun snapshot() {
             val metadata = player.mediaMetadata

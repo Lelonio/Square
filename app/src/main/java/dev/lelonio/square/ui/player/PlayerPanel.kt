@@ -439,6 +439,17 @@ private fun EffectSlider(
     onChange: (Float) -> Unit,
     onReset: () -> Unit,
 ) {
+    // What the thumb shows while the player has not caught up yet.
+    //
+    // The player is told the new value only once the drag settles — writing it
+    // every frame starves the audio output — so between the two the slider has
+    // to speak for itself, or it springs back under the finger.
+    var dragged by remember { mutableStateOf<Float?>(null) }
+    val shown = dragged ?: value
+    LaunchedEffect(value) {
+        if (dragged != null && kotlin.math.abs(value - dragged!!) < 0.0005f) dragged = null
+    }
+
     Column(Modifier.padding(top = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -462,8 +473,11 @@ private fun EffectSlider(
             )
         }
         LiquidSlider(
-            value = { value },
-            onValueChange = onChange,
+            value = { shown },
+            onValueChange = {
+                dragged = it
+                onChange(it)
+            },
             valueRange = range,
             // The smallest step worth animating to. Below this the thumb chases
             // values the ear cannot tell apart.

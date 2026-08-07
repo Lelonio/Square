@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
@@ -40,11 +41,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,6 +90,7 @@ import com.adamglin.phosphoricons.regular.CaretDown
 import com.adamglin.phosphoricons.regular.Devices
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.Queue
+import com.adamglin.phosphoricons.regular.YoutubeLogo
 import com.adamglin.phosphoricons.regular.Repeat
 import com.adamglin.phosphoricons.regular.RepeatOnce
 import com.adamglin.phosphoricons.regular.Shuffle
@@ -117,7 +124,7 @@ private const val PAUSED_DIM = 0.55f
  * back here as a full-bleed backdrop.
  */
 /** What occupies the middle of the player. */
-private enum class Stage { COVER, LYRICS, EFFECTS, QUEUE, DEVICES, ADD_TO_PLAYLIST, CANVAS }
+private enum class Stage { COVER, LYRICS, EFFECTS, QUEUE, DEVICES, ADD_TO_PLAYLIST, CANVAS, VIDEO }
 
 @UnstableApi
 @Composable
@@ -172,6 +179,33 @@ fun PlayerScreen(
     /** The playlist picker's state, shown in the panel rather than as a sheet. */
     addToPlaylist: MainViewModel.AddToPlaylistState,
     onPickPlaylist: (dev.lelonio.square.data.CatalogPlaylist) -> Unit,
+    /**
+     * False when the source has no writable playlists.
+     *
+     * Adding a track to a playlist goes through the Spotify Web API; on another
+     * source the button could only open a picker that fails on every choice.
+     */
+    playlistEditAvailable: Boolean = true,
+    /**
+     * Turns the current track's video on or off, or null when it has none.
+     *
+     * The same track either way — the source reopens on the muxed stream, which
+     * carries the picture along with the sound — so the queue, the position and
+     * everything else stay as they were.
+     */
+    onWatchVideo: (() -> Unit)? = null,
+    /** Showing the picture right now. */
+    videoOn: Boolean = false,
+    /** The player to hang the video surface off; null when there is no video. */
+    videoPlayer: Player? = null,
+    /**
+     * False when the source is not Spotify.
+     *
+     * Connect is Spotify's own protocol for handing playback to another
+     * speaker; on any other source the button would open a list that can only
+     * ever be empty, so it is not drawn at all.
+     */
+    connectAvailable: Boolean = true,
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
 
@@ -211,6 +245,13 @@ fun PlayerScreen(
         label = "canvasBlur",
     )
 
+    // The video's own light, sampled by the stage below and spread over the
+    // whole screen from here — the way an ambient television lights the wall
+    // behind it rather than just its own frame. Null whenever no video is
+    // showing, which is what puts the ordinary backdrop back.
+    var ambient by remember { mutableStateOf<AmbientEdges?>(null) }
+    LaunchedEffect(videoOn) { if (!videoOn) ambient = null }
+
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
@@ -233,6 +274,12 @@ fun PlayerScreen(
                 }
                 .layerBackdrop(canvasBackdrop),
         ) {
+            // Inside the recorded layer, and that is the point: the glass above
+            // samples this backdrop, so light drawn here is light the buttons
+            // and the panels refract. Drawn outside it they sat on top of the
+            // colour without ever picking any of it up.
+            AmbientLight(ambient)
+
             // Held at zero until the first frame, then faded up. Without this
             // the clip's own surface appears the instant it decodes, which next
             // to a cover crossfading out reads as two separate events.
@@ -347,6 +394,9 @@ fun PlayerScreen(
                                 PlayerPanel.DEVICES
                             }
                         },
+                        connectAvailable = connectAvailable,
+                        onWatchVideo = onWatchVideo,
+                        videoOn = videoOn,
                     )
 
                     // Everything sits at the bottom, as in the reference: the
@@ -388,12 +438,20 @@ fun PlayerScreen(
                                 PlayerPanel.QUEUE -> Stage.QUEUE
                                 PlayerPanel.DEVICES -> Stage.DEVICES
                                 PlayerPanel.ADD_TO_PLAYLIST -> Stage.ADD_TO_PLAYLIST
-                                PlayerPanel.NONE ->
-                                    if (canvas == null || !canvasReady) {
-                                        Stage.COVER
-                                    } else {
-                                        Stage.CANVAS
-                                    }
+                                PlayerPanel.NONE -> when {
+                                    // Not while the player is travelling: a
+                                    // TextureView inside a layer being scaled
+                                    // and faded loses its surface for the length
+                                    // of the animation and leaves a black
+                                    // rectangle sliding down the screen. The
+                                    // cover stands in for those few hundred
+                                    // milliseconds — the same trick the Canvas
+                                    // above uses, and for the same reason.
+                                    videoOn && videoPlayer != null &&
+                                        LocalGlassEnabled.current -> Stage.VIDEO
+                                    canvas == null || !canvasReady -> Stage.COVER
+                                    else -> Stage.CANVAS
+                                }
                             },
                             animationSpec = tween(320),
                             label = "stage",
@@ -412,6 +470,23 @@ fun PlayerScreen(
                                         sharedScope,
                                         animatedScope,
                                     )
+                                }
+
+                                // The picture in the cover's place rather than
+                                // behind the glass like a Canvas: this one is
+                                // the thing being watched, so it gets the slot
+                                // and keeps its own shape inside it.
+                                Stage.VIDEO -> Box(
+                                    Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    // Nullable even in this stage: the crossfade
+                                    // keeps drawing the one it is leaving, and
+                                    // the controller it holds is gone the moment
+                                    // the activity stops.
+                                    videoPlayer?.let {
+                                        VideoStage(it) { ambient = it }
+                                    }
                                 }
 
                                 Stage.LYRICS -> LyricsStage(
@@ -539,6 +614,7 @@ fun PlayerScreen(
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
+                                if (playlistEditAvailable) {
                                 Spacer(Modifier.size(8.dp))
                                 RoundGlassButton(
                                     backdrop = glassBackdrop,
@@ -558,6 +634,7 @@ fun PlayerScreen(
                                         tint = panelTint(panel == PlayerPanel.ADD_TO_PLAYLIST),
                                         modifier = Modifier.size(20.dp),
                                     )
+                                }
                                 }
                             }
                         }
@@ -618,6 +695,162 @@ fun PlayerScreen(
     }
 }
 
+/**
+ * The video, on a surface the player draws straight into.
+ *
+ * A `SurfaceView` rather than a `TextureView`: the player writes to it without
+ * the frame ever passing through the view hierarchy, which is what keeps a
+ * 720p stream from costing anything on the UI thread. The surface is handed
+ * back on the way out, or the player would go on rendering into a dead one.
+ */
+@Composable
+private fun VideoStage(player: Player, onAmbient: (AmbientEdges) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // A TextureView rather than the SurfaceView the floating window uses: only
+    // a texture can be read back, and reading the picture back is the whole
+    // ambient effect — the glow is the video's own colour, not a guess made
+    // from the cover.
+    val texture = remember(context) { android.view.TextureView(context) }
+    DisposableEffect(player, texture) {
+        player.setVideoTextureView(texture)
+        onDispose { player.clearVideoTextureView(texture) }
+    }
+
+    val report by rememberUpdatedState(onAmbient)
+    LaunchedEffect(texture, player) {
+        while (true) {
+            // Slowly, off a thumbnail. Reading the whole picture back at frame
+            // rate would cost far more than it shows, and a glow that tracked
+            // every cut would strobe: this is meant to be light in the room, and
+            // light in a room does not flicker.
+            kotlinx.coroutines.delay(AMBIENT_INTERVAL_MS)
+            if (!texture.isAvailable) continue
+            val frame = runCatching {
+                texture.getBitmap(AMBIENT_SAMPLE, AMBIENT_SAMPLE)
+            }.getOrNull() ?: continue
+            report(frame.edges())
+            frame.recycle()
+        }
+    }
+
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { texture },
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(18.dp)),
+    )
+}
+
+/**
+ * The sampled colour, over the whole screen.
+ *
+ * Each corner eased into its new value over seconds rather than frames: the
+ * point is the colour of the scene, and a scene lasts. Drawn under everything,
+ * so the glass above it refracts the light the same way it refracts artwork.
+ */
+@Composable
+private fun AmbientLight(edges: AmbientEdges?) {
+    val topLeft by animateColorAsState(
+        edges?.topLeft ?: Color.Transparent, tween(AMBIENT_FADE_MS), label = "tl",
+    )
+    val topRight by animateColorAsState(
+        edges?.topRight ?: Color.Transparent, tween(AMBIENT_FADE_MS), label = "tr",
+    )
+    val bottomLeft by animateColorAsState(
+        edges?.bottomLeft ?: Color.Transparent, tween(AMBIENT_FADE_MS), label = "bl",
+    )
+    val bottomRight by animateColorAsState(
+        edges?.bottomRight ?: Color.Transparent, tween(AMBIENT_FADE_MS), label = "br",
+    )
+
+    Canvas(Modifier.fillMaxSize()) {
+        // One soft glow per corner rather than two bands across the screen.
+        //
+        // Bands meet along a line, and a line is exactly what light does not
+        // have: the first version left a visible seam across the middle of the
+        // screen. Radial gradients reaching past each other have no edge to
+        // show, which is also what the lamps behind an ambient television
+        // actually do.
+        val radius = size.maxDimension * 0.9f
+        listOf(
+            topLeft to androidx.compose.ui.geometry.Offset(0f, 0f),
+            topRight to androidx.compose.ui.geometry.Offset(size.width, 0f),
+            bottomLeft to androidx.compose.ui.geometry.Offset(0f, size.height),
+            bottomRight to androidx.compose.ui.geometry.Offset(size.width, size.height),
+        ).forEach { (color, center) ->
+            drawRect(
+                Brush.radialGradient(
+                    listOf(color, color.copy(alpha = 0f)),
+                    center = center,
+                    radius = radius,
+                ),
+            )
+        }
+    }
+}
+
+/** The colour of each corner of a frame, which is what the glow is made of. */
+private data class AmbientEdges(
+    val topLeft: Color,
+    val topRight: Color,
+    val bottomLeft: Color,
+    val bottomRight: Color,
+)
+
+/**
+ * Averages each quadrant of the thumbnail.
+ *
+ * Quadrants rather than single pixels: one pixel of a dark scene with a bright
+ * speck in it would swing the whole glow, and the average is what a wall
+ * actually reflects.
+ */
+private fun android.graphics.Bitmap.edges(): AmbientEdges {
+    val half = AMBIENT_SAMPLE / 2
+    fun quadrant(x0: Int, y0: Int): Color {
+        var r = 0L
+        var g = 0L
+        var b = 0L
+        for (x in x0 until x0 + half) {
+            for (y in y0 until y0 + half) {
+                val pixel = getPixel(x, y)
+                r += android.graphics.Color.red(pixel)
+                g += android.graphics.Color.green(pixel)
+                b += android.graphics.Color.blue(pixel)
+            }
+        }
+        val count = (half * half).toFloat()
+        return Color(r / count / 255f, g / count / 255f, b / count / 255f)
+    }
+    return AmbientEdges(
+        topLeft = quadrant(0, 0),
+        topRight = quadrant(half, 0),
+        bottomLeft = quadrant(0, half),
+        bottomRight = quadrant(half, half),
+    )
+}
+
+/** How often the picture is read back, in milliseconds. */
+private const val AMBIENT_INTERVAL_MS = 900L
+
+/** How long a colour takes to become the next one. */
+private const val AMBIENT_FADE_MS = 2500
+
+/** Side of the thumbnail each sample is taken from. */
+private const val AMBIENT_SAMPLE = 16
+
+/** The surface itself, shared with the floating window; see [VideoStage]. */
+@Composable
+fun VideoSurface(player: Player, modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val surface = remember(context) { android.view.SurfaceView(context) }
+    DisposableEffect(player, surface) {
+        player.setVideoSurfaceView(surface)
+        onDispose { player.clearVideoSurfaceView(surface) }
+    }
+    androidx.compose.ui.viewinterop.AndroidView(factory = { surface }, modifier = modifier)
+}
+
 @Composable
 private fun TopBar(
     backdrop: Backdrop,
@@ -626,6 +859,10 @@ private fun TopBar(
     source: String,
     onCollapse: () -> Unit,
     onOpenDevices: () -> Unit,
+    connectAvailable: Boolean,
+    /** Null when the track has no video to watch. */
+    onWatchVideo: (() -> Unit)?,
+    videoOn: Boolean,
 ) {
     Row(
         Modifier
@@ -666,12 +903,28 @@ private fun TopBar(
         // Connect gets the permanent slot rather than hiding behind "more":
         // moving playback to another speaker is the thing you reach for while
         // the player is open, and the queue already has its own tab below.
-        GlassButton(backdrop, onClick = onOpenDevices) {
-            Icon(
-                PhosphorIcons.Regular.Devices,
-                contentDescription = stringResource(R.string.devices),
-                tint = panelTint(panel == PlayerPanel.DEVICES),
-            )
+        // Every YouTube Music track is a video underneath, and switching to it
+        // is the thing this app cannot do itself — so it hands the track over
+        // at the position it had reached rather than pretending otherwise.
+        if (onWatchVideo != null) {
+            GlassButton(backdrop, onClick = onWatchVideo) {
+                Icon(
+                    PhosphorIcons.Regular.YoutubeLogo,
+                    contentDescription = stringResource(R.string.watch_video),
+                    // Lit while the video is on, like every other button here
+                    // that opens something: it is a switch, not a one-way trip.
+                    tint = panelTint(videoOn),
+                )
+            }
+        }
+        if (connectAvailable) {
+            GlassButton(backdrop, onClick = onOpenDevices) {
+                Icon(
+                    PhosphorIcons.Regular.Devices,
+                    contentDescription = stringResource(R.string.devices),
+                    tint = panelTint(panel == PlayerPanel.DEVICES),
+                )
+            }
         }
 
     }
@@ -838,16 +1091,34 @@ private fun Controls(
         }
 
         RoundGlassButton(backdrop = backdrop, size = 76.dp, onClick = onTogglePlay) {
-            Crossfade(
-                state.isPlaying,
-                animationSpec = tween(180),
-                label = "playPause",
-            ) { playing ->
-                Icon(
-                    imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
-                    contentDescription = stringResource(if (playing) R.string.pause else R.string.play),
-                    modifier = Modifier.size(34.dp),
-                )
+            // A ring around the icon while the track is still being fetched.
+            //
+            // Worth its place here and nowhere else: a YouTube track has to have
+            // its stream resolved before a single byte can be read, which takes
+            // long enough that a tap on play looks like it did nothing at all.
+            // Around the button rather than in place of it, so the control stays
+            // where it is and stays pressable.
+            // A Box, because the button lays its content out in a row and the
+            // ring belongs *around* the icon rather than beside it.
+            Box(contentAlignment = Alignment.Center) {
+                if (state.isBuffering) {
+                    CircularProgressIndicator(
+                        color = LocalContentColor.current.copy(alpha = 0.5f),
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(52.dp),
+                    )
+                }
+                Crossfade(
+                    state.isPlaying,
+                    animationSpec = tween(180),
+                    label = "playPause",
+                ) { playing ->
+                    Icon(
+                        imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
+                        contentDescription = stringResource(if (playing) R.string.pause else R.string.play),
+                        modifier = Modifier.size(34.dp),
+                    )
+                }
             }
         }
 

@@ -54,4 +54,39 @@ class SquareApplication : Application() {
 
     /** The user's saved speed / pitch / reverb combinations. */
     val effectPresets: EffectPresetStore by lazy { EffectPresetStore(this) }
+
+    /**
+     * The Spotify source, behind the common backend interface.
+     *
+     * A single instance because it owns the AudioTrack the native sink writes
+     * into, and a second one would be a second sink for the same engine.
+     */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    val spotifyBackend: dev.lelonio.square.backend.SpotifyBackend by lazy {
+        dev.lelonio.square.backend.SpotifyBackend(this)
+    }
+
+    /** The Google session YouTube Music reads a personal library with. */
+    val youtubeAccount: dev.lelonio.square.backend.youtube.YouTubeAccount by lazy {
+        dev.lelonio.square.backend.youtube.YouTubeAccount(this)
+    }
+
+    /** YouTube Music; see [dev.lelonio.square.backend.youtube.YouTubeBackend]. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    val youtubeBackend: dev.lelonio.square.backend.youtube.YouTubeBackend by lazy {
+        dev.lelonio.square.backend.youtube.YouTubeBackend(youtubeAccount)
+    }
+
+    /**
+     * Whichever of the two the user picked.
+     *
+     * Read afresh each time rather than held: the setting can change while the
+     * app is running, and a cached backend would keep answering as the old one.
+     */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    val activeBackend: dev.lelonio.square.backend.MusicBackend
+        get() = when (preferences.backend.value) {
+            dev.lelonio.square.backend.BackendId.SPOTIFY -> spotifyBackend
+            dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC -> youtubeBackend
+        }
 }

@@ -77,6 +77,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Shrinks into a floating window when leaving the app with a video playing.
+     *
+     * Only then: picture-in-picture on a music player with nothing to look at
+     * would be a black rectangle covering whatever the user actually left to
+     * do. The aspect ratio is the video's own, so the window is the picture
+     * rather than the picture letterboxed inside a window.
+     */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!dev.lelonio.square.backend.youtube.YouTubeVideoMode.enabled.value) return
+        val size = controller?.videoSize
+        val width = size?.width?.takeIf { it > 0 } ?: 16
+        val height = size?.height?.takeIf { it > 0 } ?: 9
+        runCatching {
+            enterPictureInPictureMode(
+                android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(android.util.Rational(width, height))
+                    .build(),
+            )
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        dev.lelonio.square.backend.youtube.YouTubeVideoMode.setPictureInPicture(
+            isInPictureInPictureMode,
+        )
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -153,14 +186,22 @@ class MainActivity : ComponentActivity() {
         playNext: Boolean = false,
     ): MediaItem =
         MediaItem.Builder()
-            // The media id carries the Spotify URI; PlayQueue refuses anything else.
+            // The media id carries the track's URI; PlayQueue refuses anything else.
             .setMediaId(track.uri)
+            // The same URI again, as the thing to play. The librespot player
+            // ignores it and works off the media id, but ExoPlayer — which is
+            // what the YouTube backend uses — plays the URI and nothing else;
+            // its resolver turns a `ytmusic:` one into a real stream at load.
+            .setUri(track.uri)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(track.name)
                     .setArtist(track.artist)
                     .setAlbumTitle(track.album)
-                    .setDurationMs(track.durationMs)
+                    // Left unset when unknown rather than sent as zero: some of
+                    // YouTube's shelves carry no length, and a zero here would
+                    // win over the one the player works out from the stream.
+                    .setDurationMs(track.durationMs.takeIf { it > 0 })
                     .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse))
                     // Where the queue came from, carried with the item because
                     // the engine lives in the service and this is the only

@@ -34,6 +34,7 @@
     <string name="off">Off</string>
     <string name="queue">Coda</string>
     <string name="lyrics">Testo</string>
+    <string name="watch_video">Guarda il video</string>
     <string name="effects">Effetti</string>
     <string name="cover">Copertina</string>
     <string name="devices">Dispositivi</string>
@@ -178,6 +179,22 @@
     <string name="update_needs_permission">Consenti l\'installazione — tocca</string>
     <string name="update_failed">Non adesso — tocca per riprovare</string>
     <string name="quality">Qualità audio</string>
+    <string name="backend">Sorgente</string>
+    <string name="backend_spotify">Spotify</string>
+    <string name="backend_youtube">YouTube Music</string>
+    <string name="backend_note">Spotify riproduce il tuo account: la sua libreria, le sue playlist, i suoi dispositivi. YouTube Music qui è anonimo — ricerca e riproduzione funzionano, la libreria di un account no. Cambiarlo riavvia la riproduzione.</string>
+    <string name="backend_choice_title">Da dove vuoi ascoltare?</string>
+    <string name="backend_choice_subtitle">Puoi scegliere l\'altra più avanti, nelle impostazioni.</string>
+    <string name="backend_choice_spotify_note">Il tuo account: la tua libreria, le tue playlist, i tuoi dispositivi Connect. Richiede l\'accesso e un po\' di configurazione.</string>
+    <string name="backend_choice_youtube_note">Tutto il catalogo, subito cercabile e riproducibile. Nessun account, quindi non c\'è una libreria tua da leggere.</string>
+    <string name="backend_choice_changeable">Si può cambiare in qualsiasi momento nelle impostazioni.</string>
+    <string name="youtube_home_empty">Cerca qualcosa per iniziare ad ascoltare. Quello che riproduci compare qui.</string>
+    <string name="trending_now">Tendenze</string>
+    <string name="popular_playlists">Playlist popolari</string>
+    <string name="youtube_account">Account YouTube</string>
+    <string name="youtube_sign_in">Accedi con Google</string>
+    <string name="youtube_sign_in_note">Facoltativo. Ricerca e riproduzione funzionano anche senza; accedendo si aggiungono le tue playlist.</string>
+    <string name="youtube_sign_out">Esci</string>
     <string name="quality_auto">Automatica</string>
     <string name="quality_high">Alta</string>
     <string name="quality_medium">Media</string>
@@ -185,4 +202,9 @@
     <string name="quality_auto_note">Qualità piena sul wi-fi, un gradino sotto con la rete a consumo.</string>
     <string name="quality_restarts">Cambiandola, la canzone in corso viene ricaricata.</string>
     <string name="premium_required">Square richiede Spotify Premium. Un account free riesce ad accedere, ma Spotify non trasmette a un client come questo.</string>
+    <string name="new_playlist">Nuova playlist</string>
+    <string name="rename">Rinomina</string>
+    <string name="delete">Elimina</string>
+    <string name="playlist_name">Nome della playlist</string>
+    <string name="create">Crea</string>
 </resources>

@@ -963,9 +963,20 @@ private fun TrackRow(
  * app to do. No "go to album" — the track model carries the album's name for
  * display and not its URI, so the entry would be there and not work.
  */
-/** The web address for a track URI, which is what a share expects. */
-fun CatalogTrack.openLink(): String =
-    "https://open.spotify.com/track/" + uri.substringAfterLast(':')
+/**
+ * The web address for a track URI, which is what a share expects.
+ *
+ * Whichever service the track came from: sharing a YouTube track as a Spotify
+ * link would point at something that is not the same recording, or at nothing.
+ */
+fun CatalogTrack.openLink(): String {
+    val id = uri.substringAfterLast(':')
+    return if (uri.startsWith("ytmusic:")) {
+        "https://music.youtube.com/watch?v=$id"
+    } else {
+        "https://open.spotify.com/track/$id"
+    }
+}
 
 @Composable
 private fun StatusBox(content: @Composable () -> Unit) {

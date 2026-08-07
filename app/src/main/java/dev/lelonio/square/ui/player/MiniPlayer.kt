@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -215,17 +216,27 @@ fun MiniPlayer(
                     contentPadding = 0.dp,
                     modifier = Modifier.size(42.dp),
                 ) {
-                    Crossfade(
-                        state.isPlaying,
-                        animationSpec = tween(180),
-                        label = "playPause",
-                    ) { playing ->
-                        Icon(
-                            imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
-                            contentDescription = if (playing) stringResource(R.string.pause) else stringResource(R.string.play),
-                            tint = MiniPlayerInk,
-                            modifier = Modifier.size(20.dp),
-                        )
+                    // Same ring as the player's; see the note there.
+                    Box(contentAlignment = Alignment.Center) {
+                        if (state.isBuffering) {
+                            CircularProgressIndicator(
+                                color = MiniPlayerInk.copy(alpha = 0.5f),
+                                strokeWidth = 1.5.dp,
+                                modifier = Modifier.size(30.dp),
+                            )
+                        }
+                        Crossfade(
+                            state.isPlaying,
+                            animationSpec = tween(180),
+                            label = "playPause",
+                        ) { playing ->
+                            Icon(
+                                imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
+                                contentDescription = if (playing) stringResource(R.string.pause) else stringResource(R.string.play),
+                                tint = MiniPlayerInk,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
             }

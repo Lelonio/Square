@@ -33,6 +33,7 @@
     <string name="off">Aus</string>
     <string name="queue">Warteschlange</string>
     <string name="lyrics">Songtext</string>
+    <string name="watch_video">Video ansehen</string>
     <string name="effects">Effekte</string>
     <string name="cover">Cover</string>
     <string name="devices">Geräte</string>
@@ -177,6 +178,22 @@
     <string name="update_needs_permission">Installation erlauben — tippen</string>
     <string name="update_failed">Gerade nicht — zum Wiederholen tippen</string>
     <string name="quality">Audioqualität</string>
+    <string name="backend">Quelle</string>
+    <string name="backend_spotify">Spotify</string>
+    <string name="backend_youtube">YouTube Music</string>
+    <string name="backend_note">Spotify spielt dein eigenes Konto: dessen Bibliothek, Playlists und Geräte. YouTube Music ist hier anonym — Suche und Wiedergabe funktionieren, eine Kontobibliothek nicht. Diese Änderung startet die Wiedergabe neu.</string>
+    <string name="backend_choice_title">Woher möchtest du hören?</string>
+    <string name="backend_choice_subtitle">Die andere Quelle lässt sich später in den Einstellungen wählen.</string>
+    <string name="backend_choice_spotify_note">Dein eigenes Konto: deine Bibliothek, deine Playlists, deine Connect-Geräte. Erfordert Anmeldung und etwas Einrichtung.</string>
+    <string name="backend_choice_youtube_note">Der ganze Katalog, sofort durchsuchbar und abspielbar. Kein Konto, also auch keine eigene Bibliothek.</string>
+    <string name="backend_choice_changeable">Jederzeit in den Einstellungen änderbar.</string>
+    <string name="youtube_home_empty">Suche etwas, um loszuhören. Was du abspielst, erscheint hier.</string>
+    <string name="trending_now">Trends</string>
+    <string name="popular_playlists">Beliebte Playlists</string>
+    <string name="youtube_account">YouTube-Konto</string>
+    <string name="youtube_sign_in">Mit Google anmelden</string>
+    <string name="youtube_sign_in_note">Optional. Suche und Wiedergabe gehen auch ohne; die Anmeldung ergänzt deine eigenen Playlists.</string>
+    <string name="youtube_sign_out">Abmelden</string>
     <string name="quality_auto">Automatisch</string>
     <string name="quality_high">Hoch</string>
     <string name="quality_medium">Mittel</string>
@@ -184,4 +201,9 @@
     <string name="quality_auto_note">Volle Qualität im WLAN, eine Stufe darunter bei getakteten Verbindungen.</string>
     <string name="quality_restarts">Beim Ändern wird der laufende Titel neu geladen.</string>
     <string name="premium_required">Square braucht Spotify Premium. Ein kostenloses Konto kann sich anmelden, aber Spotify streamt nicht an einen Client wie diesen.</string>
+    <string name="new_playlist">Neue Playlist</string>
+    <string name="rename">Umbenennen</string>
+    <string name="delete">Löschen</string>
+    <string name="playlist_name">Name der Playlist</string>
+    <string name="create">Erstellen</string>
 </resources>

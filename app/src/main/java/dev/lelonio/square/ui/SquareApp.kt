@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,11 +31,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -76,6 +79,7 @@ import dev.lelonio.square.data.Catalog
 import dev.lelonio.square.data.CatalogPlaylist
 import dev.lelonio.square.data.CatalogTrack
 import dev.lelonio.square.data.Lyrics
+import dev.lelonio.square.backend.youtube.YouTubeVideoMode
 import dev.lelonio.square.playback.AudioEffects
 import dev.lelonio.square.ui.glass.LiquidBottomTab
 import dev.lelonio.square.ui.glass.LiquidBottomTabs
@@ -91,10 +95,14 @@ import dev.lelonio.square.ui.components.TrackSheet
 import dev.lelonio.square.ui.components.TrackSheetAction
 import dev.lelonio.square.ui.library.openLink
 import com.adamglin.phosphoricons.regular.LinkSimple
+import com.adamglin.phosphoricons.regular.PencilSimple
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.Queue
+import com.adamglin.phosphoricons.regular.SpotifyLogo
+import com.adamglin.phosphoricons.regular.YoutubeLogo
 import com.adamglin.phosphoricons.regular.Trash
 import dev.lelonio.square.ui.player.MiniPlayer
+import dev.lelonio.square.ui.player.PlaybackState
 import dev.lelonio.square.ui.player.MiniPlayerHeight
 import dev.lelonio.square.ui.player.NowPlayingSheet
 import dev.lelonio.square.ui.player.PlayerScreen
@@ -103,11 +111,13 @@ import dev.lelonio.square.ui.player.rememberPlaybackState
 import dev.lelonio.square.ui.player.rememberPositionMs
 import dev.lelonio.square.ui.player.rememberQueue
 import dev.lelonio.square.ui.search.SearchScreen
+import dev.lelonio.square.ui.onboarding.BackendChoiceScreen
 import dev.lelonio.square.ui.onboarding.OnboardingScreen
 import dev.lelonio.square.ui.settings.SettingsScreen
 import dev.lelonio.square.ui.theme.Ink
 import dev.lelonio.square.ui.theme.SquareTheme
 import dev.lelonio.square.ui.theme.rememberArtworkColor
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.fill.Play
@@ -119,6 +129,9 @@ import com.adamglin.phosphoricons.fill.MusicNotes
 import com.adamglin.phosphoricons.regular.House
 import com.adamglin.phosphoricons.regular.MagnifyingGlass
 import com.adamglin.phosphoricons.regular.MusicNotes
+
+/** A name being asked for: null playlist means one that does not exist yet. */
+private data class NamingRequest(val playlist: CatalogPlaylist?)
 
 /** A track menu waiting to be drawn: what it is about, and where it points. */
 private data class TrackMenuRequest(
@@ -179,11 +192,40 @@ fun SquareApp(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
-    val playback by rememberPlaybackState(player)
+    val context = LocalContext.current
+
+    // The session as it was left, so the player has something to draw before
+    // the media controller connects. Read once, off the saved queue.
+    val seed = remember(context) { savedPlaybackSeed(context) }
+    val playback by rememberPlaybackState(player, seed)
     // Held as State, not read here: reading the position at this level would
     // recompose the whole app — lists included — several times a second.
     val positionMs = rememberPositionMs(player, playback.isPlaying)
     val queue by rememberQueue(player)
+    val videoOn by YouTubeVideoMode.enabled.collectAsStateWithLifecycle()
+
+    // Video keeps playing when the app leaves the foreground, surface or no
+    // surface. Switching back to the audio-only stream would be tidier, but the
+    // stream has to reopen to do it and that break is audible — which, for
+    // someone who put the phone down to keep listening, is the one thing
+    // leaving the app must not do.
+
+    // Speed and pitch, written to the player only once the slider settles.
+    //
+    // A drag produces a value every frame, and each one reconfigures the audio
+    // sink: on the ExoPlayer the YouTube source uses, that means a flush every
+    // 8ms, which starves the output — the sound stops and the position falls
+    // back to where it stalled. The wait is short enough not to be felt after
+    // letting go, and the slider draws its own value meanwhile.
+    val effectsScope = rememberCoroutineScope()
+    var effectsJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val setPlaybackParameters: (PlaybackParameters) -> Unit = { params ->
+        effectsJob?.cancel()
+        effectsJob = effectsScope.launch {
+            kotlinx.coroutines.delay(120)
+            player?.playbackParameters = params
+        }
+    }
     val accent by rememberArtworkColor(playback.artworkUrl)
     val recent by viewModel.recent.collectAsStateWithLifecycle()
     val search by viewModel.search.collectAsStateWithLifecycle()
@@ -200,9 +242,17 @@ fun SquareApp(
     // Asked for again from the settings, after it has already been finished.
     var showTutorial by remember { mutableStateOf(false) }
 
+    /** The Google sign-in web view, opened from the settings. */
+    var showYouTubeLogin by remember { mutableStateOf(false) }
+
     // The open track menu, if any. Held here because the menu is drawn above
     // everything the app puts over its screens.
     var trackMenu by remember { mutableStateOf<TrackMenuRequest?>(null) }
+    // The playlist a long press opened the actions for.
+    var playlistMenu by remember { mutableStateOf<CatalogPlaylist?>(null) }
+    // Open when a name is being asked for; the playlist is null when the name is
+    // for one that does not exist yet.
+    var naming by remember { mutableStateOf<NamingRequest?>(null) }
 
     // Once, on the first composition that has a usable Web API session. The
     // ViewModel keeps what it fetched, so navigating away and back does not
@@ -228,10 +278,48 @@ fun SquareApp(
     // the player it was opened from.
     val overlayBackdrop = rememberLayerBackdrop()
 
+    // Where the player was left, read before anything is drawn.
+    //
+    // The activity is destroyed while the app sits in the background and the
+    // service keeps playing, so coming back from the launcher rebuilds this
+    // composition from nothing. Starting the animation at rest in the open
+    // position makes the first frame the player itself; waiting for the media
+    // controller to connect and *then* animating is what showed the home page
+    // for a moment first.
+    val preferences = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+    }
+
+    /** False only until the source has been picked once; see BackendChoiceScreen. */
+    val backendChosen by preferences.backendChosen.collectAsStateWithLifecycle()
+    val backend by preferences.backend.collectAsStateWithLifecycle()
+    val youtubeHome by viewModel.youtubeHome.collectAsStateWithLifecycle()
+
+    // Once the source is YouTube Music. Keyed on the backend so switching to it
+    // at runtime fills the page rather than leaving yesterday's empty one.
+    LaunchedEffect(backend) { viewModel.loadYouTubeHome() }
+
     // How far the player is open, 0 to 1. A value rather than a destination:
     // see NowPlayingSheet for why the player stopped being a route.
-    val expand = remember { Animatable(0f) }
+    val expand = remember { Animatable(if (preferences.playerWasOpen()) 1f else 0f) }
     val scope = rememberCoroutineScope()
+
+    // Remembered for the next launch. Written when the animation settles rather
+    // than on every frame of the drag.
+    LaunchedEffect(Unit) {
+        snapshotFlow { expand.isRunning to expand.value }
+            .collect { (running, value) ->
+                if (!running) preferences.setPlayerOpen(value > 0.5f)
+            }
+    }
+
+    // Nothing to be open onto: the queue was cleared, or the saved session did
+    // not survive. Closed without animating, so it is never seen.
+    LaunchedEffect(player, playback.hasItem) {
+        if (player != null && !playback.hasItem && expand.value > 0f) {
+            expand.snapTo(0f)
+        }
+    }
 
     // Opened from outside — a tap on the media notification.
     //
@@ -282,10 +370,14 @@ fun SquareApp(
 
     // Fetched per track, like the lyrics. Most tracks have none, so a null is an
     // ordinary answer and the player falls back to the cover.
-    LaunchedEffect(playback.mediaId) {
+    // Canvas is Spotify's own, served by its access point: on another source
+    // there is nobody to ask.
+    LaunchedEffect(playback.mediaId, backend) {
         val uri = playback.mediaId
         canvas = null
-        if (uri != null) canvas = Catalog.canvas(uri)
+        if (uri != null && backend == dev.lelonio.square.backend.BackendId.SPOTIFY) {
+            canvas = Catalog.canvas(uri)
+        }
     }
 
     var lyrics by remember { mutableStateOf<Lyrics?>(null) }
@@ -298,14 +390,22 @@ fun SquareApp(
         lyrics = null
         if (uri == null) return@LaunchedEffect
         lyricsLoading = true
-        lyrics = runCatching { Catalog.lyrics(uri) }.getOrNull()
+        lyrics = runCatching {
+            (context.applicationContext as dev.lelonio.square.SquareApplication)
+                .activeBackend
+                .lyrics(
+                    uri = uri,
+                    title = playback.title,
+                    artist = playback.artist,
+                    durationMs = playback.durationMs,
+                )
+        }.getOrNull()
         lyricsLoading = false
     }
 
     // The language the app is read in. Changing it re-creates the activity,
     // which is the only way a Compose tree already built out of one set of
     // resources can be rebuilt out of another.
-    val context = LocalContext.current
     val languageStore = remember(context) {
         (context.applicationContext as dev.lelonio.square.SquareApplication).language
     }
@@ -322,7 +422,29 @@ fun SquareApp(
     // Read once, up here: these travel with a play as plain text, and the rows
     // that start one are not composables of their own.
     val playAgainLabel = stringResource(R.string.play_again)
+    val trendingLabel = stringResource(R.string.trending_now)
     val searchLabel = stringResource(R.string.search)
+
+    val inPip by YouTubeVideoMode.pictureInPicture.collectAsStateWithLifecycle()
+
+    // In a floating window the app is the picture and nothing else.
+    //
+    // Drawing the whole interface into a window that size would put a home page,
+    // a tab bar and a player's worth of controls into a thumbnail, none of it
+    // legible and none of it reachable — the system owns the gestures there.
+    if (inPip) {
+        SquareTheme(seed = accent) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center,
+            ) {
+                player?.let { dev.lelonio.square.ui.player.VideoSurface(it) }
+            }
+        }
+        return
+    }
 
     SquareTheme(seed = accent) {
         // Material's default content colour is black, and it used to arrive from
@@ -335,6 +457,33 @@ fun SquareApp(
                 val navController = rememberNavController()
                 val currentEntry by navController.currentBackStackEntryAsState()
                 val route = currentEntry?.destination?.route
+
+                // Back to the home page when the source changes: an open
+                // playlist, a search or a detail page all belong to the
+                // catalogue that was just swapped out.
+                var lastBackend by remember { mutableStateOf(backend) }
+                // Held up over the switch, so the page changing catalogue
+                // underneath is something that happens behind a curtain rather
+                // than a screen half of one source and half of the other.
+                var switching by remember { mutableStateOf(false) }
+                LaunchedEffect(backend) {
+                    if (backend != lastBackend) {
+                        lastBackend = backend
+                        switching = true
+                        navController.popBackStack(Routes.HOME, inclusive = false)
+                        // Held until the new source has actually answered, so
+                        // what appears behind it is a page rather than a page
+                        // being built — with a floor, so the splash is never a
+                        // flash, and a ceiling, because a cold session can take
+                        // longer than anyone will stare at a logo.
+                        kotlinx.coroutines.withTimeoutOrNull(3_000) {
+                            kotlinx.coroutines.delay(600)
+                            snapshotFlow { state }
+                                .first { it !is MainViewModel.UiState.Loading }
+                        }
+                        switching = false
+                    }
+                }
 
                 val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
                 val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -444,6 +593,12 @@ fun SquareApp(
                                     navController.navigate(Routes.PLAYLIST)
                                 },
                                 backdrop = artBackdrop,
+                                youtubeMode =
+                                    backend == dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC,
+                                youtubeHome = youtubeHome,
+                                onPlayTrending = { tracks, index ->
+                                    onPlay(tracks, index, null, false, trendingLabel)
+                                },
                                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                             )
                         }
@@ -461,6 +616,14 @@ fun SquareApp(
                                     onPlay(tracks, index, null, false, searchLabel)
                                 },
                                 onEnqueue = onEnqueue,
+                                onTrackMenu = { track ->
+                                    trackMenu = TrackMenuRequest(
+                                        track = track,
+                                        // Nothing to take a search result out
+                                        // of: it belongs to no playlist here.
+                                        removable = false,
+                                    )
+                                },
                                 onOpenContext = { item ->
                                     viewModel.openContext(item.uri, item.title, item.artworkUrl)
                                     navController.navigate(Routes.PLAYLIST)
@@ -478,6 +641,9 @@ fun SquareApp(
                                 onLogOut = viewModel::logOut,
                                 onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
                                 playlistOrder = playlistOrder,
+                                canEdit = viewModel.canEditPlaylists,
+                                onCreatePlaylist = { naming = NamingRequest(null) },
+                                onPlaylistMenu = { playlistMenu = it },
                                 backdrop = artBackdrop,
                             )
                         }
@@ -497,6 +663,7 @@ fun SquareApp(
                                 language = language,
                                 onLanguage = setLanguage,
                                 onBack = { navController.popBackStack() },
+                                onYouTubeSignIn = { showYouTubeLogin = true },
                             )
                         }
 
@@ -550,8 +717,13 @@ fun SquareApp(
                                             track = track,
                                             // Only a playlist can have
                                             // something taken out of it.
+                                            // Taking a track out goes through
+                                            // the Spotify Web API, so only a
+                                            // Spotify playlist can offer it.
                                             removable = playlist.kind ==
-                                                MainViewModel.DetailKind.PLAYLIST,
+                                                MainViewModel.DetailKind.PLAYLIST &&
+                                                backend ==
+                                                dev.lelonio.square.backend.BackendId.SPOTIFY,
                                         )
                                     },
                                     storedSort = trackSort,
@@ -639,12 +811,14 @@ fun SquareApp(
                                 // PlaybackParameters carries both; changing one
                                 // has to carry the other through unchanged.
                                 onSpeed = {
-                                    player?.playbackParameters =
-                                        PlaybackParameters(it, playback.pitch)
+                                    setPlaybackParameters(
+                                        PlaybackParameters(it, playback.pitch),
+                                    )
                                 },
                                 onPitch = {
-                                    player?.playbackParameters =
-                                        PlaybackParameters(playback.speed, it)
+                                    setPlaybackParameters(
+                                        PlaybackParameters(playback.speed, it),
+                                    )
                                 },
                                 onReverb = AudioEffects::setReverb,
                                 presets = presets,
@@ -666,6 +840,8 @@ fun SquareApp(
                                 canvas = canvas,
                                 devices = devices,
                                 onOpenDevices = viewModel::openDevices,
+                                connectAvailable =
+                                    backend == dev.lelonio.square.backend.BackendId.SPOTIFY,
                                 onCloseDevices = viewModel::closeDevices,
                                 onRefreshDevices = viewModel::refreshDevices,
                                 onSelectDevice = { viewModel.transferPlayback(it) },
@@ -678,6 +854,16 @@ fun SquareApp(
                                 },
                                 addToPlaylist = addToPlaylist,
                                 onPickPlaylist = viewModel::addToPlaylist,
+                                playlistEditAvailable =
+                                    backend == dev.lelonio.square.backend.BackendId.SPOTIFY,
+                                onWatchVideo = player
+                                    ?.takeIf {
+                                        playback.mediaId
+                                            ?.startsWith("ytmusic:track:") == true
+                                    }
+                                    ?.let { { YouTubeVideoMode.toggle(it) } },
+                                videoOn = videoOn,
+                                videoPlayer = player,
                             )
                         },
                     )
@@ -689,10 +875,69 @@ fun SquareApp(
                 // Above the tab bar and the now-playing bar, which is the whole
                 // reason it lives here instead of in the screen that asked for
                 // it.
-                val menu = trackMenu
+                var lastPlaylistMenu by remember { mutableStateOf<CatalogPlaylist?>(null) }
+                LaunchedEffect(playlistMenu) { playlistMenu?.let { lastPlaylistMenu = it } }
+                val shownPlaylist = playlistMenu ?: lastPlaylistMenu
+                TrackSheet(
+                    visible = playlistMenu != null,
+                    title = shownPlaylist?.name.orEmpty(),
+                    subtitle = stringResource(R.string.playlist),
+                    artworkUrl = shownPlaylist?.artworkUrl,
+                    backdrop = overlayBackdrop,
+                    onDismiss = { playlistMenu = null },
+                ) {
+                    if (shownPlaylist != null) {
+                        TrackSheetAction(
+                            stringResource(R.string.rename),
+                            PhosphorIcons.Regular.PencilSimple,
+                        ) {
+                            naming = NamingRequest(shownPlaylist)
+                            playlistMenu = null
+                        }
+                        TrackSheetAction(
+                            stringResource(R.string.delete),
+                            PhosphorIcons.Regular.Trash,
+                            destructive = true,
+                        ) {
+                            viewModel.deletePlaylist(shownPlaylist.uri)
+                            playlistMenu = null
+                        }
+                    }
+                }
+
+                naming?.let { request ->
+                    dev.lelonio.square.ui.components.NameDialog(
+                        title = stringResource(
+                            if (request.playlist == null) R.string.new_playlist else R.string.rename,
+                        ),
+                        initial = request.playlist?.name.orEmpty(),
+                        confirmLabel = stringResource(
+                            if (request.playlist == null) R.string.create else R.string.save,
+                        ),
+                        onConfirm = { name ->
+                            val playlist = request.playlist
+                            if (playlist == null) {
+                                viewModel.createPlaylist(name)
+                            } else {
+                                viewModel.renamePlaylist(playlist.uri, name)
+                            }
+                            naming = null
+                        },
+                        onDismiss = { naming = null },
+                    )
+                }
+
+                // Held one beat longer than the state that opened it: the
+                // sheet slides out over a couple of hundred milliseconds, and
+                // reading the track straight off `trackMenu` emptied the title,
+                // the artist and every action the instant it was dismissed —
+                // the sheet was seen leaving with nothing in it.
+                var lastMenu by remember { mutableStateOf<TrackMenuRequest?>(null) }
+                LaunchedEffect(trackMenu) { trackMenu?.let { lastMenu = it } }
+                val menu = trackMenu ?: lastMenu
                 val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
                 TrackSheet(
-                    visible = menu != null,
+                    visible = trackMenu != null,
                     title = menu?.track?.name.orEmpty(),
                     subtitle = menu?.track?.artist.orEmpty(),
                     artworkUrl = menu?.track?.artworkUrl,
@@ -708,9 +953,13 @@ fun SquareApp(
                             trackMenu = null
                             onEnqueue(menu.track)
                         }
-                        TrackSheetAction(stringResource(R.string.add_to_playlist), PhosphorIcons.Regular.Plus) {
-                            trackMenu = null
-                            viewModel.openAddToPlaylist(menu.track.uri, menu.track.name)
+                        // Writing to a playlist is the Spotify Web API's; on
+                        // another source the entry would only ever fail.
+                        if (backend == dev.lelonio.square.backend.BackendId.SPOTIFY) {
+                            TrackSheetAction(stringResource(R.string.add_to_playlist), PhosphorIcons.Regular.Plus) {
+                                trackMenu = null
+                                viewModel.openAddToPlaylist(menu.track.uri, menu.track.name)
+                            }
                         }
                         TrackSheetAction(stringResource(R.string.copy_link), PhosphorIcons.Regular.LinkSimple) {
                             trackMenu = null
@@ -739,10 +988,109 @@ fun SquareApp(
                     onDismiss = viewModel::closeAddToPlaylist,
                 )
 
+                // The curtain. Over the whole app, under nothing.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = switching,
+                    enter = androidx.compose.animation.fadeIn(tween(180)),
+                    exit = androidx.compose.animation.fadeOut(tween(420)),
+                    modifier = Modifier.zIndex(20f),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            // A colour of its own: the theme's background is
+                            // transparent, because every page in this app is
+                            // drawn over the blurred artwork. A curtain has to
+                            // be opaque or it is not a curtain.
+                            .background(Color(0xFF0A0A0A)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            dev.lelonio.square.ui.components.AppIcon(84.dp)
+                            dev.lelonio.square.ui.components.SquareWordmark(height = 28.dp)
+                            // Which source is being opened, named and marked:
+                            // the whole point of the wait is that the app is
+                            // becoming a different one, and a bare spinner says
+                            // nothing about that.
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    when (backend) {
+                                        dev.lelonio.square.backend.BackendId.SPOTIFY ->
+                                            PhosphorIcons.Regular.SpotifyLogo
+                                        dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC ->
+                                            PhosphorIcons.Regular.YoutubeLogo
+                                    },
+                                    contentDescription = null,
+                                    tint = Ink,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Text(
+                                    stringResource(
+                                        when (backend) {
+                                            dev.lelonio.square.backend.BackendId.SPOTIFY ->
+                                                R.string.backend_spotify
+                                            dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC ->
+                                                R.string.backend_youtube
+                                        },
+                                    ),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Ink,
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Above everything, bars and player included: until it is done
                 // there is nothing underneath worth reaching, and on a fresh
                 // install most of what is underneath does not work yet.
-                if (!onboarded || showTutorial) {
+                //
+                // Above the tutorial too, and asked first: everything the
+                // tutorial explains is Spotify's setup, so the source has to be
+                // settled before any of it is worth walking through.
+                // Over everything, like the tutorial: it is Google's own sign-in
+                // page and half-covering it would be the wrong thing to do with
+                // a page someone is typing a password into.
+                if (showYouTubeLogin) {
+                    val account = remember(context) {
+                        (context.applicationContext as dev.lelonio.square.SquareApplication)
+                            .youtubeAccount
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(androidx.compose.ui.graphics.Color(0xFF101012)),
+                    ) {
+                        dev.lelonio.square.backend.youtube.YouTubeLoginScreen(
+                            account = account,
+                            onDone = {
+                                showYouTubeLogin = false
+                                // The library is the whole point of signing in,
+                                // and it was read as the signed-out account.
+                                viewModel.refresh()
+                            },
+                        )
+                    }
+                }
+
+                if (!backendChosen) {
+                    BackendChoiceScreen(onChoose = preferences::setBackend)
+                } else if (
+                    // Every step of it is Spotify's setup — the Premium
+                    // account, the login, the registered application — so on
+                    // YouTube Music it would be five screens of instructions
+                    // for something the user just chose not to use. Still
+                    // reachable from the settings, which is where someone who
+                    // means to switch to Spotify would go.
+                    showTutorial ||
+                    (!onboarded && backend == dev.lelonio.square.backend.BackendId.SPOTIFY)
+                ) {
                     OnboardingScreen(
                         state = state,
                         webApi = webApi,
@@ -866,12 +1214,16 @@ private fun BottomBar(
             // 40% fill that made the bar a solid slab beside the other glass.
             accentColor = Ink,
             containerColor = GlassFilm,
+            indicatorVisible = routeIndex >= 0,
         ) {
             BottomItem(
                 stringResource(R.string.home),
                 PhosphorIcons.Fill.House,
                 PhosphorIcons.Regular.House,
-                selected == 0,
+                // Nothing is lit while the page on screen is not one of these
+                // two: search is a destination of its own, and leaving Home
+                // filled behind it said the app was somewhere it was not.
+                routeIndex >= 0 && selected == 0,
             ) {
                 onSelect(Routes.HOME)
             }
@@ -879,7 +1231,7 @@ private fun BottomBar(
                 stringResource(R.string.library),
                 PhosphorIcons.Fill.MusicNotes,
                 PhosphorIcons.Regular.MusicNotes,
-                selected == 1,
+                routeIndex >= 0 && selected == 1,
             ) { onSelect(Routes.LIBRARY) }
             }
         }
@@ -1003,4 +1355,29 @@ private fun Player.cycleRepeatMode() {
         Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
         else -> Player.REPEAT_MODE_OFF
     }
+}
+
+/**
+ * The playing track as the last session left it, or null when there was none.
+ *
+ * The saved index points into the *current* order while the list is kept in the
+ * pre-shuffle one, so the permutation has to be applied to find the track that
+ * was actually playing.
+ */
+private fun savedPlaybackSeed(context: android.content.Context): PlaybackState? {
+    val saved = dev.lelonio.square.data.PlaybackStore(context).load() ?: return null
+    val position = saved.shuffleOrder?.getOrNull(saved.index) ?: saved.index
+    val track = saved.tracks.getOrNull(position) ?: return null
+    return PlaybackState(
+        hasItem = true,
+        mediaId = track.uri,
+        title = track.name,
+        artist = track.artist,
+        artworkUrl = track.artworkUrl,
+        durationMs = track.durationMs,
+        // Not "paused": what it is doing is unknown until the controller
+        // answers, and a play button that flips to pause a moment later reads
+        // as the app having ignored a tap.
+        isBuffering = true,
+    )
 }

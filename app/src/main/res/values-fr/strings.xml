@@ -33,6 +33,7 @@
     <string name="off">Off</string>
     <string name="queue">File d\'attente</string>
     <string name="lyrics">Paroles</string>
+    <string name="watch_video">Regarder la vidéo</string>
     <string name="effects">Effets</string>
     <string name="cover">Pochette</string>
     <string name="devices">Appareils</string>
@@ -177,6 +178,22 @@
     <string name="update_needs_permission">Autorisez l\'installation — touchez</string>
     <string name="update_failed">Pas maintenant — touchez pour réessayer</string>
     <string name="quality">Qualité audio</string>
+    <string name="backend">Source</string>
+    <string name="backend_spotify">Spotify</string>
+    <string name="backend_youtube">YouTube Music</string>
+    <string name="backend_note">Spotify lit votre compte : sa bibliothèque, ses playlists, ses appareils. YouTube Music est ici anonyme — la recherche et la lecture fonctionnent, la bibliothèque d\'un compte non. Changer ceci redémarre la lecture.</string>
+    <string name="backend_choice_title">D\'où voulez-vous écouter ?</string>
+    <string name="backend_choice_subtitle">Vous pourrez choisir l\'autre plus tard, dans les réglages.</string>
+    <string name="backend_choice_spotify_note">Votre compte : votre bibliothèque, vos playlists, vos appareils Connect. Nécessite une connexion et un peu de configuration.</string>
+    <string name="backend_choice_youtube_note">Tout le catalogue, cherchable et lisible immédiatement. Pas de compte, donc pas de bibliothèque personnelle à lire.</string>
+    <string name="backend_choice_changeable">Modifiable à tout moment dans les réglages.</string>
+    <string name="youtube_home_empty">Cherchez quelque chose pour commencer à écouter. Ce que vous lisez apparaîtra ici.</string>
+    <string name="trending_now">Tendances</string>
+    <string name="popular_playlists">Playlists populaires</string>
+    <string name="youtube_account">Compte YouTube</string>
+    <string name="youtube_sign_in">Se connecter avec Google</string>
+    <string name="youtube_sign_in_note">Facultatif. La recherche et la lecture fonctionnent sans ; la connexion ajoute vos playlists.</string>
+    <string name="youtube_sign_out">Se déconnecter</string>
     <string name="quality_auto">Automatique</string>
     <string name="quality_high">Haute</string>
     <string name="quality_medium">Moyenne</string>
@@ -184,4 +201,9 @@
     <string name="quality_auto_note">Qualité maximale en wi-fi, un cran en dessous sur une connexion facturée.</string>
     <string name="quality_restarts">La changer recharge le titre en cours.</string>
     <string name="premium_required">Square demande Spotify Premium. Un compte gratuit peut se connecter, mais Spotify ne diffuse pas vers un client comme celui-ci.</string>
+    <string name="new_playlist">Nouvelle playlist</string>
+    <string name="rename">Renommer</string>
+    <string name="delete">Supprimer</string>
+    <string name="playlist_name">Nom de la playlist</string>
+    <string name="create">Créer</string>
 </resources>

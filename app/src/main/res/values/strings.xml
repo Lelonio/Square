@@ -44,6 +44,7 @@
     <string name="off">Off</string>
     <string name="queue">Queue</string>
     <string name="lyrics">Lyrics</string>
+    <string name="watch_video">Watch the video</string>
     <string name="effects">Effects</string>
     <string name="cover">Cover</string>
     <string name="devices">Devices</string>
@@ -198,6 +199,22 @@
     <string name="update_needs_permission">Allow installing — tap</string>
     <string name="update_failed">Not now — tap to retry</string>
     <string name="quality">Audio quality</string>
+    <string name="backend">Source</string>
+    <string name="backend_spotify">Spotify</string>
+    <string name="backend_youtube">YouTube Music</string>
+    <string name="backend_note">Spotify plays your own account: its library, its playlists, its devices. YouTube Music is anonymous here — search and playback work, an account library does not. Changing this restarts playback.</string>
+    <string name="backend_choice_title">Where do you want to listen from?</string>
+    <string name="backend_choice_subtitle">You can pick the other one later, in the settings.</string>
+    <string name="backend_choice_spotify_note">Your own account: your library, your playlists, your Connect devices. Needs a login and a bit of setup.</string>
+    <string name="backend_choice_youtube_note">The whole catalogue, searchable and playable straight away. No account, so there is no library of your own to read.</string>
+    <string name="backend_choice_changeable">This can be changed at any time in the settings.</string>
+    <string name="youtube_home_empty">Search for something to start listening. What you play shows up here.</string>
+    <string name="trending_now">Trending now</string>
+    <string name="popular_playlists">Popular playlists</string>
+    <string name="youtube_account">YouTube account</string>
+    <string name="youtube_sign_in">Sign in with Google</string>
+    <string name="youtube_sign_in_note">Optional. Search and playback work without it; signing in adds your own playlists.</string>
+    <string name="youtube_sign_out">Sign out</string>
     <string name="quality_auto">Automatic</string>
     <string name="quality_high">High</string>
     <string name="quality_medium">Medium</string>
@@ -205,4 +222,9 @@
     <string name="quality_auto_note">Full quality on wi-fi, one step down on a metered connection.</string>
     <string name="quality_restarts">Changing this reloads what is playing.</string>
     <string name="premium_required">Square needs Spotify Premium. A free account can sign in, but Spotify does not stream to a client like this one.</string>
+    <string name="new_playlist">New playlist</string>
+    <string name="rename">Rename</string>
+    <string name="delete">Delete</string>
+    <string name="playlist_name">Playlist name</string>
+    <string name="create">Create</string>
 </resources>

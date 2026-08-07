@@ -3,6 +3,7 @@ package dev.lelonio.square.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.HTTP
 import retrofit2.http.POST
@@ -178,6 +179,35 @@ interface SpotifyApi {
         @Body request: RemoveTracksRequestDto,
     )
 
+    /**
+     * Creates a playlist owned by the signed-in account.
+     *
+     * Private by default: a playlist made from a phone in the middle of
+     * listening is a working list, not a publication.
+     */
+    @POST("v1/users/{userId}/playlists")
+    suspend fun createPlaylist(
+        @Path("userId") userId: String,
+        @Body request: PlaylistDetailsDto,
+    ): PlaylistDto
+
+    /** Renames one; the same endpoint changes description and visibility. */
+    @PUT("v1/playlists/{id}")
+    suspend fun updatePlaylistDetails(
+        @Path("id") playlistId: String,
+        @Body request: PlaylistDetailsDto,
+    )
+
+    /**
+     * Removes a playlist from the account's library.
+     *
+     * Unfollowing, because that is all Spotify offers: playlists are never
+     * really deleted, and for the owner unfollowing is exactly what the app's
+     * own "delete" does.
+     */
+    @DELETE("v1/playlists/{id}/followers")
+    suspend fun unfollowPlaylist(@Path("id") playlistId: String)
+
     @GET("v1/search")
     suspend fun search(
         @Query("q") query: String,
@@ -188,6 +218,13 @@ interface SpotifyApi {
 
 @Serializable
 data class AddTracksRequestDto(val uris: List<String>)
+
+/** What a playlist is created or renamed with. */
+@Serializable
+data class PlaylistDetailsDto(
+    val name: String,
+    @SerialName("public") val isPublic: Boolean = false,
+)
 
 @Serializable
 data class RemoveTracksRequestDto(val tracks: List<TrackUriDto>)

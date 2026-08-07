@@ -54,6 +54,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import com.kyant.backdrop.Backdrop
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.SpotifyLogo
+import com.adamglin.phosphoricons.regular.YoutubeLogo
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.material3.Icon
 import dev.lelonio.square.R
 import dev.lelonio.square.data.CatalogPlaylist
 import dev.lelonio.square.data.CatalogTrack
@@ -118,7 +127,33 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     /** The layer the glass on this page refracts; see the note in SquareApp. */
     backdrop: Backdrop,
+    /**
+     * True when the active source is YouTube Music.
+     *
+     * [state] describes the *Spotify* session, so on YouTube it is permanently
+     * `LoggedOut` and this page would offer a login for an account the user
+     * chose not to use. There is no account to log into here, so the page shows
+     * what it genuinely has instead.
+     */
+    youtubeMode: Boolean = false,
+    youtubeHome: MainViewModel.YouTubeHomeState = MainViewModel.YouTubeHomeState(),
+    onPlayTrending: (List<CatalogTrack>, Int) -> Unit = { _, _ -> },
 ) {
+    if (youtubeMode) {
+        YouTubeHome(
+            contentPadding = contentPadding,
+            home = youtubeHome,
+            recent = recent,
+            accountName = (state as? MainViewModel.UiState.Ready)?.displayName.orEmpty(),
+            backdrop = backdrop,
+            onPlayRecent = onPlayRecent,
+            onPlayTrending = onPlayTrending,
+            onOpenPlaylist = onOpenPlaylist,
+            onOpenSettings = onOpenSettings,
+        )
+        return
+    }
+
     when (state) {
         MainViewModel.UiState.LoggedOut -> Centered {
             AppIcon(84.dp)
@@ -191,6 +226,8 @@ fun HomeScreen(
                 Header(
                     name = state.displayName,
                     avatarUrl = state.avatarUrl,
+                    service = R.string.backend_spotify,
+                    serviceIcon = PhosphorIcons.Regular.SpotifyLogo,
                     collapse = { collapse },
                     // The chip that is lit is the one that was tapped. It used
                     // to follow whichever section the scroll had reached, which
@@ -248,12 +285,30 @@ fun HomeScreen(
                 // First on the page, and deliberately: what the account is
                 // playing this month is the one row that is different every
                 // time it is opened.
+                // Every feed section keeps its place while it is still being
+                // fetched. The account's playlists and its recent tracks are
+                // held on the device and draw at once; everything else is a Web
+                // API round trip a second or two behind, and without a
+                // placeholder the page arrived in two halves and shifted under
+                // whatever was being read.
+                if (showForYou && feed.topTracks.isEmpty() && feed.loading) {
+                    item(contentType = "skeleton") {
+                        SkeletonSection(tileWidth = 152.dp, tileHeight = 152.dp)
+                    }
+                }
+
                 if (showForYou && feed.topTracks.isNotEmpty()) {
                     item(contentType = Feed.FOR_YOU.name) { Heading(stringResource(R.string.on_repeat)) }
                     item(contentType = Feed.FOR_YOU.name) {
                         TrackRow(feed.topTracks) { index ->
                             onPlayFeed(feed.topTracks, index, onRepeatLabel)
                         }
+                    }
+                }
+
+                if (showForYou && feed.jumpBackIn.isEmpty() && feed.loading) {
+                    item(contentType = "skeleton") {
+                        SkeletonSection(tileWidth = 152.dp, tileHeight = 152.dp)
                     }
                 }
 
@@ -275,6 +330,12 @@ fun HomeScreen(
                         ) { playlist ->
                             PlaylistTile(playlist) { onOpenPlaylist(playlist) }
                         }
+                    }
+                }
+
+                if (showReleases && feed.newReleases.isEmpty() && feed.loading) {
+                    item(contentType = "skeleton") {
+                        SkeletonSection(tileWidth = 0.dp, tileHeight = 200.dp, card = true)
                     }
                 }
 
@@ -302,6 +363,12 @@ fun HomeScreen(
                         Carousel(feed.fromYourArtists, key = { it.uri }) { item ->
                             FeedTile(item) { onOpenItem(item) }
                         }
+                    }
+                }
+
+                if (showArtists && feed.topArtists.isEmpty() && feed.loading) {
+                    item(contentType = "skeleton") {
+                        SkeletonSection(tileWidth = 120.dp, tileHeight = 120.dp, round = true)
                     }
                 }
 
@@ -358,8 +425,13 @@ fun HomeScreen(
  */
 @Composable
 private fun Header(
+    modifier: Modifier = Modifier,
     name: String,
     avatarUrl: String?,
+    /** Which service the page is showing: see the note on the line it draws. */
+    @StringRes service: Int,
+    /** Its mark, so the source is recognisable before the line is read. */
+    serviceIcon: androidx.compose.ui.graphics.vector.ImageVector,
     /**
      * How far collapsed, as a lambda rather than a value.
      *
@@ -377,9 +449,17 @@ private fun Header(
     topPadding: Dp,
     onFilter: (Feed) -> Unit,
     onOpenSettings: () -> Unit,
+    /**
+     * False on a page with no feed to filter.
+     *
+     * The chips are the one part of this header that is Spotify's: they pick
+     * between sections built out of that account's data, and YouTube's page is
+     * whatever shelves the service itself sent.
+     */
+    showFilters: Boolean = true,
 ) {
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             // Seats the header on the page instead of leaving it floating over
             // whatever the list has scrolled underneath it.
@@ -407,30 +487,19 @@ private fun Header(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                // What survives the collapse, along with the account picture.
+                // The account, and which service it is an account for.
                 //
-                // The account name is the greeting; the mark is what page you
-                // are on. Once the header is a bar, a bar carrying only a first
-                // name says nothing about where you are, so it is the name that
-                // leaves and the app that stays. It grows a little on the way
-                // in, since by then it is the only title on screen.
-                AppLockup(
-                    iconSize = 26.dp,
-                    nameHeight = 15.dp,
-                    modifier = Modifier.graphicsLayer {
-                        val scale = 1f + 0.1f * collapse()
-                        scaleX = scale
-                        scaleY = scale
-                        transformOrigin = TransformOrigin(0f, 0.5f)
-                    },
-                )
-                // Height goes with the alpha. Fading it alone would leave the
-                // bar the same size with a blank line in it.
-                Text(
-                    name,
-                    style = MaterialTheme.typography.displayLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                // Small and above rather than large and below, which is where
+                // the name used to be: whose account it is changes nothing about
+                // the page, while *which service* changes everything on it — the
+                // catalogue, the playlists, what the player can do — and that
+                // was nowhere on screen. Together they read as one line of
+                // provenance over the app's own name.
+                //
+                // Height goes with the alpha, so the collapsed header is a bar
+                // rather than a bar with a blank line in it.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .layout { measurable, constraints ->
                             val placeable = measurable.measure(constraints)
@@ -440,9 +509,43 @@ private fun Header(
                         .graphicsLayer {
                             clip = true
                             alpha = (1f - collapse() * 1.6f).coerceIn(0f, 1f)
-                            // Anchored to the mark above it rather than sliding
-                            // up from wherever it was.
                             transformOrigin = TransformOrigin(0f, 0f)
+                        },
+                ) {
+                    Icon(
+                        serviceIcon,
+                        contentDescription = stringResource(service),
+                        tint = InkDim,
+                        modifier = Modifier
+                            .padding(end = 6.dp)
+                            .size(15.dp),
+                    )
+                    Text(
+                        listOfNotNull(
+                            stringResource(service),
+                            name.takeIf { it.isNotBlank() },
+                        ).joinToString(" · "),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = InkDim,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // The app's own name, at the size the account name used to be.
+                // It is what the page is, and unlike the account it is worth
+                // reading at a glance; it shrinks a little as the header
+                // collapses rather than leaving, because a bar with nothing in
+                // it says nothing about where you are.
+                AppLockup(
+                    iconSize = 34.dp,
+                    nameHeight = 22.dp,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .graphicsLayer {
+                            val scale = 1f - 0.22f * collapse()
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = TransformOrigin(0f, 0.5f)
                         },
                 )
             }
@@ -473,7 +576,9 @@ private fun Header(
             )
         }
 
-        FilterRow(highlighted, backdrop, onFilter)
+        // The chips carry the header's bottom margin with them; without them
+        // the list would start against the app's own name.
+        if (showFilters) FilterRow(highlighted, backdrop, onFilter) else Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -677,6 +782,65 @@ private fun TrackTile(track: CatalogTrack, onClick: () -> Unit) {
 }
 
 /** A row of tracks that play where they are tapped. */
+/**
+ * A section's shape, before the section has arrived.
+ *
+ * Deliberately still — no shimmer. A sweep across half the page draws the eye
+ * to the part of it that has nothing to look at, and these are gone within a
+ * second or two anyway. What they are for is the layout: holding the space
+ * means the rows that land later land in the place they already occupied.
+ */
+@Composable
+private fun SkeletonSection(
+    tileWidth: Dp,
+    tileHeight: Dp,
+    round: Boolean = false,
+    card: Boolean = false,
+) {
+    val fill = Ink.copy(alpha = 0.07f)
+    Column(Modifier.padding(top = 22.dp)) {
+        // Stands in for the heading.
+        Box(
+            Modifier
+                .padding(horizontal = 20.dp)
+                .width(140.dp)
+                .height(20.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(fill),
+        )
+        if (card) {
+            Box(
+                Modifier
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
+                    .fillMaxWidth()
+                    .height(tileHeight)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(fill),
+            )
+        } else {
+            Row(
+                Modifier
+                    .padding(start = 20.dp, top = 14.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                repeat(SKELETON_TILES) {
+                    Box(
+                        Modifier
+                            .width(tileWidth)
+                            .height(tileHeight)
+                            .clip(if (round) CircleShape else RoundedCornerShape(18.dp))
+                            .background(fill),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Enough to reach the edge of the screen, which is all a placeholder row is. */
+private const val SKELETON_TILES = 3
+
 @Composable
 private fun TrackRow(tracks: List<CatalogTrack>, onPlay: (Int) -> Unit) {
     LazyRow(
@@ -761,6 +925,188 @@ private fun GlassAction(label: String, backdrop: Backdrop, onClick: () -> Unit) 
     ) {
         Text(label, style = MaterialTheme.typography.titleMedium, color = Ink)
     }
+}
+
+/**
+ * The home page when the source is YouTube Music.
+ *
+ * Deliberately thin, and honestly so. Everything the Spotify home page is made
+ * of — the playlists, the top artists, what the account played on other
+ * devices — is an account's own data, and this backend is anonymous: there is
+ * no account to have any of it. What does exist is what was played here, which
+ * is kept on the device and works the same for both sources.
+ *
+ * So it shows that, and otherwise points at search rather than filling the
+ * screen with rows invented to look busy.
+ */
+@Composable
+private fun YouTubeHome(
+    contentPadding: PaddingValues,
+    home: MainViewModel.YouTubeHomeState,
+    recent: List<CatalogTrack>,
+    accountName: String,
+    backdrop: Backdrop,
+    onPlayRecent: (List<CatalogTrack>, Int) -> Unit,
+    onPlayTrending: (List<CatalogTrack>, Int) -> Unit,
+    onOpenPlaylist: (CatalogPlaylist) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    val empty = home.rows.isEmpty() && recent.isEmpty()
+    if (empty) {
+        Box(Modifier.fillMaxSize()) {
+            Centered {
+                if (home.loading) {
+                    CircularProgressIndicator(color = Ink, strokeWidth = 2.dp)
+                } else {
+                    AppIcon(84.dp)
+                    SquareWordmark(height = 28.dp)
+                    Text(
+                        stringResource(R.string.youtube_home_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = InkDim,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 40.dp),
+                    )
+                }
+            }
+            // Over the empty state rather than above it: the settings are the
+            // one thing still worth reaching from a page with nothing on it,
+            // and signing in is done from there.
+            YouTubeHeader(
+                accountName = accountName,
+                topPadding = contentPadding.calculateTopPadding(),
+                backdrop = backdrop,
+                // Nothing scrolls under it here, so it stays as it opens.
+                collapse = { 0f },
+                onOpenSettings = onOpenSettings,
+            )
+        }
+        return
+    }
+
+    val listState = rememberLazyListState()
+    // The same collapse the Spotify page has, read the same way; see the note
+    // there. The header is a sibling of the list rather than its first item
+    // precisely so it can shrink while the list scrolls under it.
+    val collapse by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) 1f
+            else (listState.firstVisibleItemScrollOffset / COLLAPSE_DISTANCE_PX)
+                .coerceIn(0f, 1f)
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        YouTubeHeader(
+            accountName = accountName,
+            topPadding = contentPadding.calculateTopPadding(),
+            backdrop = backdrop,
+            collapse = { collapse },
+            onOpenSettings = onOpenSettings,
+        )
+
+        LazyColumn(
+            // The same fade the Spotify list has: the rows dissolve into the
+            // header rather than ending against it. See the note there for why
+            // the mask needs a layer of its own.
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            FADE_FRACTION to Color.Black,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
+            state = listState,
+            // The header owns the top of the page; what is left is the room the
+            // player bar needs at the bottom.
+            contentPadding = PaddingValues(
+                bottom = contentPadding.calculateBottomPadding(),
+            ),
+        ) {
+        // Whatever shelves YouTube sent, in its own order and under its own
+        // titles. Not reshaped into a fixed set of rows: the page is different
+        // signed in and signed out, and it changes on its own besides.
+        home.rows.forEach { row ->
+            item(key = "head-${row.title}") { Heading(row.title) }
+
+            if (row.tracks.isNotEmpty()) {
+                item(key = "tracks-${row.title}") {
+                    TrackRow(row.tracks) { index -> onPlayTrending(row.tracks, index) }
+                }
+            }
+
+            if (row.items.isNotEmpty()) {
+                item(key = "items-${row.title}") {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.padding(top = 14.dp),
+                    ) {
+                        items(row.items, key = { it.uri }) { entry ->
+                            PlaylistTile(entry) { onOpenPlaylist(entry) }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Last: the rows above change on their own, this one only changes
+        // because the user did something.
+        if (recent.isNotEmpty()) {
+            item(key = "recent-head") { Heading(stringResource(R.string.play_again)) }
+            item(key = "recent") {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(top = 14.dp),
+                ) {
+                    itemsIndexed(recent, key = { _, track -> track.uri }) { index, track ->
+                        TrackTile(track) { onPlayRecent(recent, index) }
+                    }
+                }
+            }
+        }
+        }
+    }
+}
+
+/**
+ * The YouTube page's header.
+ *
+ * Far plainer than [Header]: that one carries the feed's filter chips and a
+ * collapse driven by the scroll, and neither has anything to act on here —
+ * there are no feed sections to filter. What it must keep is the way into the
+ * settings, because that is the only one there is; the app has no settings tab.
+ */
+@Composable
+private fun YouTubeHeader(
+    accountName: String,
+    topPadding: Dp,
+    backdrop: Backdrop,
+    collapse: () -> Float,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Header(
+        modifier = modifier,
+        name = accountName,
+        avatarUrl = null,
+        service = R.string.backend_youtube,
+        serviceIcon = PhosphorIcons.Regular.YoutubeLogo,
+        collapse = collapse,
+        highlighted = Feed.entries.first(),
+        backdrop = backdrop,
+        topPadding = topPadding,
+        onFilter = {},
+        onOpenSettings = onOpenSettings,
+        showFilters = false,
+    )
 }
 
 @Composable

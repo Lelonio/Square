@@ -2,6 +2,7 @@ package dev.lelonio.square.ui.library
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +51,7 @@ import dev.lelonio.square.ui.theme.softShadow
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ListBullets
+import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.SquaresFour
 
 /** How the playlists are arranged. */
@@ -81,6 +83,11 @@ fun LibraryScreen(
     onOpenPlaylist: (CatalogPlaylist) -> Unit,
     /** URIs most recently opened first; see PlaylistOrderStore. */
     playlistOrder: List<String>,
+    /** False when the source cannot be written to; see MusicBackend. */
+    canEdit: Boolean = false,
+    onCreatePlaylist: () -> Unit = {},
+    /** Long press: rename and delete live in a sheet, like a track's actions. */
+    onPlaylistMenu: (CatalogPlaylist) -> Unit = {},
     backdrop: Backdrop,
 ) {
     when (state) {
@@ -139,6 +146,8 @@ fun LibraryScreen(
                     topPadding = contentPadding.calculateTopPadding(),
                     onLayout = { layout = it },
                     onOrder = { order = it },
+                    canEdit = canEdit,
+                    onCreatePlaylist = onCreatePlaylist,
                 )
 
                 val listPadding = PaddingValues(
@@ -157,7 +166,15 @@ fun LibraryScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(playlists, key = { it.uri }) { playlist ->
-                            GridTile(playlist) { onOpenPlaylist(playlist) }
+                            GridTile(
+                                playlist,
+                                onClick = { onOpenPlaylist(playlist) },
+                                onLongClick = if (canEdit) {
+                                    { onPlaylistMenu(playlist) }
+                                } else {
+                                    null
+                                },
+                            )
                         }
                     }
 
@@ -167,7 +184,15 @@ fun LibraryScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(playlists, key = { it.uri }) { playlist ->
-                            ListRow(playlist) { onOpenPlaylist(playlist) }
+                            ListRow(
+                                playlist,
+                                onClick = { onOpenPlaylist(playlist) },
+                                onLongClick = if (canEdit) {
+                                    { onPlaylistMenu(playlist) }
+                                } else {
+                                    null
+                                },
+                            )
                         }
                     }
                 }
@@ -185,6 +210,8 @@ private fun Header(
     topPadding: Dp,
     onLayout: (Layout) -> Unit,
     onOrder: (Order) -> Unit,
+    canEdit: Boolean,
+    onCreatePlaylist: () -> Unit,
 ) {
     Column(
         Modifier
@@ -204,6 +231,30 @@ private fun Header(
                     style = MaterialTheme.typography.bodySmall,
                     color = InkDim,
                 )
+            }
+
+            // Only where a playlist can actually be made: on a source with no
+            // account signed in, a plus that always failed would be worse than
+            // no plus at all.
+            if (canEdit) {
+                LiquidButton(
+                    onClick = onCreatePlaylist,
+                    backdrop = backdrop,
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .size(42.dp),
+                    contentHeight = 42.dp,
+                    contentPadding = 0.dp,
+                    blurRadius = 8.dp,
+                    surfaceColor = GlassFilm,
+                ) {
+                    Icon(
+                        PhosphorIcons.Regular.Plus,
+                        contentDescription = stringResource(R.string.new_playlist),
+                        tint = Ink,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
 
             // One button that swaps between the two arrangements rather than a
@@ -259,8 +310,14 @@ private fun Header(
 }
 
 @Composable
-private fun GridTile(playlist: CatalogPlaylist, onClick: () -> Unit) {
-    Column(Modifier.clickable(onClick = onClick)) {
+private fun GridTile(
+    playlist: CatalogPlaylist,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+) {
+    Column(
+        Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
         Artwork(
             url = playlist.artworkUrl,
             title = playlist.name,
@@ -282,12 +339,16 @@ private fun GridTile(playlist: CatalogPlaylist, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ListRow(playlist: CatalogPlaylist, onClick: () -> Unit) {
+private fun ListRow(
+    playlist: CatalogPlaylist,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+) {
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
