@@ -51,6 +51,10 @@ the screen's own frame rate.
   app's own language.
 - **Audio effects.** Speed and pitch independently, plus reverb, with presets —
   the "slowed + reverb" edit, done properly, on any track.
+- **Android Auto.** Playlists and recently played are browsable in the car, and
+  voice search plays from the catalogue. Auto only lists apps it was installed
+  beside, so a sideloaded build needs "Unknown sources" turned on in Android
+  Auto's developer settings.
 - **Six languages.** English, Italian, Spanish, French, German, Portuguese, and
   a picker that does not depend on the phone's own language.
 

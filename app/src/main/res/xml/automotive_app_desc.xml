@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Declares Square as a media app to Android Auto. Without this file the phone
+  projects nothing: Auto reads it before it ever binds the browser service, so
+  a missing entry looks exactly like an app that has no media at all.
+-->
+<automotiveApp>
+    <uses name="media" />
+</automotiveApp>

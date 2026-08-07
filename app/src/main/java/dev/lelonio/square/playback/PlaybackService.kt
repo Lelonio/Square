@@ -1,12 +1,9 @@
 package dev.lelonio.square.playback
 
 import android.content.Intent
-import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
-import com.google.common.util.concurrent.Futures
-import com.google.common.util.concurrent.ListenableFuture
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import dev.lelonio.square.auth.SpotifyOAuth
 import dev.lelonio.square.auth.TokenStore
 import dev.lelonio.square.data.CatalogTrack
@@ -36,14 +33,14 @@ const val EXTRA_OPEN_PLAYER = "dev.lelonio.square.OPEN_PLAYER"
 /** Its action; see the note where the PendingIntent is built. */
 const val ACTION_OPEN_PLAYER = "dev.lelonio.square.action.OPEN_PLAYER"
 
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private lateinit var tokens: TokenStore
     private lateinit var queue: PlayQueue
     private lateinit var player: LibrespotPlayer
-    private var session: MediaSession? = null
+    private var session: MediaLibrarySession? = null
     private var engineStarted = false
 
     /** Owns the AudioTrack the native sink writes into. */
@@ -66,8 +63,7 @@ class PlaybackService : MediaSessionService() {
             audioOutput::fadeIn,
             audioOutput::setPlaybackActive,
         )
-        session = MediaSession.Builder(this, player)
-            .setCallback(MediaItemsCallback)
+        session = MediaLibrarySession.Builder(this, player, MediaBrowseTree(this, scope))
             // Without this the notification is inert to a tap: Media3 has no way
             // to know which activity owns the session. `SINGLE_TOP` so an app
             // already running comes forward rather than starting a second copy
@@ -291,7 +287,8 @@ class PlaybackService : MediaSessionService() {
         artworkUri = track.artworkUrl?.let(android.net.Uri::parse),
     )
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
+        session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         runCatching { savePlayback() }
@@ -315,41 +312,6 @@ class PlaybackService : MediaSessionService() {
         NativeBridge.shutdown()
         audioOutput.release()
         super.onDestroy()
-    }
-
-    /**
-     * Accepts media items sent by controllers.
-     *
-     * Required, not optional. A session never hands a controller's items to the
-     * player directly: it asks the app to resolve them first, and the default
-     * implementation *rejects* every item whose `localConfiguration` is null —
-     * i.e. that carries no playback URI. Ours carry a Spotify URI as their media
-     * id and nothing else, so without this the whole `setMediaItems` call is
-     * dropped with no error, and only the following `play()` reaches the engine:
-     * "Player::play called from invalid state: Stopped".
-     *
-     * Nothing needs resolving here — [PlayQueue] reads the media id — so the
-     * items are returned unchanged.
-     */
-    private object MediaItemsCallback : MediaSession.Callback {
-
-        override fun onAddMediaItems(
-            mediaSession: MediaSession,
-            controller: MediaSession.ControllerInfo,
-            mediaItems: MutableList<MediaItem>,
-        ): ListenableFuture<MutableList<MediaItem>> = Futures.immediateFuture(mediaItems)
-
-        /** Overridden as well so the start index and position are not discarded. */
-        override fun onSetMediaItems(
-            mediaSession: MediaSession,
-            controller: MediaSession.ControllerInfo,
-            mediaItems: MutableList<MediaItem>,
-            startIndex: Int,
-            startPositionMs: Long,
-        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
-            Futures.immediateFuture(
-                MediaSession.MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs),
-            )
     }
 
     companion object {

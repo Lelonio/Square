@@ -36,9 +36,21 @@
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+            </intent-filter>
+            <!--
+              Android Auto binds the legacy browser interface, not the Media3
+              one. Media3's service answers both, but only if the old action is
+              declared: without it the car finds no service to connect to.
+            -->
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
 
     </application>
 

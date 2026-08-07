@@ -174,6 +174,7 @@ dependencies {
     implementation(libs.media3.ui)
 
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.guava)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
