@@ -11,7 +11,8 @@
 package dev.lelonio.square.ui.glass
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -117,7 +119,7 @@ fun LiquidSlider(
                 }
         }
 
-        // LOCAL CHANGE, not upstream: one drag handler over the whole slider.
+        // LOCAL CHANGE, not upstream: one gesture handler over the whole slider.
         //
         // Upstream drags only from the thumb, and its detector never consumes
         // the pointer, so in this app a press that landed on the thumb was
@@ -125,6 +127,18 @@ fun LiquidSlider(
         // bare track worked. One handler on the root, mapping the finger's
         // absolute position and consuming, removes the distinction: grabbing
         // anywhere jumps there and then tracks, thumb included.
+        //
+        // It has to drive the press state as well, and that is the part that
+        // was missing. Every glass effect on the thumb, the lens, the
+        // aberration, the inner shadow and the swell, is a function of
+        // `pressProgress`, which upstream raises from its own detector on the
+        // thumb. Taking the pointer away from that detector took the animation
+        // with it: the thumb tracked the finger as a flat capsule and the
+        // material never reacted at all.
+        //
+        // From the first down rather than from the drag: a slider that only
+        // comes alive once the finger has travelled the touch slop feels like
+        // it noticed late.
         Box(
             Modifier
                 .matchParentSize()
@@ -139,11 +153,29 @@ fun LiquidSlider(
                         dampedDragAnimation.updateValue(target)
                         onValueChange(target)
                     }
-                    detectHorizontalDragGestures(
-                        onDragStart = { offset -> seekTo(offset.x) },
-                    ) { change, _ ->
-                        change.consume()
-                        seekTo(change.position.x)
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        dampedDragAnimation.press()
+                        down.consume()
+                        seekTo(down.position.x)
+
+                        try {
+                            while (true) {
+                                val change = awaitPointerEvent().changes
+                                    .firstOrNull { it.id == down.id }
+                                    ?: break
+                                if (!change.pressed) break
+                                if (change.positionChanged()) {
+                                    change.consume()
+                                    seekTo(change.position.x)
+                                }
+                            }
+                        } finally {
+                            // Also on a cancelled gesture: a thumb left swollen
+                            // and lensed after the finger is gone reads as the
+                            // control being stuck mid-drag.
+                            dampedDragAnimation.release()
+                        }
                     }
                 }
                 // Drawn above the thumb so it sees the press first, but with no
