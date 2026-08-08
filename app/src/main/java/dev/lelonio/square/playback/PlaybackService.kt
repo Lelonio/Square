@@ -545,13 +545,20 @@ class PlaybackService : MediaLibraryService() {
         session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        // Saved first: this is the last chance to record where the track was,
+        // and stopping is what makes the position worth having.
         runCatching { savePlayback() }
-        // Swiping the app away should not kill audio mid-track, but it should
-        // stop an idle service from lingering in the notification shade.
-        val current = session?.player
-        if (current == null || !current.isPlaying) {
-            stopSelf()
-        }
+        // Swiping the app away stops it. The service used to survive a swipe
+        // while something was playing, on the grounds that killing audio
+        // mid-track is rude, but a player that goes on after its app has been
+        // dismissed is a player the gesture did not reach: the one obvious way
+        // to stop it did nothing, and what was left was a notification the user
+        // had already tried to get rid of.
+        //
+        // Media3's own helper rather than a bare stopSelf: it pauses every
+        // player attached to the service first, so the engine is told to stop
+        // instead of being cut off when onDestroy releases it.
+        pauseAllPlayersAndStopSelf()
     }
 
     override fun onDestroy() {
