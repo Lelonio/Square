@@ -46,6 +46,7 @@ import dev.lelonio.square.ui.glass.LiquidBottomTab
 import dev.lelonio.square.ui.glass.LiquidBottomTabs
 import dev.lelonio.square.ui.glass.LiquidSlider
 import kotlin.math.ln
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Fill
@@ -279,8 +280,8 @@ internal fun EffectsPanel(
             value = speed,
             // Below half speed the stretcher smears badly and above double the
             // track stops being recognisable; both ends are past the useful part.
-            range = 0.5f..2f,
-            reading = "%.2f×".format(speed),
+            scale = RatioScale,
+            reading = { "%.2f×".format(it) },
             backdrop = backdrop,
             onChange = onSpeed,
             onReset = { onSpeed(1f) },
@@ -289,20 +290,21 @@ internal fun EffectsPanel(
         EffectSlider(
             label = stringResource(R.string.pitch),
             value = pitch,
-            range = 0.5f..2f,
+            scale = RatioScale,
             // Semitones read better than a ratio for pitch: "+3" is a musical
             // amount, "1.19×" is not.
-            reading = formatSemitones(pitch),
+            reading = ::formatSemitones,
             backdrop = backdrop,
             onChange = onPitch,
             onReset = { onPitch(1f) },
         )
 
+        val off = stringResource(R.string.off)
         EffectSlider(
             label = stringResource(R.string.reverb),
             value = reverb,
-            range = 0f..1f,
-            reading = if (reverb <= 0f) stringResource(R.string.off) else "${(reverb * 100).roundToInt()}%",
+            scale = LinearScale,
+            reading = { if (it <= 0f) off else "${(it * 100).roundToInt()}%" },
             backdrop = backdrop,
             onChange = onReverb,
             onReset = { onReverb(0f) },
@@ -429,12 +431,49 @@ private fun SavePresetDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit)
     )
 }
 
+/**
+ * How a value is laid out along the track.
+ *
+ * Speed and pitch are ratios, and distance between ratios is multiplicative:
+ * half speed and double speed are the same amount of change, one octave either
+ * way. Placed linearly, 1.0 lands a third of the way along a 0.5 to 2 track,
+ * so normal sits off centre and the two halves of the control mean different
+ * amounts. Placing by log2 fixes both at once, and it is also how the ear
+ * hears the difference.
+ */
+private interface SliderScale {
+    val positions: ClosedFloatingPointRange<Float>
+    fun position(value: Float): Float
+    fun value(position: Float): Float
+}
+
+/** Symmetric around 1.0: half at one end, double at the other, normal in the middle. */
+private object RatioScale : SliderScale {
+    override val positions = -1f..1f
+    override fun position(value: Float) = (ln(value.toDouble()) / ln(2.0)).toFloat()
+    override fun value(position: Float) = 2f.pow(position)
+}
+
+/** For a plain amount, where the number already means what it says. */
+private object LinearScale : SliderScale {
+    override val positions = 0f..1f
+    override fun position(value: Float) = value
+    override fun value(position: Float) = position
+}
+
 @Composable
 private fun EffectSlider(
     label: String,
     value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    reading: String,
+    scale: SliderScale,
+    /**
+     * Given the value under the finger, not the one the player has.
+     *
+     * The two differ for the length of a drag, and reading the settled value
+     * meant the number stood still while the thumb moved: the control gave no
+     * answer to "what am I choosing?" until it had already been chosen.
+     */
+    reading: (Float) -> String,
     backdrop: com.kyant.backdrop.Backdrop,
     onChange: (Float) -> Unit,
     onReset: () -> Unit,
@@ -458,7 +497,7 @@ private fun EffectSlider(
                 color = GlassInkDim,
                 modifier = Modifier.weight(1f),
             )
-            Text(reading, style = MaterialTheme.typography.titleMedium)
+            Text(reading(shown), style = MaterialTheme.typography.titleMedium)
             // A one-tap way back to unmodified. Dragging a slider to exactly 1.0
             // is fiddly, and a stuck-off-centre value is the kind of thing that
             // gets mistaken for broken playback.
@@ -473,12 +512,16 @@ private fun EffectSlider(
             )
         }
         LiquidSlider(
-            value = { shown },
-            onValueChange = {
-                dragged = it
-                onChange(it)
+            // The track is in position space, not value space: everything the
+            // slider itself does, the thumb, the fill, the animation, is even
+            // along it, and the curve lives only in these two conversions.
+            value = { scale.position(shown) },
+            onValueChange = { position ->
+                val v = scale.value(position)
+                dragged = v
+                onChange(v)
             },
-            valueRange = range,
+            valueRange = scale.positions,
             // The smallest step worth animating to. Below this the thumb chases
             // values the ear cannot tell apart.
             visibilityThreshold = 0.001f,
