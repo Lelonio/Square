@@ -48,6 +48,9 @@ data class PlaybackState(
     val source: String = "",
 )
 
+/** How long an empty freshly connected player is given before it is believed. */
+private const val EMPTY_PLAYER_GRACE_MS = 4_000L
+
 /** Mirrors the slow-changing part of a [Player] into Compose state. */
 @Composable
 fun rememberPlaybackState(
@@ -68,6 +71,16 @@ fun rememberPlaybackState(
     // is what made the player flash the previous track on the way back into the
     // app.
     val seenLive = remember { mutableStateOf(false) }
+    // Whether a live player has ever had a track in it.
+    //
+    // Connecting and being ready are not the same thing. The controller answers
+    // in a few tens of milliseconds, but when the service had been stopped the
+    // player behind it is empty for another second and a half while the engine
+    // reconnects and the queue is restored. Answering "no track" during that
+    // window is not news, it is the service still getting dressed, and taking
+    // it at its word is what made the mini player vanish on the way back in and
+    // reappear a moment later.
+    val seenItem = remember { mutableStateOf(false) }
 
     DisposableEffect(player) {
         if (player == null) {
@@ -95,6 +108,16 @@ fun rememberPlaybackState(
                 pitch = player.playbackParameters.pitch,
                 source = metadata.extras?.getString(EXTRA_CONTEXT_LABEL).orEmpty(),
             )
+            if (next.hasItem) {
+                seenItem.value = true
+            } else if (!seenItem.value && state.value.hasItem) {
+                // Still getting dressed: keep what is on screen rather than
+                // clearing it. Bounded by seenItem, so the first real track
+                // ends this for good, and by the timeout below, so a queue that
+                // genuinely is empty does not leave a stale track behind for
+                // the life of the screen.
+                return
+            }
             // Equality check, not blind assignment: the player emits events far
             // more often than these fields actually change.
             if (next != state.value) state.value = next
@@ -107,6 +130,18 @@ fun rememberPlaybackState(
         snapshot()
 
         onDispose { player.removeListener(listener) }
+    }
+
+    // The end of the grace period above. Long enough for a cold service to
+    // restore its queue, measured at about 1.6 seconds, and short enough that
+    // an empty player really is empty by the time it expires.
+    LaunchedEffect(player) {
+        if (player == null || seenItem.value) return@LaunchedEffect
+        delay(EMPTY_PLAYER_GRACE_MS)
+        if (!seenItem.value && player.currentMediaItem == null) {
+            seenItem.value = true
+            state.value = PlaybackState()
+        }
     }
 
     return state
