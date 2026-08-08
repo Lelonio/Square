@@ -102,8 +102,11 @@ impl AudioKeyManager {
             match self.request_once(track, file).await {
                 Ok(key) => return Ok(key),
                 Err(e) => {
+                    // Through the boxed cause, not the wrapper. This `Error` is
+                    // librespot's own: a `kind` plus the error it was built
+                    // from, and only the latter says which failure this was.
                     let transient = matches!(
-                        e.downcast_ref::<AudioKeyError>(),
+                        e.error.downcast_ref::<AudioKeyError>(),
                         Some(AudioKeyError::AesKey) | Some(AudioKeyError::Timeout)
                     );
                     if !transient || attempt + 1 == ATTEMPTS {
