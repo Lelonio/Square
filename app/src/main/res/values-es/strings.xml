@@ -206,4 +206,8 @@
     <string name="delete">Eliminar</string>
     <string name="playlist_name">Nombre de la lista</string>
     <string name="create">Crear</string>
+    <string name="update_prompt">¿Descargarlo e instalarlo ahora?</string>
+    <string name="update_prompt_size">¿Descargarlo e instalarlo ahora? %1$s.</string>
+    <string name="update_later">Más tarde</string>
+    <string name="update_install">Instalar</string>
 </resources>

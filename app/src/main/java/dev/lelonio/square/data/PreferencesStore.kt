@@ -84,11 +84,32 @@ class PreferencesStore(context: Context) {
      */
     val backendChosen: StateFlow<Boolean> = _backendChosen.asStateFlow()
 
+    /** When GitHub was last asked about a newer release. See [UpdateChecker]. */
+    fun lastUpdateCheck(): Long = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0L)
+
+    fun setLastUpdateCheck(value: Long) {
+        prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, value).apply()
+    }
+
+    /**
+     * The version the user has already been told about and dismissed.
+     *
+     * One version rather than a set: releases only move forward, so a newer one
+     * than the dismissed one is news again, and an older one cannot appear.
+     */
+    fun skippedUpdate(): String? = prefs.getString(KEY_SKIPPED_UPDATE, null)
+
+    fun setSkippedUpdate(value: String) {
+        prefs.edit().putString(KEY_SKIPPED_UPDATE, value).apply()
+    }
+
     private companion object {
         const val FILE_NAME = "square_preferences"
         const val KEY_TRACK_SORT = "track_sort"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_PLAYER_OPEN = "player_open"
         const val KEY_BACKEND = "backend"
+        const val KEY_LAST_UPDATE_CHECK = "last_update_check"
+        const val KEY_SKIPPED_UPDATE = "skipped_update"
     }
 }

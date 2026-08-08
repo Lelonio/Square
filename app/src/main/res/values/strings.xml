@@ -227,4 +227,8 @@
     <string name="delete">Delete</string>
     <string name="playlist_name">Playlist name</string>
     <string name="create">Create</string>
+    <string name="update_prompt">Download and install it now?</string>
+    <string name="update_prompt_size">Download and install it now? %1$s.</string>
+    <string name="update_later">Later</string>
+    <string name="update_install">Install</string>
 </resources>

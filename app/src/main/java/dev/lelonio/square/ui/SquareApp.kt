@@ -34,6 +34,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,6 +95,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.IntOffset
 import dev.lelonio.square.ui.components.TrackSheet
 import dev.lelonio.square.ui.components.TrackSheetAction
+import dev.lelonio.square.ui.components.UpdateDialog
+import dev.lelonio.square.update.Updater
 import dev.lelonio.square.ui.library.openLink
 import com.adamglin.phosphoricons.regular.LinkSimple
 import com.adamglin.phosphoricons.regular.PencilSimple
@@ -193,6 +197,8 @@ fun SquareApp(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    UpdatePrompt()
 
     // The session as it was left, so the player has something to draw before
     // the media controller connects. Read once, off the saved queue.
@@ -1364,6 +1370,77 @@ private fun Player.cycleRepeatMode() {
  * pre-shuffle one, so the permutation has to be applied to find the track that
  * was actually playing.
  */
+/**
+ * Asks GitHub for a newer release when the app opens, and says so if there is one.
+ *
+ * This used to be a button in the settings and nothing else, on the grounds
+ * that the check is a request made for the app's benefit rather than the
+ * user's. The trouble with that is who it leaves behind: an app no store can
+ * reach, whose owner never opens the settings, stays on the version it was
+ * installed with forever, security fixes and all. So it runs on its own now,
+ * with the cost kept small: at most one request every six hours, and one
+ * dialog per release, ever.
+ *
+ * Everything that can go wrong is silence. The check is not something the user
+ * asked for, so a failure is not something to tell them about.
+ */
+@Composable
+private fun UpdatePrompt() {
+    val context = LocalContext.current
+    val updater = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).updater
+    }
+    val prefs = remember(context) { dev.lelonio.square.data.PreferencesStore(context) }
+    val scope = rememberCoroutineScope()
+    val state by updater.state.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        val now = System.currentTimeMillis()
+        if (now - prefs.lastUpdateCheck() < UPDATE_CHECK_INTERVAL_MS) return@LaunchedEffect
+        // Recorded before the call rather than after it: a phone with no
+        // network would otherwise ask again at every launch, which is the one
+        // shape of this that would be a nuisance.
+        prefs.setLastUpdateCheck(now)
+        runCatching { updater.check() }
+    }
+
+    val available = state as? Updater.State.Available ?: return
+    // Already offered, and turned down. The version is remembered rather than
+    // a flag, so the next release is news again.
+    if (available.version == prefs.skippedUpdate()) return
+
+    // Held across the trip to the system settings, so granting the permission
+    // continues the install instead of dropping it.
+    var pending by remember { mutableStateOf<Updater.State.Available?>(null) }
+    val permission = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        val update = pending ?: return@rememberLauncherForActivityResult
+        pending = null
+        scope.launch { if (updater.canInstall()) updater.install(update) }
+    }
+
+    UpdateDialog(
+        version = available.version,
+        size = available.bytes.takeIf { it > 0 }?.let { "%.1f MB".format(it / 1_000_000.0) },
+        onInstall = {
+            prefs.setSkippedUpdate(available.version)
+            scope.launch {
+                if (updater.canInstall()) {
+                    updater.install(available)
+                } else {
+                    pending = available
+                    permission.launch(updater.permissionIntent())
+                }
+            }
+        },
+        onDismiss = { prefs.setSkippedUpdate(available.version) },
+    )
+}
+
+/** At most one check every six hours, however often the app is opened. */
+private const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
+
 private fun savedPlaybackSeed(context: android.content.Context): PlaybackState? {
     val saved = dev.lelonio.square.data.PlaybackStore(context).load() ?: return null
     val position = saved.shuffleOrder?.getOrNull(saved.index) ?: saved.index
