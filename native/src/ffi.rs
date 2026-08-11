@@ -424,6 +424,14 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSpi
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeReconnect(
+    mut env: JNIEnv,
+    _class: JClass,
+) {
+    guard(&mut env, "Reconnect", engine::reconnect);
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeShutdown(
     _env: JNIEnv,
     _class: JClass,

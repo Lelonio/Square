@@ -140,6 +140,19 @@ object NativeBridge {
      */
     val spircLost: Boolean get() = nativeSpircLost()
 
+    /**
+     * Builds a new session, player and Connect device, keeping everything else.
+     *
+     * The answer to [spircLost]. A dead Connect device cannot be revived on the
+     * session it belonged to, because librespot hands out the Spirc builder once
+     * per session, so this discards the session as well. The tokio runtime and
+     * the audio output survive: tearing those down from here is what used to
+     * abort the process on a destroyed mutex.
+     *
+     * Blocks on the handshake. Never call it from the main thread.
+     */
+    fun reconnect() = nativeReconnect()
+
     fun shutdown() = nativeShutdown()
 
     // --- Catalogue, served by the access point rather than api.spotify.com ---
@@ -216,6 +229,7 @@ object NativeBridge {
     private external fun nativeVolume(): Int
     private external fun nativeIsConnected(): Boolean
     private external fun nativeSpircLost(): Boolean
+    private external fun nativeReconnect()
     private external fun nativeShutdown()
     private external fun nativeUsername(): String
     private external fun nativeCollectionUri(): String

@@ -35,6 +35,26 @@ pub fn clear_output() {
     }
 }
 
+/// Stops the Android output and drops whatever it still holds.
+///
+/// Called when a session is discarded. `AudioTrack` buffers about a second of
+/// audio ahead of the speaker, so a player that has already been told to stop
+/// has still left a second of the previous song sitting in the device, and it
+/// comes out over the beginning of the next one. `AudioOutput.stop` pauses and
+/// flushes, which is what throws it away.
+pub fn silence() {
+    let Some(output) = OUTPUT.lock().ok().and_then(|guard| guard.clone()) else {
+        return;
+    };
+    let Some(vm) = JAVA_VM.get() else { return };
+    let Ok(mut env) = vm.attach_current_thread() else {
+        return;
+    };
+    if env.call_method(&output, "stop", "()V", &[]).is_err() {
+        log::warn!("could not silence the output");
+    }
+}
+
 fn output() -> SinkResult<GlobalRef> {
     OUTPUT
         .lock()
@@ -46,11 +66,32 @@ fn output() -> SinkResult<GlobalRef> {
 pub struct AndroidSink {
     /// Scratch buffer for interleaved PCM, reused across packets.
     pcm: Vec<u8>,
+    /// The bundle this sink belongs to; see [`stale`].
+    generation: u64,
 }
 
 impl AndroidSink {
-    pub fn new(_format: AudioFormat) -> Self {
-        Self { pcm: Vec::new() }
+    pub fn new(_format: AudioFormat, generation: u64) -> Self {
+        Self {
+            pcm: Vec::new(),
+            generation,
+        }
+    }
+
+    /// Whether this sink belongs to a session that has been replaced.
+    ///
+    /// A reconnection builds a new player, and the old one does not stop
+    /// decoding the instant it is dropped: its playback thread finishes the
+    /// packets it already has. There is one AudioTrack for the whole app, so
+    /// those packets came out *after* the new track had started, as a second or
+    /// two of the previous song wedged into the beginning of the new one.
+    ///
+    /// Silently, and only for audio. Refusing with an error would make librespot
+    /// treat it as an output failure and log a wall of them on the way down; the
+    /// packets simply have nowhere left to go.
+    fn stale(&self) -> bool {
+        crate::engine::live_generation() != self.generation
+            || !crate::engine::playback_armed()
     }
 
     fn invoke(&self, method: &str) -> SinkResult<()> {
@@ -70,14 +111,23 @@ impl AndroidSink {
 
 impl Sink for AndroidSink {
     fn start(&mut self) -> SinkResult<()> {
+        if self.stale() {
+            return Ok(());
+        }
         self.invoke("start")
     }
 
     fn stop(&mut self) -> SinkResult<()> {
+        // Not gated: a stale sink stopping is the one thing it should still be
+        // allowed to do, and the stop flushes whatever the AudioTrack is holding.
         self.invoke("stop")
     }
 
     fn write(&mut self, packet: AudioPacket, converter: &mut Converter) -> SinkResult<()> {
+        if self.stale() {
+            return Ok(());
+        }
+
         // Interleaved little-endian S16, which is how AudioTrack is configured.
         self.pcm.clear();
         match packet {

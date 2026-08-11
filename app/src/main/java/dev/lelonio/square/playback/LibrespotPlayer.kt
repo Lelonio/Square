@@ -81,11 +81,11 @@ class LibrespotPlayer(
             // to the looper. Reading it from the fade thread is a race, and a
             // race in the middle of a track change is exactly the rare crash
             // that skipping quickly could produce.
-            handler.post {
-                if (released) return@post
-                // A load is the one command with no way around the Connect
-                // device, so when that is gone the track simply never changes.
-                // Build a new one first and load on the other side of it.
+            // A load is the one command with no way around the Connect device,
+            // so when that is gone the track simply never changes. Build a new
+            // one first and load on the other side of it.
+            withDevice {
+                if (released) return@withDevice
                 // Read now, not when this was scheduled. The fade takes a
                 // moment, and a tap on a track while paused arrives as "load
                 // this" followed immediately by "play": with the flag frozen at
@@ -243,6 +243,45 @@ class LibrespotPlayer(
     private val deviceGone: Boolean
         get() = runCatching { NativeBridge.spircLost }.getOrDefault(false)
 
+    /** Set while a reconnection is in flight, so a burst of taps starts one. */
+    private var reconnecting = false
+
+    /**
+     * Runs `then` on the looper with a live Connect device, rebuilding one first
+     * if the engine has lost its.
+     *
+     * A dropped network costs the session, and a session takes its Connect
+     * device with it: librespot hands out the Spirc builder once per session, so
+     * there is nothing to revive and the engine builds a new session instead.
+     * That is a handshake, which is why it runs off the looper.
+     *
+     * A failed rebuild still runs `then`. There is no state where refusing to
+     * try is better: the command was going to be ignored either way, and going
+     * ahead at least reaches the engine's own fallback, which stops the sound.
+     */
+    private fun withDevice(then: () -> Unit) {
+        if (!deviceGone) {
+            handler.post { if (!released) then() }
+            return
+        }
+        if (reconnecting) {
+            android.util.Log.i("SquarePlayer", "already reconnecting, dropping this one")
+            return
+        }
+        reconnecting = true
+        Thread({
+            runCatching { NativeBridge.reconnect() }
+                .onFailure { android.util.Log.e("SquarePlayer", "reconnect failed", it) }
+            handler.post {
+                reconnecting = false
+                // The new device has never been told what this queue is: its
+                // predecessor's state went with the session it belonged to.
+                engineQueueStale = true
+                if (!released) then()
+            }
+        }, "square-reconnect").start()
+    }
+
     /** Call after any queue mutation, before [invalidateState]. */
     private fun onQueueChanged() {
         cachedPlaylist = null
@@ -332,12 +371,11 @@ class LibrespotPlayer(
                 if (positionMs > 0) engine("seek") { NativeBridge.seek(positionMs) }
             }
 
-            // Nothing is listening for a skip, and nothing here can bring the
-            // device back: librespot hands out the Spirc builder once per
-            // session, so a second one cannot be built on this one. Stopping is
-            // what the engine's own fallback does, and saying so here keeps the
-            // two branches below from pretending otherwise.
-            deviceGone -> engine("next") { NativeBridge.next() }
+            // Nothing is listening for a skip: a step command would be
+            // accepted by a dead device and discarded, and the old track would
+            // play on. The queue is pushed instead, which rebuilds the device
+            // first and then loads the track that was asked for.
+            deviceGone -> pushQueue(startPlaying = playWhenReady, positionMs = 0)
 
             // A step either way is a skip, and Spirc has to be the one making
             // it: reloading the queue for a skip would restart the context and
@@ -402,7 +440,15 @@ class LibrespotPlayer(
             if (!focus.requestFocus()) return Futures.immediateVoidFuture()
             wantPlay = true
             onPlaybackActive(true)
-            engine("play") { NativeBridge.play() }
+            // Play is where a reconnection is worth waiting for. The engine has
+            // no queue of its own, so a rebuilt device knows nothing until the
+            // queue is handed over again, and resuming is exactly the moment
+            // the user is willing to wait a handshake for.
+            if (deviceGone) {
+                pushQueue(startPlaying = true, positionMs = positionMs.toInt())
+            } else {
+                engine("play") { NativeBridge.play() }
+            }
         } else {
             wantPlay = false
             engine("pause") { NativeBridge.pause() }
