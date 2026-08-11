@@ -236,22 +236,50 @@ class PlaybackService : MediaLibraryService() {
      * session is torn down and started again. The queue and position are saved
      * first and put back after, which is the same path a cold start takes.
      */
-    private fun restartForQuality() {
+    private fun restartForQuality() = rebuildEngine("quality")
+
+    /**
+     * Tears the engine down and brings it back with the queue where it was.
+     *
+     * The same path for a bitrate change and for a lost Connect device, because
+     * it is the same operation: the engine cannot be reconfigured or repaired
+     * in place, only replaced. The queue and position are saved first and put
+     * back by restoreQueue, which is what a cold start does too.
+     */
+    private fun rebuildEngine(reason: String) {
+        if (rebuilding) return
         val engine = librespot ?: return
+        rebuilding = true
         val wasPlaying = player.playWhenReady
         runCatching { savePlayback() }
-
-        runCatching { NativeBridge.shutdown() }
-        engineStarted = false
-        engine.clearForRestart()
+        android.util.Log.i(TAG, "rebuilding the engine ($reason)")
 
         scope.launch {
+            // Off the main thread, and this is not optional. Shutting the engine
+            // down stops its threads and closes its session, and with no network
+            // that waits on timeouts: run here it blocks the looper long enough
+            // to take the process down, which is exactly what pausing with the
+            // connection gone used to do. switchBackend has said so all along.
+            runCatching { withContext(Dispatchers.IO) { NativeBridge.shutdown() } }
+            engineStarted = false
+            engine.clearForRestart()
+
             connectEngine().join()
             // restoreQueue, run by connectEngine, puts the queue back at the
             // position that was just saved, paused.
             if (wasPlaying && player.mediaItemCount > 0) player.play()
+            rebuilding = false
         }
     }
+
+    /**
+     * Whether a rebuild is already under way.
+     *
+     * The loss is noticed after every command, so a listener pressing skip twice
+     * while offline would otherwise ask for a second teardown in the middle of
+     * the first one.
+     */
+    private var rebuilding = false
 
     /**
      * Re-runs [connectEngine] on demand.
