@@ -231,4 +231,6 @@
     <string name="update_prompt_size">Download and install it now? %1$s.</string>
     <string name="update_later">Later</string>
     <string name="update_install">Install</string>
+    <string name="download_get_app">Get YTDLnis</string>
+    <string name="download_with">Download with YTDLnis</string>
 </resources>

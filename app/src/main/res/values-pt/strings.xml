@@ -210,4 +210,6 @@
     <string name="update_prompt_size">Transferir e instalar agora? %1$s.</string>
     <string name="update_later">Mais tarde</string>
     <string name="update_install">Instalar</string>
+    <string name="download_get_app">Instalar YTDLnis</string>
+    <string name="download_with">Transferir com YTDLnis</string>
 </resources>

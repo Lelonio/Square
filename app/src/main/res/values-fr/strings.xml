@@ -210,4 +210,6 @@
     <string name="update_prompt_size">La télécharger et l\'installer maintenant ? %1$s.</string>
     <string name="update_later">Plus tard</string>
     <string name="update_install">Installer</string>
+    <string name="download_get_app">Installer YTDLnis</string>
+    <string name="download_with">Télécharger avec YTDLnis</string>
 </resources>

@@ -17,6 +17,20 @@
     -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+      Package visibility, required from Android 11 to see any of this. Without
+      it a downloader is invisible to resolve and to setPackage alike, so the
+      hand-off cannot tell an installed app from an absent one and every link
+      falls back to the chooser.
+    -->
+    <queries>
+        <package android:name="com.deniscerri.ytdl" />
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
     <application
         android:name=".SquareApplication"
         android:allowBackup="false"
