@@ -942,7 +942,18 @@ fn transport(
         });
     }
 
-    with_engine(|engine| match via_spirc(engine) {
+    with_engine(|engine| match {
+        // Taken over first, the same way a load does.
+        //
+        // A device that is registered but not the account's active one drops
+        // every transport command on the floor, and says so at warning level:
+        // "SpircCommand::Play will be ignored while Not Active". Nothing came
+        // back as an error, so the app saw a pause that had been accepted and a
+        // player that went on regardless. The load path has taken this step
+        // since it was written; the transport path never did.
+        let _ = engine.spirc.activate();
+        via_spirc(engine)
+    } {
         Ok(()) => Ok(()),
         Err(e) => {
             log::warn!("{what}: spirc refused it ({e}), going straight to the player");
@@ -973,12 +984,18 @@ pub fn seek(position_ms: u32) -> EngineResult<()> {
     with_engine(|e| e.spirc.set_position_ms(position_ms))?.map_err(|e| format!("seek failed: {e}"))
 }
 
+// Skipping is a Spirc command like the rest, and it was the one left out of
+// [`transport`]: with the device gone it was accepted, discarded, and the track
+// that was already playing carried on. Stopping is the fallback because there
+// is nothing better available here. The player owns no queue, so it cannot pick
+// the next track itself, and going on with the current one is the one answer
+// that is certainly wrong: the listener asked for something else.
 pub fn next() -> EngineResult<()> {
-    with_engine(|e| e.spirc.next())?.map_err(|e| format!("next failed: {e}"))
+    transport("next", |e| e.spirc.next(), |e| e.player.stop())
 }
 
 pub fn previous() -> EngineResult<()> {
-    with_engine(|e| e.spirc.prev())?.map_err(|e| format!("previous failed: {e}"))
+    transport("previous", |e| e.spirc.prev(), |e| e.player.stop())
 }
 
 pub fn set_shuffle(shuffle: bool) -> EngineResult<()> {

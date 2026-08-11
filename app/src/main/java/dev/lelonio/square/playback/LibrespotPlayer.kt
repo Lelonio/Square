@@ -83,6 +83,9 @@ class LibrespotPlayer(
             // that skipping quickly could produce.
             handler.post {
                 if (released) return@post
+                // A load is the one command with no way around the Connect
+                // device, so when that is gone the track simply never changes.
+                // Build a new one first and load on the other side of it.
                 // Read now, not when this was scheduled. The fade takes a
                 // moment, and a tap on a track while paused arrives as "load
                 // this" followed immediately by "play": with the flag frozen at
@@ -236,6 +239,10 @@ class LibrespotPlayer(
             .onFailure { android.util.Log.e("SquarePlayer", "$what did not reach the engine", it) }
     }
 
+    /** Whether the engine says its Connect device is gone; false if it cannot answer. */
+    private val deviceGone: Boolean
+        get() = runCatching { NativeBridge.spircLost }.getOrDefault(false)
+
     /** Call after any queue mutation, before [invalidateState]. */
     private fun onQueueChanged() {
         cachedPlaylist = null
@@ -324,6 +331,13 @@ class LibrespotPlayer(
             from == target -> {
                 if (positionMs > 0) engine("seek") { NativeBridge.seek(positionMs) }
             }
+
+            // Nothing is listening for a skip, and nothing here can bring the
+            // device back: librespot hands out the Spirc builder once per
+            // session, so a second one cannot be built on this one. Stopping is
+            // what the engine's own fallback does, and saying so here keeps the
+            // two branches below from pretending otherwise.
+            deviceGone -> engine("next") { NativeBridge.next() }
 
             // A step either way is a skip, and Spirc has to be the one making
             // it: reloading the queue for a skip would restart the context and
@@ -778,6 +792,7 @@ class LibrespotPlayer(
          * that a single skip does not feel delayed.
          */
         const val SKIP_SETTLE_MS = 220L
+
 
         /** Ducked volume, as a fraction of the current one. */
         const val DUCK_FACTOR = 0.3
