@@ -129,6 +129,17 @@ object NativeBridge {
 
     val isConnected: Boolean get() = nativeIsConnected()
 
+    /**
+     * Whether the Connect device is gone and the engine wants rebuilding.
+     *
+     * Distinct from [isConnected], which asks about the session: a session can
+     * be perfectly valid while the Spirc task behind it has died, and that is
+     * the state where transport commands stop landing and the player carries on
+     * making sound. Set the first time a command has to go around Spirc to
+     * reach the player, and cleared by the next [start].
+     */
+    val spircLost: Boolean get() = nativeSpircLost()
+
     fun shutdown() = nativeShutdown()
 
     // --- Catalogue, served by the access point rather than api.spotify.com ---
@@ -204,6 +215,7 @@ object NativeBridge {
     private external fun nativeSetVolume(volume: Int)
     private external fun nativeVolume(): Int
     private external fun nativeIsConnected(): Boolean
+    private external fun nativeSpircLost(): Boolean
     private external fun nativeShutdown()
     private external fun nativeUsername(): String
     private external fun nativeCollectionUri(): String

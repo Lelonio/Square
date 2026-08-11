@@ -29,6 +29,14 @@ use tokio::runtime::Runtime;
 pub(crate) static JAVA_VM: OnceCell<JavaVM> = OnceCell::new();
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 static CONTEXT_INITIALIZED: AtomicBool = AtomicBool::new(false);
+/// Set when a transport command had to go around Spirc; see [`transport`].
+///
+/// The engine is still making sound at that point, but the Connect device is
+/// gone: the account has a stale idea of this phone, and nothing arriving from
+/// another client will be obeyed. Only a rebuild fixes that, and only the Kotlin
+/// side can decide when to do it, so this is a flag it can ask about rather than
+/// something acted on here.
+static SPIRC_LOST: AtomicBool = AtomicBool::new(false);
 
 pub fn store_java_vm(vm: JavaVM) {
     let _ = JAVA_VM.set(vm);
@@ -302,7 +310,16 @@ pub fn start(
     // dealer, so without it the device appears once and then goes stale.
     rt.spawn(async move {
         spirc_task.await;
+        // The authoritative moment the Connect device is gone.
+        //
+        // Not a failed command, which is what this used to key off and why the
+        // repair never fired: when the task ends, its channel still accepts
+        // messages and nobody reads them. A load sent afterwards returns Ok,
+        // nothing loads, and the previous track plays on. Watching the task
+        // itself is the only signal that does not depend on being lucky enough
+        // to get an error back.
         log::info!("connect device stopped");
+        SPIRC_LOST.store(true, Ordering::SeqCst);
     });
 
     spawn_event_pump(
@@ -313,6 +330,10 @@ pub fn start(
         session.clone(),
         cache_dir.to_string(),
     );
+
+    // A fresh engine has a live Connect device again, whatever the last one
+    // ended up as.
+    SPIRC_LOST.store(false, Ordering::SeqCst);
 
     *guard = Some(Engine {
         rt,
@@ -879,22 +900,73 @@ pub fn load_queue(
         e.spirc.activate()?;
         e.spirc.load(request)
     })?
+    .inspect_err(|_| {
+        // A load has no way around Spirc: choosing what to decode next is the
+        // Connect device's job and nothing else can do it. A refused one is a
+        // second, weaker sign of the same loss the task watcher above catches
+        // properly, kept because it costs nothing.
+        SPIRC_LOST.store(true, Ordering::SeqCst);
+    })
     .map_err(|e| format!("load failed: {e}"))
 }
 
+/// Runs a transport command through Spirc, and through the player if Spirc is gone.
+///
+/// Spirc and the player are separate things: the first is the Connect device,
+/// the second is what decodes audio and writes it to the sink. Every transport
+/// command goes through Spirc so the account sees it, but a Spirc command is a
+/// message into a task, and when that task has died the channel is closed and
+/// the command comes back an error while the player carries on making sound.
+///
+/// That is the "pause does nothing and only killing the app stops the music"
+/// failure. It cannot be fixed by reporting the error, because the audio is
+/// still playing either way: something has to reach the thing making it. So the
+/// player is told directly, and the account is left with a stale idea of what
+/// this device is doing until the engine is rebuilt. Silence under the user's
+/// finger is worth more than a tidy Connect state.
+fn transport(
+    what: &str,
+    via_spirc: impl FnOnce(&Engine) -> Result<(), librespot_core::Error>,
+    via_player: impl FnOnce(&Engine),
+) -> EngineResult<()> {
+    // Asked before trying, not after failing.
+    //
+    // A command sent to a Spirc task that has already ended does not come back
+    // an error: the channel still accepts the message and nobody ever reads it.
+    // Waiting for a failure meant the fallback almost never ran, which is why
+    // pause went on doing nothing with the network gone.
+    if spirc_lost() {
+        return with_engine(|engine| {
+            log::warn!("{what}: the connect device is gone, going straight to the player");
+            via_player(engine);
+        });
+    }
+
+    with_engine(|engine| match via_spirc(engine) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            log::warn!("{what}: spirc refused it ({e}), going straight to the player");
+            SPIRC_LOST.store(true, Ordering::SeqCst);
+            via_player(engine);
+            Ok(())
+        }
+    })?
+}
+
 pub fn play() -> EngineResult<()> {
-    with_engine(|e| e.spirc.play())?.map_err(|e| format!("play failed: {e}"))
+    transport("play", |e| e.spirc.play(), |e| e.player.play())
 }
 
 pub fn pause() -> EngineResult<()> {
-    with_engine(|e| e.spirc.pause())?.map_err(|e| format!("pause failed: {e}"))
+    transport("pause", |e| e.spirc.pause(), |e| e.player.pause())
 }
 
 pub fn stop() -> EngineResult<()> {
     // Disconnecting rather than stopping the player: it tells the account this
     // device has given up playback, which is what makes it disappear from the
-    // device list instead of lingering as a paused phantom.
-    with_engine(|e| e.spirc.disconnect(true))?.map_err(|e| format!("stop failed: {e}"))
+    // device list instead of lingering as a paused phantom. The fallback does
+    // stop the player, because a stop that leaves audio running is not a stop.
+    transport("stop", |e| e.spirc.disconnect(true), |e| e.player.stop())
 }
 
 pub fn seek(position_ms: u32) -> EngineResult<()> {
@@ -929,6 +1001,25 @@ pub fn set_volume(volume: u16) -> EngineResult<()> {
 
 pub fn volume() -> EngineResult<u16> {
     with_engine(|e| e.mixer.volume())
+}
+
+/// Whether the Connect device is gone and the engine wants rebuilding.
+///
+/// Two signals, because one of them is late. The flag is authoritative but only
+/// rises when the Spirc task has actually finished, and that took ten seconds
+/// after a dropped network in the case this was written for: for those ten
+/// seconds the device is already unreachable, every command is accepted and
+/// discarded, and the listener is pressing skip at a player that will not move.
+///
+/// An invalid session is the earlier sign of the same thing. It is checked at
+/// the moment a command is issued rather than watched, so a connection that
+/// drops and comes back on its own between two commands costs nothing: the
+/// question is only ever asked when somebody is waiting for an answer.
+pub fn spirc_lost() -> bool {
+    if SPIRC_LOST.load(Ordering::SeqCst) {
+        return true;
+    }
+    with_engine(|e| e.session.is_invalid()).unwrap_or(false)
 }
 
 pub fn is_connected() -> bool {

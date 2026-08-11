@@ -416,6 +416,14 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeTra
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSpircLost(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    engine::spirc_lost() as jboolean
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeShutdown(
     _env: JNIEnv,
     _class: JClass,

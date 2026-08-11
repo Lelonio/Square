@@ -219,9 +219,21 @@ class LibrespotPlayer(
      *
      * A failed transport command should cost the command.
      */
+    /**
+     * Sends one command to the engine, and says so loudly when it does not land.
+     *
+     * At error level rather than warning, because there is no such thing as a
+     * harmless transport command that failed: the user pressed something and it
+     * did not happen. This was a warning, which is how "pause does nothing and
+     * the music keeps playing" stayed invisible in the log for so long.
+     *
+     * The engine itself now falls back to the player when the Connect layer
+     * refuses a command, so reaching this line means both paths failed and
+     * playback is genuinely beyond the app's reach.
+     */
     private inline fun engine(what: String, command: () -> Unit) {
         runCatching(command)
-            .onFailure { android.util.Log.w("SquarePlayer", "$what failed: ${it.message}") }
+            .onFailure { android.util.Log.e("SquarePlayer", "$what did not reach the engine", it) }
     }
 
     /** Call after any queue mutation, before [invalidateState]. */
