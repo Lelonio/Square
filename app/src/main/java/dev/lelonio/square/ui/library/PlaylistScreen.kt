@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,6 +78,7 @@ import dev.lelonio.square.ui.components.GlassChoiceMenu
 import dev.lelonio.square.ui.components.LazyScrollBar
 import dev.lelonio.square.ui.components.SwipeToQueue
 import dev.lelonio.square.ui.glass.LiquidButton
+import dev.lelonio.square.ui.glass.pressable
 import dev.lelonio.square.ui.theme.rememberArtworkColor
 import dev.lelonio.square.ui.theme.softShadow
 import java.util.Locale
@@ -579,7 +579,7 @@ private fun DetailHeader(
                         .softShadow(CircleShape, elevation = 18.dp, spot = 0.3f)
                         .clip(CircleShape)
                         .background(Color.White)
-                        .clickable(onClick = onPlay),
+                        .pressable(onPlay, pressedScale = 0.92f),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -772,7 +772,7 @@ private fun AlbumStrip(
                 Column(
                     Modifier
                         .width(132.dp)
-                        .clickable { onOpen(album) },
+                        .pressable({ onOpen(album) }),
                 ) {
                     Artwork(
                         url = album.artworkUrl,
@@ -895,7 +895,7 @@ private fun TrackRow(
                     alpha = MaterialTheme.colorScheme.surface.alpha * highlight,
                 ),
             )
-            .clickable(onClick = onClick)
+            .pressable(onClick, shape = shape, pressedScale = 0.985f)
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

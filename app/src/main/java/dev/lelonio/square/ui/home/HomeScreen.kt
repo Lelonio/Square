@@ -2,7 +2,6 @@ package dev.lelonio.square.ui.home
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,6 +75,7 @@ import dev.lelonio.square.ui.components.SquareWordmark
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import dev.lelonio.square.ui.glass.LiquidButton
+import dev.lelonio.square.ui.glass.pressable
 import dev.lelonio.square.ui.player.GlassFilm
 import dev.lelonio.square.ui.theme.Ink
 import dev.lelonio.square.ui.theme.InkDim
@@ -591,7 +591,7 @@ private fun Header(
                         layout(side, side) { placeable.place(0, 0) }
                     }
                     .clip(CircleShape)
-                    .clickable(onClick = onOpenSettings)
+                    .pressable(onOpenSettings, pressedScale = 0.90f)
                     .softShadow(CircleShape, elevation = 10.dp),
                 corner = 23.dp,
                 decodeSize = 46.dp,
@@ -651,7 +651,7 @@ private fun FeedCard(item: SearchItem, onClick: () -> Unit) {
             .fillMaxWidth()
             .softShadow(shape, elevation = 26.dp, spot = 0.55f)
             .clip(shape)
-            .clickable(onClick = onClick),
+            .pressable(onClick, pressedScale = 0.98f),
     ) {
         // The same cover twice, and that is the point.
         //
@@ -719,7 +719,7 @@ private fun ArtistTile(artist: SearchItem, onClick: () -> Unit) {
     Column(
         Modifier
             .width(110.dp)
-            .clickable(onClick = onClick),
+            .pressable(onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Artwork(
@@ -747,7 +747,7 @@ private fun PlaylistTile(playlist: CatalogPlaylist, onClick: () -> Unit) {
     Column(
         Modifier
             .width(152.dp)
-            .clickable(onClick = onClick),
+            .pressable(onClick),
     ) {
         Artwork(
             url = playlist.artworkUrl,
@@ -774,7 +774,7 @@ private fun TrackTile(track: CatalogTrack, onClick: () -> Unit) {
         // which spreads wider than the tile itself.
         Modifier
             .width(128.dp)
-            .clickable(onClick = onClick),
+            .pressable(onClick),
     ) {
         Artwork(
             url = track.artworkUrl,
@@ -882,7 +882,7 @@ private fun FeedTile(item: SearchItem, onClick: () -> Unit) {
     Column(
         Modifier
             .width(152.dp)
-            .clickable(onClick = onClick),
+            .pressable(onClick),
     ) {
         Artwork(
             url = item.artworkUrl,

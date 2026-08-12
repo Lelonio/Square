@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -177,6 +178,11 @@ fun PlayerScreen(
      * of one thing.
      */
     onAddToPlaylist: () -> Unit,
+    /**
+     * Opens an artist, a playlist or an album by uri, with a name to show while
+     * it loads. The player closes itself first; see the two callers.
+     */
+    onOpenUri: (String, String) -> Unit = { _, _ -> },
     /**
      * Whether this track is already in one of the account's playlists.
      *
@@ -396,6 +402,12 @@ fun PlayerScreen(
                         backdrop = glassBackdrop,
                         panel = panel,
                         source = state.source,
+                        onOpenSource = state.contextUri?.let { uri ->
+                            {
+                                onCollapse()
+                                onOpenUri(uri, state.source.substringAfterLast("· ").trim())
+                            }
+                        },
                         onCollapse = onCollapse,
                         onOpenDevices = {
                             panel = if (panel == PlayerPanel.DEVICES) {
@@ -599,7 +611,16 @@ fun PlayerScreen(
                                 Modifier.padding(start = 22.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                TitleBlock(state, Modifier.weight(1f))
+                                TitleBlock(
+                                    state,
+                                    Modifier.weight(1f),
+                                    onOpenArtist = {
+                                        state.artistUri?.let { uri ->
+                                            onCollapse()
+                                            onOpenUri(uri, state.artist)
+                                        }
+                                    },
+                                )
                                 // The queue's one control. It is a sheet that
                                 // opens over the player rather than a view of
                                 // it, which is why it sits here and not in the
@@ -881,6 +902,8 @@ private fun TopBar(
     panel: PlayerPanel,
     /** Where the queue came from: "Playlist · Estate 2025", "Ricerca". */
     source: String,
+    /** Opens that place, when it is one; null leaves the line as a caption. */
+    onOpenSource: (() -> Unit)?,
     onCollapse: () -> Unit,
     onOpenDevices: () -> Unit,
     connectAvailable: Boolean,
@@ -918,11 +941,19 @@ private fun TopBar(
             label = "topBarTitle",
             modifier = Modifier.weight(1f),
         ) { title ->
+            // Only the source line is a way back, and only while it is the one
+            // being shown: the panel names above it are labels for what is on
+            // screen already.
+            val open = onOpenSource.takeIf { panel == PlayerPanel.NONE && source.isNotBlank() }
             Text(
                 title,
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (open != null) Modifier.plainClickable(open) else Modifier,
+                    ),
             )
         }
         // Connect gets the permanent slot rather than hiding behind "more":
@@ -1036,7 +1067,11 @@ private fun Cover(
 }
 
 @Composable
-private fun TitleBlock(state: PlaybackState, modifier: Modifier = Modifier) {
+private fun TitleBlock(
+    state: PlaybackState,
+    modifier: Modifier = Modifier,
+    onOpenArtist: () -> Unit = {},
+) {
     // Slid rather than swapped on a track change: this capsule is the only place
     // the track is named now that the big cover is gone, so the change has to be
     // visible without watching for it.
@@ -1056,15 +1091,37 @@ private fun TitleBlock(state: PlaybackState, modifier: Modifier = Modifier) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            // Tappable only when there is somewhere to go: a queue built from
+            // search results, or a track another device is playing, names an
+            // artist this app has no page for, and a line that looks like a
+            // link and does nothing is worse than plain text.
             Text(
                 text = artist,
                 style = MaterialTheme.typography.bodyMedium,
                 color = GlassInkDim,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = if (state.artistUri != null) {
+                    Modifier.plainClickable(onOpenArtist)
+                } else {
+                    Modifier
+                },
             )
         }
     }
+}
+
+/**
+ * A tap with no ripple behind it.
+ *
+ * These two are lines of text rather than controls, and the ripple draws a
+ * rectangle around a word: the highlight ends up wider and squarer than the
+ * thing it is meant to be acknowledging.
+ */
+@Composable
+private fun Modifier.plainClickable(onClick: () -> Unit): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    return clickable(interactionSource = interaction, indication = null, onClick = onClick)
 }
 
 /** Isolated so the ticking position recomposes only these two labels. */

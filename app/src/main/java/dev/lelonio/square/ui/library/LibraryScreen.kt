@@ -1,8 +1,6 @@
 package dev.lelonio.square.ui.library
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +42,7 @@ import dev.lelonio.square.data.sortedByRecentlyOpened
 import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
 import dev.lelonio.square.ui.glass.LiquidButton
+import dev.lelonio.square.ui.glass.pressable
 import dev.lelonio.square.ui.player.GlassFilm
 import dev.lelonio.square.ui.theme.Ink
 import dev.lelonio.square.ui.theme.InkDim
@@ -316,7 +315,7 @@ private fun GridTile(
     onLongClick: (() -> Unit)?,
 ) {
     Column(
-        Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        Modifier.pressable(onClick, onLongClick = onLongClick),
     ) {
         Artwork(
             url = playlist.artworkUrl,
@@ -348,7 +347,12 @@ private fun ListRow(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .pressable(
+                onClick,
+                shape = RoundedCornerShape(16.dp),
+                pressedScale = 0.98f,
+                onLongClick = onLongClick,
+            )
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

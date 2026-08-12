@@ -2,7 +2,6 @@ package dev.lelonio.square.ui.search
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +45,7 @@ import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
 import dev.lelonio.square.ui.components.SwipeToQueue
 import dev.lelonio.square.ui.glass.LiquidButton
+import dev.lelonio.square.ui.glass.pressable
 import dev.lelonio.square.ui.player.GlassFilm
 import dev.lelonio.square.ui.settings.WebApiSetup
 import dev.lelonio.square.ui.theme.Ink
@@ -246,7 +246,7 @@ private fun SearchField(
                 tint = InkDim,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .clickable { onQueryChange("") }
+                    .pressable({ onQueryChange("") }, pressedScale = 0.88f)
                     .size(20.dp),
             )
         }
@@ -333,7 +333,7 @@ private fun ResultRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .pressable(onClick, shape = RoundedCornerShape(16.dp), pressedScale = 0.98f)
             .padding(start = 24.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -373,7 +373,7 @@ private fun ResultRow(
                 tint = InkDim,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .clickable(onClick = onMenu)
+                    .pressable(onMenu, pressedScale = 0.88f)
                     .padding(10.dp)
                     .size(20.dp),
             )
