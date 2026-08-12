@@ -30,6 +30,8 @@ class PlayQueue {
         val artist: String,
         /** The first artist's uri, when it is known; see EXTRA_ARTIST_URI. */
         val artistUri: String? = null,
+        /** Every credited artist with a page of their own, in credit order. */
+        val artists: List<dev.lelonio.square.data.CatalogArtist> = emptyList(),
         val durationMs: Long,
         val artworkUri: Uri?,
         /**
@@ -286,6 +288,16 @@ class PlayQueue {
         else add(index, tracks)
     }
 
+    /** The two parallel lists put back together; see EXTRA_ARTIST_NAMES. */
+    private fun creditedArtists(
+        extras: android.os.Bundle?,
+    ): List<dev.lelonio.square.data.CatalogArtist> {
+        val names = extras?.getStringArrayList(dev.lelonio.square.ui.EXTRA_ARTIST_NAMES)
+        val uris = extras?.getStringArrayList(dev.lelonio.square.ui.EXTRA_ARTIST_URIS)
+        if (names == null || uris == null) return emptyList()
+        return names.zip(uris) { name, uri -> dev.lelonio.square.data.CatalogArtist(name, uri) }
+    }
+
     private fun toTrack(item: MediaItem): Track? {
         val uri = item.mediaId.takeIf { it.startsWith("spotify:") } ?: return null
         val metadata = item.mediaMetadata
@@ -294,6 +306,7 @@ class PlayQueue {
             title = metadata.title?.toString().orEmpty(),
             artist = metadata.artist?.toString().orEmpty(),
             artistUri = metadata.extras?.getString(dev.lelonio.square.ui.EXTRA_ARTIST_URI),
+            artists = creditedArtists(metadata.extras),
             durationMs = metadata.durationMs ?: 0L,
             artworkUri = metadata.artworkUri,
             queued = metadata.extras?.getBoolean(EXTRA_PLAY_NEXT) == true,

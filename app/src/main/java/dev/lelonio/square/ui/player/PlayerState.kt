@@ -54,6 +54,11 @@ data class PlaybackState(
      * The labels are then plain text, which is what they have always been.
      */
     val artistUri: String? = null,
+    /**
+     * Each credited artist separately, so a line naming two of them opens the
+     * one that was pressed. Empty when the source gave only the joined names.
+     */
+    val artists: List<dev.lelonio.square.data.CatalogArtist> = emptyList(),
     val contextUri: String? = null,
 )
 
@@ -176,6 +181,19 @@ fun rememberPlaybackState(
                 pitch = player.playbackParameters.pitch,
                 source = metadata.extras?.getString(EXTRA_CONTEXT_LABEL).orEmpty(),
                 artistUri = metadata.extras?.getString(dev.lelonio.square.ui.EXTRA_ARTIST_URI),
+                artists = run {
+                    val names = metadata.extras
+                        ?.getStringArrayList(dev.lelonio.square.ui.EXTRA_ARTIST_NAMES)
+                    val uris = metadata.extras
+                        ?.getStringArrayList(dev.lelonio.square.ui.EXTRA_ARTIST_URIS)
+                    if (names == null || uris == null) {
+                        emptyList()
+                    } else {
+                        names.zip(uris) { name, uri ->
+                            dev.lelonio.square.data.CatalogArtist(name, uri)
+                        }
+                    }
+                },
                 contextUri = metadata.extras?.getString(dev.lelonio.square.ui.EXTRA_CONTEXT_URI),
             )
             if (next.hasItem) {

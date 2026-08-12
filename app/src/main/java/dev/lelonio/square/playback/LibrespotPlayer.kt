@@ -1087,6 +1087,17 @@ class LibrespotPlayer(
                                     track.artistUri?.let {
                                         putString(dev.lelonio.square.ui.EXTRA_ARTIST_URI, it)
                                     }
+                                    val credited = track.artists.filter { it.uri != null }
+                                    if (credited.isNotEmpty()) {
+                                        putStringArrayList(
+                                            dev.lelonio.square.ui.EXTRA_ARTIST_NAMES,
+                                            ArrayList(credited.map { it.name }),
+                                        )
+                                        putStringArrayList(
+                                            dev.lelonio.square.ui.EXTRA_ARTIST_URIS,
+                                            ArrayList(credited.map { it.uri!! }),
+                                        )
+                                    }
                                 },
                             )
                             .build(),

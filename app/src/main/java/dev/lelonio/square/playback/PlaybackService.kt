@@ -697,6 +697,7 @@ class PlaybackService : MediaLibraryService() {
                 // artist page a row opens is its own.
                 artistUri = metadata.extras
                     ?.getString(dev.lelonio.square.ui.EXTRA_ARTIST_URI),
+                artists = creditedArtists(metadata.extras),
                 durationMs = metadata.durationMs ?: 0L,
                 artworkUrl = metadata.artworkUri?.toString(),
             )
@@ -749,6 +750,17 @@ class PlaybackService : MediaLibraryService() {
                                     track.artistUri?.let {
                                         putString(dev.lelonio.square.ui.EXTRA_ARTIST_URI, it)
                                     }
+                                    val credited = track.artists.filter { it.uri != null }
+                                    if (credited.isNotEmpty()) {
+                                        putStringArrayList(
+                                            dev.lelonio.square.ui.EXTRA_ARTIST_NAMES,
+                                            ArrayList(credited.map { it.name }),
+                                        )
+                                        putStringArrayList(
+                                            dev.lelonio.square.ui.EXTRA_ARTIST_URIS,
+                                            ArrayList(credited.map { it.uri!! }),
+                                        )
+                                    }
                                     saved.contextUri?.let {
                                         putString(dev.lelonio.square.ui.EXTRA_CONTEXT_URI, it)
                                     }
@@ -779,6 +791,7 @@ class PlaybackService : MediaLibraryService() {
         name = track.title,
         artist = track.artist,
         artistUri = track.artistUri,
+        artists = track.artists,
         durationMs = track.durationMs,
         artworkUrl = track.artworkUri?.toString(),
     )
@@ -788,9 +801,20 @@ class PlaybackService : MediaLibraryService() {
         title = track.name,
         artist = track.artist,
         artistUri = track.artistUri,
+        artists = track.artists,
         durationMs = track.durationMs,
         artworkUri = track.artworkUrl?.let(android.net.Uri::parse),
     )
+
+    /** The two parallel lists put back together; see EXTRA_ARTIST_NAMES. */
+    private fun creditedArtists(
+        extras: android.os.Bundle?,
+    ): List<dev.lelonio.square.data.CatalogArtist> {
+        val names = extras?.getStringArrayList(dev.lelonio.square.ui.EXTRA_ARTIST_NAMES)
+        val uris = extras?.getStringArrayList(dev.lelonio.square.ui.EXTRA_ARTIST_URIS)
+        if (names == null || uris == null) return emptyList()
+        return names.zip(uris) { name, uri -> dev.lelonio.square.data.CatalogArtist(name, uri) }
+    }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         session

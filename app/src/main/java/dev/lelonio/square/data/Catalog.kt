@@ -25,6 +25,13 @@ data class CatalogTrack(
     val artist: String,
     /** The first artist's own uri, when the source gives one; see catalog.rs. */
     val artistUri: String? = null,
+    /**
+     * Every artist credited, named and addressed.
+     *
+     * [artist] is these names run together for the places that show one line;
+     * this is what makes each of them its own way into the app.
+     */
+    val artists: List<CatalogArtist> = emptyList(),
     val album: String = "",
     val durationMs: Long = 0,
     val explicit: Boolean = false,
@@ -66,12 +73,17 @@ data class CatalogPlaylist(
     val artworkUrl: String? = null,
 )
 
+/** One credited artist: what to write, and where it leads. */
+@Serializable
+data class CatalogArtist(val name: String, val uri: String? = null)
+
 /** Bridges a Web API track into the model the UI and the queue already use. */
 fun TrackDto.toCatalogTrack(addedAt: String? = null): CatalogTrack = CatalogTrack(
     uri = uri,
     name = name,
     artist = artists.joinToString(", ") { it.name },
     artistUri = artists.firstOrNull()?.uri,
+    artists = artists.map { CatalogArtist(it.name, it.uri) },
     album = album?.name.orEmpty(),
     durationMs = durationMs,
     explicit = explicit,

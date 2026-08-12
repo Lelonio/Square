@@ -224,6 +224,19 @@ class MainActivity : ComponentActivity() {
                             // So the artist's name in the player is a way to
                             // reach them, rather than a caption.
                             track.artistUri?.let { putString(EXTRA_ARTIST_URI, it) }
+                            // And each credited artist separately, so a track
+                            // by two people opens the one that was pressed.
+                            val credited = track.artists.filter { it.uri != null }
+                            if (credited.isNotEmpty()) {
+                                putStringArrayList(
+                                    EXTRA_ARTIST_NAMES,
+                                    ArrayList(credited.map { it.name }),
+                                )
+                                putStringArrayList(
+                                    EXTRA_ARTIST_URIS,
+                                    ArrayList(credited.map { it.uri!! }),
+                                )
+                            }
                             if (playNext) putBoolean(EXTRA_PLAY_NEXT, true)
                         },
                     )
@@ -249,3 +262,7 @@ const val EXTRA_CONTEXT_LABEL = "dev.lelonio.square.CONTEXT_LABEL"
 
 /** The first artist's own uri, so the player's second line can be opened. */
 const val EXTRA_ARTIST_URI = "dev.lelonio.square.ARTIST_URI"
+
+/** Every credited artist, in order, as two lists that line up. */
+const val EXTRA_ARTIST_NAMES = "dev.lelonio.square.ARTIST_NAMES"
+const val EXTRA_ARTIST_URIS = "dev.lelonio.square.ARTIST_URIS"

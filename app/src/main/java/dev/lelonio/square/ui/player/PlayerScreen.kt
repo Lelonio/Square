@@ -16,6 +16,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
@@ -62,7 +63,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -614,11 +617,9 @@ fun PlayerScreen(
                                 TitleBlock(
                                     state,
                                     Modifier.weight(1f),
-                                    onOpenArtist = {
-                                        state.artistUri?.let { uri ->
-                                            onCollapse()
-                                            onOpenUri(uri, state.artist)
-                                        }
+                                    onOpenArtist = { uri, name ->
+                                        onCollapse()
+                                        onOpenUri(uri, name)
                                     },
                                 )
                                 // The queue's one control. It is a sheet that
@@ -1070,7 +1071,7 @@ private fun Cover(
 private fun TitleBlock(
     state: PlaybackState,
     modifier: Modifier = Modifier,
-    onOpenArtist: () -> Unit = {},
+    onOpenArtist: (uri: String, name: String) -> Unit = { _, _ -> },
 ) {
     // Slid rather than swapped on a track change: this capsule is the only place
     // the track is named now that the big cover is gone, so the change has to be
@@ -1091,24 +1092,66 @@ private fun TitleBlock(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            // Tappable only when there is somewhere to go: a queue built from
-            // search results, or a track another device is playing, names an
-            // artist this app has no page for, and a line that looks like a
-            // link and does nothing is worse than plain text.
-            Text(
-                text = artist,
-                style = MaterialTheme.typography.bodyMedium,
-                color = GlassInkDim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = if (state.artistUri != null) {
-                    Modifier.plainClickable(onOpenArtist)
-                } else {
-                    Modifier
-                },
-            )
+            ArtistLine(state, artist, onOpenArtist)
         }
     }
+}
+
+/**
+ * The line under the title: who made this, and a way to each of them.
+ *
+ * "Pyrex, Sfera Ebbasta" is two artists and two pages, so the whole line
+ * cannot lead to one of them. Where the finger landed is turned into a
+ * character offset and matched against the span each name occupies, which is
+ * what makes the second name reach the second artist.
+ *
+ * Plain text when there is nowhere to go: a queue built from search results, or
+ * a track another device is playing, names an artist this app has no page for,
+ * and a line that looks like a link and does nothing is worse than a caption.
+ */
+@Composable
+private fun ArtistLine(
+    state: PlaybackState,
+    artist: String,
+    onOpenArtist: (uri: String, name: String) -> Unit,
+) {
+    val credits = state.artists
+    // The names as written, so the spans below line up with what is drawn.
+    val label = if (credits.isEmpty()) artist else credits.joinToString(", ") { it.name }
+
+    var layout by remember(label) { mutableStateOf<TextLayoutResult?>(null) }
+    val openable = credits.any { it.uri != null } || state.artistUri != null
+
+    Text(
+        text = label,
+        style = MaterialTheme.typography.bodyMedium,
+        color = GlassInkDim,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        onTextLayout = { layout = it },
+        modifier = if (!openable) {
+            Modifier
+        } else {
+            Modifier.pointerInput(credits, label) {
+                detectTapGestures { position ->
+                    val offset = layout?.getOffsetForPosition(position)
+                    val hit = offset?.let { at ->
+                        var start = 0
+                        credits.firstOrNull { credit ->
+                            val end = start + credit.name.length
+                            val contains = at in start..end
+                            start = end + 2
+                            contains
+                        }
+                    }
+                    // Anywhere else on the line, and any track that named only
+                    // one artist, goes to the first.
+                    val uri = hit?.uri ?: state.artistUri ?: return@detectTapGestures
+                    onOpenArtist(uri, hit?.name ?: artist)
+                }
+            }
+        },
+    )
 }
 
 /**
