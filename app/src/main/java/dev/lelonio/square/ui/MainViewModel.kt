@@ -1119,12 +1119,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val homeShelves: StateFlow<List<HomeShelf>> = _homeShelves.asStateFlow()
 
     private fun loadHomeShelves() = viewModelScope.launch {
+        val keys = container.pathfinderKeys
+        keys.refresh()
         val shelves = withContext(Dispatchers.IO) {
             runCatching {
                 SpotifyHome.parse(
                     NativeBridge.homeFeed(
                         java.util.TimeZone.getDefault().id,
                         java.util.Locale.getDefault().language,
+                        keys.home,
+                        keys.appVersion,
                     ),
                 )
             }

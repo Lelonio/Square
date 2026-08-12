@@ -33,6 +33,11 @@ class SquareApplication : Application() {
         dev.lelonio.square.data.QualityStore(this)
     }
 
+    /** The identifiers Spotify's gateway wants; kept fresh from the repository. */
+    val pathfinderKeys: dev.lelonio.square.data.PathfinderKeys by lazy {
+        dev.lelonio.square.data.PathfinderKeys(this)
+    }
+
     /** How long one track dissolves into the next. */
     val crossfade: dev.lelonio.square.data.CrossfadeStore by lazy {
         dev.lelonio.square.data.CrossfadeStore(this)

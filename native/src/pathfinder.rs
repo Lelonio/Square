@@ -36,21 +36,22 @@ const APP_PLATFORM: &str = "WebPlayer";
 /// Sent because the gateway is choosy about who is asking: with the platform
 /// alone the home query answered `GenericError`, which is what it says to a
 /// caller it does not recognise rather than to one it refuses. Like the query
-/// hashes, this ages: see the note at the top of the file.
+/// hashes, this ages, and like them the caller can pass a newer one; see
+/// PathfinderKeys on the Kotlin side.
 const APP_VERSION: &str = "1.2.97.155.g5dd0dcaf-development";
 
 /// One persisted query, by name and hash. See the note at the top of the file.
 struct Query {
     name: &'static str,
-    hash: &'static str,
+    hash: String,
 }
 
-/// The personalised home: the shelves, in the order the account is meant to see
-/// them.
-const HOME: Query = Query {
-    name: "home",
-    hash: "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a",
-};
+/// The hash that was current when this was written.
+///
+/// Used only when the caller has nothing better. Since these are retired by
+/// Spotify rather than by this app, the newest one is fetched at runtime and
+/// this is the floor rather than the answer.
+const HOME_HASH: &str = "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a";
 
 /// Runs one persisted query and returns the raw JSON body.
 async fn query(
@@ -58,6 +59,7 @@ async fn query(
     query: &Query,
     variables: String,
     language: &str,
+    app_version: &str,
 ) -> engine::EngineResult<String> {
     let body = format!(
         concat!(
@@ -95,7 +97,10 @@ async fn query(
         if let Ok(value) = HeaderValue::from_str(language) {
             headers.insert(http::header::ACCEPT_LANGUAGE, value);
         }
-        headers.insert("spotify-app-version", HeaderValue::from_static(APP_VERSION));
+        let version = if app_version.is_empty() { APP_VERSION } else { app_version };
+        if let Ok(value) = HeaderValue::from_str(version) {
+            headers.insert("spotify-app-version", value);
+        }
         headers.insert(
             http::header::ORIGIN,
             HeaderValue::from_static("https://open.spotify.com"),
@@ -142,7 +147,12 @@ fn visitor_id() -> String {
 }
 
 /// The account's home page, as Spotify's own client receives it.
-pub fn home(time_zone: &str, language: &str) -> engine::EngineResult<String> {
+pub fn home(
+    time_zone: &str,
+    language: &str,
+    hash: &str,
+    app_version: &str,
+) -> engine::EngineResult<String> {
     let handle = engine::runtime_handle()?;
     let session = engine::with_session(|session| session.clone())?;
 
@@ -167,5 +177,15 @@ pub fn home(time_zone: &str, language: &str) -> engine::EngineResult<String> {
         zone, visitor_id()
     );
 
-    handle.block_on(async move { query(&session, &HOME, variables, &language).await })
+    let home = Query {
+        name: "home",
+        hash: if hash.is_empty() {
+            HOME_HASH.to_string()
+        } else {
+            hash.to_string()
+        },
+    };
+    let app_version = app_version.to_string();
+
+    handle.block_on(async move { query(&session, &home, variables, &language, &app_version).await })
 }

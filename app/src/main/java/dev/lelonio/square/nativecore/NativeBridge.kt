@@ -226,8 +226,19 @@ object NativeBridge {
      * hashes change when its web client is rebuilt. Callers must be able to
      * carry on with nothing. Blocking.
      */
-    fun homeFeed(timeZone: String, language: String): String =
-        nativeHomeFeed(timeZone, language)
+    fun homeFeed(
+        timeZone: String,
+        language: String,
+        /**
+         * The persisted query's hash and the web client version to claim.
+         *
+         * Passed in rather than built in: Spotify retires both on its own
+         * schedule, and a string that ages should not need a release of this
+         * app to replace. See PathfinderKeys.
+         */
+        hash: String,
+        appVersion: String,
+    ): String = nativeHomeFeed(timeZone, language, hash, appVersion)
 
     /** This device's own Connect id, which is what says "here" rather than "there". */
     fun deviceId(): String = runCatching { nativeDeviceId() }.getOrDefault("")
@@ -335,7 +346,12 @@ object NativeBridge {
     private external fun nativePublishContext(positionMs: Int): Boolean
     private external fun nativeResumeHere(contextUri: String, trackUri: String, positionMs: Int)
     private external fun nativeTakeOver()
-    private external fun nativeHomeFeed(timeZone: String, language: String): String
+    private external fun nativeHomeFeed(
+        timeZone: String,
+        language: String,
+        hash: String,
+        appVersion: String,
+    ): String
     private external fun nativeDeviceId(): String
     private external fun nativeRemoteState(): String
     private external fun nativeRemoteDevices(): String

@@ -26,3 +26,7 @@ keystore.properties
 .idea/
 *.iml
 .DS_Store
+
+# Network captures taken while reverse-engineering. They hold session
+# headers, so they stay on the machine that made them.
+*.har

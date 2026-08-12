@@ -498,11 +498,15 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeHom
     _class: JClass,
     time_zone: JString,
     language: JString,
+    hash: JString,
+    app_version: JString,
 ) -> jstring {
     let zone = read_string(&mut env, &time_zone).unwrap_or_default();
     let language = read_string(&mut env, &language).unwrap_or_default();
+    let hash = read_string(&mut env, &hash).unwrap_or_default();
+    let app_version = read_string(&mut env, &app_version).unwrap_or_default();
     guard_string(&mut env, "HomeFeed", || {
-        crate::pathfinder::home(&zone, &language)
+        crate::pathfinder::home(&zone, &language, &hash, &app_version)
     })
 }
 
