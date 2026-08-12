@@ -233,6 +233,7 @@ fun SquareApp(
     val elsewhereActive by dev.lelonio.square.data.RemoteConnect.elsewhereActive
         .collectAsStateWithLifecycle()
     val inPlaylists by viewModel.inPlaylists.collectAsStateWithLifecycle()
+    val homeShelves by viewModel.homeShelves.collectAsStateWithLifecycle()
     val remote = elsewhere?.takeIf { elsewhereActive }
     val remoteLabel = stringResource(R.string.playing_on, remote?.deviceName.orEmpty())
     val playback = remote?.asPlaybackState(remoteLabel) ?: local
@@ -662,6 +663,7 @@ fun SquareApp(
                                 youtubeMode =
                                     backend == dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC,
                                 youtubeHome = youtubeHome,
+                                shelves = homeShelves,
                                 onPlayTrending = { tracks, index ->
                                     onPlay(tracks, index, null, false, trendingLabel, 0L)
                                 },

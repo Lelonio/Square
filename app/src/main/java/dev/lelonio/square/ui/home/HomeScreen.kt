@@ -138,6 +138,14 @@ fun HomeScreen(
     youtubeMode: Boolean = false,
     youtubeHome: MainViewModel.YouTubeHomeState = MainViewModel.YouTubeHomeState(),
     onPlayTrending: (List<CatalogTrack>, Int) -> Unit = { _, _ -> },
+    /**
+     * Spotify's own personalised shelves, empty when the gateway said nothing.
+     *
+     * Shown above the rows this app builds itself. They are what the listener
+     * recognises as their home page, and unlike everything below them they
+     * cannot be reconstructed from the account's playlists.
+     */
+    shelves: List<dev.lelonio.square.data.HomeShelf> = emptyList(),
 ) {
     if (youtubeMode) {
         YouTubeHome(
@@ -282,15 +290,29 @@ fun HomeScreen(
                         bottom = contentPadding.calculateBottomPadding(),
                     ),
                 ) {
-                // First on the page, and deliberately: what the account is
-                // playing this month is the one row that is different every
-                // time it is opened.
+                // Spotify's own shelves come first, because they are what the
+                // listener recognises as their home and the only rows here that
+                // this app could not have built itself. What the account has
+                // been playing follows: it is worth having, and it is also the
+                // same answer for weeks at a time.
+                //
                 // Every feed section keeps its place while it is still being
                 // fetched. The account's playlists and its recent tracks are
                 // held on the device and draw at once; everything else is a Web
                 // API round trip a second or two behind, and without a
                 // placeholder the page arrived in two halves and shifted under
                 // whatever was being read.
+                if (filter == Feed.ALL) {
+                    shelves.forEach { shelf ->
+                        item(contentType = "shelf") { Heading(shelf.title) }
+                        item(contentType = "shelf") {
+                            Carousel(shelf.items, key = { it.uri }) { entry ->
+                                PlaylistTile(entry) { onOpenPlaylist(entry) }
+                            }
+                        }
+                    }
+                }
+
                 if (showForYou && feed.topTracks.isEmpty() && feed.loading) {
                     item(contentType = "skeleton") {
                         SkeletonSection(tileWidth = 152.dp, tileHeight = 152.dp)

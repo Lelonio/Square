@@ -16,6 +16,8 @@ import dev.lelonio.square.data.AddTracksRequestDto
 import dev.lelonio.square.data.RemoveTracksRequestDto
 import dev.lelonio.square.data.TrackUriDto
 import dev.lelonio.square.data.CatalogPlaylist
+import dev.lelonio.square.data.HomeShelf
+import dev.lelonio.square.data.SpotifyHome
 import dev.lelonio.square.data.CatalogTrack
 import dev.lelonio.square.data.ContextCacheStore
 import dev.lelonio.square.data.SearchItem
@@ -982,6 +984,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _state.value = it
                 loadProfile()
                 loadMissingCovers()
+                // Spotify's own shelves, once there is a session to ask with.
+                loadHomeShelves()
             }
             .onFailure {
                 android.util.Log.e(TAG, "library load failed: ${chain(it)}", it)
@@ -1100,6 +1104,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * replaces it only when it has the whole thing, so reopening never takes a
      * finished list away and rebuilds it in front of the user.
      */
+    private val _homeShelves = MutableStateFlow<List<HomeShelf>>(emptyList())
+
+    /**
+     * Spotify's own personalised home: the mixes, "made for you", the shelves
+     * that change through the day.
+     *
+     * Empty is a perfectly good answer. It comes from a private gateway whose
+     * queries are addressed by a hash of themselves, and those hashes are
+     * retired whenever Spotify rebuilds its web client, so this page has to be
+     * one the app can do without. Everything below it is read the old way and
+     * does not depend on this at all.
+     */
+    val homeShelves: StateFlow<List<HomeShelf>> = _homeShelves.asStateFlow()
+
+    private fun loadHomeShelves() = viewModelScope.launch {
+        val shelves = withContext(Dispatchers.IO) {
+            runCatching {
+                SpotifyHome.parse(
+                    NativeBridge.homeFeed(
+                        java.util.TimeZone.getDefault().id,
+                        java.util.Locale.getDefault().language,
+                    ),
+                )
+            }
+                .onFailure { android.util.Log.i(TAG, "no personalised home: ${describe(it)}") }
+                .getOrDefault(emptyList())
+        }
+        if (shelves.isNotEmpty()) {
+            android.util.Log.i(TAG, "home: ${shelves.size} shelves from the gateway")
+            _homeShelves.value = shelves
+        }
+    }
+
     private val _inPlaylists = MutableStateFlow<Set<String>>(emptySet())
 
     /**

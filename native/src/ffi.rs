@@ -491,6 +491,21 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeTak
     guard(&mut env, "TakeOver", engine::take_over);
 }
 
+/// The account's personalised home, as raw JSON from Spotify's gateway.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeHomeFeed(
+    mut env: JNIEnv,
+    _class: JClass,
+    time_zone: JString,
+    language: JString,
+) -> jstring {
+    let zone = read_string(&mut env, &time_zone).unwrap_or_default();
+    let language = read_string(&mut env, &language).unwrap_or_default();
+    guard_string(&mut env, "HomeFeed", || {
+        crate::pathfinder::home(&zone, &language)
+    })
+}
+
 /// This device's own Connect id.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDeviceId(

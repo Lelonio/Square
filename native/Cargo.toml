@@ -28,6 +28,8 @@ log = "0.4"
 once_cell = "1"
 # Same major as librespot-core, so `Method` is the type spclient expects.
 http = "1.3"
+# The body type librespot's own HTTP client takes.
+bytes = "1"
 serde_json = "1"
 futures-util = "0.3"
 

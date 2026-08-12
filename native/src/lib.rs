@@ -9,6 +9,7 @@ mod catalog;
 mod engine;
 mod events;
 mod ffi;
+mod pathfinder;
 mod remote;
 mod sink;
 

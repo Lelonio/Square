@@ -218,6 +218,17 @@ object NativeBridge {
      */
     fun takeOver() = nativeTakeOver()
 
+    /**
+     * The account's personalised home, as raw JSON from Spotify's gateway.
+     *
+     * A different service from everything else here, and a more fragile one:
+     * the query is sent as a hash of one Spotify already knows, and those
+     * hashes change when its web client is rebuilt. Callers must be able to
+     * carry on with nothing. Blocking.
+     */
+    fun homeFeed(timeZone: String, language: String): String =
+        nativeHomeFeed(timeZone, language)
+
     /** This device's own Connect id, which is what says "here" rather than "there". */
     fun deviceId(): String = runCatching { nativeDeviceId() }.getOrDefault("")
 
@@ -324,6 +335,7 @@ object NativeBridge {
     private external fun nativePublishContext(positionMs: Int): Boolean
     private external fun nativeResumeHere(contextUri: String, trackUri: String, positionMs: Int)
     private external fun nativeTakeOver()
+    private external fun nativeHomeFeed(timeZone: String, language: String): String
     private external fun nativeDeviceId(): String
     private external fun nativeRemoteState(): String
     private external fun nativeRemoteDevices(): String
