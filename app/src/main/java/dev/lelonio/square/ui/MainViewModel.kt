@@ -1174,7 +1174,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         val kind = kindOf(playlist.uri)
         playlistJob?.cancel()
-        val base = PlaylistState(
+        // Reassigned when the picture arrives late; every state published below
+        // is built from this, so filling it in one place is what stops a later
+        // write from taking the picture back off the screen.
+        var base = PlaylistState(
             uri = playlist.uri,
             name = playlist.name,
             artworkUrl = playlist.artworkUrl,
@@ -1188,6 +1191,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
 
         playlistJob = viewModelScope.launch {
+            // Opened by URI alone, from a tap on the player's text: there was no
+            // row to take the picture from. Asked for alongside the track list
+            // rather than before it, since the list is what the page is for.
+            if (base.artworkUrl == null) launch {
+                val art = artworkFor(playlist.uri, kind) ?: return@launch
+                base = base.copy(artworkUrl = art)
+                if (_playlist.value.uri == playlist.uri) {
+                    _playlist.value = _playlist.value.copy(artworkUrl = art)
+                }
+            }
+
             // The disk copy, if this run has not opened the playlist yet. Read
             // before anything is asked of the network: the whole point is that a
             // list already known appears at once rather than filling in.
@@ -1225,6 +1239,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         if (cached.isEmpty()) base.copy(error = describe(it)) else base.copy(tracks = cached)
                 }
         }
+    }
+
+    /**
+     * The picture at the top of a page opened by URI alone.
+     *
+     * The account's own playlists are already in hand, so those cost nothing.
+     * Anything else is one request, and a page without a picture is a perfectly
+     * good page, so every failure here is silent.
+     */
+    private suspend fun artworkFor(uri: String, kind: DetailKind): String? {
+        (_state.value as? UiState.Ready)?.playlists
+            ?.firstOrNull { it.uri == uri }
+            ?.artworkUrl
+            ?.let { return it }
+
+        val id = uri.substringAfterLast(':')
+        if (container.webApi.isReady) {
+            val fetched = runCatching {
+                when (kind) {
+                    DetailKind.ARTIST -> container.api.artist(id).images
+                    DetailKind.ALBUM -> container.api.album(id).images
+                    DetailKind.PLAYLIST -> container.api.playlist(id).images
+                }.firstOrNull()?.url
+            }
+                .onFailure { android.util.Log.w(TAG, "no cover for $uri: ${describe(it)}") }
+                .getOrNull()
+            if (fetched != null) return fetched
+        }
+
+        // An album's cover is on every one of its tracks, which is the way in
+        // when the user has not registered an application of their own.
+        if (kind != DetailKind.ALBUM) return null
+        return contextCache[uri]?.tracks?.firstNotNullOfOrNull { it.artworkUrl }
     }
 
     /**

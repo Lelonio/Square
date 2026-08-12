@@ -263,6 +263,13 @@ fn track_json(track: &Track) -> Value {
             .map(|a| a.name.as_str())
             .collect::<Vec<_>>()
             .join(", "),
+        // The first artist's own uri, so a name on screen can be tapped. The
+        // first rather than all of them: a track credited to three people has
+        // one page a listener means when they press the line.
+        "artistUri": track
+            .artists
+            .first()
+            .and_then(|a| a.id.to_uri().ok()),
         "album": track.album.name,
         "durationMs": track.duration,
         "explicit": track.is_explicit,

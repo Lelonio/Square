@@ -23,6 +23,8 @@ data class CatalogTrack(
     val uri: String,
     val name: String,
     val artist: String,
+    /** The first artist's own uri, when the source gives one; see catalog.rs. */
+    val artistUri: String? = null,
     val album: String = "",
     val durationMs: Long = 0,
     val explicit: Boolean = false,
@@ -69,6 +71,7 @@ fun TrackDto.toCatalogTrack(addedAt: String? = null): CatalogTrack = CatalogTrac
     uri = uri,
     name = name,
     artist = artists.joinToString(", ") { it.name },
+    artistUri = artists.firstOrNull()?.uri,
     album = album?.name.orEmpty(),
     durationMs = durationMs,
     explicit = explicit,

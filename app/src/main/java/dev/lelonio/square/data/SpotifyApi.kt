@@ -136,6 +136,26 @@ interface SpotifyApi {
     ): PageDto<AlbumDto>
 
     /**
+     * The three below exist for one field each: the picture at the top of a
+     * page opened by name alone.
+     *
+     * Most of the app reaches a playlist or an artist through a row that
+     * already carries its image. A tap on the player's own text does not: all
+     * it has is the URI, so the page has to go and ask.
+     */
+    @GET("v1/artists/{id}")
+    suspend fun artist(@Path("id") artistId: String): ArtistDto
+
+    @GET("v1/albums/{id}")
+    suspend fun album(@Path("id") albumId: String): AlbumDto
+
+    @GET("v1/playlists/{id}")
+    suspend fun playlist(
+        @Path("id") playlistId: String,
+        @Query("fields") fields: String = "id,uri,name,images",
+    ): PlaylistDto
+
+    /**
      * Every device the account can currently play on.
      *
      * The Web API rather than the access point: librespot's Connect state keeps

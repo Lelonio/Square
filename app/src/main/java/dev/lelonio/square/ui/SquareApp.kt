@@ -977,6 +977,14 @@ fun SquareApp(
                                 onSelectDevice = {
                                     viewModel.transferPlayback(it, positionMs.value)
                                 },
+                                // The artist line and the line naming what is
+                                // playing both open the page they name. The
+                                // player has already folded itself away by the
+                                // time this runs, so the page arrives in front.
+                                onOpenUri = { uri, name ->
+                                    viewModel.openContext(uri, name)
+                                    navController.navigate(Routes.PLAYLIST)
+                                },
                                 onAddToPlaylist = {
                                     viewModel.openAddToPlaylist(
                                         playback.mediaId,

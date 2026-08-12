@@ -113,6 +113,8 @@ class PlaybackService : MediaLibraryService() {
                 .apply { setSmallIcon(dev.lelonio.square.R.drawable.ic_notification) },
         )
 
+        // Already read by the application object, and harmless twice: `load`
+        // returns at once once the file is open.
         AudioEffects.load(this)
 
         // The bitrate is fixed when the player is built, so a change means a new
@@ -120,14 +122,25 @@ class PlaybackService : MediaLibraryService() {
         // the service owns the engine's lifetime, and it is the only place that
         // can put playback back afterwards.
         scope.launch {
-            quality.quality.drop(1).collect { restartForQuality() }
+            quality.quality.drop(1).collect { reconfigureEngine("quality") }
+        }
+
+        // Which stretcher does speed and pitch. Unlike the bitrate this one is
+        // switchable while playing: it is a property of the output, not of the
+        // session.
+        scope.launch {
+            container.effectQuality.quality.collect { quality ->
+                audioOutput.setLightEffects(
+                    quality == dev.lelonio.square.data.EffectQuality.Light,
+                )
+            }
         }
 
         // The crossfade is part of the same configuration and just as fixed, so
         // it takes the same road: a new engine, with the queue put back where
         // it was.
         scope.launch {
-            crossfade.seconds.drop(1).collect { rebuildEngine("crossfade") }
+            crossfade.seconds.drop(1).collect { reconfigureEngine("crossfade") }
         }
 
         // Playback handed to this phone from another client's device list.
@@ -333,39 +346,40 @@ class PlaybackService : MediaLibraryService() {
      * session is torn down and started again. The queue and position are saved
      * first and put back after, which is the same path a cold start takes.
      */
-    private fun restartForQuality() = rebuildEngine("quality")
-
     /**
-     * Tears the engine down and brings it back with the queue where it was.
+     * Rebuilds the player so a new bitrate or crossfade takes effect.
      *
-     * The same path for a bitrate change and for a lost Connect device, because
-     * it is the same operation: the engine cannot be reconfigured or repaired
-     * in place, only replaced. The queue and position are saved first and put
-     * back by restoreQueue, which is what a cold start does too.
+     * The engine is not shut down for this any more. Tearing it down from here
+     * meant dropping the tokio runtime from a JNI thread while librespot's own
+     * threads were still inside it, which aborted the process on a destroyed
+     * mutex: that is the crash that came back the moment the audio quality was
+     * changed. The engine can now replace its session and player on its own and
+     * leave the runtime and the output alone; all this side has to do is hand
+     * the queue back afterwards, since the new Connect device has never seen it.
      */
-    private fun rebuildEngine(reason: String) {
+    private fun reconfigureEngine(reason: String) {
         if (rebuilding) return
         val engine = librespot ?: return
+        if (!engineStarted) return
         rebuilding = true
         val wasPlaying = player.playWhenReady
+        val position = player.currentPosition.coerceAtLeast(0)
         runCatching { savePlayback() }
-        android.util.Log.i(TAG, "rebuilding the engine ($reason)")
+        android.util.Log.i(TAG, "rebuilding the player ($reason)")
 
         scope.launch {
-            // Off the main thread, and this is not optional. Shutting the engine
-            // down stops its threads and closes its session, and with no network
-            // that waits on timeouts: run here it blocks the looper long enough
-            // to take the process down, which is exactly what pausing with the
-            // connection gone used to do. switchBackend has said so all along.
-            runCatching { withContext(Dispatchers.IO) { NativeBridge.shutdown() } }
-            engineStarted = false
-            engine.clearForRestart()
-
-            connectEngine().join()
-            // restoreQueue, run by connectEngine, puts the queue back at the
-            // position that was just saved, paused.
-            if (wasPlaying && player.mediaItemCount > 0) player.play()
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    NativeBridge.setQuality(quality.bitrateKbps(), crossfade.durationMs())
+                }
+                    .onFailure { android.util.Log.e(TAG, "could not rebuild the player: $it") }
+                    .isSuccess
+            }
             rebuilding = false
+            if (!ok) return@launch
+            // The queue on screen is untouched and is still the right one; the
+            // engine's copy went with the session.
+            engine.reloadQueue(playing = wasPlaying, positionMs = position)
         }
     }
 
@@ -581,6 +595,10 @@ class PlaybackService : MediaLibraryService() {
                 uri = item.mediaId,
                 name = metadata.title?.toString().orEmpty(),
                 artist = metadata.artist?.toString().orEmpty(),
+                // Kept per track rather than taken from the current one: the
+                // artist page a row opens is its own.
+                artistUri = metadata.extras
+                    ?.getString(dev.lelonio.square.ui.EXTRA_ARTIST_URI),
                 durationMs = metadata.durationMs ?: 0L,
                 artworkUrl = metadata.artworkUri?.toString(),
             )
@@ -630,6 +648,9 @@ class PlaybackService : MediaLibraryService() {
                             .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse))
                             .setExtras(
                                 android.os.Bundle().apply {
+                                    track.artistUri?.let {
+                                        putString(dev.lelonio.square.ui.EXTRA_ARTIST_URI, it)
+                                    }
                                     saved.contextUri?.let {
                                         putString(dev.lelonio.square.ui.EXTRA_CONTEXT_URI, it)
                                     }
@@ -659,6 +680,7 @@ class PlaybackService : MediaLibraryService() {
         uri = track.uri,
         name = track.title,
         artist = track.artist,
+        artistUri = track.artistUri,
         durationMs = track.durationMs,
         artworkUrl = track.artworkUri?.toString(),
     )
@@ -667,6 +689,7 @@ class PlaybackService : MediaLibraryService() {
         uri = track.uri,
         title = track.name,
         artist = track.artist,
+        artistUri = track.artistUri,
         durationMs = track.durationMs,
         artworkUri = track.artworkUrl?.let(android.net.Uri::parse),
     )

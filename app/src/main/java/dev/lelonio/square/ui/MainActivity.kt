@@ -221,6 +221,9 @@ class MainActivity : ComponentActivity() {
                             if (contextLabel.isNotEmpty()) {
                                 putString(EXTRA_CONTEXT_LABEL, contextLabel)
                             }
+                            // So the artist's name in the player is a way to
+                            // reach them, rather than a caption.
+                            track.artistUri?.let { putString(EXTRA_ARTIST_URI, it) }
                             if (playNext) putBoolean(EXTRA_PLAY_NEXT, true)
                         },
                     )
@@ -243,3 +246,6 @@ const val EXTRA_PLAY_NEXT = "dev.lelonio.square.PLAY_NEXT"
 
 /** What to show the listener: "Playlist · Estate 2025", "Ricerca". */
 const val EXTRA_CONTEXT_LABEL = "dev.lelonio.square.CONTEXT_LABEL"
+
+/** The first artist's own uri, so the player's second line can be opened. */
+const val EXTRA_ARTIST_URI = "dev.lelonio.square.ARTIST_URI"

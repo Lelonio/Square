@@ -46,6 +46,15 @@ data class PlaybackState(
      * album, an artist or a search.
      */
     val source: String = "",
+    /**
+     * Where the line under the title leads, when it leads anywhere.
+     *
+     * Both are null on a queue that came from somewhere with no page of its
+     * own: a handful of search results, a track handed over by another device.
+     * The labels are then plain text, which is what they have always been.
+     */
+    val artistUri: String? = null,
+    val contextUri: String? = null,
 )
 
 /**
@@ -166,6 +175,8 @@ fun rememberPlaybackState(
                 speed = player.playbackParameters.speed,
                 pitch = player.playbackParameters.pitch,
                 source = metadata.extras?.getString(EXTRA_CONTEXT_LABEL).orEmpty(),
+                artistUri = metadata.extras?.getString(dev.lelonio.square.ui.EXTRA_ARTIST_URI),
+                contextUri = metadata.extras?.getString(dev.lelonio.square.ui.EXTRA_CONTEXT_URI),
             )
             if (next.hasItem) {
                 seenItem.value = true

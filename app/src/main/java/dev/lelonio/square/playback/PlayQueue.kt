@@ -28,6 +28,8 @@ class PlayQueue {
         val uri: String,
         val title: String,
         val artist: String,
+        /** The first artist's uri, when it is known; see EXTRA_ARTIST_URI. */
+        val artistUri: String? = null,
         val durationMs: Long,
         val artworkUri: Uri?,
         /**
@@ -291,6 +293,7 @@ class PlayQueue {
             uri = uri,
             title = metadata.title?.toString().orEmpty(),
             artist = metadata.artist?.toString().orEmpty(),
+            artistUri = metadata.extras?.getString(dev.lelonio.square.ui.EXTRA_ARTIST_URI),
             durationMs = metadata.durationMs ?: 0L,
             artworkUri = metadata.artworkUri,
             queued = metadata.extras?.getBoolean(EXTRA_PLAY_NEXT) == true,

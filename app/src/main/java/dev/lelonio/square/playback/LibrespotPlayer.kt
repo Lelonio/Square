@@ -739,6 +739,23 @@ class LibrespotPlayer(
      * exists. It clears what the app believes about it, so the queue coming
      * back from storage is loaded rather than skipped as "already playing".
      */
+    /**
+     * Hands the queue back to an engine that has just been rebuilt.
+     *
+     * Everything on this side is still true — the list, the order, the track —
+     * and only the engine's copy went away with its session, so this pushes it
+     * again at the position it had reached rather than starting anything over.
+     */
+    fun reloadQueue(playing: Boolean, positionMs: Long) {
+        if (released || queue.items.isEmpty()) return
+        engineQueueStale = true
+        engineIndex = -1
+        this.positionMs = positionMs
+        wantPlay = playing
+        pushQueue(startPlaying = playing, positionMs = positionMs.toInt())
+        invalidateState()
+    }
+
     fun clearForRestart() {
         queue.replace(emptyList(), 0)
         wantPlay = false
@@ -1031,12 +1048,21 @@ class LibrespotPlayer(
                             .setTitle(track.title)
                             .setArtist(track.artist)
                             .setArtworkUri(track.artworkUri)
-                            // Put back, because this item is rebuilt rather
-                            // than passed through; see PlayQueue.contextLabel.
+                            // Put back, because this item is rebuilt rather than
+                            // passed through: whatever is not restored here is
+                            // lost to everything reading the player, which is
+                            // how the artist's name stopped being a link the
+                            // moment the queue was rebuilt.
                             .setExtras(
-                                queue.contextLabel.takeIf { it.isNotEmpty() }?.let {
-                                    android.os.Bundle().apply {
+                                android.os.Bundle().apply {
+                                    queue.contextLabel.takeIf { it.isNotEmpty() }?.let {
                                         putString(EXTRA_CONTEXT_LABEL, it)
+                                    }
+                                    queue.contextUri?.let {
+                                        putString(dev.lelonio.square.ui.EXTRA_CONTEXT_URI, it)
+                                    }
+                                    track.artistUri?.let {
+                                        putString(dev.lelonio.square.ui.EXTRA_ARTIST_URI, it)
                                     }
                                 },
                             )
