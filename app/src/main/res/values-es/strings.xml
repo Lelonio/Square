@@ -212,4 +212,16 @@
     <string name="update_install">Instalar</string>
     <string name="download_get_app">Instalar YTDLnis</string>
     <string name="download_with">Descargar con YTDLnis</string>
+    <string name="crossfade">Fundido</string>
+    <string name="crossfade_off">Apagado</string>
+    <string name="crossfade_seconds">%1$d segundos</string>
+    <string name="crossfade_note">Una canción se funde con la siguiente. Solo cuando termina sola, no al saltarla.</string>
+    <string name="page_playback">Reproducción</string>
+    <string name="page_app">Aplicación</string>
+    <string name="page_account_summary">Tu cuenta, la aplicación de la Web API y cerrar sesión</string>
+    <string name="page_playback_summary">De dónde viene la música, calidad y fundido</string>
+    <string name="page_app_summary">Idioma</string>
+    <string name="page_about_summary">Versión, permisos, licencias y desarrollador</string>
+    <string name="playing_on">Reproduciendo en %1$s</string>
+    <string name="switching">Cambiando…</string>
 </resources>

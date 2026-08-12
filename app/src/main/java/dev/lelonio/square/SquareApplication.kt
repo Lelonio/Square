@@ -33,6 +33,11 @@ class SquareApplication : Application() {
         dev.lelonio.square.data.QualityStore(this)
     }
 
+    /** How long one track dissolves into the next. */
+    val crossfade: dev.lelonio.square.data.CrossfadeStore by lazy {
+        dev.lelonio.square.data.CrossfadeStore(this)
+    }
+
     /** What language the app is read in, and what the engine asks Spotify for. */
     val language: LanguageStore by lazy { LanguageStore(this) }
 

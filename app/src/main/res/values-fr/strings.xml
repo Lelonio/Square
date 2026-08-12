@@ -212,4 +212,16 @@
     <string name="update_install">Installer</string>
     <string name="download_get_app">Installer YTDLnis</string>
     <string name="download_with">Télécharger avec YTDLnis</string>
+    <string name="crossfade">Fondu enchaîné</string>
+    <string name="crossfade_off">Désactivé</string>
+    <string name="crossfade_seconds">%1$d secondes</string>
+    <string name="crossfade_note">Un morceau se fond dans le suivant. Seulement quand il se termine seul, pas quand vous passez au suivant.</string>
+    <string name="page_playback">Lecture</string>
+    <string name="page_app">Application</string>
+    <string name="page_account_summary">Votre compte, l’application Web API et la déconnexion</string>
+    <string name="page_playback_summary">D’où vient la musique, qualité et fondu enchaîné</string>
+    <string name="page_app_summary">Langue</string>
+    <string name="page_about_summary">Version, autorisations, licences et développeur</string>
+    <string name="playing_on">Lecture sur %1$s</string>
+    <string name="switching">Transfert…</string>
 </resources>

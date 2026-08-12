@@ -233,4 +233,16 @@
     <string name="update_install">Install</string>
     <string name="download_get_app">Get YTDLnis</string>
     <string name="download_with">Download with YTDLnis</string>
+    <string name="crossfade">Crossfade</string>
+    <string name="crossfade_off">Off</string>
+    <string name="crossfade_seconds">%1$d seconds</string>
+    <string name="crossfade_note">One track dissolves into the next. Only where a track ends on its own, not when you skip.</string>
+    <string name="page_playback">Playback</string>
+    <string name="page_app">App</string>
+    <string name="page_account_summary">Your account, the Web API application and signing out</string>
+    <string name="page_playback_summary">Where music comes from, quality and crossfade</string>
+    <string name="page_app_summary">Language</string>
+    <string name="page_about_summary">Version, permissions, licences and the developer</string>
+    <string name="playing_on">Playing on %1$s</string>
+    <string name="switching">Switching…</string>
 </resources>

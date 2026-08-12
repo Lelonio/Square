@@ -42,6 +42,8 @@ import dev.lelonio.square.ui.glass.LiquidButton
 import dev.lelonio.square.ui.theme.softShadow
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.Broadcast
 import com.adamglin.phosphoricons.fill.Pause
 import com.adamglin.phosphoricons.fill.Play
 import com.adamglin.phosphoricons.fill.SkipForward
@@ -130,6 +132,13 @@ fun MiniPlayer(
      */
     sharedScope: androidx.compose.animation.SharedTransitionScope? = null,
     animatedScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
+    /**
+     * The device the music is coming out of, when it is not this one.
+     *
+     * A name rather than a flag: "playing somewhere else" is not useful on its
+     * own, and the bar is the one place the answer is always in view.
+     */
+    remoteDevice: String? = null,
     onExpand: () -> Unit,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
@@ -187,13 +196,30 @@ fun MiniPlayer(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Text(
-                            artist,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MiniPlayerInkDim,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        // The second line answers "where", when that is a
+                        // question, and "who" the rest of the time. Not both at
+                        // once: on a bar this size the two would elide each
+                        // other into nothing.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (remoteDevice != null) {
+                                Icon(
+                                    PhosphorIcons.Regular.Broadcast,
+                                    contentDescription = null,
+                                    tint = MiniPlayerAccent,
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .padding(end = 1.dp),
+                                )
+                            }
+                            Text(
+                                remoteDevice ?: artist,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (remoteDevice != null) MiniPlayerAccent else MiniPlayerInkDim,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(start = if (remoteDevice != null) 4.dp else 0.dp),
+                            )
+                        }
                     }
                 }
 
@@ -263,6 +289,15 @@ fun MiniPlayer(
  */
 private val MiniPlayerInk = Color(0xFFF7F8FA)
 private val MiniPlayerInkDim = Color(0xFFF7F8FA).copy(alpha = 0.66f)
+
+/**
+ * The green everyone already reads as "this is coming out of something else".
+ *
+ * Spotify's own, and deliberately so: the mark is theirs, it means one thing,
+ * and inventing a colour for it would be asking people to learn a private
+ * signal for something they already recognise.
+ */
+private val MiniPlayerAccent = Color(0xFF1ED760)
 
 /** Guarded against the duration being unknown while a track loads. */
 fun progressOf(positionMs: Long, durationMs: Long): Float =

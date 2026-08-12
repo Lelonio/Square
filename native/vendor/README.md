@@ -97,3 +97,62 @@ it is an error the caller can handle rather than a process exit.
 
 Re-apply this patch when bumping `librespot-core`. If the whole file is replaced,
 the marker to look for is `LOCAL PATCH` in `src/config.rs`.
+
+## librespot-playback
+
+Copy of [`librespot-playback` 0.8.0](https://github.com/librespot-org/librespot)
+(MIT, licence retained), wired in the same way.
+
+### The patch: crossfade
+
+Upstream plays one track at a time, start to finish, and the next one begins
+where the last one stopped. Overlapping them cannot be done from outside the
+crate: the player owns the decoder and the sink, and nothing it exposes lets a
+caller reach the samples of two tracks at once.
+
+`PlayerConfig` gains `crossfade_duration_ms`, zero by default, which leaves
+upstream behaviour exactly as it was.
+
+When it is set, the player announces `EndOfTrack` a fade's length before the
+track really ends. Whoever owns the queue answers with a load, as it always
+does, and that load is what starts the fade: instead of dropping the decoder of
+the track being replaced, `start_playback` hands it to `fade_out`, where it is
+read for the length of the fade and then dropped. Nothing in the player decides
+what plays next, so the Connect device stays the only thing that does.
+
+The mix is equal power, `cos` out and `sin` in, one gain per frame. Two straight
+ramps summed dip in the middle, where both tracks are at half; squared cosine
+and sine sum to one, so the loudness holds across the overlap. Both sides carry
+their own normalisation factor, since normalisation exists to make two masters
+sound alike and a fade is the one moment both are heard. The result is clamped
+to `32767/32768`, because full scale is asymmetric and a mix that reaches 1.0
+wraps to the bottom and is heard as a click.
+
+A track shorter than the fade simply drains early: the incoming track goes on
+rising, over silence rather than over music.
+
+### Maintenance
+
+The markers are `LOCAL PATCH` in `src/player.rs` and `src/config.rs`.
+
+## librespot-connect
+
+Copy of [`librespot-connect` 0.8.0](https://github.com/librespot-org/librespot)
+(MIT, licence retained), wired in the same way.
+
+### The patch: is this device the one playing?
+
+`ConnectState` knows, and nothing outside the event loop could ask. `Spirc` now
+carries an `AtomicBool` that the loop republishes every turn, and a
+`Spirc::is_active()` that reads it.
+
+The alternative was reading the cluster, which is a different question wearing
+the same clothes. When another client hands playback to this device, Spotify
+sends the transfer and this device starts playing immediately, but the account
+goes on naming the previous device as active for as long as that device takes to
+let go. A web player holds on for tens of seconds. Every guard in the engine that
+asked the cluster therefore got "somebody else is playing" while this phone was
+the one making the sound, and refused to do its job.
+
+go-librespot keeps the same answer as a single boolean it owns and gates
+everything on it; this is that boolean, borrowed back out of librespot.

@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +32,8 @@ import androidx.compose.ui.draw.clip
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,12 +48,14 @@ import com.adamglin.phosphoricons.regular.ArrowLeft
 import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.ArrowUpRight
 import com.adamglin.phosphoricons.regular.CaretDown
+import com.adamglin.phosphoricons.regular.CaretRight
 import com.adamglin.phosphoricons.regular.CaretUp
 import com.kyant.backdrop.Backdrop
 import dev.lelonio.square.BuildConfig
 import dev.lelonio.square.R
 import dev.lelonio.square.data.AppLanguages
 import dev.lelonio.square.backend.BackendId
+import dev.lelonio.square.data.CrossfadeSteps
 import dev.lelonio.square.data.Quality
 import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
@@ -108,6 +113,21 @@ fun SettingsScreen(
     val spotifyActive by app.preferences.backend.collectAsStateWithLifecycle()
     val showSpotify = spotifyActive == BackendId.SPOTIFY
 
+    /**
+     * Which page is open, or null for the list of them.
+     *
+     * One screen with a page inside it rather than a second destination: every
+     * page here reads the same state and the same stores, and threading all of
+     * it through a navigation graph would buy nothing but the plumbing.
+     * Remembered across a rotation, since coming back to the top of the
+     * settings after turning the phone is not what anyone meant to do.
+     */
+    var open by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
+
+    // The back gesture closes the page first and leaves the settings second,
+    // which is the order the screen is read in.
+    BackHandler(enabled = open != null) { open = null }
+
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -122,18 +142,32 @@ fun SettingsScreen(
                     .padding(start = 16.dp, end = 24.dp, top = 8.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LiquidButton(onClick = onBack, backdrop = backdrop) {
+                LiquidButton(
+                    onClick = { if (open != null) open = null else onBack() },
+                    backdrop = backdrop,
+                ) {
                     Icon(PhosphorIcons.Regular.ArrowLeft, contentDescription = stringResource(R.string.back))
                 }
                 Text(
-                    stringResource(R.string.settings),
+                    stringResource(open?.title ?: R.string.settings),
                     style = MaterialTheme.typography.displayLarge,
                     modifier = Modifier.padding(start = 14.dp),
                 )
             }
         }
 
-        if (showSpotify) item("account") {
+        if (open == null) item("pages") {
+            Section(null) {
+                SettingsPage.entries.forEachIndexed { index, page ->
+                    if (index > 0) RowDivider()
+                    PageRow(stringResource(page.title), stringResource(page.summary)) {
+                        open = page
+                    }
+                }
+            }
+        }
+
+        if (open == SettingsPage.Account && showSpotify) item("account") {
             Section(stringResource(R.string.account)) {
                 Row(
                     Modifier
@@ -178,7 +212,7 @@ fun SettingsScreen(
             }
         }
 
-        if (showSpotify) item("webapi") {
+        if (open == SettingsPage.Account && showSpotify) item("webapi") {
             Section(stringResource(R.string.web_api)) {
                 if (webApi.connected) {
                     InfoRow(stringResource(R.string.application), stringResource(R.string.connected))
@@ -198,7 +232,7 @@ fun SettingsScreen(
             }
         }
 
-        if (showSpotify) item("tutorial") {
+        if (open == SettingsPage.Account && showSpotify) item("tutorial") {
             Section(stringResource(R.string.guide)) {
                 ActionRow(stringResource(R.string.see_setup_again), destructive = false) {
                     onShowTutorial()
@@ -206,20 +240,25 @@ fun SettingsScreen(
             }
         }
 
-        item("backend") {
+        if (open == SettingsPage.Playback) item("backend") {
             BackendSection()
         }
 
-        item("youtube-account") {
+        if (open == SettingsPage.Account) item("youtube-account") {
             YouTubeAccountSection(onSignIn = onYouTubeSignIn)
         }
 
         // The bitrate is librespot's; ExoPlayer takes what YouTube serves.
-        if (showSpotify) item("quality") {
+        if (open == SettingsPage.Playback && showSpotify) item("quality") {
             QualitySection()
         }
 
-        item("language") {
+        // Also librespot's: the crossfade is mixed by the engine's own player.
+        if (open == SettingsPage.Playback && showSpotify) item("crossfade") {
+            CrossfadeSection()
+        }
+
+        if (open == SettingsPage.App) item("language") {
             Section(stringResource(R.string.language)) {
                 AppLanguages.forEachIndexed { index, (tag, name) ->
                     if (index > 0) RowDivider()
@@ -231,7 +270,7 @@ fun SettingsScreen(
             }
         }
 
-        item("permissions") {
+        if (open == SettingsPage.About) item("permissions") {
             Section(stringResource(R.string.permissions_asked)) {
                 Text(
                     stringResource(R.string.permissions_note),
@@ -246,7 +285,7 @@ fun SettingsScreen(
             }
         }
 
-        item("author") {
+        if (open == SettingsPage.About) item("author") {
             Section(stringResource(R.string.developed_by)) {
                 val uriHandler = LocalUriHandler.current
                 Row(
@@ -290,7 +329,7 @@ fun SettingsScreen(
             }
         }
 
-        item("about") {
+        if (open == SettingsPage.About) item("about") {
             Section(stringResource(R.string.about)) {
                 InfoRow(stringResource(R.string.version), "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE})")
                 RowDivider()
@@ -300,13 +339,63 @@ fun SettingsScreen(
             }
         }
 
-        if (ready != null) {
+        if (ready != null && open == SettingsPage.Account) {
             item("logout") {
                 Section(null) {
                     ActionRow(stringResource(R.string.log_out), destructive = true, onClick = onLogOut)
                 }
             }
         }
+    }
+}
+
+/**
+ * The pages the settings are divided into.
+ *
+ * Four, and no deeper: a page that holds one row is a row that was hidden, and
+ * a tree that goes further than this is somewhere to lose things in.
+ *
+ * The order is how often they are wanted. The account is what a first launch
+ * comes here for, playback is what a settled install comes back for, and the
+ * rest is read once.
+ */
+private enum class SettingsPage(
+    @StringRes val title: Int,
+    /** One line under the name, so a page can be chosen without opening it. */
+    @StringRes val summary: Int,
+) {
+    Account(R.string.account, R.string.page_account_summary),
+    Playback(R.string.page_playback, R.string.page_playback_summary),
+    App(R.string.page_app, R.string.page_app_summary),
+    About(R.string.about, R.string.page_about_summary),
+}
+
+/** A row that opens a page. */
+@Composable
+private fun PageRow(title: String, summary: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            PhosphorIcons.Regular.CaretRight,
+            contentDescription = null,
+            tint = InkDim,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
@@ -418,6 +507,37 @@ private fun YouTubeAccountSection(onSignIn: () -> Unit) {
                 scope.launch { app.youtubeBackend.logOut() }
             }
         }
+    }
+}
+
+@Composable
+private fun CrossfadeSection() {
+    val context = LocalContext.current
+    val store = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).crossfade
+    }
+    val chosen by store.seconds.collectAsStateWithLifecycle()
+
+    Section(stringResource(R.string.crossfade)) {
+        CrossfadeSteps.forEachIndexed { index, seconds ->
+            if (index > 0) RowDivider()
+            ChoiceRow(
+                label = if (seconds == 0) {
+                    stringResource(R.string.crossfade_off)
+                } else {
+                    stringResource(R.string.crossfade_seconds, seconds)
+                },
+                selected = seconds == chosen,
+            ) { store.set(seconds) }
+        }
+        RowDivider()
+        Text(
+            stringResource(R.string.crossfade_note) + " " +
+                stringResource(R.string.quality_restarts),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+        )
     }
 }
 

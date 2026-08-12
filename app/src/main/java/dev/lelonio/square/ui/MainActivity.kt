@@ -148,12 +148,20 @@ class MainActivity : ComponentActivity() {
         contextUri: String? = null,
         asContext: Boolean = false,
         contextLabel: String = "",
+        /**
+         * Where in the track to start, for playback that is being picked up
+         * rather than begun: bringing the music back from another device is the
+         * one caller that has somewhere to resume from. Starting at zero and
+         * seeking afterwards is not the same thing, and sounds like it: the
+         * track begins, then jumps.
+         */
+        positionMs: Long = 0L,
     ) {
         val player = controller ?: return
         player.setMediaItems(
             tracks.map { toMediaItem(it, contextUri, asContext, contextLabel) },
             index,
-            0L,
+            positionMs,
         )
         player.prepare()
         player.play()

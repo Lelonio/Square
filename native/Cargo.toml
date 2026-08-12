@@ -41,6 +41,8 @@ android_logger = "0.14"
 # the patched copy too.
 [patch.crates-io]
 librespot-core = { path = "vendor/librespot-core" }
+librespot-playback = { path = "vendor/librespot-playback" }
+librespot-connect = { path = "vendor/librespot-connect" }
 
 [profile.release]
 opt-level = 3

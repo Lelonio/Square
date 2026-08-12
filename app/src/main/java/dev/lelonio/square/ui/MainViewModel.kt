@@ -29,6 +29,10 @@ import dev.lelonio.square.playback.EffectPreset
 import dev.lelonio.square.playback.PlaybackService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -312,6 +316,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     data class DevicesState(
         val open: Boolean = false,
         val loading: Boolean = false,
+        /**
+         * The device being switched to, while the switch is in flight.
+         *
+         * A handover takes a moment and used to look like nothing at all, so
+         * the row was pressed again and again.
+         */
+        val switchingTo: String? = null,
         val devices: List<SpotifyDevice> = emptyList(),
         val error: String? = null,
     )
@@ -326,6 +337,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _devices = MutableStateFlow(DevicesState())
     val devices: StateFlow<DevicesState> = _devices.asStateFlow()
     private var devicesJob: Job? = null
+
+    init {
+        // The list, kept true by the engine rather than by asking.
+        //
+        // The Web API answers this too, but only when asked, so a sheet left
+        // open while playback moved went on showing the old active device until
+        // it was closed and opened again. The cluster arrives on its own from
+        // the session's own socket, and it is the same list.
+        viewModelScope.launch {
+            dev.lelonio.square.data.RemoteConnect.devices.collect { cluster ->
+                if (cluster.isEmpty()) return@collect
+                _devices.value = _devices.value.copy(
+                    loading = false,
+                    error = null,
+                    devices = cluster.map { device ->
+                        SpotifyDevice(
+                            id = device.id,
+                            name = device.name,
+                            type = device.type,
+                            isActive = device.active,
+                        )
+                    },
+                )
+            }
+        }
+    }
 
     fun openDevices() {
         _devices.value = _devices.value.copy(open = true)
@@ -382,12 +419,157 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Moves playback to another device, keeping it playing. */
-    fun transferPlayback(deviceId: String) = viewModelScope.launch {
+    /**
+     * Moves playback to another device.
+     *
+     * Through the engine when the device came from the cluster, which is the
+     * same road the official clients take and needs no registered Web API
+     * application. The Web API is the fallback for a list that came from it.
+     */
+    /**
+     * What the player needs in order to carry on here what another device was
+     * playing: the same queue, the same track, the same second.
+     */
+    data class ResumeHere(
+        val tracks: List<CatalogTrack>,
+        val index: Int,
+        val contextUri: String?,
+        val positionMs: Long,
+    )
+
+    private val _resumeHere = MutableSharedFlow<ResumeHere>(extraBufferCapacity = 1)
+
+    /** Emitted when the listener asks for the music to come back to this phone. */
+    val resumeHere = _resumeHere.asSharedFlow()
+
+    /**
+     * Brings the account's playback back to this phone.
+     *
+     * Not a transfer: a device cannot address a command to itself, and taking
+     * the session on its own only makes this one active and silent, which is
+     * exactly what choosing Square in the list used to do. A handover has to
+     * carry the music with it, so the context the other device was playing is
+     * reopened here, at the track it was on, at the position it had reached.
+     *
+     * A device playing something with no context, a single track started from a
+     * search, leaves nothing to reopen: the track alone is the queue.
+     */
+    private fun takeBackPlayback() = viewModelScope.launch {
+        // Whatever the account is playing, wherever it thinks it is playing it.
+        //
+        // Reading only the "somewhere else" half meant the request quietly did
+        // nothing whenever the engine had already decided this phone was
+        // active: choosing Square answered with silence and no explanation.
+        val remote = dev.lelonio.square.data.RemoteConnect.playback.value
+            ?: dev.lelonio.square.data.RemoteConnect.here.value
+        if (remote == null) {
+            android.util.Log.i(TAG, "nothing to bring back: the account is playing nothing")
+            return@launch
+        }
+
+        android.util.Log.i(
+            TAG,
+            "taking playback back: ${remote.uri} from ${remote.realContext} at ${remote.positionMs}",
+        )
+
+        // The music first, the list afterwards.
+        //
+        // This used to resolve the whole context before a note was played,
+        // which on a long playlist is a second or two in which nothing happens
+        // and the listener, quite reasonably, presses the button again. The
+        // queue on screen fills itself in from the state this publishes; see
+        // PlaybackService.adoptRemoteQueue.
+        val started = withContext(Dispatchers.IO) {
+            runCatching {
+                NativeBridge.resumeHere(
+                    remote.realContext.orEmpty(),
+                    remote.uri,
+                    remote.positionMs.toInt(),
+                )
+            }.onFailure { android.util.Log.w(TAG, "could not resume here: $it") }.isSuccess
+        }
+        if (started) return@launch
+
+        // The engine refused it. Fall back to opening the context the long way,
+        // which is slower but asks nothing of the Connect layer.
+        val context = remote.realContext
+        val tracks = runCatching {
+            if (context != null) container.activeBackend.tracksOf(context) else emptyList()
+        }
+            .onFailure { android.util.Log.w(TAG, "context unreadable: ${describe(it)}") }
+            .getOrDefault(emptyList())
+
+        val index = tracks.indexOfFirst { it.uri == remote.uri }
+        if (tracks.isEmpty() || index < 0) {
+            val single = runCatching { container.activeBackend.tracksOf(remote.uri) }
+                .getOrDefault(emptyList())
+                .ifEmpty { return@launch }
+            _resumeHere.emit(ResumeHere(single, 0, null, remote.positionMs))
+            return@launch
+        }
+
+        _resumeHere.emit(ResumeHere(tracks, index, context, remote.positionMs))
+    }
+
+    fun transferPlayback(deviceId: String, positionMs: Long = 0L) = viewModelScope.launch {
+        if (_devices.value.switchingTo != null) return@launch
+        _devices.value = _devices.value.copy(switchingTo = deviceId)
+        try {
+            switchTo(deviceId, positionMs)
+        } finally {
+            _devices.value = _devices.value.copy(switchingTo = null)
+        }
+    }
+
+    private suspend fun switchTo(deviceId: String, positionMs: Long) {
+        val devices = dev.lelonio.square.data.RemoteConnect.devices.value
+        android.util.Log.i(TAG, "device chosen: $deviceId, ${devices.size} known")
+        // Asked of the engine rather than looked up in the list: the list is
+        // filled by cluster updates and is empty until the first one arrives,
+        // and a handover chosen in that window took the wrong road entirely.
+        if (dev.lelonio.square.data.RemoteConnect.isThisPhone(deviceId)) {
+            takeBackPlayback().join()
+            return
+        }
+        // The queue is republished as the playlist it came from first, so
+        // whatever carries the handover has something resolvable to carry; see
+        // NativeBridge.publishContext.
+        if (!dev.lelonio.square.data.RemoteConnect.elsewhereActive.value) {
+            val republished = withContext(Dispatchers.IO) {
+                runCatching { NativeBridge.publishContext(positionMs.toInt()) }
+                    .onFailure { android.util.Log.w(TAG, "context not republished: $it") }
+                    .getOrDefault(false)
+            }
+            // Only when something actually changed does Spotify need a moment
+            // to see it. A queue that already carried its playlist goes over at
+            // once, which is nearly every handover.
+            if (republished) delay(TRANSFER_SETTLE_MS)
+        }
+
+        // Spotify's own transfer, when the account has an application to ask it
+        // with. The dealer command below is the same word without the state:
+        // its `data` field is the playback being moved, and building that is
+        // Spotify's job in this call. Sent without it, the device does become
+        // active and has nothing to play, which is a progress bar advancing over
+        // silence and controls that answer to nothing.
+        if (!container.webApi.isReady) {
+            withContext(Dispatchers.IO) {
+                dev.lelonio.square.data.RemoteConnect.transferTo(deviceId)
+            }
+            return
+        }
+
         runCatching { container.api.transferPlayback(TransferRequestDto(listOf(deviceId))) }
             .onSuccess {
                 // Spotify reports the move a beat after acknowledging it, so the
                 // list is re-read rather than edited optimistically.
                 delay(TRANSFER_SETTLE_MS)
+                // Named, not assumed: a transfer that lands on a device which
+                // then sits there paused is the one failure this cannot see
+                // from here, and asking the device by name to play costs one
+                // request that is harmless when it is playing already.
+                runCatching { container.api.play(deviceId) }
+                    .onFailure { android.util.Log.i(TAG, "play on $deviceId: ${describe(it)}") }
                 refreshDevices()
             }
             .onFailure {

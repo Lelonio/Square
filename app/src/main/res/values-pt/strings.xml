@@ -212,4 +212,16 @@
     <string name="update_install">Instalar</string>
     <string name="download_get_app">Instalar YTDLnis</string>
     <string name="download_with">Transferir com YTDLnis</string>
+    <string name="crossfade">Transição</string>
+    <string name="crossfade_off">Desligada</string>
+    <string name="crossfade_seconds">%1$d segundos</string>
+    <string name="crossfade_note">Uma música se dissolve na seguinte. Só quando ela termina sozinha, não ao pular.</string>
+    <string name="page_playback">Reprodução</string>
+    <string name="page_app">Aplicativo</string>
+    <string name="page_account_summary">Sua conta, o aplicativo da Web API e sair</string>
+    <string name="page_playback_summary">De onde vem a música, qualidade e transição</string>
+    <string name="page_app_summary">Idioma</string>
+    <string name="page_about_summary">Versão, permissões, licenças e desenvolvedor</string>
+    <string name="playing_on">Reproduzindo em %1$s</string>
+    <string name="switching">Trocando…</string>
 </resources>

@@ -48,6 +48,65 @@ data class PlaybackState(
     val source: String = "",
 )
 
+/**
+ * The same picture, drawn from another device's playback.
+ *
+ * The player UI does not need to know where the music is: it is the same track,
+ * the same artwork and the same buttons, and only the thing on the other end of
+ * the buttons changes. [source] carries the device's name, where the screen
+ * already draws the line about where a queue came from.
+ *
+ * `hasNext` and `hasPrevious` are simply true. The cluster does not say, and a
+ * skip button greyed out on a device that would have obeyed is worse than one
+ * that occasionally does nothing.
+ */
+fun dev.lelonio.square.data.RemotePlayback.asPlaybackState(on: String) = PlaybackState(
+    hasItem = uri.isNotEmpty(),
+    mediaId = uri,
+    title = title,
+    artist = artist,
+    artworkUrl = coverUrl.ifEmpty { null },
+    isPlaying = playing,
+    durationMs = durationMs,
+    hasNext = true,
+    hasPrevious = true,
+    shuffleEnabled = shuffle,
+    repeatMode = when {
+        repeatTrack -> Player.REPEAT_MODE_ONE
+        repeatContext -> Player.REPEAT_MODE_ALL
+        else -> Player.REPEAT_MODE_OFF
+    },
+    source = on,
+)
+
+/**
+ * The position of a track playing somewhere else.
+ *
+ * Counted here rather than asked for: the cluster says where the track was at a
+ * given moment and arrives only when something changes, so between updates the
+ * only honest way to draw a moving bar is to move it.
+ */
+@Composable
+fun rememberRemotePositionMs(remote: dev.lelonio.square.data.RemotePlayback?): State<Long> {
+    val position = remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(remote?.uri, remote?.positionMs, remote?.playing) {
+        val current = remote ?: run {
+            position.longValue = 0
+            return@LaunchedEffect
+        }
+        position.longValue = current.positionMs.coerceAtLeast(0)
+        if (!current.playing) return@LaunchedEffect
+
+        while (true) {
+            delay(250)
+            position.longValue += 250
+        }
+    }
+
+    return position
+}
+
 /** How long an empty freshly connected player is given before it is believed. */
 private const val EMPTY_PLAYER_GRACE_MS = 4_000L
 

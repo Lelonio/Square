@@ -27,6 +27,19 @@ class PreferencesStore(context: Context) {
         prefs.edit().putString(KEY_TRACK_SORT, value).apply()
     }
 
+    /**
+     * This phone's Connect id, made once and kept for good.
+     *
+     * A uuid rather than anything drawn from the hardware: it identifies an
+     * install to one account's device list and nothing else, and there is no
+     * reason for it to survive the app being removed.
+     */
+    fun deviceId(): String = prefs.getString(KEY_DEVICE_ID, null) ?: run {
+        val id = java.util.UUID.randomUUID().toString()
+        prefs.edit().putString(KEY_DEVICE_ID, id).apply()
+        id
+    }
+
     private val _onboarded = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDED, false))
 
     /**
@@ -106,6 +119,7 @@ class PreferencesStore(context: Context) {
     private companion object {
         const val FILE_NAME = "square_preferences"
         const val KEY_TRACK_SORT = "track_sort"
+        const val KEY_DEVICE_ID = "device_id"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_PLAYER_OPEN = "player_open"
         const val KEY_BACKEND = "backend"

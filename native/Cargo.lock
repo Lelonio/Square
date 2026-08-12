@@ -1132,8 +1132,6 @@ dependencies = [
 [[package]]
 name = "librespot-connect"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b2a21e9e19b906c6676b1a515fc5529d5414f69049f5a167dfb2ea3206e5a27"
 dependencies = [
  "futures-util",
  "librespot-core",
@@ -1239,8 +1237,6 @@ dependencies = [
 [[package]]
 name = "librespot-playback"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88258620bf3e6808ea1fadd11639648d77c06280b9f5a4c9d14ea79f6f998af6"
 dependencies = [
  "form_urlencoded",
  "futures-util",

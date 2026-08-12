@@ -195,6 +195,8 @@ struct Recipe {
 enum Pump {
     Event(PlayerEvent),
     Session(Session),
+    /// Something changed on another of the account's devices; see `remote`.
+    Cluster,
 }
 
 /// Errors are flattened to a string because they cross the JNI boundary and the
@@ -273,11 +275,13 @@ pub fn init_android_context(context: &JObject) -> EngineResult<()> {
 pub fn start(
     client_id: &str,
     device_name: &str,
+    device_id: &str,
     access_token: &str,
     credentials_dir: &str,
     cache_dir: &str,
     language: &str,
     bitrate_kbps: i32,
+    crossfade_ms: i32,
     listener: GlobalRef,
 ) -> EngineResult<()> {
     let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
@@ -307,6 +311,16 @@ pub fn start(
     }
     if !client_id.is_empty() {
         session_config.client_id = client_id.to_string();
+    }
+    // The same id on every launch, chosen by the app and kept by it.
+    //
+    // librespot's default is a fresh uuid per session, which is right for a
+    // daemon started once and wrong for a phone: the account saw a new "A059"
+    // every time the engine came up, the list filled with ghosts of this same
+    // device, and nothing could recognise the phone it had been playing on an
+    // hour earlier.
+    if !device_id.is_empty() {
+        session_config.device_id = device_id.to_string();
     }
 
     let credentials = Credentials::with_access_token(access_token);
@@ -350,6 +364,12 @@ pub fn start(
         // Every update crosses JNI and rebuilds the Media3 state on the main
         // thread; once a second is plenty for a seek bar.
         position_update_interval: Some(Duration::from_secs(1)),
+        // How long one track dissolves into the next, chosen by the user. See
+        // the patch notes in native/vendor/README.md: the player asks for the
+        // next track a fade early and mixes the one going out underneath it.
+        // Fixed for the life of the player, like the bitrate, so the service
+        // builds a new engine when the setting changes.
+        crossfade_duration_ms: crossfade_ms.max(0) as u32,
         ..PlayerConfig::default()
     };
 
@@ -456,6 +476,16 @@ fn build_bundle(
     let connect_config = recipe.connect_config.clone();
     let credentials = recipe.credentials.clone();
 
+    // The account's other devices, watched over the same dealer.
+    //
+    // Subscribed before the session connects, which is the whole point of doing
+    // it here rather than after the device is built: Spotify pushes a cluster
+    // update when this device appears, and that push is the only one that
+    // arrives without something changing later. Subscribing afterwards meant
+    // opening the app next to a speaker that was already playing and being told
+    // nothing until the speaker's track ended.
+    let watch_tx = events_tx.clone();
+
     let (session, player, spirc, spirc_task) = rt.block_on(async move {
         // Seed the cache with the OAuth credentials, then hand the cached copy
         // to `connect` with storing switched off. Letting `connect` store
@@ -468,6 +498,10 @@ fn build_bundle(
             .cache()
             .and_then(|cache| cache.credentials())
             .unwrap_or(credentials);
+
+        crate::remote::watch(&session, move || {
+            let _ = watch_tx.send(Pump::Cluster);
+        });
 
         // No `session.connect` here: `Spirc::new` registers its dealer
         // listeners and then connects the session itself. Connecting first
@@ -578,6 +612,14 @@ fn spawn_event_forwarder(
                 break;
             }
 
+            match &event {
+                PlayerEvent::Playing { .. } => LOCAL_PLAYING.store(true, Ordering::SeqCst),
+                PlayerEvent::Paused { .. } | PlayerEvent::Stopped { .. } => {
+                    LOCAL_PLAYING.store(false, Ordering::SeqCst)
+                }
+                _ => {}
+            }
+
             // The track the app asked for is on its way: let it be heard.
             // `Loading` rather than `Playing`, so nothing of its opening is lost
             // while the two sides agree the silence is over.
@@ -642,6 +684,7 @@ pub fn reconnect() -> EngineResult<()> {
         // would go on publishing state for a player nobody is listening to.
         if let Some(old) = engine.bundle.take() {
             log::info!("discarding the old session");
+            crate::remote::clear();
             let _ = old.spirc.disconnect(true);
             let _ = old.spirc.shutdown();
             old.player.stop();
@@ -702,6 +745,15 @@ fn spawn_event_pump(
             while let Ok(message) = events.recv() {
                 let event = match message {
                     Pump::Event(event) => event,
+                    // Carries nothing: the Kotlin side reads the state it wants
+                    // when it hears there is a new one, rather than having every
+                    // field of it pushed through this boundary.
+                    Pump::Cluster => {
+                        if let Err(e) = emit(&listener, "cluster", "", 0) {
+                            log::warn!("dropping a cluster update: {e}");
+                        }
+                        continue;
+                    }
                     Pump::Session(session) => {
                         match history.as_mut() {
                             // The listen in progress survives: the same person
@@ -1219,9 +1271,38 @@ pub fn load_queue(
                 ..options
             },
         )
+    } else if !context.is_empty() {
+        // The tracks in the order on screen, published under the playlist they
+        // came from.
+        //
+        // Shuffling a playlist, or adding a track to it, makes a queue that is
+        // the playlist without being the playlist's order, and upstream has no
+        // shape for that: either the context, whose order is Spotify's, or a
+        // list of tracks, published as `spotify:web-api`. The second is what
+        // this app sent nearly always, and it is a context no other device can
+        // resolve: handing playback to one gave it a queue that would not play,
+        // and taking it back arrived with a track that could not be found. See
+        // native/vendor/README.md.
+        LoadRequest::from_tracks_in(context, uris, options)
     } else {
         LoadRequest::from_tracks(uris, options)
     };
+
+    // A queue that nobody asked to hear does not go out while the account is
+    // playing somewhere else.
+    //
+    // A load activates this device, which is right when the listener has just
+    // tapped a track and wrong every other time. Opening the app restores the
+    // last queue, paused, and that restore was taking the session away from
+    // whatever was playing in the other room: Square went silent-but-active and
+    // the music stopped mid-track.
+    //
+    // Refused rather than quietly dropped, so the caller keeps its queue marked
+    // as one the engine has never seen and hands it over again the moment the
+    // listener really does ask for it.
+    if !start_playing && elsewhere_active() {
+        return Err("another device has playback".into());
+    }
 
     // Nothing but this track may be heard until it starts; see PLAYBACK_ARMED.
     if !wanted.is_empty() {
@@ -1270,6 +1351,23 @@ fn transport(
     // an error: the channel still accepts the message and nobody ever reads it.
     // Waiting for a failure meant the fallback almost never ran, which is why
     // pause went on doing nothing with the network gone.
+    // Another device has the account's playback: this one must not reach for it.
+    //
+    // Every command here activates the device first, which is right when the
+    // listener is asking this phone to play and catastrophic when they are not.
+    // A pause sent while a speaker was playing took the session away from the
+    // speaker and then stopped it, which is what closing the app did to the
+    // music in the other room, and what opening it did on the way in.
+    //
+    // The player is still told, because the point of a pause is silence here.
+    // Spirc is not, so nothing is taken from anyone.
+    if elsewhere_active() {
+        return with_bundle(|engine| {
+            log::info!("{what}: another device has playback, keeping this one to itself");
+            via_player(engine);
+        });
+    }
+
     if spirc_lost() {
         return with_bundle(|engine| {
             log::warn!("{what}: the connect device is gone, going straight to the player");
@@ -1299,7 +1397,51 @@ fn transport(
     })?
 }
 
+/// Whether this device is decoding audio right now.
+///
+/// The plainest fact available, and the one that settles the argument when the
+/// other two sources disagree; see [`elsewhere_active`].
+static LOCAL_PLAYING: AtomicBool = AtomicBool::new(false);
+
+/// Whether the account's playback belongs to another device.
+///
+/// Asked of librespot rather than of the cluster, because the two disagree for
+/// as long as it takes the previous device to let go. After playback is
+/// transferred *to* this phone, the account can go on naming the device it came
+/// from: trusting that meant refusing to play on a device that was already
+/// playing, and every guard in here reading the wrong answer at once.
+///
+/// The cluster is still the fallback, for the moment before there is a device
+/// at all.
+pub fn elsewhere_active() -> bool {
+    // Sound coming out of this phone settles it.
+    //
+    // The other two answers can both be wrong at once, and were: after
+    // playback was taken back here, the account still named the device it came
+    // from and the Connect state had not caught up either, so a pause pressed
+    // on a phone that was playing went out to a laptop that was not. Whatever
+    // the bookkeeping says, the device making the sound is the device the
+    // buttons belong to.
+    if LOCAL_PLAYING.load(Ordering::SeqCst) {
+        return false;
+    }
+
+    match with_bundle(|bundle| bundle.spirc.is_active()) {
+        Ok(true) => false,
+        Ok(false) => crate::remote::elsewhere_active(),
+        Err(_) => crate::remote::elsewhere_active(),
+    }
+}
+
 pub fn play() -> EngineResult<()> {
+    // Nothing happens here while the music is somewhere else. A play that
+    // arrives then is Android's, not the listener's: focus coming back, a
+    // service waking. The listener's own play is sent to the device that is
+    // actually playing, by the app, and never reaches this.
+    if elsewhere_active() {
+        log::info!("play: another device has playback, ignoring");
+        return Ok(());
+    }
     transport("play", |e| e.spirc.play(), |e| e.player.play())
 }
 
@@ -1346,6 +1488,117 @@ fn leaving() {
     if !current.is_empty() {
         shut(Gate::Leave(current));
     }
+}
+
+/// Republishes what is playing as the context it came from.
+///
+/// Only useful in one moment, just before playback is handed to another device.
+///
+/// A queue that is not a playlist in its own order goes to the engine as a bare
+/// list of URIs, and librespot has to invent a context for it: `spotify:web-api`,
+/// which is what the logs call `type: Default`. That is fine here, where the
+/// order on screen is the order that plays, and useless to anyone else: a device
+/// receiving the handover gets a context it cannot resolve, so its bar moves and
+/// nothing comes out.
+///
+/// So the same music is loaded once more as the real playlist, at the same track
+/// and the same second, and only then is the handover sent. The cost is that a
+/// shuffled queue continues over there in Spotify's order rather than in the one
+/// that was on screen: the alternative is handing over something that does not
+/// play at all.
+pub fn publish_context(position_ms: u32) -> EngineResult<bool> {
+    let current = current_uri();
+    if current.is_empty() {
+        return Ok(false);
+    }
+
+    // Nothing to do in the ordinary case, which is what makes a handover quick.
+    //
+    // Loads now carry the playlist they came from even when the order is this
+    // app's own, so the state is already something another device can resolve.
+    // Reloading anyway cost a restart of the audio and a wait, on every single
+    // change of device, to republish what was published already.
+    if !current_context().is_empty() {
+        return Ok(false);
+    }
+
+    // The track itself, since there is no playlist behind this queue.
+    //
+    // A track is a context: it is what the official client publishes when a
+    // single song is played out of a search, and unlike `spotify:web-api` it is
+    // something the other end can resolve. Without this a queue with no
+    // playlist behind it, which is most of what a search produces, handed over
+    // as a context that answers 400 and left the receiving device with nothing
+    // to play.
+    let context = current.clone();
+
+    log::info!("republishing {current} as {context} before handing over");
+    let request = LoadRequest::from_context_uri(
+        context,
+        LoadRequestOptions {
+            start_playing: true,
+            seek_to: position_ms,
+            playing_track: Some(PlayingTrack::Uri(current)),
+            ..LoadRequestOptions::default()
+        },
+    );
+
+    with_bundle(|e| {
+        e.spirc.activate()?;
+        e.spirc.load(request)
+    })?
+    .map_err(|e| format!("could not republish the context: {e}"))?;
+    Ok(true)
+}
+
+/// Starts playing here, at the track and second another device was on.
+///
+/// The whole handover in one call, so it can happen before anything is
+/// resolved. The app used to fetch the entire context first, which for a long
+/// playlist is a second or two of nothing happening at all, with no way for the
+/// listener to tell the request from a request that was lost. The queue on
+/// screen catches up afterwards, from the state this load publishes.
+pub fn resume_here(context_uri: &str, track_uri: &str, position_ms: u32) -> EngineResult<()> {
+    if track_uri.is_empty() {
+        return Err("nothing to resume".into());
+    }
+
+    let context = if context_uri.is_empty() {
+        track_uri.to_string()
+    } else {
+        context_uri.to_string()
+    };
+    log::info!("resuming {track_uri} here, from {context} at {position_ms}ms");
+
+    // Anything the previous device was decoding stays out until this track
+    // starts; see PLAYBACK_ARMED.
+    shut(Gate::Expect(track_uri.to_string()));
+
+    let request = LoadRequest::from_context_uri(
+        context,
+        LoadRequestOptions {
+            start_playing: true,
+            seek_to: position_ms,
+            playing_track: Some(PlayingTrack::Uri(track_uri.to_string())),
+            ..LoadRequestOptions::default()
+        },
+    );
+
+    with_bundle(|e| {
+        e.spirc.activate()?;
+        e.spirc.load(request)
+    })?
+    .map_err(|e| format!("could not resume here: {e}"))
+}
+
+/// Takes the account's playback for this device.
+///
+/// The local half of the device picker. Choosing another device is a request to
+/// the server, addressed from here to there; choosing this one cannot be, since
+/// a command sent from a device to itself goes out to the access point and
+/// comes back refused. Activating is the same thing done directly.
+pub fn take_over() -> EngineResult<()> {
+    with_bundle(|e| e.spirc.activate())?.map_err(|e| format!("could not take over: {e}"))
 }
 
 pub fn set_shuffle(shuffle: bool) -> EngineResult<()> {

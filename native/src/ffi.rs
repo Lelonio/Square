@@ -120,11 +120,13 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSta
     _class: JClass,
     client_id: JString,
     device_name: JString,
+    device_id: JString,
     access_token: JString,
     credentials_dir: JString,
     cache_dir: JString,
     language: JString,
     bitrate_kbps: jni::sys::jint,
+    crossfade_ms: jni::sys::jint,
     listener: JObject,
 ) {
     // Every argument is read before the guard: reading borrows `env`, and so
@@ -136,11 +138,13 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSta
         String,
         String,
         String,
+        String,
         jni::objects::GlobalRef,
     )> = (|| {
         Ok((
             read_string(&mut env, &client_id)?,
             read_string(&mut env, &device_name)?,
+            read_string(&mut env, &device_id).unwrap_or_default(),
             read_string(&mut env, &access_token)?,
             read_string(&mut env, &credentials_dir)?,
             read_string(&mut env, &cache_dir)?,
@@ -151,16 +155,26 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSta
     })();
 
     guard(&mut env, "Start", || {
-        let (client_id, device_name, access_token, credentials_dir, cache_dir, language, listener) =
-            arguments?;
+        let (
+            client_id,
+            device_name,
+            device_id,
+            access_token,
+            credentials_dir,
+            cache_dir,
+            language,
+            listener,
+        ) = arguments?;
         engine::start(
             &client_id,
             &device_name,
+            &device_id,
             &access_token,
             &credentials_dir,
             &cache_dir,
             &language,
             bitrate_kbps,
+            crossfade_ms,
             listener,
         )
     });
@@ -429,6 +443,109 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRec
     _class: JClass,
 ) {
     guard(&mut env, "Reconnect", engine::reconnect);
+}
+
+/// Whether the account is playing on a device that is not this one.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlaybackElsewhere(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    engine::elsewhere_active() as jboolean
+}
+
+/// Republishes the queue as its real context, before handing playback over.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePublishContext(
+    mut env: JNIEnv,
+    _class: JClass,
+    position_ms: jint,
+) -> jboolean {
+    guard(&mut env, "PublishContext", || {
+        engine::publish_context(position_ms.max(0) as u32)
+    }) as jboolean
+}
+
+/// Starts playing here what another device was playing.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeResumeHere(
+    mut env: JNIEnv,
+    _class: JClass,
+    context_uri: JString,
+    track_uri: JString,
+    position_ms: jint,
+) {
+    let context = read_string(&mut env, &context_uri).unwrap_or_default();
+    let track = read_string(&mut env, &track_uri);
+    guard(&mut env, "ResumeHere", || {
+        engine::resume_here(&context, &track?, position_ms.max(0) as u32)
+    });
+}
+
+/// Takes the account's playback for this device.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeTakeOver(
+    mut env: JNIEnv,
+    _class: JClass,
+) {
+    guard(&mut env, "TakeOver", engine::take_over);
+}
+
+/// This device's own Connect id.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDeviceId(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    guard_string(&mut env, "DeviceId", crate::remote::device_id)
+}
+
+/// What the account is playing, wherever it is playing it.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRemoteState(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    guard_string(&mut env, "RemoteState", || Ok(crate::remote::state_json()))
+}
+
+/// Every Connect device the account can see, this one included.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRemoteDevices(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    guard_string(&mut env, "RemoteDevices", || {
+        Ok(crate::remote::devices_json())
+    })
+}
+
+/// Sends one command, as Spotify's own clients word it, to another device.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRemoteCommand(
+    mut env: JNIEnv,
+    _class: JClass,
+    device_id: JString,
+    body: JString,
+) {
+    let device_id = read_string(&mut env, &device_id);
+    let body = read_string(&mut env, &body);
+    guard(&mut env, "RemoteCommand", || {
+        crate::remote::command(&device_id?, body?)
+    });
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRemoteVolume(
+    mut env: JNIEnv,
+    _class: JClass,
+    device_id: JString,
+    volume: jint,
+) {
+    let device_id = read_string(&mut env, &device_id);
+    guard(&mut env, "RemoteVolume", || {
+        crate::remote::set_volume(&device_id?, volume.clamp(0, u16::MAX as i32) as u16)
+    });
 }
 
 #[no_mangle]

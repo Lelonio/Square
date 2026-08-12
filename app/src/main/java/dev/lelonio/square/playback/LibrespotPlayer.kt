@@ -148,17 +148,64 @@ class LibrespotPlayer(
 
     private val handler = android.os.Handler(looper)
 
+    /**
+     * The other device's playback, when the account is playing on one.
+     *
+     * Mirrored into this player rather than drawn only by the app, because the
+     * notification and anything else holding a media controller read this and
+     * nothing else: a car head unit and the lock screen do not know the app has
+     * a second idea of what is playing. Fed by the service; see
+     * PlaybackService.
+     */
+    private var remote: dev.lelonio.square.data.RemotePlayback? = null
+
+    fun showRemote(playback: dev.lelonio.square.data.RemotePlayback?) {
+        if (released) return
+        val was = remote
+        remote = playback
+        if (was?.uri != playback?.uri) cachedPlaylist = null
+        invalidateState()
+    }
+
+    /**
+     * What the transport buttons act on: the other device, or this one.
+     *
+     * A command sent to the wrong end is worse than a command that fails, since
+     * it moves music the listener is not hearing.
+     */
+    private fun onRemote(what: String, command: (String) -> Unit): Boolean {
+        val target = remote ?: return false
+        Thread({
+            runCatching { command(target.deviceId) }
+                .onFailure { android.util.Log.w("SquarePlayer", "$what did not reach it", it) }
+        }, "square-remote").start()
+        return true
+    }
+
     override fun getState(): State {
+        remote?.let { return remoteState(it) }
+
+        val items = queue.items
+
+        // Media3 refuses a playing state with nothing to play, and says so by
+        // throwing out of this method: "Empty playlist only allowed in
+        // STATE_IDLE or STATE_ENDED", on the main thread, taking the app with
+        // it. The two can come apart for a moment whenever the engine is
+        // playing something this side has not been told about yet, which is
+        // what taking playback back from another device does. Idle is the
+        // honest answer while the queue is empty, and the next event, once the
+        // queue has arrived, corrects it.
+        val reportedState = if (items.isEmpty()) Player.STATE_IDLE else playbackState
+
         val builder = State.Builder()
             .setAvailableCommands(COMMANDS)
-            .setPlaybackState(playbackState)
+            .setPlaybackState(reportedState)
             .setPlayWhenReady(playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setContentPositionMs(positionMs)
             .setRepeatMode(repeatMode)
             .setShuffleModeEnabled(shuffleEnabled)
             .setPlaybackParameters(playbackParameters)
 
-        val items = queue.items
         if (items.isNotEmpty()) {
             builder.setPlaylist(playlistSnapshot())
                 .setCurrentMediaItemIndex(queue.currentIndex.coerceIn(0, items.lastIndex))
@@ -175,6 +222,56 @@ class LibrespotPlayer(
      * change — enough GC churn to make the audio stutter. The cache is dropped
      * by [onQueueChanged] at the few points that mutate the queue.
      */
+    /**
+     * The same shape of state, describing a device in another room.
+     *
+     * One item rather than the whole queue: the account publishes what is
+     * playing, not the list behind it, and inventing the rest would be inventing
+     * a queue this app cannot skip through anyway.
+     */
+    private fun remoteState(playback: dev.lelonio.square.data.RemotePlayback): State {
+        val item = cachedPlaylist?.firstOrNull() ?: MediaItemData.Builder(playback.uri)
+            .setMediaItem(
+                MediaItem.Builder()
+                    .setMediaId(playback.uri)
+                    .setUri(playback.uri)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(playback.title)
+                            .setArtist(playback.artist)
+                            .setAlbumTitle(playback.album)
+                            .setArtworkUri(
+                                playback.coverUrl.takeIf { it.isNotEmpty() }
+                                    ?.let(android.net.Uri::parse),
+                            )
+                            .setIsBrowsable(false)
+                            .setIsPlayable(true)
+                            .build(),
+                    )
+                    .build(),
+            )
+            .setDurationUs(playback.durationMs * 1000)
+            .build()
+            .also { cachedPlaylist = listOf(it) }
+
+        return State.Builder()
+            .setAvailableCommands(COMMANDS)
+            .setPlaybackState(Player.STATE_READY)
+            .setPlayWhenReady(playback.playing, Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE)
+            .setContentPositionMs(playback.positionMs)
+            .setRepeatMode(
+                when {
+                    playback.repeatTrack -> Player.REPEAT_MODE_ONE
+                    playback.repeatContext -> Player.REPEAT_MODE_ALL
+                    else -> Player.REPEAT_MODE_OFF
+                },
+            )
+            .setShuffleModeEnabled(playback.shuffle)
+            .setPlaylist(listOf(item))
+            .setCurrentMediaItemIndex(0)
+            .build()
+    }
+
     private fun playlistSnapshot(): List<MediaItemData> =
         cachedPlaylist ?: queue.items
             .mapIndexed(::toMediaItemData)
@@ -341,6 +438,16 @@ class LibrespotPlayer(
      * a load at the target, which is one request instead of a dozen.
      */
     private fun requestSkipTo(index: Int, positionMs: Long) {
+        // A skip on a device in another room is a skip there; the index this
+        // side would step through means nothing to it.
+        if (remote != null) {
+            val forward = index >= queue.currentIndex
+            onRemote(if (forward) "next" else "previous") { id ->
+                if (forward) dev.lelonio.square.data.RemoteConnect.next(id) else dev.lelonio.square.data.RemoteConnect.previous(id)
+            }
+            return
+        }
+
         queue.currentIndex = index.coerceIn(0, maxOf(0, queue.items.lastIndex))
         // A skip starts the new track at its beginning. Media3 sends
         // C.TIME_UNSET for "wherever it starts", which as a number is very
@@ -434,6 +541,16 @@ class LibrespotPlayer(
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        // The buttons follow the music. Everything below drives this phone's
+        // own engine, which is silent while another device is playing.
+        val wanted = playWhenReady
+        if (onRemote(if (wanted) "play" else "pause") { id ->
+                if (wanted) dev.lelonio.square.data.RemoteConnect.play(id) else dev.lelonio.square.data.RemoteConnect.pause(id)
+            }
+        ) {
+            return Futures.immediateVoidFuture()
+        }
+
         if (playWhenReady) {
             // Refusing focus means something else owns the output — starting
             // anyway would talk over it.
@@ -484,6 +601,23 @@ class LibrespotPlayer(
         newPositionMs: Long,
         seekCommand: @Player.Command Int,
     ): ListenableFuture<*> {
+        // Seeking, skipping and stopping all belong to whichever device is
+        // playing; see onRemote.
+        if (remote != null) {
+            when (seekCommand) {
+                Player.COMMAND_SEEK_TO_NEXT,
+                Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                -> onRemote("next", dev.lelonio.square.data.RemoteConnect::next)
+
+                Player.COMMAND_SEEK_TO_PREVIOUS,
+                Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+                -> onRemote("previous", dev.lelonio.square.data.RemoteConnect::previous)
+
+                else -> onRemote("seek") { id -> dev.lelonio.square.data.RemoteConnect.seek(id, newPositionMs) }
+            }
+            return Futures.immediateVoidFuture()
+        }
+
         queue.items.getOrNull(mediaItemIndex) ?: return Futures.immediateVoidFuture()
 
         if (mediaItemIndex == queue.currentIndex && !skipPending) {
@@ -503,6 +637,16 @@ class LibrespotPlayer(
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<*> {
+        // Choosing a track here is the listener asking for this phone, and it
+        // is the only moment in the app where taking the account's playback is
+        // what they meant. Everything else that reaches the engine leaves the
+        // other device alone; see engine.rs.
+        if (runCatching { NativeBridge.playbackElsewhere }.getOrDefault(false)) {
+            android.util.Log.i("SquarePlayer", "taking playback back for this device")
+            runCatching { NativeBridge.takeOver() }
+                .onFailure { android.util.Log.w("SquarePlayer", "could not take over", it) }
+        }
+
         queue.replaceFromMediaItems(mediaItems, startIndex)
         // A new queue: whatever the engine was playing is no longer at any
         // index of this one.
@@ -656,16 +800,64 @@ class LibrespotPlayer(
     }
 
     /**
+     * Takes on a queue the engine is already playing.
+     *
+     * The other half of Connect, and the one this app was missing. Another
+     * client can hand playback to this phone from its own device list: Spotify
+     * sends the engine a transfer, the engine starts playing, and nothing here
+     * is asked or told. What was left was a track playing with an empty queue,
+     * so there was nothing after it and nothing on screen.
+     *
+     * Unlike [restore] this loads nothing. The engine already has the queue and
+     * the position; the point is only that this side stops disagreeing.
+     */
+    fun adopt(
+        tracks: List<PlayQueue.Track>,
+        index: Int,
+        positionMs: Long,
+        contextUri: String?,
+        contextLabel: String,
+        playing: Boolean,
+    ) {
+        if (tracks.isEmpty()) return
+        android.util.Log.i("SquarePlayer", "adopting ${tracks.size} tracks at $index")
+
+        queue.restoreContext(contextUri, contextUri != null, contextLabel)
+        queue.replace(tracks, 0)
+        queue.currentIndex = index.coerceIn(0, queue.items.lastIndex)
+        // The engine is playing this queue; it is this side that has just
+        // learned of it.
+        engineIndex = queue.currentIndex
+        engineQueueStale = false
+
+        this.positionMs = positionMs
+        playWhenReady = playing
+        wantPlay = playing
+        playbackState = Player.STATE_READY
+        onQueueChanged()
+        invalidateState()
+    }
+
+    /**
      * Reorders the queue rather than only recording a flag; see [PlayQueue].
      */
     override fun handleSetShuffleModeEnabled(shuffleModeEnabled: Boolean): ListenableFuture<*> {
         shuffleEnabled = shuffleModeEnabled
         queue.setShuffled(shuffleModeEnabled)
         onQueueChanged()
-        // Told to the engine as well: shuffle is part of the published Connect
-        // state, and a device whose local order disagrees with what the account
-        // shows is worse than one that cannot shuffle at all.
-        runCatching { NativeBridge.setShuffle(shuffleModeEnabled) }
+        // Deliberately not passed on to the Connect device, and its own shuffle
+        // is held off instead.
+        //
+        // Both sides can shuffle, and both doing it is one shuffle too many: the
+        // queue on screen is this list in this order, and the device was being
+        // handed that list and then reordering it again for itself. A track put
+        // up next landed somewhere else entirely, the engine played whatever its
+        // own permutation said, and what came back looked like the queue being
+        // thrown away and rebuilt.
+        //
+        // The order on screen is the one the user arranged, so it wins. The cost
+        // is that the account shows this device as not shuffling.
+        runCatching { NativeBridge.setShuffle(false) }
         invalidateState()
         return Futures.immediateVoidFuture()
     }
@@ -787,12 +979,39 @@ class LibrespotPlayer(
             // own next one and the queued track would never be heard. Taking
             // over reloads the queue, which is the only way to tell Spirc about
             // an insertion.
+            // Something changed on another of the account's devices. Nothing
+            // here plays, so nothing here has to react: the state is read and
+            // published, and whoever is showing it redraws.
+            "cluster" -> {
+                dev.lelonio.square.data.RemoteConnect.refresh()
+                // And again shortly after.
+                //
+                // A handover is two facts arriving separately: the account says
+                // which device is active, and the engine works out whether that
+                // is this one. They settle a moment apart, and whichever is
+                // read first leaves the screen describing the wrong device
+                // until something else happens to change it, which can be
+                // never. The second look costs two reads of memory.
+                handler.postDelayed({ dev.lelonio.square.data.RemoteConnect.refresh() }, 700)
+                handler.postDelayed({ dev.lelonio.square.data.RemoteConnect.refresh() }, 2_000)
+                return
+            }
+
             "end_of_track", "unavailable" -> {
                 takeOverForQueued()
                 return
             }
             else -> return
         }
+        // Whether the music is here or somewhere else can change without any
+        // word from the account: taking playback back starts this player, and
+        // the cluster may say nothing for a minute afterwards. The screen was
+        // deciding with an answer from before the handover, which is how a
+        // pause pressed here went out to a laptop.
+        if (type == "playing" || type == "paused" || type == "stopped") {
+            dev.lelonio.square.data.RemoteConnect.refresh()
+        }
+
         invalidateState()
     }
 

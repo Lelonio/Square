@@ -9,6 +9,7 @@ mod catalog;
 mod engine;
 mod events;
 mod ffi;
+mod remote;
 mod sink;
 
 use jni::sys::{jint, JNI_VERSION_1_6};

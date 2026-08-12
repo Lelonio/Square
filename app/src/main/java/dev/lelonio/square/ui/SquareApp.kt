@@ -106,6 +106,10 @@ import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.SpotifyLogo
 import com.adamglin.phosphoricons.regular.YoutubeLogo
 import com.adamglin.phosphoricons.regular.Trash
+import dev.lelonio.square.data.RemoteConnect
+import dev.lelonio.square.ui.player.asPlaybackState
+import dev.lelonio.square.ui.player.rememberRemotePositionMs
+import kotlinx.coroutines.Dispatchers
 import dev.lelonio.square.ui.player.MiniPlayer
 import dev.lelonio.square.ui.player.PlaybackState
 import dev.lelonio.square.ui.player.MiniPlayerHeight
@@ -184,7 +188,7 @@ fun SquareApp(
      * the queue *is* that context in its own order, in which case playback is
      * handed to Spotify as the context itself.
      */
-    onPlay: (List<CatalogTrack>, Int, String?, Boolean, String) -> Unit,
+    onPlay: (List<CatalogTrack>, Int, String?, Boolean, String, Long) -> Unit,
     /** Appends one track to the end of the queue; see the swipe gesture on rows. */
     onEnqueue: (CatalogTrack) -> Unit,
     /**
@@ -204,10 +208,64 @@ fun SquareApp(
     // The session as it was left, so the player has something to draw before
     // the media controller connects. Read once, off the saved queue.
     val seed = remember(context) { savedPlaybackSeed(context) }
-    val playback by rememberPlaybackState(player, seed)
+    val local by rememberPlaybackState(player, seed)
+
+    /**
+     * Playback on another of the account's devices, when there is any.
+     *
+     * When there is, it is what the player shows and what the buttons drive:
+     * the phone is not playing, so a player drawn from the phone would be an
+     * empty screen next to music the user can hear. This is what the official
+     * client does with a speaker in another room.
+     */
+    val elsewhere by dev.lelonio.square.data.RemoteConnect.playback.collectAsStateWithLifecycle()
+
+    /**
+     * Whether the screen is attached to another device.
+     *
+     * The engine's answer, not a guess. This started as a rule about who was
+     * making sound, because that was all this side could see, and every version
+     * of it was wrong somewhere: attached to a device that was only paused, or
+     * detached the moment the listener paused it, or pointed at the local player
+     * while the music was elsewhere, which left the play button reaching for
+     * nothing and a spinner turning for ever.
+     */
+    val elsewhereActive by dev.lelonio.square.data.RemoteConnect.elsewhereActive
+        .collectAsStateWithLifecycle()
+    val remote = elsewhere?.takeIf { elsewhereActive }
+    val remoteLabel = stringResource(R.string.playing_on, remote?.deviceName.orEmpty())
+    val playback = remote?.asPlaybackState(remoteLabel) ?: local
+
+    // Commands to another device are HTTP requests, so none of them may run on
+    // the main thread; the screen redraws when the cluster update comes back.
+    val remoteScope = rememberCoroutineScope()
+    val onRemote: ((String) -> Unit) -> Unit = { action ->
+        remote?.deviceId?.let { id -> remoteScope.launch(Dispatchers.IO) { action(id) } }
+    }
+
+    // Playback coming back from another device: the queue it was playing is
+    // opened here and then wound forward to where it had got to. The seek is a
+    // second step because starting a queue is always a start, and the position
+    // belongs to the track rather than to the act of playing it.
+    LaunchedEffect(Unit) {
+        viewModel.resumeHere.collect { resume ->
+            onPlay(
+                resume.tracks,
+                resume.index,
+                resume.contextUri,
+                resume.contextUri != null,
+                "",
+                // Straight into the load: the track starts where it was left.
+                resume.positionMs,
+            )
+        }
+    }
+
     // Held as State, not read here: reading the position at this level would
     // recompose the whole app — lists included — several times a second.
-    val positionMs = rememberPositionMs(player, playback.isPlaying)
+    val localPosition = rememberPositionMs(player, local.isPlaying)
+    val remotePosition = rememberRemotePositionMs(remote)
+    val positionMs = if (remote != null) remotePosition else localPosition
     val queue by rememberQueue(player)
     val videoOn by YouTubeVideoMode.enabled.collectAsStateWithLifecycle()
 
@@ -589,10 +647,10 @@ fun SquareApp(
                                 playlistOrder = playlistOrder,
                                 recent = recent,
                                 onPlayRecent = { tracks, index ->
-                                    onPlay(tracks, index, null, false, playAgainLabel)
+                                    onPlay(tracks, index, null, false, playAgainLabel, 0L)
                                 },
                                 onPlayFeed = { tracks, index, label ->
-                                    onPlay(tracks, index, null, false, label)
+                                    onPlay(tracks, index, null, false, label, 0L)
                                 },
                                 feed = feed,
                                 onOpenItem = { item ->
@@ -604,7 +662,7 @@ fun SquareApp(
                                     backend == dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC,
                                 youtubeHome = youtubeHome,
                                 onPlayTrending = { tracks, index ->
-                                    onPlay(tracks, index, null, false, trendingLabel)
+                                    onPlay(tracks, index, null, false, trendingLabel, 0L)
                                 },
                                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                             )
@@ -620,7 +678,7 @@ fun SquareApp(
                                 onClientIdChange = viewModel::onWebApiClientIdChange,
                                 onConnectWebApi = { viewModel.connectWebApi() },
                                 onPlayTrack = { tracks, index ->
-                                    onPlay(tracks, index, null, false, searchLabel)
+                                    onPlay(tracks, index, null, false, searchLabel, 0L)
                                 },
                                 onEnqueue = onEnqueue,
                                 onTrackMenu = { track ->
@@ -697,6 +755,7 @@ fun SquareApp(
                                             playlist.uri,
                                             asContext,
                                             source,
+                                            0L,
                                         )
                                     },
                                     onEnqueue = onEnqueue,
@@ -714,6 +773,7 @@ fun SquareApp(
                                             playlist.uri,
                                             false,
                                             source,
+                                            0L,
                                         )
                                     },
                                     onAddToPlaylist = { track ->
@@ -787,13 +847,27 @@ fun SquareApp(
                         collapsedContent = {
                             MiniPlayer(
                                 state = playback,
+                                remoteDevice = remote?.deviceName,
                                 progress = {
                                     progressOf(positionMs.value, playback.durationMs)
                                 },
                                 backdrop = pageBackdrop,
                                 onExpand = { scope.launch { expand.animateTo(1f, expandSpec) } },
-                                onTogglePlay = { player?.togglePlay() },
-                                onNext = { player?.seekToNextMediaItem() },
+                                onTogglePlay = {
+                                    if (remote != null) {
+                                        val playing = remote?.playing == true
+                                        onRemote { id ->
+                                            if (playing) RemoteConnect.pause(id)
+                                            else RemoteConnect.play(id)
+                                        }
+                                    } else {
+                                        player?.togglePlay()
+                                    }
+                                },
+                                onNext = {
+                                    if (remote != null) onRemote(RemoteConnect::next)
+                                    else player?.seekToNextMediaItem()
+                                },
                             )
                         },
                         expandedContent = {
@@ -801,14 +875,53 @@ fun SquareApp(
                                 state = playback,
                                 positionMs = positionMs,
                                 onCollapse = { scope.launch { expand.animateTo(0f, expandSpec) } },
-                                onTogglePlay = { player?.togglePlay() },
-                                onNext = { player?.seekToNextMediaItem() },
-                                onPrevious = { player?.seekToPreviousMediaItem() },
-                                onSeek = { player?.seekTo(it) },
-                                onToggleShuffle = {
-                                    player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+                                onTogglePlay = {
+                                    if (remote != null) {
+                                        val playing = remote?.playing == true
+                                        onRemote { id ->
+                                            if (playing) RemoteConnect.pause(id)
+                                            else RemoteConnect.play(id)
+                                        }
+                                    } else {
+                                        player?.togglePlay()
+                                    }
                                 },
-                                onCycleRepeat = { player?.cycleRepeatMode() },
+                                onNext = {
+                                    if (remote != null) onRemote(RemoteConnect::next)
+                                    else player?.seekToNextMediaItem()
+                                },
+                                onPrevious = {
+                                    if (remote != null) onRemote(RemoteConnect::previous)
+                                    else player?.seekToPreviousMediaItem()
+                                },
+                                onSeek = { target ->
+                                    if (remote != null) {
+                                        onRemote { id -> RemoteConnect.seek(id, target) }
+                                    } else {
+                                        player?.seekTo(target)
+                                    }
+                                },
+                                onToggleShuffle = {
+                                    if (remote != null) {
+                                        val wanted = remote?.shuffle != true
+                                        onRemote { id -> RemoteConnect.setShuffle(id, wanted) }
+                                    } else {
+                                        player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+                                    }
+                                },
+                                onCycleRepeat = {
+                                    if (remote != null) {
+                                        val current = remote
+                                        // Off, all, one, off: the same cycle the
+                                        // local button walks.
+                                        val context = current?.repeatContext != true &&
+                                            current?.repeatTrack != true
+                                        val track = current?.repeatContext == true
+                                        onRemote { id -> RemoteConnect.setRepeat(id, context, track) }
+                                    } else {
+                                        player?.cycleRepeatMode()
+                                    }
+                                },
                                 queue = queue,
                                 lyrics = lyrics,
                                 lyricsLoading = lyricsLoading,
@@ -846,12 +959,19 @@ fun SquareApp(
                                 backdrop = artBackdrop,
                                 canvas = canvas,
                                 devices = devices,
+                                onAnotherDevice = remote != null,
                                 onOpenDevices = viewModel::openDevices,
                                 connectAvailable =
                                     backend == dev.lelonio.square.backend.BackendId.SPOTIFY,
                                 onCloseDevices = viewModel::closeDevices,
                                 onRefreshDevices = viewModel::refreshDevices,
-                                onSelectDevice = { viewModel.transferPlayback(it) },
+                                // The position goes with the request: a
+                                // handover resumes where the listener was, and
+                                // this is the only side that knows to the
+                                // second.
+                                onSelectDevice = {
+                                    viewModel.transferPlayback(it, positionMs.value)
+                                },
                                 onAddToPlaylist = {
                                     viewModel.openAddToPlaylist(
                                         playback.mediaId,
@@ -968,7 +1088,7 @@ fun SquareApp(
                     if (menu != null) {
                         TrackSheetAction(stringResource(R.string.play), PhosphorIcons.Fill.Play) {
                             trackMenu = null
-                            onPlay(listOf(menu.track), 0, null, false, "")
+                            onPlay(listOf(menu.track), 0, null, false, "", 0L)
                         }
                         TrackSheetAction(stringResource(R.string.add_to_queue), PhosphorIcons.Regular.Queue) {
                             trackMenu = null

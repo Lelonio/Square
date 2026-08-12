@@ -152,6 +152,18 @@ interface SpotifyApi {
     suspend fun transferPlayback(@Body request: TransferRequestDto)
 
     /**
+     * Resumes on a named device.
+     *
+     * The device is named rather than assumed. Spotify's play endpoint acts on
+     * "the active device", and just after a handover there is a moment where
+     * the account has not settled on one: the request then answers 404, whose
+     * message is the same for "device not found" and "nothing is active".
+     * Saying which device removes the question.
+     */
+    @PUT("v1/me/player/play")
+    suspend fun play(@Query("device_id") deviceId: String)
+
+    /**
      * Appends tracks to a playlist. Needs `playlist-modify-private` for the
      * user's own private playlists and `playlist-modify-public` for their
      * public ones — which one applies is the playlist's visibility, not the

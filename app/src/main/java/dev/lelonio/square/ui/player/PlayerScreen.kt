@@ -206,6 +206,8 @@ fun PlayerScreen(
      * ever be empty, so it is not drawn at all.
      */
     connectAvailable: Boolean = true,
+    /** Whether the sound is coming out of another of the account's devices. */
+    onAnotherDevice: Boolean = false,
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
 
@@ -395,6 +397,7 @@ fun PlayerScreen(
                             }
                         },
                         connectAvailable = connectAvailable,
+                        onAnotherDevice = onAnotherDevice,
                         onWatchVideo = onWatchVideo,
                         videoOn = videoOn,
                     )
@@ -860,6 +863,7 @@ private fun TopBar(
     onCollapse: () -> Unit,
     onOpenDevices: () -> Unit,
     connectAvailable: Boolean,
+    onAnotherDevice: Boolean,
     /** Null when the track has no video to watch. */
     onWatchVideo: (() -> Unit)?,
     videoOn: Boolean,
@@ -922,7 +926,15 @@ private fun TopBar(
                 Icon(
                     PhosphorIcons.Regular.Devices,
                     contentDescription = stringResource(R.string.devices),
-                    tint = panelTint(panel == PlayerPanel.DEVICES),
+                    // Lit for as long as the music is coming out of another
+                    // device, not only while its list is open: on this screen it
+                    // is the one thing that says the buttons are reaching
+                    // somewhere else, and it has to still say it once the panel
+                    // is closed.
+                    tint = when {
+                        onAnotherDevice -> ConnectedInk
+                        else -> panelTint(panel == PlayerPanel.DEVICES)
+                    },
                 )
             }
         }
@@ -1199,6 +1211,9 @@ private fun GlassButton(
 @Composable
 private fun panelTint(active: Boolean) =
     if (active) MaterialTheme.colorScheme.primary else GlassInk
+
+/** Spotify's own green, which already means "playing over there". */
+private val ConnectedInk = androidx.compose.ui.graphics.Color(0xFF1ED760)
 
 @Composable
 private fun ToggleIcon(

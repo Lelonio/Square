@@ -260,6 +260,10 @@ val cargoBuild by tasks.registering(Exec::class) {
 
     // Gradle can skip this entirely when nothing in the crate changed.
     inputs.dir(nativeDir.resolve("src"))
+    // The patched copies of librespot's own crates, which are compiled from
+    // here rather than fetched. Left out, a change to one of them was not a
+    // change to this task, and the build quietly shipped the previous library.
+    inputs.dir(nativeDir.resolve("vendor"))
     inputs.file(nativeDir.resolve("Cargo.toml"))
     inputs.file(nativeDir.resolve("Cargo.lock"))
     outputs.dir(layout.projectDirectory.dir("src/main/jniLibs"))

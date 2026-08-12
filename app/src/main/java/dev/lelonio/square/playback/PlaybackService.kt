@@ -63,6 +63,7 @@ class PlaybackService : MediaLibraryService() {
 
     private lateinit var playbackStore: PlaybackStore
     private lateinit var quality: dev.lelonio.square.data.QualityStore
+    private lateinit var crossfade: dev.lelonio.square.data.CrossfadeStore
     private var saveJob: Job? = null
 
     private val playbackHost = object : dev.lelonio.square.backend.PlaybackHost {
@@ -76,6 +77,7 @@ class PlaybackService : MediaLibraryService() {
         playbackStore = PlaybackStore(this)
         container = application as dev.lelonio.square.SquareApplication
         quality = container.quality
+        crossfade = container.crossfade
 
         player = buildPlayer(container.preferences.backend.value)
         session = MediaLibrarySession.Builder(this, player, MediaBrowseTree(this, scope))
@@ -119,6 +121,34 @@ class PlaybackService : MediaLibraryService() {
         // can put playback back afterwards.
         scope.launch {
             quality.quality.drop(1).collect { restartForQuality() }
+        }
+
+        // The crossfade is part of the same configuration and just as fixed, so
+        // it takes the same road: a new engine, with the queue put back where
+        // it was.
+        scope.launch {
+            crossfade.seconds.drop(1).collect { rebuildEngine("crossfade") }
+        }
+
+        // Playback handed to this phone from another client's device list.
+        //
+        // The engine obeys that transfer on its own and starts playing, so the
+        // only thing missing is the queue: without it there is one track and
+        // nothing after it. Watched here rather than in the UI because the
+        // queue belongs to the service, and this has to work with no screen on.
+        scope.launch {
+            dev.lelonio.square.data.RemoteConnect.here.collect(::adoptRemoteQueue)
+        }
+
+        // Playback on another device, mirrored into this one's player.
+        //
+        // The notification, the lock screen and anything else holding a media
+        // controller read the player and nothing else, so without this they
+        // showed a stopped app while the account was playing in the next room.
+        scope.launch {
+            dev.lelonio.square.data.RemoteConnect.playback.collect { elsewhere ->
+                librespot?.showRemote(elsewhere?.let { describeRemote(it) })
+            }
         }
 
         // Same reasoning for the source itself: swapping backends is swapping
@@ -229,6 +259,73 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
+     * Fills in what the other device did not say about its track.
+     *
+     * Whether a client publishes a title and an artist beside the uri is up to
+     * that client: the web player does, the desktop app does not always, and
+     * what reached the notification then was a song with no name. The uri is
+     * always there, and this app can read a track from a uri, so it does.
+     */
+    private suspend fun describeRemote(
+        playback: dev.lelonio.square.data.RemotePlayback,
+    ): dev.lelonio.square.data.RemotePlayback {
+        if (playback.title.isNotEmpty() && playback.artist.isNotEmpty()) return playback
+        val track = runCatching { container.activeBackend.tracksOf(playback.uri).firstOrNull() }
+            .onFailure { android.util.Log.w(TAG, "cannot read ${playback.uri}: $it") }
+            .getOrNull() ?: return playback
+
+        val filled = playback.copy(
+            title = playback.title.ifEmpty { track.name },
+            artist = playback.artist.ifEmpty { track.artist },
+            album = playback.album.ifEmpty { track.album },
+            coverUri = playback.coverUri.ifEmpty { track.artworkUrl.orEmpty() },
+        )
+        // Kept there rather than here: every part of the app reads that state,
+        // and the next cluster update rebuilds it from what the other device
+        // published, which is what left this out in the first place.
+        dev.lelonio.square.data.RemoteConnect.describe(filled)
+        return filled
+    }
+
+    /** The queue last taken on, so the same transfer is not resolved twice. */
+    private var adoptedContext: String? = null
+
+    /**
+     * Fills in the queue behind a track the engine was handed.
+     *
+     * Only when this side does not already know the track: playing from Square
+     * puts it in the queue first, and re-resolving the context then would throw
+     * away the order the listener is looking at.
+     */
+    private suspend fun adoptRemoteQueue(here: dev.lelonio.square.data.RemotePlayback?) {
+        val engine = librespot ?: return
+        if (here == null || here.uri.isEmpty()) return
+        if (queue?.items.orEmpty().any { it.uri == here.uri }) return
+
+        val key = "${here.contextUri}|${here.uri}"
+        if (adoptedContext == key) return
+        adoptedContext = key
+
+        val tracks = runCatching {
+            container.activeBackend.tracksOf(here.realContext ?: here.uri)
+        }
+            .onFailure { android.util.Log.w(TAG, "handed a queue we cannot read: $it") }
+            .getOrDefault(emptyList())
+
+        val index = tracks.indexOfFirst { it.uri == here.uri }
+        if (tracks.isEmpty()) return
+
+        engine.adopt(
+            tracks = tracks.map(::toQueueTrack),
+            index = index.coerceAtLeast(0),
+            positionMs = here.positionMs,
+            contextUri = here.realContext,
+            contextLabel = "",
+            playing = here.playing,
+        )
+    }
+
+    /**
      * Rebuilds the engine so a new bitrate takes effect.
      *
      * librespot reads the bitrate when a track loads but the player owns its
@@ -319,6 +416,9 @@ class PlaybackService : MediaLibraryService() {
                     // access point rejects every catalogue call.
                     clientId = SpotifyOAuth.CLIENT_ID,
                     deviceName = android.os.Build.MODEL ?: "Android",
+                    // Kept across launches, so the account sees this phone as
+                    // one device rather than a new one every time.
+                    deviceId = container.preferences.deviceId(),
                     accessToken = accessToken,
                     // filesDir, not cacheDir: credentials must survive the
                     // system reclaiming cache space, or the next launch loses
@@ -331,6 +431,8 @@ class PlaybackService : MediaLibraryService() {
                     // URL, so the tiles came back in English.
                     language = appLanguage(),
                     bitrateKbps = quality.bitrateKbps(),
+                    // Off is zero, which is upstream librespot's own behaviour.
+                    crossfadeMs = crossfade.durationMs(),
                     listener = engine,
                 )
             }

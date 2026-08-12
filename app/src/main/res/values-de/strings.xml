@@ -212,4 +212,16 @@
     <string name="update_install">Installieren</string>
     <string name="download_get_app">YTDLnis installieren</string>
     <string name="download_with">Mit YTDLnis herunterladen</string>
+    <string name="crossfade">Überblendung</string>
+    <string name="crossfade_off">Aus</string>
+    <string name="crossfade_seconds">%1$d Sekunden</string>
+    <string name="crossfade_note">Ein Titel geht in den nächsten über. Nur wenn er von selbst endet, nicht beim Überspringen.</string>
+    <string name="page_playback">Wiedergabe</string>
+    <string name="page_app">App</string>
+    <string name="page_account_summary">Ihr Konto, die Web-API-Anwendung und das Abmelden</string>
+    <string name="page_playback_summary">Woher die Musik kommt, Qualität und Überblendung</string>
+    <string name="page_app_summary">Sprache</string>
+    <string name="page_about_summary">Version, Berechtigungen, Lizenzen und Entwickler</string>
+    <string name="playing_on">Wiedergabe auf %1$s</string>
+    <string name="switching">Wechsel…</string>
 </resources>

@@ -61,6 +61,14 @@ object NativeBridge {
     fun start(
         clientId: String,
         deviceName: String,
+        /**
+         * This phone's Connect id, the same on every launch.
+         *
+         * Chosen and kept by the app because librespot's own default is a fresh
+         * one per session, which shows the account a brand new device every time
+         * the engine starts.
+         */
+        deviceId: String,
         accessToken: String,
         credentialsDir: String,
         cacheDir: String,
@@ -74,15 +82,23 @@ object NativeBridge {
          * setting means starting a new engine.
          */
         bitrateKbps: Int,
+        /**
+         * How long one track dissolves into the next, in milliseconds; zero is
+         * off. Fixed for the life of the engine for the same reason as the
+         * bitrate: it belongs to the player's configuration.
+         */
+        crossfadeMs: Int,
         listener: NativeEvents,
     ) = nativeStart(
         clientId,
         deviceName,
+        deviceId,
         accessToken,
         credentialsDir,
         cacheDir,
         language,
         bitrateKbps,
+        crossfadeMs,
         listener,
     )
 
@@ -153,6 +169,78 @@ object NativeBridge {
      */
     fun reconnect() = nativeReconnect()
 
+    // --- The account's other devices ---
+    //
+    // Square is a Connect device, and this is the other half of the same
+    // protocol: what the official client does when it shows you a speaker
+    // playing in another room and lets you press pause on it.
+    //
+    // Nothing here is polled. Spotify pushes a cluster update to every device
+    // whenever anything changes, and the engine reports one as an event named
+    // "cluster"; these read what that update left behind.
+
+    /**
+     * Whether the account's playback belongs to another device right now.
+     *
+     * The one question that decides whether this app may touch the engine at
+     * all. go-librespot keeps the same answer as a single boolean it owns, and
+     * everything it does is gated on it; here it comes from the cluster, which
+     * is the same source by another road.
+     */
+    val playbackElsewhere: Boolean
+        get() = runCatching { nativePlaybackElsewhere() }.getOrDefault(false)
+
+    /**
+     * Republishes the queue as the playlist it came from.
+     *
+     * For the moment before playback is handed to another device: a queue sent
+     * as a bare list of URIs carries a context nobody else can resolve, and the
+     * device receiving it ends up with a queue that does not play. Blocking.
+     */
+    fun publishContext(positionMs: Int) = nativePublishContext(positionMs)
+
+    /**
+     * Starts playing here what another device was playing, at its position.
+     *
+     * One call, so the music moves before the queue behind it has been read:
+     * resolving a long playlist first is a second of silence in which the only
+     * honest thing the screen can say is nothing. Blocking.
+     */
+    fun resumeHere(contextUri: String, trackUri: String, positionMs: Int) =
+        nativeResumeHere(contextUri, trackUri, positionMs)
+
+    /**
+     * Takes the account's playback for this device.
+     *
+     * The picker's own row. A transfer is addressed from one device to another
+     * through the server, and this phone cannot address itself that way: the
+     * request goes out and comes back refused. Activating does it directly.
+     */
+    fun takeOver() = nativeTakeOver()
+
+    /** This device's own Connect id, which is what says "here" rather than "there". */
+    fun deviceId(): String = runCatching { nativeDeviceId() }.getOrDefault("")
+
+    /** What the account is playing and where, as JSON; `{}` when nothing is. */
+    fun remoteState(): String = nativeRemoteState()
+
+    /** Every device the account can see, this one included, as a JSON array. */
+    fun remoteDevices(): String = nativeRemoteDevices()
+
+    /**
+     * Sends one command to another device.
+     *
+     * [body] is the JSON Spotify's own clients send, so the caller names the
+     * endpoint. Accepted for delivery is not obeyed: the device is what acts,
+     * and the cluster update that follows is what says it did.
+     *
+     * Blocking. Never call it from the main thread.
+     */
+    fun remoteCommand(deviceId: String, body: String) = nativeRemoteCommand(deviceId, body)
+
+    /** Volume in librespot's raw 0..65535 range, on another device. */
+    fun remoteVolume(deviceId: String, volume: Int) = nativeRemoteVolume(deviceId, volume)
+
     fun shutdown() = nativeShutdown()
 
     // --- Catalogue, served by the access point rather than api.spotify.com ---
@@ -201,11 +289,13 @@ object NativeBridge {
     private external fun nativeStart(
         clientId: String,
         deviceName: String,
+        deviceId: String,
         accessToken: String,
         credentialsDir: String,
         cacheDir: String,
         language: String,
         bitrateKbps: Int,
+        crossfadeMs: Int,
         listener: NativeEvents,
     )
 
@@ -230,6 +320,15 @@ object NativeBridge {
     private external fun nativeIsConnected(): Boolean
     private external fun nativeSpircLost(): Boolean
     private external fun nativeReconnect()
+    private external fun nativePlaybackElsewhere(): Boolean
+    private external fun nativePublishContext(positionMs: Int): Boolean
+    private external fun nativeResumeHere(contextUri: String, trackUri: String, positionMs: Int)
+    private external fun nativeTakeOver()
+    private external fun nativeDeviceId(): String
+    private external fun nativeRemoteState(): String
+    private external fun nativeRemoteDevices(): String
+    private external fun nativeRemoteCommand(deviceId: String, body: String)
+    private external fun nativeRemoteVolume(deviceId: String, volume: Int)
     private external fun nativeShutdown()
     private external fun nativeUsername(): String
     private external fun nativeCollectionUri(): String

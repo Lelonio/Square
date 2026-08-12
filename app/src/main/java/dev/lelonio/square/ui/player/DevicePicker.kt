@@ -138,7 +138,9 @@ fun DevicePicker(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         state.devices.forEach { device ->
-                            DeviceRow(device) { onSelect(device.id) }
+                            DeviceRow(device, switching = state.switchingTo == device.id) {
+                                onSelect(device.id)
+                            }
                         }
                     }
                 }
@@ -220,7 +222,9 @@ fun DeviceList(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         state.devices.forEach { device ->
-                            DeviceRow(device) { onSelect(device.id) }
+                            DeviceRow(device, switching = state.switchingTo == device.id) {
+                                onSelect(device.id)
+                            }
                         }
                     }
                 }
@@ -228,11 +232,16 @@ fun DeviceList(
 }
 
 @Composable
-private fun DeviceRow(device: MainViewModel.SpotifyDevice, onClick: () -> Unit) {
+private fun DeviceRow(
+    device: MainViewModel.SpotifyDevice,
+    /** Whether this is the row the playback is moving to right now. */
+    switching: Boolean = false,
+    onClick: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(enabled = !device.isActive, onClick = onClick)
+            .clickable(enabled = !device.isActive && !switching, onClick = onClick)
             .padding(horizontal = 22.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -257,10 +266,25 @@ private fun DeviceRow(device: MainViewModel.SpotifyDevice, onClick: () -> Unit) 
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (device.isActive) stringResource(R.string.now_playing) else device.type,
+                when {
+                    switching -> stringResource(R.string.switching)
+                    device.isActive -> stringResource(R.string.now_playing)
+                    else -> device.type
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = GlassInkDim,
                 maxLines = 1,
+            )
+        }
+
+        // The one piece of feedback a handover has. Moving playback takes a
+        // moment, and without this the row simply sat there, so it was pressed
+        // again and again.
+        if (switching) {
+            CircularProgressIndicator(
+                color = GlassInkDim,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(18.dp),
             )
         }
     }
