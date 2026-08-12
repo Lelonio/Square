@@ -246,4 +246,9 @@
     <string name="playing_on">Playing on %1$s</string>
     <string name="switching">Switching…</string>
     <string name="in_a_playlist">Already in a playlist</string>
+    <string name="effect_quality">Effect quality</string>
+    <string name="effect_quality_high">Faithful</string>
+    <string name="effect_quality_high_note">Best on music, and the heaviest on the battery.</string>
+    <string name="effect_quality_light">Light</string>
+    <string name="effect_quality_light_note">The phone does the work. Kinder to older devices, rougher on attacks.</string>
 </resources>

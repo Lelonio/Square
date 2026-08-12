@@ -111,9 +111,16 @@ impl AndroidSink {
 
 impl Sink for AndroidSink {
     fn start(&mut self) -> SinkResult<()> {
-        if self.stale() {
-            return Ok(());
-        }
+        // Not gated, and this matters more than it looks.
+        //
+        // The gate is about audio: packets from a session that has been
+        // replaced, or from before the track the listener asked for. This is
+        // not audio, it is the sink saying that playback has begun, and the
+        // other side raises the output on hearing it. Swallowed, the track was
+        // built silent while the reverb, whose send does not pass through that
+        // volume, went on at full level: the song arrived as reverb alone until
+        // something else started it properly. AudioOutput has the same note
+        // against `playing` for the same failure from another direction.
         self.invoke("start")
     }
 

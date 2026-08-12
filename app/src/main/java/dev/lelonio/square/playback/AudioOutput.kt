@@ -45,6 +45,15 @@ class AudioOutput {
     /** Logged once rather than per packet, which would be several a second. */
     private var stretchFailureReported = false
 
+    /**
+     * Which stretcher does the work; see EffectQuality.
+     *
+     * Read on the audio thread, set from the settings, so it is volatile like
+     * the rest of the values that cross that line.
+     */
+    @Volatile
+    private var lightEffects = false
+
     /** Reverb amount, 0 (off) to 1. */
     @Volatile
     private var reverbAmount = 0f
@@ -101,6 +110,24 @@ class AudioOutput {
         this.pitch = pitch.coerceIn(MIN_RATE, MAX_RATE)
     }
 
+    /**
+     * Chooses between the phase vocoder and the platform's own stretcher.
+     *
+     * Switching throws away whichever one was running: the Bungee stretcher
+     * holds a window of audio that would otherwise be resynthesised over the
+     * first moments of the new path, and the platform's has to be told to stop
+     * altering a stream this app is about to alter itself.
+     */
+    fun setLightEffects(light: Boolean) {
+        if (light == lightEffects) return
+        lightEffects = light
+        synchronized(this) {
+            stretcher?.release()
+            stretcher = null
+            applyPlatformRate()
+        }
+    }
+
     fun setReverbAmount(amount: Float) {
         reverbAmount = amount.coerceIn(0f, 1f)
         synchronized(this) { applyReverb() }
@@ -144,6 +171,7 @@ class AudioOutput {
             return
         }
 
+        val fresh = reverb == null
         val effect = reverb ?: runCatching {
             // Priority 0: no reason to outbid anything else on the mix.
             EnvironmentalReverb(0, 0)
@@ -181,6 +209,7 @@ class AudioOutput {
             // where the audible change happens, and a straight mapping leaves
             // most of the slider doing almost nothing.
             output.setAuxEffectSendLevel(amount * amount * 0.85f + amount * 0.15f)
+            if (fresh) android.util.Log.i(TAG, "reverb on at $amount, id ${effect.id}")
         }.onFailure { android.util.Log.w(TAG, "reverb not applied: ${it.message}") }
     }
 
@@ -281,6 +310,7 @@ class AudioOutput {
      * definition.
      */
     private fun dropReverb() {
+        reverb?.let { android.util.Log.i(TAG, "reverb off, id ${it.id}") }
         reverb?.runCatching {
             enabled = false
             release()
@@ -422,6 +452,14 @@ class AudioOutput {
         val currentSpeed = speed
         val currentPitch = pitch
 
+        // The platform does it below this app when the light path is chosen, so
+        // the packets go out untouched and the rate is set on the track itself.
+        if (lightEffects) {
+            synchronized(this) { applyPlatformRate() }
+            writeAll(output, data, sizeInBytes)
+            return
+        }
+
         // Only pay for the stretcher when it would actually change something.
         // At 1.0/1.0 Bungee is not a no-op — it still analyses and resynthesises
         // every grain — so bypassing it keeps normal playback exactly as it was.
@@ -441,6 +479,32 @@ class AudioOutput {
 
         writeAll(output, data, sizeInBytes)
     }
+
+    /**
+     * Puts the current speed and pitch on the AudioTrack itself.
+     *
+     * Only for the light path, and set rather than left alone even at 1.0: a
+     * track keeps whatever rate it was given, so returning to normal speed has
+     * to say so. Failures are ignored on purpose, since a device that refuses a
+     * rate should still play the music.
+     */
+    private fun applyPlatformRate() {
+        val output = track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED } ?: return
+        val wantedSpeed = if (lightEffects) speed else 1f
+        val wantedPitch = if (lightEffects) pitch else 1f
+        if (wantedSpeed == platformSpeed && wantedPitch == platformPitch) return
+        runCatching {
+            output.playbackParams = output.playbackParams
+                .setSpeed(wantedSpeed)
+                .setPitch(wantedPitch)
+            platformSpeed = wantedSpeed
+            platformPitch = wantedPitch
+        }.onFailure { android.util.Log.w(TAG, "the platform refused $wantedSpeed x: ${it.message}") }
+    }
+
+    /** What the track was last told, so it is not told again every packet. */
+    private var platformSpeed = 1f
+    private var platformPitch = 1f
 
     private fun writeAll(output: AudioTrack, buffer: ByteBuffer, sizeInBytes: Int) {
         var written = 0
@@ -578,6 +642,10 @@ class AudioOutput {
         track = created
         configuredSampleRate = sampleRate
         configuredChannels = channels
+        // A new track knows nothing of the rate the old one was given.
+        platformSpeed = 1f
+        platformPitch = 1f
+        applyPlatformRate()
         // The old track took its effect and its playback params with it, so both
         // have to be put back or a format change silently resets the sound.
         applyReverb()

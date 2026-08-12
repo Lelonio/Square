@@ -226,4 +226,9 @@
     <string name="playing_on">In riprod. su %1$s</string>
     <string name="switching">Passaggio in corso…</string>
     <string name="in_a_playlist">Già in una playlist</string>
+    <string name="effect_quality">Qualità degli effetti</string>
+    <string name="effect_quality_high">Fedele</string>
+    <string name="effect_quality_high_note">La migliore sulla musica, e la più esigente per la batteria.</string>
+    <string name="effect_quality_light">Leggera</string>
+    <string name="effect_quality_light_note">Se ne occupa il telefono. Più gentile con i dispositivi vecchi, più ruvida sugli attacchi.</string>
 </resources>

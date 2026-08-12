@@ -659,6 +659,30 @@ fn spawn_event_forwarder(
     });
 }
 
+/// Changes what the player is built with, and builds it again.
+///
+/// The bitrate and the crossfade belong to the player's configuration, which is
+/// fixed for the life of a player, so a new value means a new player. That used
+/// to mean tearing the whole engine down from the Kotlin side, and that is the
+/// call that aborted the process on a destroyed mutex: the runtime cannot be
+/// dropped from a JNI thread while librespot's own threads are still inside it.
+///
+/// Replacing the bundle does the same job without touching the runtime or the
+/// audio output. The queue is not restored here; the caller owns that.
+pub fn set_quality(bitrate_kbps: i32, crossfade_ms: i32) -> EngineResult<()> {
+    {
+        let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        let engine = guard.as_mut().ok_or("engine not started")?;
+        engine.recipe.player_config.bitrate = match bitrate_kbps {
+            96 => Bitrate::Bitrate96,
+            160 => Bitrate::Bitrate160,
+            _ => Bitrate::Bitrate320,
+        };
+        engine.recipe.player_config.crossfade_duration_ms = crossfade_ms.max(0) as u32;
+    }
+    reconnect()
+}
+
 /// Throws away a bundle and builds another one, leaving the runtime and the
 /// audio output alone.
 ///

@@ -56,6 +56,7 @@ import dev.lelonio.square.R
 import dev.lelonio.square.data.AppLanguages
 import dev.lelonio.square.backend.BackendId
 import dev.lelonio.square.data.CrossfadeSteps
+import dev.lelonio.square.data.EffectQuality
 import dev.lelonio.square.data.Quality
 import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
@@ -256,6 +257,11 @@ fun SettingsScreen(
         // Also librespot's: the crossfade is mixed by the engine's own player.
         if (open == SettingsPage.Playback && showSpotify) item("crossfade") {
             CrossfadeSection()
+        }
+
+        // The effects run on our own output, so this one holds for both backends.
+        if (open == SettingsPage.Playback) item("effect-quality") {
+            EffectQualitySection()
         }
 
         if (open == SettingsPage.App) item("language") {
@@ -507,6 +513,32 @@ private fun YouTubeAccountSection(onSignIn: () -> Unit) {
                 scope.launch { app.youtubeBackend.logOut() }
             }
         }
+    }
+}
+
+@Composable
+private fun EffectQualitySection() {
+    val context = LocalContext.current
+    val store = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).effectQuality
+    }
+    val chosen by store.quality.collectAsStateWithLifecycle()
+
+    Section(stringResource(R.string.effect_quality)) {
+        EffectQuality.entries.forEachIndexed { index, quality ->
+            if (index > 0) RowDivider()
+            ChoiceRow(
+                label = stringResource(quality.label),
+                selected = quality == chosen,
+            ) { store.set(quality) }
+        }
+        RowDivider()
+        Text(
+            stringResource(chosen.note),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+        )
     }
 }
 

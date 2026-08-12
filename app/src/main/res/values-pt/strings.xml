@@ -225,4 +225,9 @@
     <string name="playing_on">Reproduzindo em %1$s</string>
     <string name="switching">Trocando…</string>
     <string name="in_a_playlist">Já está numa playlist</string>
+    <string name="effect_quality">Qualidade dos efeitos</string>
+    <string name="effect_quality_high">Fiel</string>
+    <string name="effect_quality_high_note">A melhor com música e a mais exigente para a bateria.</string>
+    <string name="effect_quality_light">Leve</string>
+    <string name="effect_quality_light_note">O telefone é que trata disso. Melhor para aparelhos antigos, mais áspera nos ataques.</string>
 </resources>

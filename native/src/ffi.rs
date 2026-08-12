@@ -437,6 +437,19 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSpi
     engine::spirc_lost() as jboolean
 }
 
+/// Rebuilds the player with a new bitrate and crossfade.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetQuality(
+    mut env: JNIEnv,
+    _class: JClass,
+    bitrate_kbps: jint,
+    crossfade_ms: jint,
+) {
+    guard(&mut env, "SetQuality", || {
+        engine::set_quality(bitrate_kbps, crossfade_ms)
+    });
+}
+
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeReconnect(
     mut env: JNIEnv,

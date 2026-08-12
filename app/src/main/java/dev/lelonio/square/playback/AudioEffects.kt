@@ -21,8 +21,11 @@ import kotlinx.coroutines.flow.asStateFlow
  * mood and losing it on the next launch — or on the next playlist — is the more
  * annoying of the two, and the effects panel makes the current state plain.
  *
- * [load] has to be called once before the values mean anything; the service does
- * it on creation.
+ * [load] has to be called once before the values mean anything, and it is called
+ * from the application object rather than from the service. Nothing may write
+ * before it: a value set while the file has not been read is a value written
+ * over what was saved, and the whole point of persisting was not to lose the
+ * mood the listener set.
  */
 object AudioEffects {
 
@@ -55,21 +58,43 @@ object AudioEffects {
         _reverb.value = store.getFloat(KEY_REVERB, 0f)
         _speed.value = store.getFloat(KEY_SPEED, 1f)
         _pitch.value = store.getFloat(KEY_PITCH, 1f)
+        android.util.Log.i(
+            "SpotAudio",
+            "effects restored: reverb=${_reverb.value} speed=${_speed.value} pitch=${_pitch.value}",
+        )
     }
 
     fun setReverb(amount: Float) {
-        _reverb.value = amount.coerceIn(0f, 1f)
-        prefs?.edit()?.putFloat(KEY_REVERB, _reverb.value)?.apply()
+        val wanted = amount.coerceIn(0f, 1f)
+        if (wanted == _reverb.value) return
+        _reverb.value = wanted
+        val store = prefs ?: return
+        // `commit`, not `apply`, and deliberately.
+        //
+        // These are set by hand a moment before the app is put away, and an
+        // asynchronous write does not always survive the process being killed
+        // straight afterwards, which is exactly how a setting is "sometimes"
+        // lost. One synchronous write per deliberate change is nothing.
+        store.edit().putFloat(KEY_REVERB, wanted).commit()
     }
 
-    /** Records what was last sent to the player, so a restart can restore it. */
+    /**
+     * Records what was last sent to the player, so a restart can restore it.
+     *
+     * Ignored until the file has been read. Media3 announces the playback
+     * parameters of a player that has just been built, which are 1.0 and 1.0,
+     * and taking that for an instruction wrote the default over a saved speed
+     * before anyone had touched anything.
+     */
     fun rememberSpeedAndPitch(speed: Float, pitch: Float) {
+        val store = prefs ?: return
+        if (speed == _speed.value && pitch == _pitch.value) return
         _speed.value = speed
         _pitch.value = pitch
-        prefs?.edit()
-            ?.putFloat(KEY_SPEED, speed)
-            ?.putFloat(KEY_PITCH, pitch)
-            ?.apply()
+        store.edit()
+            .putFloat(KEY_SPEED, speed)
+            .putFloat(KEY_PITCH, pitch)
+            .commit()
     }
 
     private const val FILE_NAME = "spot_audio_effects"

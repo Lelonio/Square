@@ -225,4 +225,9 @@
     <string name="playing_on">Wiedergabe auf %1$s</string>
     <string name="switching">Wechsel…</string>
     <string name="in_a_playlist">Schon in einer Playlist</string>
+    <string name="effect_quality">Effektqualität</string>
+    <string name="effect_quality_high">Originalgetreu</string>
+    <string name="effect_quality_high_note">Am besten für Musik und am anspruchsvollsten für den Akku.</string>
+    <string name="effect_quality_light">Leicht</string>
+    <string name="effect_quality_light_note">Das Telefon übernimmt. Schonender für ältere Geräte, rauer bei Anschlägen.</string>
 </resources>

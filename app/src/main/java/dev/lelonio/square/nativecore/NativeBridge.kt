@@ -157,6 +157,17 @@ object NativeBridge {
     val spircLost: Boolean get() = nativeSpircLost()
 
     /**
+     * Rebuilds the player with a new bitrate and crossfade.
+     *
+     * Both belong to a configuration the player owns for its whole life, so a
+     * change means another player. This replaces the session and the player and
+     * leaves the runtime and the audio output where they are: tearing those
+     * down from here is what used to abort the process. The queue is the
+     * caller's to put back. Blocking.
+     */
+    fun setQuality(bitrateKbps: Int, crossfadeMs: Int) = nativeSetQuality(bitrateKbps, crossfadeMs)
+
+    /**
      * Builds a new session, player and Connect device, keeping everything else.
      *
      * The answer to [spircLost]. A dead Connect device cannot be revived on the
@@ -341,6 +352,7 @@ object NativeBridge {
     private external fun nativeVolume(): Int
     private external fun nativeIsConnected(): Boolean
     private external fun nativeSpircLost(): Boolean
+    private external fun nativeSetQuality(bitrateKbps: Int, crossfadeMs: Int)
     private external fun nativeReconnect()
     private external fun nativePlaybackElsewhere(): Boolean
     private external fun nativePublishContext(positionMs: Int): Boolean

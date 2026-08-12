@@ -21,6 +21,15 @@ import dev.lelonio.square.data.SpotifyApi
  */
 class SquareApplication : Application() {
 
+    override fun onCreate() {
+        super.onCreate()
+        // Before anything can read or write them. The service used to do this on
+        // creation, which is late: the player screen and the media session both
+        // exist by then and either can announce a default that would be saved
+        // over what the listener had set.
+        dev.lelonio.square.playback.AudioEffects.load(this)
+    }
+
     val tokenStore: TokenStore by lazy { TokenStore(this) }
     val recentStore: RecentStore by lazy { RecentStore(this) }
 
@@ -36,6 +45,11 @@ class SquareApplication : Application() {
     /** The identifiers Spotify's gateway wants; kept fresh from the repository. */
     val pathfinderKeys: dev.lelonio.square.data.PathfinderKeys by lazy {
         dev.lelonio.square.data.PathfinderKeys(this)
+    }
+
+    /** Which stretcher works out speed and pitch. */
+    val effectQuality: dev.lelonio.square.data.EffectQualityStore by lazy {
+        dev.lelonio.square.data.EffectQualityStore(this)
     }
 
     /** How long one track dissolves into the next. */
