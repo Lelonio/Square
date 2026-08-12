@@ -257,6 +257,15 @@ object NativeBridge {
     /** What the account is playing and where, as JSON; `{}` when nothing is. */
     fun remoteState(): String = nativeRemoteState()
 
+    /**
+     * What this device is playing, as `{"contextUri": …, "trackUri": …}`.
+     *
+     * Not the same question as [remoteState], which reads the account's own
+     * picture: that picture is not sent to the device it describes, so while
+     * another client drives this one this is the only current answer.
+     */
+    fun playingHere(): String = runCatching { nativePlayingHere() }.getOrDefault("{}")
+
     /** Every device the account can see, this one included, as a JSON array. */
     fun remoteDevices(): String = nativeRemoteDevices()
 
@@ -365,6 +374,7 @@ object NativeBridge {
         appVersion: String,
     ): String
     private external fun nativeDeviceId(): String
+    private external fun nativePlayingHere(): String
     private external fun nativeRemoteState(): String
     private external fun nativeRemoteDevices(): String
     private external fun nativeRemoteCommand(deviceId: String, body: String)

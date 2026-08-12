@@ -188,6 +188,10 @@ class PlaybackService : MediaLibraryService() {
             val built = container.spotifyBackend.createPlayer(playbackHost) as LibrespotPlayer
             librespot = built
 
+            // Another client pointing this device at a track of its own; see
+            // LibrespotPlayer.onUnknownTrack.
+            built.onUnknownTrack = { uri -> scope.launch { adoptPlayingTrack(uri) } }
+
             // Applied straight to the output rather than waiting for the UI: the
             // service can be running with no activity attached at all.
             audioOutput.setSpeedAndPitch(AudioEffects.speed.value, AudioEffects.pitch.value)
@@ -327,6 +331,14 @@ class PlaybackService : MediaLibraryService() {
 
         val index = tracks.indexOfFirst { it.uri == here.uri }
         if (tracks.isEmpty()) return
+        // A long context takes seconds to read, and an answer about a track the
+        // engine has already left behind would drag the screen back to it; see
+        // adoptPlayingTrack.
+        val playing = engineUri()
+        if (playing.isNotEmpty() && playing != here.uri) {
+            android.util.Log.i(TAG, "${here.uri} is over by now, leaving the queue alone")
+            return
+        }
 
         engine.adopt(
             tracks = tracks.map(::toQueueTrack),
@@ -336,6 +348,92 @@ class PlaybackService : MediaLibraryService() {
             contextLabel = "",
             playing = here.playing,
         )
+    }
+
+    /**
+     * Puts the queue behind a track another client started here.
+     *
+     * A pause on this phone and a tap in the web player on some playlist track:
+     * the engine obeys and plays it, and this side had no idea. Not a transfer,
+     * so nothing arrives that way, and not a cluster update either, since the
+     * account does not describe a device to that device. The Connect state the
+     * engine publishes is the one place the answer exists, so it is asked
+     * directly, and what comes back is resolved the same way a handover is.
+     */
+    private suspend fun adoptPlayingTrack(uri: String) {
+        val engine = librespot ?: return
+
+        val here = withContext(Dispatchers.IO) {
+            runCatching { org.json.JSONObject(NativeBridge.playingHere()) }
+                .onFailure { android.util.Log.w(TAG, "cannot read what we play: $it") }
+                .getOrNull()
+        }
+        val contextUri = here?.optString("contextUri").orEmpty()
+        val source = contextUri.takeIf {
+            it.isNotEmpty() && it.startsWith("spotify:") && !it.startsWith("spotify:web-api")
+        }
+
+        val key = "$contextUri|$uri"
+        if (adoptedContext == key) return
+        adoptedContext = key
+
+        // The context first, because it is the whole list in its own order: a
+        // playlist read this way comes back complete, while what the account
+        // hands a device is a window of the next few dozen tracks.
+        var tracks = if (source == null) {
+            emptyList()
+        } else {
+            withContext(Dispatchers.IO) {
+                runCatching { container.activeBackend.tracksOf(source) }
+                    .onFailure { android.util.Log.w(TAG, "cannot read $source: $it") }
+                    .getOrDefault(emptyList())
+            }
+        }
+
+        // Nothing came back, which is the normal answer for the playlists
+        // Spotify makes rather than stores: a daily mix, a radio, "Pop Mix"
+        // exist for the account and resolve to nothing for anyone else. The
+        // account sent the list along with the order to play it, so that is
+        // what is used.
+        if (tracks.none { it.uri == uri }) {
+            val queued = buildList {
+                val array = here?.optJSONArray("tracks")
+                for (i in 0 until (array?.length() ?: 0)) add(array!!.getString(i))
+            }
+            tracks = withContext(Dispatchers.IO) {
+                runCatching { dev.lelonio.square.data.Catalog.tracks(queued) }
+                    .onFailure { android.util.Log.w(TAG, "cannot read the engine's queue: $it") }
+                    .getOrDefault(emptyList())
+            }
+            android.util.Log.i(TAG, "adopting ${tracks.size} tracks from the engine itself")
+        } else {
+            android.util.Log.i(TAG, "adopting ${tracks.size} tracks from $source")
+        }
+
+        val index = tracks.indexOfFirst { it.uri == uri }
+        if (index < 0) return
+        // Resolving a long context takes seconds, and in those seconds the
+        // listener can have moved on: an answer about a track that is no longer
+        // playing would put the screen somewhere the engine has already left.
+        if (engineUri() != uri) {
+            android.util.Log.i(TAG, "$uri is over by now, leaving the queue alone")
+            return
+        }
+
+        engine.adopt(
+            tracks = tracks.map(::toQueueTrack),
+            index = index,
+            positionMs = 0L,
+            contextUri = source,
+            contextLabel = "",
+            playing = true,
+        )
+    }
+
+    /** What the engine says it is playing this instant. */
+    private suspend fun engineUri(): String = withContext(Dispatchers.IO) {
+        runCatching { org.json.JSONObject(NativeBridge.playingHere()).optString("trackUri") }
+            .getOrDefault("")
     }
 
     /**

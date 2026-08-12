@@ -156,3 +156,20 @@ the one making the sound, and refused to do its job.
 
 go-librespot keeps the same answer as a single boolean it owns and gates
 everything on it; this is that boolean, borrowed back out of librespot.
+
+### The patch: what is this device playing?
+
+The same shape one step further in. `Spirc` also carries a `PlayingHere` behind
+a mutex — context uri, track uri, and the previous, current and coming tracks in
+playing order — republished by the loop alongside the flag above.
+
+Another client can point this device anywhere: a track from a playlist the app
+never opened, with no transfer to announce it. Nothing arrives from outside
+either, because the account does not send a device the cluster update that
+describes that device, so the owner of the handle was left showing whatever it
+believed before.
+
+The track list is there for the contexts Spotify makes rather than stores. A
+daily mix, a radio, "Pop Mix" resolve to nothing for a client that is not
+Spotify's own, and the only copy of that queue in existence here is the one the
+account handed the device to play.

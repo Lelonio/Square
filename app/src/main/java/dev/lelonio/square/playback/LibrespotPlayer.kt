@@ -159,6 +159,21 @@ class LibrespotPlayer(
      */
     private var remote: dev.lelonio.square.data.RemotePlayback? = null
 
+    /**
+     * Called with a track the engine is playing that this queue does not hold.
+     *
+     * Another client can point this device at anything: a track from a playlist
+     * that was never opened here, with no transfer and no cluster update to
+     * announce it, since the account does not describe a device to itself. The
+     * engine simply starts playing something else, and this side went on
+     * showing the track it thought was current. Set by the service, which is
+     * the half that can resolve a context.
+     */
+    var onUnknownTrack: ((String) -> Unit)? = null
+
+    /** The last one handed over, so a run of events asks for it once. */
+    private var unknownAsked: String? = null
+
     fun showRemote(playback: dev.lelonio.square.data.RemotePlayback?) {
         if (released) return
         val was = remote
@@ -928,7 +943,15 @@ class LibrespotPlayer(
         // device and a local one all arrive here the same way.
         if (uri.isNotEmpty()) {
             val index = queue.items.indexOfFirst { it.uri == uri }
+            if (index < 0 && (type == "playing" || type == "loading") && unknownAsked != uri) {
+                // Not ours: somebody else chose it. Asked for once per track,
+                // and only on a track that is actually starting, so a position
+                // report on a queue mid-rebuild does not set this going.
+                unknownAsked = uri
+                onUnknownTrack?.invoke(uri)
+            }
             if (index >= 0) {
+                unknownAsked = null
                 engineIndex = index
                 if (index == queue.currentIndex) {
                     skipInFlight = false

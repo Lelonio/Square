@@ -532,6 +532,15 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDev
     guard_string(&mut env, "DeviceId", crate::remote::device_id)
 }
 
+/// What this device itself is playing, straight from its Connect state.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlayingHere(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    guard_string(&mut env, "PlayingHere", engine::playing_here)
+}
+
 /// What the account is playing, wherever it is playing it.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRemoteState(

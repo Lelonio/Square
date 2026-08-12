@@ -76,6 +76,8 @@ struct SpircTask {
     connect_state: ConnectState,
     /// LOCAL PATCH: kept in step with `connect_state.is_active()`; see [`Spirc`].
     active: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// LOCAL PATCH: kept in step with what this device is playing; see [`Spirc`].
+    playing: std::sync::Arc<std::sync::Mutex<PlayingHere>>,
     connect_established: bool,
 
     play_request_id: Option<u64>,
@@ -156,12 +158,45 @@ pub struct Spirc {
     /// caller trusting the cluster refuses to play on a device that is already
     /// playing.
     active: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// LOCAL PATCH: what this device is playing.
+    ///
+    /// The same problem as `active`, one step further in. When another client
+    /// drives this device the tracks change here and nothing outside the loop
+    /// is told: the account does not send this device a cluster update about
+    /// its own playing, so reading the cluster answers with whatever was true
+    /// before. The owner of the handle needs the current answer to keep a
+    /// queue of its own in step with the one being played.
+    playing: std::sync::Arc<std::sync::Mutex<PlayingHere>>,
+}
+
+/// LOCAL PATCH: a snapshot of what the device is playing, for its owner.
+///
+/// The track list matters as much as the track. A context can be one the app
+/// cannot resolve for itself — the editorial and algorithmic playlists answer
+/// nothing useful to a client that is not Spotify's own — while the loop has
+/// the real list in hand, because the account sent it here to be played.
+#[derive(Clone, Default)]
+pub struct PlayingHere {
+    pub context_uri: String,
+    pub track_uri: String,
+    /// Previous, current and coming tracks, in playing order.
+    pub tracks: Vec<String>,
+    /// Where the current track sits in `tracks`.
+    pub index: usize,
 }
 
 impl Spirc {
     /// LOCAL PATCH: whether this device currently holds the account's playback.
     pub fn is_active(&self) -> bool {
         self.active.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// LOCAL PATCH: what this device is playing right now.
+    pub fn playing(&self) -> PlayingHere {
+        self.playing
+            .lock()
+            .map(|state| state.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -274,16 +309,20 @@ impl Spirc {
             update_state: false,
             // LOCAL PATCH: replaced with the handle's own the moment it exists.
             active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            playing: std::sync::Arc::new(std::sync::Mutex::new(PlayingHere::default())),
 
             spirc_id,
         };
 
         let active = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         task.active = active.clone();
+        let playing = std::sync::Arc::new(std::sync::Mutex::new(PlayingHere::default()));
+        task.playing = playing.clone();
 
         let spirc = Spirc {
             commands: cmd_tx,
             active,
+            playing,
         };
 
         let initial_volume = task.connect_state.device_info().volume;
@@ -440,6 +479,46 @@ impl Spirc {
 }
 
 impl SpircTask {
+    /// LOCAL PATCH: hands the loop's own view of itself to the handle.
+    ///
+    /// Everything here is already known to the loop and to nobody else. The
+    /// track is taken from the published player state rather than from the
+    /// player, so what is read outside is what the account is being told.
+    fn publish_local_state(&self) {
+        self.active.store(
+            self.connect_state.is_active(),
+            std::sync::atomic::Ordering::SeqCst,
+        );
+        if let Ok(mut playing) = self.playing.lock() {
+            let state = self.connect_state.player();
+            let track = state
+                .track
+                .as_ref()
+                .map(|track| track.uri.clone())
+                .unwrap_or_default();
+            let mut tracks: Vec<String> = state
+                .prev_tracks
+                .iter()
+                .map(|track| track.uri.clone())
+                .collect();
+            if !track.is_empty() {
+                tracks.push(track.clone());
+            }
+            tracks.extend(state.next_tracks.iter().map(|track| track.uri.clone()));
+            // Queued items and the odd advert are in here too, and neither is
+            // something the app can look up. Counted out before the position is
+            // taken, or the position would point past them.
+            tracks.retain(|uri| uri.starts_with("spotify:track:"));
+            let index = tracks.iter().position(|uri| *uri == track).unwrap_or(0);
+            *playing = PlayingHere {
+                context_uri: state.context_uri.clone(),
+                track_uri: track,
+                tracks,
+                index,
+            };
+        }
+    }
+
     async fn run(mut self) {
         // simplify unwrapping of received item or parsed result
         macro_rules! unwrap {
@@ -467,12 +546,9 @@ impl SpircTask {
 
         while !self.session.is_invalid() && !self.shutdown {
             // LOCAL PATCH: published every turn, so a caller outside the loop can
-            // ask whether this device holds playback without guessing from the
-            // cluster; see [`Spirc`].
-            self.active.store(
-                self.connect_state.is_active(),
-                std::sync::atomic::Ordering::SeqCst,
-            );
+            // ask whether this device holds playback, and what it is playing,
+            // without guessing from the cluster; see [`Spirc`].
+            self.publish_local_state();
 
             let commands = self.commands.as_mut();
             let player_events = self.player_events.as_mut();
@@ -598,15 +674,12 @@ impl SpircTask {
                 else => break
             }
 
-            // LOCAL PATCH: the flag again, now that this turn's event has been
+            // LOCAL PATCH: the same again, now that this turn's event has been
             // handled. Publishing it only before the wait meant it was one
             // event stale for as long as nothing else happened, which is
             // exactly the case after a handover: the device had taken playback
             // and still answered that it had not.
-            self.active.store(
-                self.connect_state.is_active(),
-                std::sync::atomic::Ordering::SeqCst,
-            );
+            self.publish_local_state();
         }
 
         if !self.shutdown && self.connect_state.is_active() {

@@ -76,10 +76,16 @@ pub fn watch(session: &Session, notify: impl Fn() + Send + 'static) {
                 continue;
             };
             log::info!(
-                "cluster update: active {} of {} devices, own {}",
+                "cluster update: active {} of {} devices, own {} [{}]",
                 cluster.active_device_id,
                 cluster.device.len(),
                 device_id().unwrap_or_default(),
+                cluster
+                    .device
+                    .iter()
+                    .map(|(id, device)| format!("{id}={}", device.name))
+                    .collect::<Vec<_>>()
+                    .join(", "),
             );
             if let Ok(mut stored) = CLUSTER.lock() {
                 *stored = Some(cluster);

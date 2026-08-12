@@ -1457,6 +1457,31 @@ pub fn elsewhere_active() -> bool {
     }
 }
 
+/// What the Connect state says this device is playing, as JSON.
+///
+/// `{"contextUri", "trackUri", "index", "tracks"}`, any of which can be empty.
+///
+/// The track list is the queue as the account handed it over, which is the
+/// only copy of it for a context this app cannot read for itself.
+///
+/// Asked when another client has driven this device somewhere the app did not
+/// send it. The account does not push this device a cluster update about its
+/// own playing, so there is nothing to read from the outside: this comes from
+/// the Connect state itself, which is the same thing the other devices are
+/// shown.
+pub fn playing_here() -> EngineResult<String> {
+    let playing = with_bundle(|bundle| bundle.spirc.playing())?;
+    let escape = |value: &str| serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into());
+    let tracks: Vec<String> = playing.tracks.iter().map(|uri| escape(uri)).collect();
+    Ok(format!(
+        "{{\"contextUri\":{},\"trackUri\":{},\"index\":{},\"tracks\":[{}]}}",
+        escape(&playing.context_uri),
+        escape(&playing.track_uri),
+        playing.index,
+        tracks.join(","),
+    ))
+}
+
 pub fn play() -> EngineResult<()> {
     // Nothing happens here while the music is somewhere else. A play that
     // arrives then is Android's, not the listener's: focus coming back, a
