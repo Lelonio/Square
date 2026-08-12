@@ -245,4 +245,5 @@
     <string name="page_about_summary">Version, permissions, licences and the developer</string>
     <string name="playing_on">Playing on %1$s</string>
     <string name="switching">Switching…</string>
+    <string name="in_a_playlist">Already in a playlist</string>
 </resources>

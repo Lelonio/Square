@@ -88,6 +88,7 @@ import com.adamglin.phosphoricons.fill.SkipBack
 import com.adamglin.phosphoricons.fill.SkipForward
 import com.adamglin.phosphoricons.regular.CaretDown
 import com.adamglin.phosphoricons.regular.Devices
+import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.YoutubeLogo
@@ -176,6 +177,14 @@ fun PlayerScreen(
      * of one thing.
      */
     onAddToPlaylist: () -> Unit,
+    /**
+     * Whether this track is already in one of the account's playlists.
+     *
+     * Only ever true when it is known to be; see MainViewModel.inPlaylists. A
+     * button that says "add" over a track that is already there is a small lie,
+     * and the answer is cheap for anything the app has already read.
+     */
+    alreadySaved: Boolean = false,
     /** The playlist picker's state, shown in the panel rather than as a sheet. */
     addToPlaylist: MainViewModel.AddToPlaylistState,
     onPickPlaylist: (dev.lelonio.square.data.CatalogPlaylist) -> Unit,
@@ -632,9 +641,21 @@ fun PlayerScreen(
                                     },
                                 ) {
                                     Icon(
-                                        PhosphorIcons.Regular.Plus,
-                                        contentDescription = stringResource(R.string.add_to_playlist),
-                                        tint = panelTint(panel == PlayerPanel.ADD_TO_PLAYLIST),
+                                        if (alreadySaved) {
+                                            PhosphorIcons.Regular.Check
+                                        } else {
+                                            PhosphorIcons.Regular.Plus
+                                        },
+                                        contentDescription = stringResource(
+                                            if (alreadySaved) R.string.in_a_playlist
+                                            else R.string.add_to_playlist,
+                                        ),
+                                        tint = when {
+                                            panel == PlayerPanel.ADD_TO_PLAYLIST ->
+                                                panelTint(true)
+                                            alreadySaved -> SavedInk
+                                            else -> panelTint(false)
+                                        },
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
@@ -1214,6 +1235,9 @@ private fun panelTint(active: Boolean) =
 
 /** Spotify's own green, which already means "playing over there". */
 private val ConnectedInk = androidx.compose.ui.graphics.Color(0xFF1ED760)
+
+/** The same green for "this one is already in a playlist of yours". */
+private val SavedInk = ConnectedInk
 
 @Composable
 private fun ToggleIcon(

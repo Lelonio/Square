@@ -225,4 +225,5 @@
     <string name="page_about_summary">Versione, permessi, licenze e sviluppatore</string>
     <string name="playing_on">In riprod. su %1$s</string>
     <string name="switching">Passaggio in corso…</string>
+    <string name="in_a_playlist">Già in una playlist</string>
 </resources>

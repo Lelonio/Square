@@ -232,6 +232,7 @@ fun SquareApp(
      */
     val elsewhereActive by dev.lelonio.square.data.RemoteConnect.elsewhereActive
         .collectAsStateWithLifecycle()
+    val inPlaylists by viewModel.inPlaylists.collectAsStateWithLifecycle()
     val remote = elsewhere?.takeIf { elsewhereActive }
     val remoteLabel = stringResource(R.string.playing_on, remote?.deviceName.orEmpty())
     val playback = remote?.asPlaybackState(remoteLabel) ?: local
@@ -960,6 +961,8 @@ fun SquareApp(
                                 canvas = canvas,
                                 devices = devices,
                                 onAnotherDevice = remote != null,
+                                alreadySaved = playback.mediaId != null &&
+                                    playback.mediaId in inPlaylists,
                                 onOpenDevices = viewModel::openDevices,
                                 connectAvailable =
                                     backend == dev.lelonio.square.backend.BackendId.SPOTIFY,

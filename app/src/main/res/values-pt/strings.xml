@@ -224,4 +224,5 @@
     <string name="page_about_summary">Versão, permissões, licenças e desenvolvedor</string>
     <string name="playing_on">Reproduzindo em %1$s</string>
     <string name="switching">Trocando…</string>
+    <string name="in_a_playlist">Já está numa playlist</string>
 </resources>

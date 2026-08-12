@@ -646,6 +646,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess {
                     _addToPlaylist.value =
                         _addToPlaylist.value.copy(busy = null, done = playlist.name)
+                    // Known at once, rather than when that playlist is next
+                    // read: the tick is about the track, and the track is in a
+                    // playlist from this moment.
+                    _inPlaylists.value = _inPlaylists.value + trackUri
                     // The detail screen holds a list resolved before this track
                     // was in it; if that is the playlist just written to, read
                     // it again.
@@ -1096,6 +1100,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * replaces it only when it has the whole thing, so reopening never takes a
      * finished list away and rebuilds it in front of the user.
      */
+    private val _inPlaylists = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Tracks known to be in one of the account's playlists.
+     *
+     * Known, not proven. Spotify has no endpoint for "which of my playlists
+     * hold this track", and asking would mean reading every playlist on the
+     * account to answer a question about one song. This is filled from the
+     * playlists the app has already read, which is what it has been looking at,
+     * plus whatever is added from inside the app. So a tick means yes; the
+     * absence of one means "not that I have seen".
+     */
+    val inPlaylists: StateFlow<Set<String>> = _inPlaylists.asStateFlow()
+
+    /** Notes the tracks of a playlist that has just been read. */
+    private fun rememberMembership(contextUri: String, tracks: List<CatalogTrack>) {
+        if (!contextUri.startsWith("spotify:playlist:") || tracks.isEmpty()) return
+        _inPlaylists.value = _inPlaylists.value + tracks.map { it.uri }
+    }
+
     private val contextCache =
         object : LinkedHashMap<String, ContextCacheStore.Entry>(0, 0.75f, true) {
             override fun removeEldestEntry(eldest: Map.Entry<String, ContextCacheStore.Entry>) =
@@ -1128,6 +1152,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // list already known appears at once rather than filling in.
             val entry = remembered ?: container.contextCache.read(playlist.uri)?.also {
                 contextCache[playlist.uri] = it
+                rememberMembership(playlist.uri, it.tracks)
                 _playlist.value = base.copy(tracks = it.tracks, loading = false)
             }
             val cached = entry?.tracks.orEmpty()
@@ -1315,6 +1340,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // entry still saves — it just gets refreshed silently every time.
         val snapshotId = snapshotOf(uri)
         contextCache[uri] = ContextCacheStore.Entry(tracks, snapshotId)
+        rememberMembership(uri, tracks)
         container.contextCache.write(uri, tracks, snapshotId)
     }
 
