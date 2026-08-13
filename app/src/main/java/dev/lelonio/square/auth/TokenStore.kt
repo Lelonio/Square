@@ -51,6 +51,16 @@ class TokenStore(
     val isLoggedIn: Boolean
         get() = prefs.contains(KEY_REFRESH) || currentIfFresh() != null
 
+    /**
+     * Written synchronously, and that is the point.
+     *
+     * Spotify hands back a new refresh token on every refresh and retires the
+     * one that was used, so the moment a refresh succeeds the copy on disk is
+     * the only way back in. `apply()` returns before the write lands: a process
+     * killed in that window — which for a music app is any moment the user
+     * leaves it — came back holding a token Spotify had already retired, was
+     * told the session was revoked, and asked the user to sign in again.
+     */
     fun save(tokens: SpotifyOAuth.Tokens) {
         prefs.edit()
             .putString(KEY_ACCESS, tokens.accessToken)
@@ -58,10 +68,10 @@ class TokenStore(
                 tokens.refreshToken?.let { putString(KEY_REFRESH, it) }
             }
             .putLong(KEY_EXPIRES_AT, tokens.expiresAtMillis)
-            .apply()
+            .commit()
     }
 
-    fun clear() = prefs.edit().clear().apply()
+    fun clear() = prefs.edit().clear().commit()
 
     /**
      * Returns an access token valid for at least [SKEW_MILLIS], refreshing it
@@ -82,6 +92,18 @@ class TokenStore(
             val tokens = try {
                 SpotifyOAuth.refresh(refreshToken, clientId())
             } catch (e: SpotifyOAuth.SessionExpired) {
+                // One more look before giving up. Spotify retires a refresh
+                // token as it issues the next one, so "revoked" is also what a
+                // token that has just been replaced looks like: if what is on
+                // disk is no longer what was tried, somebody else refreshed
+                // while this call was in flight and that answer is good.
+                val current = prefs.getString(KEY_REFRESH, null)
+                if (current != null && current != refreshToken) {
+                    return@withLock currentIfFresh()
+                        ?: SpotifyOAuth.refresh(current, clientId())
+                            .also(::save)
+                            .accessToken
+                }
                 // Drop the dead session here rather than leaving callers to
                 // recognise it: otherwise every later attempt retries the same
                 // revoked token forever and the app never offers a way back in.
