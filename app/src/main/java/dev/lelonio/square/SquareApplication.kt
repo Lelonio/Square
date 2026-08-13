@@ -35,6 +35,11 @@ class SquareApplication : Application() {
 
     /** Which playlists were opened most recently, for ordering the home page. */
     val playlistOrder: PlaylistOrderStore by lazy { PlaylistOrderStore(this) }
+
+    /** Playlists the listener keeps at the top of the library; this device's own. */
+    val pinnedPlaylists: dev.lelonio.square.data.PinnedPlaylistStore by lazy {
+        dev.lelonio.square.data.PinnedPlaylistStore(this)
+    }
     val preferences: PreferencesStore by lazy { PreferencesStore(this) }
 
     /** Which file the engine asks Spotify for. */

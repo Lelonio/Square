@@ -230,4 +230,10 @@
     <string name="effect_quality_high_note">Am besten für Musik und am anspruchsvollsten für den Akku.</string>
     <string name="effect_quality_light">Leicht</string>
     <string name="effect_quality_light_note">Das Telefon übernimmt. Schonender für ältere Geräte, rauer bei Anschlägen.</string>
+    <string name="liked_songs">Lieblingssongs</string>
+    <string name="pinned">Angeheftet</string>
+    <string name="pin">Oben anheften</string>
+    <string name="unpin">Lösen</string>
+    <string name="cover_aura">Farbanimation</string>
+    <string name="radio">Radio</string>
 </resources>

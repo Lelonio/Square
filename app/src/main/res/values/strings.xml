@@ -251,4 +251,10 @@
     <string name="effect_quality_high_note">Best on music, and the heaviest on the battery.</string>
     <string name="effect_quality_light">Light</string>
     <string name="effect_quality_light_note">The phone does the work. Kinder to older devices, rougher on attacks.</string>
+    <string name="liked_songs">Liked Songs</string>
+    <string name="pinned">Pinned</string>
+    <string name="pin">Pin to the top</string>
+    <string name="unpin">Unpin</string>
+    <string name="cover_aura">Colour animation</string>
+    <string name="radio">Radio</string>
 </resources>

@@ -39,6 +39,7 @@ import com.kyant.backdrop.Backdrop
 import dev.lelonio.square.R
 import dev.lelonio.square.data.CatalogPlaylist
 import dev.lelonio.square.data.sortedByRecentlyOpened
+import dev.lelonio.square.data.withPinnedFirst
 import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
 import dev.lelonio.square.ui.glass.LiquidButton
@@ -48,6 +49,8 @@ import dev.lelonio.square.ui.theme.Ink
 import dev.lelonio.square.ui.theme.InkDim
 import dev.lelonio.square.ui.theme.softShadow
 import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.fill.PushPin
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ListBullets
 import com.adamglin.phosphoricons.regular.Plus
@@ -82,6 +85,8 @@ fun LibraryScreen(
     onOpenPlaylist: (CatalogPlaylist) -> Unit,
     /** URIs most recently opened first; see PlaylistOrderStore. */
     playlistOrder: List<String>,
+    /** URIs the listener pinned to the top; see PinnedPlaylistStore. */
+    pinned: List<String> = emptyList(),
     /** False when the source cannot be written to; see MusicBackend. */
     canEdit: Boolean = false,
     onCreatePlaylist: () -> Unit = {},
@@ -124,7 +129,7 @@ fun LibraryScreen(
             var layout by remember { mutableStateOf(Layout.GRID) }
             var order by remember { mutableStateOf(Order.RECENT) }
 
-            val playlists = remember(state.playlists, playlistOrder, order) {
+            val playlists = remember(state.playlists, playlistOrder, pinned, order) {
                 when (order) {
                     Order.RECENT -> state.playlists.sortedByRecentlyOpened(playlistOrder)
                     Order.NAME -> state.playlists.sortedWith(
@@ -134,6 +139,9 @@ fun LibraryScreen(
                     // rootlist arrives in.
                     Order.ADDED -> state.playlists
                 }
+                    // Pinning outranks the sort: it is the one instruction the
+                    // listener gave about this list themselves.
+                    .withPinnedFirst(pinned)
             }
 
             Column(Modifier.fillMaxSize()) {
@@ -167,6 +175,7 @@ fun LibraryScreen(
                         items(playlists, key = { it.uri }) { playlist ->
                             GridTile(
                                 playlist,
+                                pinned = playlist.uri in pinned,
                                 onClick = { onOpenPlaylist(playlist) },
                                 onLongClick = if (canEdit) {
                                     { onPlaylistMenu(playlist) }
@@ -185,6 +194,7 @@ fun LibraryScreen(
                         items(playlists, key = { it.uri }) { playlist ->
                             ListRow(
                                 playlist,
+                                pinned = playlist.uri in pinned,
                                 onClick = { onOpenPlaylist(playlist) },
                                 onLongClick = if (canEdit) {
                                     { onPlaylistMenu(playlist) }
@@ -311,6 +321,7 @@ private fun Header(
 @Composable
 private fun GridTile(
     playlist: CatalogPlaylist,
+    pinned: Boolean,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)?,
 ) {
@@ -327,19 +338,25 @@ private fun GridTile(
             corner = 20.dp,
             decodeSize = 220.dp,
         )
-        Text(
-            playlist.name,
-            style = MaterialTheme.typography.titleMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 10.dp, start = 2.dp, end = 2.dp),
-        )
+        Row(
+            Modifier.padding(top = 10.dp, start = 2.dp, end = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (pinned) PinMark(Modifier.padding(end = 6.dp))
+            Text(
+                playlist.name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
 @Composable
 private fun ListRow(
     playlist: CatalogPlaylist,
+    pinned: Boolean,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)?,
 ) {
@@ -374,7 +391,19 @@ private fun ListRow(
                 .padding(start = 16.dp)
                 .weight(1f),
         )
+        if (pinned) PinMark()
     }
+}
+
+/** The quiet mark on a pinned row. Small: the position is the message. */
+@Composable
+private fun PinMark(modifier: Modifier = Modifier) {
+    Icon(
+        PhosphorIcons.Fill.PushPin,
+        contentDescription = stringResource(R.string.pinned),
+        tint = InkDim,
+        modifier = modifier.size(14.dp),
+    )
 }
 
 /** A glass pill, for the handful of places that need a button at all. */

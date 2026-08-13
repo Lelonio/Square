@@ -64,6 +64,10 @@ object SpotifyHome {
     private fun entry(item: JSONObject): CatalogPlaylist? {
         val uri = item.optString("uri")
         if (uri.isEmpty()) return null
+        // The DJ is a stream Spotify generates as you listen, not a list: it has
+        // no tracks to resolve, so opening it here only ever showed a blank
+        // page. It is kept out of the library for the same reason.
+        if (uri == Catalog.DJ_URI) return null
         val content = item.optJSONObject("content") ?: return null
         val data = content.optJSONObject("data") ?: return null
 

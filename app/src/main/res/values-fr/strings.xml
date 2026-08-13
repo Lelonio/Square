@@ -230,4 +230,10 @@
     <string name="effect_quality_high_note">La meilleure sur la musique, et la plus gourmande en batterie.</string>
     <string name="effect_quality_light">Légère</string>
     <string name="effect_quality_light_note">Le téléphone s’en charge. Plus douce pour les appareils anciens, plus rêche sur les attaques.</string>
+    <string name="liked_songs">Titres likés</string>
+    <string name="pinned">Épinglée</string>
+    <string name="pin">Épingler en haut</string>
+    <string name="unpin">Désépingler</string>
+    <string name="cover_aura">Animation colorée</string>
+    <string name="radio">Radio</string>
 </resources>

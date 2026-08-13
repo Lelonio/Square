@@ -24,6 +24,14 @@ interface SpotifyApi {
     @GET("v1/me")
     suspend fun me(): UserDto
 
+    /**
+     * Whether each of these tracks is in the account's Liked Songs.
+     *
+     * The answers come back in the order asked, as bare booleans.
+     */
+    @GET("v1/me/tracks/contains")
+    suspend fun tracksAreSaved(@Query("ids") ids: String): List<Boolean>
+
     @GET("v1/me/tracks")
     suspend fun savedTracks(
         @Query("limit") limit: Int = 50,

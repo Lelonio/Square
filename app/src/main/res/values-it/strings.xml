@@ -231,4 +231,10 @@
     <string name="effect_quality_high_note">La migliore sulla musica, e la più esigente per la batteria.</string>
     <string name="effect_quality_light">Leggera</string>
     <string name="effect_quality_light_note">Se ne occupa il telefono. Più gentile con i dispositivi vecchi, più ruvida sugli attacchi.</string>
+    <string name="liked_songs">Brani che ti piacciono</string>
+    <string name="pinned">Fissata</string>
+    <string name="pin">Fissa in alto</string>
+    <string name="unpin">Togli dall\'alto</string>
+    <string name="cover_aura">Animazione a colori</string>
+    <string name="radio">Radio</string>
 </resources>

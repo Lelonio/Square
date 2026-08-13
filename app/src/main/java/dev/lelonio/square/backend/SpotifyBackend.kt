@@ -11,6 +11,8 @@ import dev.lelonio.square.data.SearchResults
 import dev.lelonio.square.data.toCatalogTrack
 import dev.lelonio.square.data.toResults
 import dev.lelonio.square.nativecore.NativeBridge
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import dev.lelonio.square.playback.AudioOutput
 import dev.lelonio.square.playback.LibrespotPlayer
 import dev.lelonio.square.playback.PlayQueue
@@ -77,8 +79,33 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
         )
     }
 
+    /**
+     * The account's Liked Songs, which Spotify keeps outside the playlists.
+     *
+     * It behaves like one everywhere it matters — a name, a cover, a list to
+     * open and play — so it is put at the head of the library rather than given
+     * a screen of its own, with the same purple cover Spotify's own clients use.
+     */
+    private suspend fun likedSongs(): CatalogPlaylist? {
+        val uri = withContext(Dispatchers.IO) {
+            runCatching { NativeBridge.collectionUri() }.getOrDefault("")
+        }
+        if (uri.isEmpty()) return null
+        return CatalogPlaylist(
+            uri = uri,
+            name = container.getString(dev.lelonio.square.R.string.liked_songs),
+            artworkUrl = LIKED_SONGS_COVER,
+        )
+    }
+
     /** The access point first, the Web API when `rootlist` fails; see MainViewModel. */
     override suspend fun playlists(): List<CatalogPlaylist> =
+        likedSongs().let { liked ->
+            listOfNotNull(liked) +
+                rootlist().filterNot { it.uri == liked?.uri || it.uri == Catalog.DJ_URI }
+        }
+
+    private suspend fun rootlist(): List<CatalogPlaylist> =
         runCatching { Catalog.playlists() }
             .recoverCatching {
                 check(container.webApi.isReady) { it.message ?: "rootlist non disponibile" }
@@ -108,7 +135,33 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
         container.webApi.isReady && uri.startsWith("spotify:playlist:") ->
             webApiPlaylistTracks(uri.substringAfterLast(':'))
 
+        // Liked Songs is not a context the access point will resolve: asked for
+        // it answers 503, so this is the one list that has to come from the Web
+        // API and therefore needs the user's own application.
+        uri.endsWith(":collection") -> {
+            check(container.webApi.isReady) {
+                "i brani che ti piacciono richiedono la tua applicazione Spotify"
+            }
+            savedTracks()
+        }
+
         else -> Catalog.tracks(Catalog.contextTrackUris(uri))
+    }
+
+    /** Everything the account has saved, newest first, a page at a time. */
+    private suspend fun savedTracks(): List<CatalogTrack> {
+        val loaded = mutableListOf<CatalogTrack>()
+        var offset = 0
+        while (true) {
+            val page = container.api.savedTracks(limit = WEB_API_PAGE, offset = offset)
+            loaded += page.items.mapNotNull { saved ->
+                saved.track
+                    .takeIf { it.isPlayable != false && it.uri.startsWith("spotify:track:") }
+                    ?.toCatalogTrack(saved.addedAt)
+            }
+            offset += page.items.size
+            if (page.items.isEmpty() || offset >= page.total) return loaded
+        }
     }
 
     private suspend fun webApiPlaylistTracks(id: String): List<CatalogTrack> {
@@ -190,5 +243,14 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
     private companion object {
         /** The Web API's own maximum page size for playlist tracks. */
         const val WEB_API_PAGE = 100
+
+        /**
+         * The purple heart Spotify's own clients draw for Liked Songs.
+         *
+         * A fixed asset of theirs rather than anything account-specific, and
+         * the only way to have this row look like the row it stands for: it is
+         * not a playlist, so no cover comes back for it anywhere.
+         */
+        const val LIKED_SONGS_COVER = "https://misc.scdn.co/liked-songs/liked-songs-640.png"
     }
 }

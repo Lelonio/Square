@@ -230,4 +230,10 @@
     <string name="effect_quality_high_note">A melhor com música e a mais exigente para a bateria.</string>
     <string name="effect_quality_light">Leve</string>
     <string name="effect_quality_light_note">O telefone é que trata disso. Melhor para aparelhos antigos, mais áspera nos ataques.</string>
+    <string name="liked_songs">Músicas curtidas</string>
+    <string name="pinned">Fixada</string>
+    <string name="pin">Fixar no topo</string>
+    <string name="unpin">Desafixar</string>
+    <string name="cover_aura">Animação de cores</string>
+    <string name="radio">Rádio</string>
 </resources>
