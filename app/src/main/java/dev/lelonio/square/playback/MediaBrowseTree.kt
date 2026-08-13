@@ -9,7 +9,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -24,6 +27,7 @@ import dev.lelonio.square.ui.EXTRA_CONTEXT_ORDERED
 import dev.lelonio.square.ui.EXTRA_CONTEXT_URI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -71,6 +75,140 @@ class MediaBrowseTree(
 
     /** One catalogue read at a time: the car fires children requests in parallel. */
     private val lock = Mutex()
+
+    /**
+     * The buttons the car draws beside play and skip.
+     *
+     * Android Auto shows the transport it knows about and nothing else: shuffle
+     * and repeat are the player's own modes, and a session that does not offer
+     * them as commands simply has no way to say so. They are declared per
+     * controller rather than for everyone, so the phone's notification keeps
+     * its own two buttons instead of growing four.
+     *
+     * The icons say what pressing will show, not what pressing does: this is
+     * how every other player behaves, and the alternative is a control whose
+     * picture disagrees with the thing it is describing.
+     */
+    @JvmOverloads
+    fun layoutFor(
+        player: androidx.media3.common.Player,
+        /**
+         * The shade has room for two buttons beside the transport and is looked
+         * at rather than operated: repeat is a setting people change once,
+         * while radio is a thing to do with the song on screen. The car keeps
+         * repeat, because there it is the mode a driver actually reaches for.
+         */
+        radioInsteadOfRepeat: Boolean = false,
+    ): ImmutableList<CommandButton> =
+        ImmutableList.of(
+            CommandButton.Builder(
+                if (player.shuffleModeEnabled) {
+                    CommandButton.ICON_SHUFFLE_ON
+                } else {
+                    CommandButton.ICON_SHUFFLE_OFF
+                },
+            )
+                .setSessionCommand(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
+                .setDisplayName(strings.getString(R.string.shuffle))
+                .build(),
+            if (radioInsteadOfRepeat) {
+                CommandButton.Builder(CommandButton.ICON_RADIO)
+                    .setSessionCommand(SessionCommand(CMD_RADIO, Bundle.EMPTY))
+                    .setDisplayName(strings.getString(R.string.radio))
+                    .build()
+            } else {
+                CommandButton.Builder(
+                    when (player.repeatMode) {
+                        androidx.media3.common.Player.REPEAT_MODE_ONE ->
+                            CommandButton.ICON_REPEAT_ONE
+                        androidx.media3.common.Player.REPEAT_MODE_ALL ->
+                            CommandButton.ICON_REPEAT_ALL
+                        else -> CommandButton.ICON_REPEAT_OFF
+                    },
+                )
+                    .setSessionCommand(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
+                    .setDisplayName(strings.getString(R.string.repeat))
+                    .build()
+            },
+        )
+
+    override fun onConnect(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+    ): MediaSession.ConnectionResult {
+        val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+            .buildUpon()
+            .add(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
+            .add(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
+            .add(SessionCommand(CMD_RADIO, Bundle.EMPTY))
+            .build()
+
+        return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            .setAvailableSessionCommands(commands)
+            .setCustomLayout(
+                layoutFor(
+                    session.player,
+                    radioInsteadOfRepeat = session.isMediaNotificationController(controller),
+                ),
+            )
+            .build()
+    }
+
+    override fun onCustomCommand(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        customCommand: SessionCommand,
+        args: Bundle,
+    ): ListenableFuture<SessionResult> {
+        val player = session.player
+        when (customCommand.customAction) {
+            CMD_SHUFFLE -> player.shuffleModeEnabled = !player.shuffleModeEnabled
+            CMD_REPEAT -> player.repeatMode = when (player.repeatMode) {
+                androidx.media3.common.Player.REPEAT_MODE_OFF ->
+                    androidx.media3.common.Player.REPEAT_MODE_ALL
+                androidx.media3.common.Player.REPEAT_MODE_ALL ->
+                    androidx.media3.common.Player.REPEAT_MODE_ONE
+                else -> androidx.media3.common.Player.REPEAT_MODE_OFF
+            }
+            CMD_RADIO -> {
+                startRadio(session)
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+
+            else -> return Futures.immediateFuture(
+                SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED),
+            )
+        }
+        // Redrawn at once. The button carries the state, so a press that left
+        // the old icon up read as a press that had not landed.
+        session.setCustomLayout(layoutFor(player))
+        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+    }
+
+    /**
+     * A station from what is playing, without a screen to ask anything of.
+     *
+     * The same list the player's own radio button builds: Spotify assembles it
+     * and this asks for it. If it will not, the queue is left alone rather than
+     * replaced with something nobody chose.
+     */
+    private fun startRadio(session: MediaSession) {
+        val player = session.player
+        val uri = player.currentMediaItem?.mediaId ?: return
+        if (!uri.startsWith("spotify:track:")) return
+
+        scope.launch {
+            val station = "spotify:station:track:${uri.substringAfterLast(':')}"
+            val tracks = runCatching { Catalog.tracks(Catalog.contextTrackUris(station)) }
+                .onFailure { android.util.Log.w(TAG, "no station for $uri: $it") }
+                .getOrDefault(emptyList())
+            if (tracks.isEmpty()) return@launch
+
+            player.setMediaItems(tracks.map { queueItem(it, strings.getString(R.string.radio)) })
+            player.prepare()
+            player.play()
+        }
+    }
 
     override fun onGetLibraryRoot(
         session: MediaLibrarySession,
@@ -387,6 +525,11 @@ class MediaBrowseTree(
 
     private companion object {
         const val TAG = "MediaBrowseTree"
+
+        /** The two modes the car cannot reach through the standard transport. */
+        const val CMD_SHUFFLE = "dev.lelonio.square.SHUFFLE"
+        const val CMD_REPEAT = "dev.lelonio.square.REPEAT"
+        const val CMD_RADIO = "dev.lelonio.square.RADIO"
 
         const val ID_ROOT = "sq/root"
         const val ID_PLAYLISTS = "sq/playlists"

@@ -80,7 +80,8 @@ class PlaybackService : MediaLibraryService() {
         crossfade = container.crossfade
 
         player = buildPlayer(container.preferences.backend.value)
-        session = MediaLibrarySession.Builder(this, player, MediaBrowseTree(this, scope))
+        val browseTree = MediaBrowseTree(this, scope)
+        session = MediaLibrarySession.Builder(this, player, browseTree)
             // Without this the notification is inert to a tap: Media3 has no way
             // to know which activity owns the session. `SINGLE_TOP` so an app
             // already running comes forward rather than starting a second copy
@@ -112,6 +113,33 @@ class PlaybackService : MediaLibraryService() {
                 .build()
                 .apply { setSmallIcon(dev.lelonio.square.R.drawable.ic_notification) },
         )
+
+        // The car's shuffle and repeat buttons carry their own state, so they
+        // are redrawn whenever the mode changes here — from the app, from a
+        // headset, or from another Connect device.
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = redrawButtons()
+
+            override fun onRepeatModeChanged(repeatMode: Int) = redrawButtons()
+
+            /**
+             * Per controller, because the two layouts differ: the shade shows
+             * radio where the car shows repeat, and one blanket update would
+             * hand every controller the same pair.
+             */
+            private fun redrawButtons() {
+                val live = session ?: return
+                live.connectedControllers.forEach { controller ->
+                    live.setCustomLayout(
+                        controller,
+                        browseTree.layoutFor(
+                            player,
+                            radioInsteadOfRepeat = live.isMediaNotificationController(controller),
+                        ),
+                    )
+                }
+            }
+        })
 
         // Already read by the application object, and harmless twice: `load`
         // returns at once once the file is open.
