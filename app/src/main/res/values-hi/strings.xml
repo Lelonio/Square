@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The app's text, in Hindi.
+-->
+<resources>
+
+    <!-- Shared -->
+    <string name="back">वापस</string>
+    <string name="close">बंद करें</string>
+    <string name="skip">छोड़ें</string>
+    <string name="next_step">आगे</string>
+    <string name="copy">कॉपी करें</string>
+    <string name="cancel">रद्द करें</string>
+    <string name="save">सहेजें</string>
+    <string name="clear">साफ़ करें</string>
+    <string name="retry">फिर कोशिश करें</string>
+    <string name="log_out">लॉग आउट</string>
+    <string name="refresh">रीफ़्रेश करें</string>
+    <string name="more">और</string>
+    <string name="sort">क्रम</string>
+    <string name="name">नाम</string>
+    <string name="title">शीर्षक</string>
+    <string name="artist">कलाकार</string>
+    <string name="album">एल्बम</string>
+    <string name="playlist">प्लेलिस्ट</string>
+    <string name="duration">अवधि</string>
+    <string name="tracks">गाने</string>
+    <string name="artists">कलाकार</string>
+    <string name="albums">एल्बम</string>
+    <string name="playlists">प्लेलिस्ट</string>
+    <string name="shuffle">शफ़ल</string>
+    <string name="play">चलाएँ</string>
+    <string name="pause">रोकें</string>
+    <string name="previous">पिछला</string>
+    <string name="next">अगला</string>
+    <string name="repeat">दोहराएँ</string>
+    <string name="reset">रीसेट</string>
+    <string name="off">बंद</string>
+    <string name="queue">कतार</string>
+    <string name="lyrics">बोल</string>
+    <string name="watch_video">वीडियो देखें</string>
+    <string name="effects">इफ़ेक्ट</string>
+    <string name="cover">कवर</string>
+    <string name="devices">डिवाइस</string>
+    <string name="settings">सेटिंग</string>
+    <string name="home">होम</string>
+    <string name="library">लाइब्रेरी</string>
+    <string name="search">खोजें</string>
+    <string name="now_playing">अभी चल रहा है</string>
+    <string name="unofficial_client">प्रीमियम खातों के लिए गैर-आधिकारिक क्लाइंट</string>
+    <string name="log_in_with_spotify">Spotify से लॉग इन करें</string>
+    <string name="connect">कनेक्ट करें</string>
+    <string name="client_id">क्लाइंट आईडी</string>
+
+    <!-- Home -->
+    <string name="good_morning">सुप्रभात</string>
+    <string name="good_afternoon">नमस्कार</string>
+    <string name="good_evening">शुभ संध्या</string>
+    <string name="feed_all">सब कुछ</string>
+    <string name="feed_for_you">आपके लिए</string>
+    <string name="feed_releases">नया</string>
+    <string name="your_playlists">आपकी प्लेलिस्ट</string>
+    <string name="listening_artists">जिन कलाकारों को आप सुनते हैं</string>
+    <string name="play_again">फिर से चलाएँ</string>
+    <string name="on_repeat">इन दिनों बार-बार</string>
+    <string name="jump_back_in">जहाँ छोड़ा था वहीं से</string>
+    <string name="new_from_your_artists">आपके कलाकारों का नया</string>
+    <string name="all_time_favourites">हमेशा के पसंदीदा</string>
+    <string name="cannot_connect">Spotify तक नहीं पहुँच सके।</string>
+    <string name="rootlist_unavailable">प्लेलिस्ट उपलब्ध नहीं</string>
+
+    <!-- Library -->
+    <string name="recently_opened">हाल में खोले गए</string>
+    <string name="spotify_order">Spotify का क्रम</string>
+    <string name="change_layout">लेआउट बदलें</string>
+    <string name="playlist_count">%1$d प्लेलिस्ट</string>
+
+    <!-- Playlist, album, artist -->
+    <string name="playlist_order">प्लेलिस्ट का क्रम</string>
+    <string name="recently_added">हाल में जोड़े गए</string>
+    <string name="top_tracks">सबसे लोकप्रिय गाने</string>
+    <string name="search_in_tracks">इन गानों में खोजें</string>
+    <string name="no_tracks">कोई गाना नहीं</string>
+    <string name="no_results_for">“%1$s” के लिए कोई परिणाम नहीं</string>
+    <string name="more_tracks_coming">और गाने आ रहे हैं</string>
+    <string name="track_count_and_length"> · %1$d गाने · %2$s</string>
+    <string name="hours_minutes">%1$d घं %2$d मि</string>
+    <string name="minutes_only">%1$d मि</string>
+    <string name="artist_needs_app">किसी कलाकार को खोलने के लिए आपका अपना Spotify ऐप्लिकेशन चाहिए; इसे खोज में सेट करें।</string>
+
+    <!-- Track menu -->
+    <string name="add_to_queue">कतार में जोड़ें</string>
+    <string name="add_to_playlist">प्लेलिस्ट में जोड़ें</string>
+    <string name="copy_link">लिंक कॉपी करें</string>
+    <string name="remove_from_playlist">प्लेलिस्ट से हटाएँ</string>
+    <string name="queued">कतार में</string>
+    <string name="added_to">%1$s में जोड़ा गया</string>
+    <string name="no_playlists_in_account">आपके खाते में कोई प्लेलिस्ट नहीं</string>
+    <string name="track_cannot_be_added">यह गाना जोड़ा नहीं जा सकता।</string>
+    <string name="connect_app_in_settings">सेटिंग में अपना ऐप्लिकेशन कनेक्ट करें।</string>
+    <string name="add_failed">%1$s में नहीं जोड़ा जा सका। अगर प्लेलिस्ट आपकी नहीं है तो आप उसे बदल नहीं सकते।</string>
+
+    <!-- Player -->
+    <string name="play_on">यहाँ चलाएँ</string>
+    <string name="no_devices">कोई डिवाइस उपलब्ध नहीं</string>
+    <string name="queue_empty">कतार खाली है</string>
+    <string name="no_lyrics">इस गाने के बोल नहीं हैं</string>
+    <string name="speed">गति</string>
+    <string name="pitch">पिच</string>
+    <string name="reverb">रीवर्ब</string>
+    <string name="save_preset">प्रीसेट सहेजें</string>
+    <string name="delete_preset">%1$s मिटाएँ</string>
+    <string name="shuffle_play">शफ़ल</string>
+    <string name="unnamed">बिना नाम</string>
+    <string name="preset_original">मूल</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">गाने, कलाकार, एल्बम, प्लेलिस्ट</string>
+    <string name="search_prompt">सुनने के लिए कुछ खोजें</string>
+
+    <!-- Settings -->
+    <string name="account">खाता</string>
+    <string name="not_connected">कनेक्ट नहीं है</string>
+    <string name="log_in_to_resume">जारी रखने के लिए लॉग इन करें</string>
+    <string name="connect_device">डिवाइस कनेक्ट करें</string>
+    <string name="web_api">Web API</string>
+    <string name="application">ऐप्लिकेशन</string>
+    <string name="connected">कनेक्ट है</string>
+    <string name="disconnect">डिस्कनेक्ट करें</string>
+    <string name="guide">गाइड</string>
+    <string name="see_setup_again">सेटअप फिर से देखें</string>
+    <string name="permissions_asked">माँगी गई अनुमतियाँ</string>
+    <string name="permissions_note">अपडेट से पहले कनेक्ट किया गया ऐप्लिकेशन बाद में जोड़ी गई अनुमतियाँ देने के लिए फिर से कनेक्ट करना पड़ता है: तब तक उन पर निर्भर हिस्से खाली रहते हैं।</string>
+    <string name="developed_by">बनाया</string>
+    <string name="about">परिचय</string>
+    <string name="version">संस्करण</string>
+    <string name="licences">लाइसेंस</string>
+    <string name="scope_top_artists">जिन कलाकारों को आप सुनते हैं</string>
+    <string name="scope_history">खाते का इतिहास</string>
+    <string name="scope_devices">डिवाइस सूची</string>
+    <string name="scope_transfer">प्लेबैक ले जाना</string>
+    <string name="scope_private_playlists">निजी प्लेलिस्ट में जोड़ना</string>
+    <string name="scope_public_playlists">सार्वजनिक प्लेलिस्ट में जोड़ना</string>
+    <string name="enter_client_id">क्लाइंट आईडी डालें।</string>
+    <string name="needs_your_app">आपका अपना Spotify ऐप्लिकेशन चाहिए: इसे खोज में सेट करें।</string>
+
+    <!-- Web API setup -->
+    <string name="turn_on_search">खोज चालू करें</string>
+    <string name="web_api_explainer">खोज Spotify के web API से होकर जाती है, जिसकी हर ऐप्लिकेशन पर अनुरोध सीमा है। डेवलपर डैशबोर्ड में एक ऐप रजिस्टर करें और उसकी क्लाइंट आईडी यहाँ चिपकाएँ: तब वह सीमा सिर्फ़ आपकी होगी।</string>
+    <string name="redirect_uri_note">ठीक यही Redirect URI ऐप में जोड़ना होगा:</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_start">सुनना शुरू करें</string>
+    <string name="onboarding_welcome_1">आपका Spotify संगीत, बोल, canvas और ऑडियो इफ़ेक्ट के साथ।</string>
+    <string name="onboarding_welcome_2">Spotify Premium खाता ज़रूरी है।</string>
+    <string name="onboarding_welcome_3">दो कदम और आप तैयार। एक बार के पाँच मिनट।</string>
+    <string name="onboarding_login_title">1. Spotify में लॉग इन करें</string>
+    <string name="onboarding_login_1">ब्राउज़र Spotify के पेज पर खुलता है। आप अनुमति देते हैं और वह आपको यहाँ लौटा देता है।</string>
+    <string name="onboarding_login_2">पासवर्ड आप सिर्फ़ Spotify के अपने पेज पर लिखते हैं: Square उसे कभी नहीं देखता।</string>
+    <string name="onboarding_login_done">लॉग इन हो गया</string>
+    <string name="onboarding_key_title">2. अपनी कुंजी बनाएँ</string>
+    <string name="onboarding_key_intro">खोज और सुझाव Spotify के API से होकर जाते हैं, जिसे निजी कुंजी के साथ इस्तेमाल करना होता है। एक मिनट लगता है, मुफ़्त है, कार्ड की ज़रूरत नहीं।</string>
+    <string name="onboarding_open_dashboard">डैशबोर्ड खोलें</string>
+    <string name="onboarding_step_login">उसी Spotify खाते से लॉग इन करें।</string>
+    <string name="onboarding_step_create">ऊपर दाईं ओर «Create app» दबाएँ।</string>
+    <string name="onboarding_step_names">App name और App description: जो चाहें, जैसे Square। Website: खाली छोड़ दें।</string>
+    <string name="onboarding_step_redirect">Redirect URI: नीचे दी गई पंक्ति चिपकाएँ और «Add» दबाएँ। देख लें कि वह फ़ील्ड के नीचे सूची में दिखे, वरना वह सहेजी नहीं जाती।</string>
+    <string name="onboarding_step_api">«Which API/SDKs are you planning to use?» के नीचे Web API चुनें।</string>
+    <string name="onboarding_step_terms">शर्तें स्वीकार करें और «Save» दबाएँ।</string>
+    <string name="onboarding_step_client_id">ऐप के पेज पर «Settings» दबाएँ: Client ID «Basic Information» के नीचे है। उसे कॉपी करें।</string>
+    <string name="onboarding_step_secret">Client secret की ज़रूरत नहीं: उसे न कॉपी करें और न कहीं डालें।</string>
+    <string name="onboarding_paste_title">3. Client ID चिपकाएँ</string>
+    <string name="onboarding_paste_done">हो गया: खोज और सुझाव चालू हैं।</string>
+    <string name="onboarding_key_linked">कुंजी जुड़ गई</string>
+    <string name="onboarding_paste_hint">Client ID यहाँ चिपकाएँ और कनेक्ट दबाएँ। पुष्टि के लिए ब्राउज़र आख़िरी बार खुलेगा।</string>
+    <string name="onboarding_paste_error">अगर ब्राउज़र त्रुटि दिखाए तो एक कदम पीछे जाएँ: लगभग हमेशा Redirect URI सूची में जोड़ा नहीं गया होता।</string>
+    <string name="onboarding_done_title">सब तैयार</string>
+    <string name="onboarding_done_1">होम पर आपकी प्लेलिस्ट हैं, और लेंस पूरे कैटलॉग में खोजता है।</string>
+    <string name="onboarding_done_2">प्लेयर में गाना बदलने के लिए स्वाइप करें; बोल, कतार और इफ़ेक्ट कवर के नीचे की पट्टी से खोलें।</string>
+    <string name="onboarding_done_3">यह गाइड आप होम पर अपनी तस्वीर दबाकर सेटिंग से फिर देख सकते हैं।</string>
+
+    <!-- Auth -->
+    <string name="browser_return">आप ऐप पर लौट सकते हैं।</string>
+    <string name="language">भाषा</string>
+    <string name="system_language">फ़ोन की भाषा</string>
+    <string name="presets">प्रीसेट</string>
+    <string name="check_for_updates">अपडेट देखें</string>
+    <string name="update_checking">देखा जा रहा है…</string>
+    <string name="update_none">अप टू डेट</string>
+    <string name="update_available">%1$s उपलब्ध</string>
+    <string name="update_downloading">डाउनलोड हो रहा है…</string>
+    <string name="update_installing">आपकी पुष्टि का इंतज़ार</string>
+    <string name="update_needs_permission">इंस्टॉल की अनुमति दें — टैप करें</string>
+    <string name="update_failed">अभी नहीं — फिर कोशिश के लिए टैप करें</string>
+    <string name="quality">ऑडियो गुणवत्ता</string>
+    <string name="backend">स्रोत</string>
+    <string name="backend_spotify">Spotify</string>
+    <string name="backend_youtube">YouTube Music</string>
+    <string name="backend_note">Spotify आपका अपना खाता चलाता है: उसकी लाइब्रेरी, प्लेलिस्ट और डिवाइस। YouTube Music यहाँ बिना पहचान के है — खोज और प्लेबैक चलते हैं, खाते की लाइब्रेरी नहीं। इसे बदलने पर प्लेबैक फिर से शुरू होता है।</string>
+    <string name="backend_choice_title">आप कहाँ से सुनना चाहते हैं?</string>
+    <string name="backend_choice_subtitle">दूसरा विकल्प बाद में सेटिंग से चुन सकते हैं।</string>
+    <string name="backend_choice_spotify_note">आपका अपना खाता: आपकी लाइब्रेरी, प्लेलिस्ट और Connect डिवाइस। लॉग इन और थोड़ा सेटअप चाहिए।</string>
+    <string name="backend_choice_youtube_note">पूरा कैटलॉग, तुरंत खोजें और चलाएँ। खाता नहीं, इसलिए अपनी लाइब्रेरी भी नहीं।</string>
+    <string name="backend_choice_changeable">इसे कभी भी सेटिंग से बदला जा सकता है।</string>
+    <string name="youtube_home_empty">सुनना शुरू करने के लिए कुछ खोजें। जो आप चलाएँगे वह यहाँ दिखेगा।</string>
+    <string name="trending_now">अभी चर्चा में</string>
+    <string name="popular_playlists">लोकप्रिय प्लेलिस्ट</string>
+    <string name="youtube_account">YouTube खाता</string>
+    <string name="youtube_sign_in">Google से साइन इन करें</string>
+    <string name="youtube_sign_in_note">वैकल्पिक। खोज और प्लेबैक इसके बिना भी चलते हैं; साइन इन करने पर आपकी प्लेलिस्ट जुड़ जाती हैं।</string>
+    <string name="youtube_sign_out">साइन आउट</string>
+    <string name="quality_auto">स्वचालित</string>
+    <string name="quality_high">उच्च</string>
+    <string name="quality_medium">मध्यम</string>
+    <string name="quality_low">कम</string>
+    <string name="quality_auto_note">वाई-फ़ाई पर पूरी गुणवत्ता, मीटर वाले कनेक्शन पर एक कदम नीचे।</string>
+    <string name="quality_restarts">इसे बदलने पर जो चल रहा है वह फिर से लोड होता है।</string>
+    <string name="premium_required">Square को Spotify Premium चाहिए। मुफ़्त खाता लॉग इन तो कर सकता है, पर Spotify ऐसे क्लाइंट को स्ट्रीम नहीं देता।</string>
+    <string name="new_playlist">नई प्लेलिस्ट</string>
+    <string name="rename">नाम बदलें</string>
+    <string name="delete">मिटाएँ</string>
+    <string name="playlist_name">प्लेलिस्ट का नाम</string>
+    <string name="create">बनाएँ</string>
+    <string name="update_prompt">अभी डाउनलोड करके इंस्टॉल करें?</string>
+    <string name="update_prompt_size">अभी डाउनलोड करके इंस्टॉल करें? %1$s।</string>
+    <string name="update_later">बाद में</string>
+    <string name="update_install">इंस्टॉल करें</string>
+    <string name="download_get_app">YTDLnis लें</string>
+    <string name="download_with">YTDLnis से डाउनलोड करें</string>
+    <string name="crossfade">क्रॉसफ़ेड</string>
+    <string name="crossfade_off">बंद</string>
+    <string name="crossfade_seconds">%1$d सेकंड</string>
+    <string name="crossfade_note">एक गाना दूसरे में घुलता है। सिर्फ़ तब जब गाना अपने आप खत्म हो, स्किप करने पर नहीं।</string>
+    <string name="page_playback">प्लेबैक</string>
+    <string name="page_app">ऐप</string>
+    <string name="page_account_summary">आपका खाता, Web API ऐप्लिकेशन और साइन आउट</string>
+    <string name="page_playback_summary">संगीत का स्रोत, गुणवत्ता और क्रॉसफ़ेड</string>
+    <string name="page_app_summary">भाषा</string>
+    <string name="page_about_summary">संस्करण, अनुमतियाँ, लाइसेंस और डेवलपर</string>
+    <string name="playing_on">%1$s पर चल रहा है</string>
+    <string name="switching">बदला जा रहा है…</string>
+    <string name="in_a_playlist">पहले से एक प्लेलिस्ट में</string>
+    <string name="effect_quality">इफ़ेक्ट गुणवत्ता</string>
+    <string name="effect_quality_high">सटीक</string>
+    <string name="effect_quality_high_note">संगीत के लिए सबसे अच्छा, बैटरी पर सबसे भारी।</string>
+    <string name="effect_quality_light">हल्का</string>
+    <string name="effect_quality_light_note">काम फ़ोन करता है। पुराने डिवाइस के लिए आसान, तेज़ आघातों पर थोड़ा खुरदरा।</string>
+    <string name="liked_songs">पसंद किए गए गाने</string>
+    <string name="pinned">पिन किया</string>
+    <string name="pin">ऊपर पिन करें</string>
+    <string name="unpin">पिन हटाएँ</string>
+    <string name="cover_aura">रंगों की एनिमेशन</string>
+    <string name="radio">रेडियो</string>
+</resources>

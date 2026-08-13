@@ -105,4 +105,6 @@ val AppLanguages: List<Pair<String, String>> = listOf(
     "fr" to "Français",
     "de" to "Deutsch",
     "pt" to "Português",
+    "tr" to "Türkçe",
+    "hi" to "हिन्दी",
 )

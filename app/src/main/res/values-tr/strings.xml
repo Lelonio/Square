@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The app's text, in Turkish.
+-->
+<resources>
+
+    <!-- Shared -->
+    <string name="back">Geri</string>
+    <string name="close">Kapat</string>
+    <string name="skip">Atla</string>
+    <string name="next_step">İleri</string>
+    <string name="copy">Kopyala</string>
+    <string name="cancel">Vazgeç</string>
+    <string name="save">Kaydet</string>
+    <string name="clear">Temizle</string>
+    <string name="retry">Yeniden dene</string>
+    <string name="log_out">Çıkış yap</string>
+    <string name="refresh">Yenile</string>
+    <string name="more">Daha fazla</string>
+    <string name="sort">Sırala</string>
+    <string name="name">Ad</string>
+    <string name="title">Başlık</string>
+    <string name="artist">Sanatçı</string>
+    <string name="album">Albüm</string>
+    <string name="playlist">Çalma listesi</string>
+    <string name="duration">Süre</string>
+    <string name="tracks">Şarkılar</string>
+    <string name="artists">Sanatçılar</string>
+    <string name="albums">Albümler</string>
+    <string name="playlists">Çalma listeleri</string>
+    <string name="shuffle">Karıştır</string>
+    <string name="play">Çal</string>
+    <string name="pause">Duraklat</string>
+    <string name="previous">Önceki</string>
+    <string name="next">Sonraki</string>
+    <string name="repeat">Tekrarla</string>
+    <string name="reset">Sıfırla</string>
+    <string name="off">Kapalı</string>
+    <string name="queue">Sıra</string>
+    <string name="lyrics">Şarkı sözleri</string>
+    <string name="watch_video">Videoyu izle</string>
+    <string name="effects">Efektler</string>
+    <string name="cover">Kapak</string>
+    <string name="devices">Cihazlar</string>
+    <string name="settings">Ayarlar</string>
+    <string name="home">Ana sayfa</string>
+    <string name="library">Kitaplık</string>
+    <string name="search">Ara</string>
+    <string name="now_playing">Şimdi çalıyor</string>
+    <string name="unofficial_client">Premium hesaplar için resmi olmayan istemci</string>
+    <string name="log_in_with_spotify">Spotify ile giriş yap</string>
+    <string name="connect">Bağla</string>
+    <string name="client_id">İstemci kimliği</string>
+
+    <!-- Home -->
+    <string name="good_morning">Günaydın</string>
+    <string name="good_afternoon">İyi günler</string>
+    <string name="good_evening">İyi akşamlar</string>
+    <string name="feed_all">Hepsi</string>
+    <string name="feed_for_you">Sana özel</string>
+    <string name="feed_releases">Yeni</string>
+    <string name="your_playlists">Çalma listelerin</string>
+    <string name="listening_artists">Dinlediğin sanatçılar</string>
+    <string name="play_again">Yeniden çal</string>
+    <string name="on_repeat">Son zamanlarda tekrar tekrar</string>
+    <string name="jump_back_in">Kaldığın yerden devam et</string>
+    <string name="new_from_your_artists">Sanatçılarından yeni çıkanlar</string>
+    <string name="all_time_favourites">Her zaman favorilerin</string>
+    <string name="cannot_connect">Spotify\'a ulaşılamadı.</string>
+    <string name="rootlist_unavailable">çalma listeleri alınamadı</string>
+
+    <!-- Library -->
+    <string name="recently_opened">Son açılanlar</string>
+    <string name="spotify_order">Spotify\'ın sırası</string>
+    <string name="change_layout">Görünümü değiştir</string>
+    <string name="playlist_count">%1$d çalma listesi</string>
+
+    <!-- Playlist, album, artist -->
+    <string name="playlist_order">Çalma listesi sırası</string>
+    <string name="recently_added">Son eklenenler</string>
+    <string name="top_tracks">En çok dinlenenler</string>
+    <string name="search_in_tracks">Bu şarkılarda ara</string>
+    <string name="no_tracks">Şarkı yok</string>
+    <string name="no_results_for">“%1$s” için sonuç yok</string>
+    <string name="more_tracks_coming">Diğer şarkılar yükleniyor</string>
+    <string name="track_count_and_length"> · %1$d şarkı · %2$s</string>
+    <string name="hours_minutes">%1$d sa %2$d dk</string>
+    <string name="minutes_only">%1$d dk</string>
+    <string name="artist_needs_app">Bir sanatçıyı açmak için kendi Spotify uygulaman gerekir; Ara bölümünden ayarla.</string>
+
+    <!-- Track menu -->
+    <string name="add_to_queue">Sıraya ekle</string>
+    <string name="add_to_playlist">Çalma listesine ekle</string>
+    <string name="copy_link">Bağlantıyı kopyala</string>
+    <string name="remove_from_playlist">Çalma listesinden çıkar</string>
+    <string name="queued">Sıraya eklendi</string>
+    <string name="added_to">%1$s listesine eklendi</string>
+    <string name="no_playlists_in_account">Hesabında çalma listesi yok</string>
+    <string name="track_cannot_be_added">Bu şarkı eklenemiyor.</string>
+    <string name="connect_app_in_settings">Uygulamanı ayarlardan bağla.</string>
+    <string name="add_failed">%1$s listesine eklenemedi. Liste senin değilse değiştiremezsin.</string>
+
+    <!-- Player -->
+    <string name="play_on">Şurada çal</string>
+    <string name="no_devices">Kullanılabilir cihaz yok</string>
+    <string name="queue_empty">Sıra boş</string>
+    <string name="no_lyrics">Bu şarkının sözleri yok</string>
+    <string name="speed">Hız</string>
+    <string name="pitch">Perde</string>
+    <string name="reverb">Yankı</string>
+    <string name="save_preset">Ön ayarı kaydet</string>
+    <string name="delete_preset">%1$s ön ayarını sil</string>
+    <string name="shuffle_play">Karıştır</string>
+    <string name="unnamed">Adsız</string>
+    <string name="preset_original">Orijinal</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">Şarkı, sanatçı, albüm, çalma listesi</string>
+    <string name="search_prompt">Dinleyecek bir şey ara</string>
+
+    <!-- Settings -->
+    <string name="account">Hesap</string>
+    <string name="not_connected">Bağlı değil</string>
+    <string name="log_in_to_resume">Devam etmek için giriş yap</string>
+    <string name="connect_device">Cihazı bağla</string>
+    <string name="web_api">Web API</string>
+    <string name="application">Uygulama</string>
+    <string name="connected">Bağlandı</string>
+    <string name="disconnect">Bağlantıyı kes</string>
+    <string name="guide">Rehber</string>
+    <string name="see_setup_again">Kurulumu yeniden gör</string>
+    <string name="permissions_asked">İstenen izinler</string>
+    <string name="permissions_note">Bir güncellemeden önce bağlanan uygulamanın, sonradan eklenen izinleri vermesi için yeniden bağlanması gerekir: o zamana kadar bu izinleri kullanan bölümler boş kalır.</string>
+    <string name="developed_by">Geliştiren</string>
+    <string name="about">Hakkında</string>
+    <string name="version">Sürüm</string>
+    <string name="licences">Lisanslar</string>
+    <string name="scope_top_artists">Dinlediğin sanatçılar</string>
+    <string name="scope_history">Hesap geçmişi</string>
+    <string name="scope_devices">Cihaz listesi</string>
+    <string name="scope_transfer">Çalmayı taşı</string>
+    <string name="scope_private_playlists">Özel çalma listelerine ekleme</string>
+    <string name="scope_public_playlists">Herkese açık listelere ekleme</string>
+    <string name="enter_client_id">İstemci kimliğini gir.</string>
+    <string name="needs_your_app">Kendi Spotify uygulaman gerekiyor: Ara bölümünden ayarla.</string>
+
+    <!-- Web API setup -->
+    <string name="turn_on_search">ARAMAYI AÇ</string>
+    <string name="web_api_explainer">Arama, uygulama başına istek sınırı olan Spotify web API\'sinden geçer. Geliştirici panelinde bir uygulama kaydet ve istemci kimliğini buraya yapıştır: böylece sınır yalnızca sana ait olur.</string>
+    <string name="redirect_uri_note">Tam olarak bu Redirect URI uygulamaya eklenmelidir:</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_start">Dinlemeye başla</string>
+    <string name="onboarding_welcome_1">Spotify müziğin; sözler, canvas ve ses efektleriyle.</string>
+    <string name="onboarding_welcome_2">Spotify Premium hesabı gerekir.</string>
+    <string name="onboarding_welcome_3">İki adım ve hazırsın. Bir kereliğine beş dakika.</string>
+    <string name="onboarding_login_title">1. Spotify\'a giriş yap</string>
+    <string name="onboarding_login_1">Tarayıcı Spotify\'ın sayfasında açılır. İzin verirsin ve buraya geri döner.</string>
+    <string name="onboarding_login_2">Şifreni yalnızca Spotify\'ın kendi sayfasına yazarsın: Square onu hiç görmez.</string>
+    <string name="onboarding_login_done">Giriş yapıldı</string>
+    <string name="onboarding_key_title">2. Anahtarını oluştur</string>
+    <string name="onboarding_key_intro">Arama ve öneriler, kişisel bir anahtarla kullanılması gereken Spotify API\'sinden geçer. Bir dakika sürer, ücretsizdir ve kart gerekmez.</string>
+    <string name="onboarding_open_dashboard">Paneli aç</string>
+    <string name="onboarding_step_login">Aynı Spotify hesabıyla giriş yap.</string>
+    <string name="onboarding_step_create">Sağ üstte «Create app»e bas.</string>
+    <string name="onboarding_step_names">App name ve App description: istediğin gibi, örneğin Square. Website: boş bırak.</string>
+    <string name="onboarding_step_redirect">Redirect URI: aşağıdaki satırı yapıştır ve «Add»e bas. Alanın altındaki listede göründüğünü doğrula, yoksa kaydedilmez.</string>
+    <string name="onboarding_step_api">«Which API/SDKs are you planning to use?» altında Web API\'yi işaretle.</string>
+    <string name="onboarding_step_terms">Koşulları kabul et ve «Save»e bas.</string>
+    <string name="onboarding_step_client_id">Uygulamanın sayfasında «Settings»e bas: Client ID, «Basic Information» altındadır. Kopyala.</string>
+    <string name="onboarding_step_secret">Client secret gerekmez: kopyalama ve hiçbir yere girme.</string>
+    <string name="onboarding_paste_title">3. Client ID\'yi yapıştır</string>
+    <string name="onboarding_paste_done">Tamam: arama ve öneriler açık.</string>
+    <string name="onboarding_key_linked">Anahtar bağlandı</string>
+    <string name="onboarding_paste_hint">Client ID\'yi buraya yapıştır ve Bağla\'ya bas. Onay için tarayıcı son bir kez açılır.</string>
+    <string name="onboarding_paste_error">Tarayıcı hata gösterirse bir adım geri dön: neredeyse her zaman Redirect URI listeye eklenmemiştir.</string>
+    <string name="onboarding_done_title">Her şey hazır</string>
+    <string name="onboarding_done_1">Ana sayfada çalma listelerin var, büyüteç ise tüm katalogda arar.</string>
+    <string name="onboarding_done_2">Oynatıcıda şarkı değiştirmek için kaydır; sözleri, sırayı ve efektleri kapağın altındaki çubuktan aç.</string>
+    <string name="onboarding_done_3">Bu rehberi, ana sayfada fotoğrafına dokunup Ayarlar\'dan yeniden görebilirsin.</string>
+
+    <!-- Auth -->
+    <string name="browser_return">Uygulamaya dönebilirsin.</string>
+    <string name="language">Dil</string>
+    <string name="system_language">Telefonun dili</string>
+    <string name="presets">ÖN AYARLAR</string>
+    <string name="check_for_updates">Güncellemeleri denetle</string>
+    <string name="update_checking">Denetleniyor…</string>
+    <string name="update_none">Güncel</string>
+    <string name="update_available">%1$s hazır</string>
+    <string name="update_downloading">İndiriliyor…</string>
+    <string name="update_installing">Onayın bekleniyor</string>
+    <string name="update_needs_permission">Yüklemeye izin ver — dokun</string>
+    <string name="update_failed">Şimdi olmadı — yeniden denemek için dokun</string>
+    <string name="quality">Ses kalitesi</string>
+    <string name="backend">Kaynak</string>
+    <string name="backend_spotify">Spotify</string>
+    <string name="backend_youtube">YouTube Music</string>
+    <string name="backend_note">Spotify kendi hesabını çalar: kitaplığı, çalma listeleri, cihazları. YouTube Music burada anonimdir — arama ve çalma işler, hesap kitaplığı işlemez. Bunu değiştirmek çalmayı yeniden başlatır.</string>
+    <string name="backend_choice_title">Nereden dinlemek istersin?</string>
+    <string name="backend_choice_subtitle">Diğerini sonra ayarlardan seçebilirsin.</string>
+    <string name="backend_choice_spotify_note">Kendi hesabın: kitaplığın, çalma listelerin, Connect cihazların. Giriş ve biraz kurulum gerekir.</string>
+    <string name="backend_choice_youtube_note">Tüm katalog, hemen aranır ve çalınır. Hesap yok, dolayısıyla kendine ait bir kitaplık da yok.</string>
+    <string name="backend_choice_changeable">Bu, istediğin zaman ayarlardan değiştirilebilir.</string>
+    <string name="youtube_home_empty">Dinlemeye başlamak için bir şey ara. Çaldıkların burada görünür.</string>
+    <string name="trending_now">Şu anda trend</string>
+    <string name="popular_playlists">Popüler çalma listeleri</string>
+    <string name="youtube_account">YouTube hesabı</string>
+    <string name="youtube_sign_in">Google ile giriş yap</string>
+    <string name="youtube_sign_in_note">İsteğe bağlı. Arama ve çalma bunsuz da işler; giriş yapmak kendi çalma listelerini ekler.</string>
+    <string name="youtube_sign_out">Çıkış yap</string>
+    <string name="quality_auto">Otomatik</string>
+    <string name="quality_high">Yüksek</string>
+    <string name="quality_medium">Orta</string>
+    <string name="quality_low">Düşük</string>
+    <string name="quality_auto_note">Wi-Fi\'de tam kalite, sayaçlı bağlantıda bir kademe düşük.</string>
+    <string name="quality_restarts">Bunu değiştirmek çalan parçayı yeniden yükler.</string>
+    <string name="premium_required">Square, Spotify Premium gerektirir. Ücretsiz hesap giriş yapabilir ama Spotify böyle bir istemciye yayın vermez.</string>
+    <string name="new_playlist">Yeni çalma listesi</string>
+    <string name="rename">Yeniden adlandır</string>
+    <string name="delete">Sil</string>
+    <string name="playlist_name">Çalma listesi adı</string>
+    <string name="create">Oluştur</string>
+    <string name="update_prompt">Şimdi indirilip yüklensin mi?</string>
+    <string name="update_prompt_size">Şimdi indirilip yüklensin mi? %1$s.</string>
+    <string name="update_later">Sonra</string>
+    <string name="update_install">Yükle</string>
+    <string name="download_get_app">YTDLnis\'i edin</string>
+    <string name="download_with">YTDLnis ile indir</string>
+    <string name="crossfade">Çapraz geçiş</string>
+    <string name="crossfade_off">Kapalı</string>
+    <string name="crossfade_seconds">%1$d saniye</string>
+    <string name="crossfade_note">Bir parça diğerine karışarak geçer. Yalnızca parça kendiliğinden biterken, sen atladığında değil.</string>
+    <string name="page_playback">Çalma</string>
+    <string name="page_app">Uygulama</string>
+    <string name="page_account_summary">Hesabın, Web API uygulaması ve çıkış</string>
+    <string name="page_playback_summary">Müziğin kaynağı, kalite ve çapraz geçiş</string>
+    <string name="page_app_summary">Dil</string>
+    <string name="page_about_summary">Sürüm, izinler, lisanslar ve geliştirici</string>
+    <string name="playing_on">%1$s cihazında çalıyor</string>
+    <string name="switching">Geçiliyor…</string>
+    <string name="in_a_playlist">Zaten bir çalma listesinde</string>
+    <string name="effect_quality">Efekt kalitesi</string>
+    <string name="effect_quality_high">Sadık</string>
+    <string name="effect_quality_high_note">Müzikte en iyisi, pilde en ağırı.</string>
+    <string name="effect_quality_light">Hafif</string>
+    <string name="effect_quality_light_note">İşi telefon yapar. Eski cihazlara nazik, vuruşlarda daha kaba.</string>
+    <string name="liked_songs">Beğenilen Şarkılar</string>
+    <string name="pinned">Sabitlendi</string>
+    <string name="pin">Yukarı sabitle</string>
+    <string name="unpin">Sabitlemeyi kaldır</string>
+    <string name="cover_aura">Renk animasyonu</string>
+    <string name="radio">Radyo</string>
+</resources>
