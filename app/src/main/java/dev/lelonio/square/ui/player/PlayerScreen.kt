@@ -86,6 +86,7 @@ import dev.lelonio.square.ui.theme.softShadow
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.fill.Heart
 import com.adamglin.phosphoricons.fill.Pause
 import com.adamglin.phosphoricons.fill.Play
 import com.adamglin.phosphoricons.fill.SkipBack
@@ -95,10 +96,12 @@ import com.adamglin.phosphoricons.regular.Devices
 import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.Queue
+import com.adamglin.phosphoricons.regular.Broadcast
 import com.adamglin.phosphoricons.regular.YoutubeLogo
 import com.adamglin.phosphoricons.regular.Repeat
 import com.adamglin.phosphoricons.regular.RepeatOnce
 import com.adamglin.phosphoricons.regular.Shuffle
+import com.adamglin.phosphoricons.regular.Sparkle
 import kotlin.math.abs
 
 /**
@@ -116,6 +119,12 @@ private const val CANVAS_SWIPE_FOLLOW = 0.35f
  * this is a paused picture, not a closed one.
  */
 private const val PAUSED_DIM = 0.55f
+
+/**
+ * How long a track is given to produce a Canvas before the app decides it has
+ * none. Long enough to cover a slow lookup, short enough not to feel withheld.
+ */
+private const val AURA_OFFER_DELAY_MS = 1_600L
 
 /**
  * The player, as a liquid-glass prototype.
@@ -194,6 +203,21 @@ fun PlayerScreen(
      * and the answer is cheap for anything the app has already read.
      */
     alreadySaved: Boolean = false,
+    /**
+     * Whether it is in Liked Songs, which is a different answer and a different
+     * mark: a heart, the way every Spotify client says it.
+     */
+    inLikedSongs: Boolean = false,
+    /**
+     * The colour animation for tracks with no Canvas, and its switch.
+     *
+     * Held outside this screen: it is remembered between sessions, and it used
+     * to be lost the moment the player was folded down to the bar.
+     */
+    auraOn: Boolean = false,
+    onToggleAura: () -> Unit = {},
+    /** Starts a station from the current track; null where there is none. */
+    onRadio: (() -> Unit)? = null,
     /** The playlist picker's state, shown in the panel rather than as a sheet. */
     addToPlaylist: MainViewModel.AddToPlaylistState,
     onPickPlaylist: (dev.lelonio.square.data.CatalogPlaylist) -> Unit,
@@ -272,6 +296,24 @@ fun PlayerScreen(
     var ambient by remember { mutableStateOf<AmbientEdges?>(null) }
     LaunchedEffect(videoOn) { if (!videoOn) ambient = null }
 
+    val auraColors by dev.lelonio.square.ui.theme.rememberArtworkPalette(
+        state.artworkUrl.takeIf { auraOn && canvas == null },
+    )
+
+    // A Canvas is known about a moment after the track starts, not with it, so
+    // "this song has no clip" is only true once the app has waited for one. Put
+    // on screen immediately, the button appeared on every track and took itself
+    // away again half a second later.
+    var offerAura by remember { mutableStateOf(false) }
+    LaunchedEffect(state.mediaId, canvas) {
+        if (canvas != null) {
+            offerAura = false
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(AURA_OFFER_DELAY_MS)
+        offerAura = true
+    }
+
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
@@ -299,6 +341,14 @@ fun PlayerScreen(
             // and the panels refract. Drawn outside it they sat on top of the
             // colour without ever picking any of it up.
             AmbientLight(ambient)
+
+            // The stand-in for a Canvas, for the tracks that have none, and
+            // only when it has been asked for. In the same layer as the light
+            // above and for the same reason.
+            if (canvas == null && auraOn) {
+                CoverAura(colors = auraColors, playing = state.isPlaying)
+            }
+
 
             // Held at zero until the first frame, then faded up. Without this
             // the clip's own surface appears the instant it decodes, which next
@@ -489,14 +539,46 @@ fun PlayerScreen(
                                     Modifier.fillMaxSize(),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Cover(
-                                        state,
-                                        panel,
-                                        onNext,
-                                        onPrevious,
-                                        sharedScope,
-                                        animatedScope,
-                                    )
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Cover(
+                                            state,
+                                            panel,
+                                            onNext,
+                                            onPrevious,
+                                            sharedScope,
+                                            animatedScope,
+                                        )
+                                        // Under the picture and almost against
+                                        // it, because it is about the picture:
+                                        // this is a switch for how the screen
+                                        // looks, not one of the per-track
+                                        // actions in the capsule below. Inside
+                                        // this slot rather than under it, so it
+                                        // goes away by itself whenever the
+                                        // lyrics or the effects take the space.
+                                        AnimatedVisibility(
+                                            visible = canvas == null && offerAura,
+                                            enter = fadeIn(tween(260)),
+                                            exit = fadeOut(tween(160)),
+                                        ) {
+                                            RoundGlassButton(
+                                                backdrop = glassBackdrop,
+                                                size = 28.dp,
+                                                onClick = onToggleAura,
+                                                modifier = Modifier.padding(top = 8.dp),
+                                            ) {
+                                                Icon(
+                                                    PhosphorIcons.Regular.Sparkle,
+                                                    contentDescription =
+                                                        stringResource(R.string.cover_aura),
+                                                    tint = panelTint(auraOn),
+                                                    modifier = Modifier.size(14.dp),
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
 
                                 // The picture in the cover's place rather than
@@ -622,6 +704,23 @@ fun PlayerScreen(
                                         onOpenUri(uri, name)
                                     },
                                 )
+                                // A station built from this track, the way the
+                                // official client's own radio button does it.
+                                if (onRadio != null) {
+                                    RoundGlassButton(
+                                        backdrop = glassBackdrop,
+                                        size = 40.dp,
+                                        onClick = onRadio,
+                                    ) {
+                                        Icon(
+                                            PhosphorIcons.Regular.Broadcast,
+                                            contentDescription = stringResource(R.string.radio),
+                                            tint = panelTint(false),
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                    Spacer(Modifier.size(8.dp))
+                                }
                                 // The queue's one control. It is a sheet that
                                 // opens over the player rather than a view of
                                 // it, which is why it sits here and not in the
@@ -663,19 +762,22 @@ fun PlayerScreen(
                                     },
                                 ) {
                                     Icon(
-                                        if (alreadySaved) {
-                                            PhosphorIcons.Regular.Check
-                                        } else {
-                                            PhosphorIcons.Regular.Plus
+                                        when {
+                                            inLikedSongs -> PhosphorIcons.Fill.Heart
+                                            alreadySaved -> PhosphorIcons.Regular.Check
+                                            else -> PhosphorIcons.Regular.Plus
                                         },
                                         contentDescription = stringResource(
-                                            if (alreadySaved) R.string.in_a_playlist
-                                            else R.string.add_to_playlist,
+                                            when {
+                                                inLikedSongs -> R.string.liked_songs
+                                                alreadySaved -> R.string.in_a_playlist
+                                                else -> R.string.add_to_playlist
+                                            },
                                         ),
                                         tint = when {
                                             panel == PlayerPanel.ADD_TO_PLAYLIST ->
                                                 panelTint(true)
-                                            alreadySaved -> SavedInk
+                                            inLikedSongs || alreadySaved -> SavedInk
                                             else -> panelTint(false)
                                         },
                                         modifier = Modifier.size(20.dp),

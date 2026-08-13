@@ -1001,29 +1001,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * account with no Web API application connected simply keeps it.
      */
     /**
-     * The account's playlists, from the access point or from the Web API.
+     * The account's library, as the active backend assembles it.
      *
-     * The access point is asked first: it is the same list, it needs no
-     * registered application, and it carries the playlists this account follows
-     * as well as its own. But `rootlist` answers 502 often enough to matter —
-     * a Spotify-side failure nothing here can prevent — and losing the whole
-     * library screen to it is out of proportion, since the Web API can answer
-     * the same question.
+     * This used to build the Spotify list itself, which is why it went on
+     * showing the old one: the backend is where the access point, the Web API
+     * fallback and Liked Songs are put together, and a second copy here simply
+     * missed everything added there.
      */
     private suspend fun playlists(): List<CatalogPlaylist> =
-        runCatching { Catalog.playlists() }
-            .onFailure { android.util.Log.w(TAG, "rootlist unavailable: ${describe(it)}") }
-            .recoverCatching {
-                check(container.webApi.isReady) { it.message ?: string(R.string.rootlist_unavailable) }
-                container.api.playlists(limit = WEB_API_PAGE).items.map { dto ->
-                    CatalogPlaylist(
-                        uri = dto.uri,
-                        name = dto.name,
-                        artworkUrl = dto.images.firstOrNull()?.url,
-                    )
-                }
-            }
-            .getOrThrow()
+        container.activeBackend.playlists()
 
     /** Covers already looked up, so a second visit to the home page is free. */
     private val coverCache = mutableMapOf<String, String>()
@@ -1074,6 +1060,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Playlists in the order this device last opened them; see [PlaylistOrderStore]. */
     val playlistOrder: StateFlow<List<String>> get() = container.playlistOrder.order
+
+    /** Pinned playlists, in the order they were pinned. */
+    val pinnedPlaylists: StateFlow<List<String>> get() = container.pinnedPlaylists.pinned
+
+    fun togglePinned(uri: String) = container.pinnedPlaylists.toggle(uri)
+
+    /**
+     * A station built from one track, as the official client's radio button does.
+     *
+     * `spotify:station:track:…` is a context like any other to the access
+     * point: Spotify assembles the list and this only has to ask for it. Empty
+     * when it will not, and the caller then leaves the queue alone rather than
+     * playing something the listener did not choose.
+     */
+    suspend fun radioFor(trackUri: String): List<CatalogTrack> {
+        val id = trackUri.substringAfterLast(':')
+        val station = "spotify:station:track:$id"
+        return runCatching { Catalog.tracks(Catalog.contextTrackUris(station)) }
+            .onFailure { android.util.Log.w(TAG, "no station for $trackUri: ${describe(it)}") }
+            .getOrDefault(emptyList())
+    }
+
+    /** The colour animation for tracks with no Canvas; see PreferencesStore. */
+    val coverAura: StateFlow<Boolean> get() = container.preferences.coverAura
+
+    fun setCoverAura(on: Boolean) = container.preferences.setCoverAura(on)
 
     /** How the detail screen sorts its tracks; remembered between visits. */
     val trackSort: StateFlow<String?> get() = container.preferences.trackSort
@@ -1157,8 +1169,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Notes the tracks of a playlist that has just been read. */
     private fun rememberMembership(contextUri: String, tracks: List<CatalogTrack>) {
-        if (!contextUri.startsWith("spotify:playlist:") || tracks.isEmpty()) return
+        if (tracks.isEmpty()) return
+        // Liked Songs is not one of the playlists, and the player says so with
+        // a heart rather than a tick.
+        if (contextUri.endsWith(":collection")) {
+            _liked.value = _liked.value + tracks.map { it.uri }
+            return
+        }
+        if (!contextUri.startsWith("spotify:playlist:")) return
         _inPlaylists.value = _inPlaylists.value + tracks.map { it.uri }
+    }
+
+    private val _liked = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Tracks known to be in Liked Songs.
+     *
+     * Unlike [inPlaylists] this one can be asked outright: Spotify answers
+     * "is this saved?" in a single call, so the track on screen is checked as
+     * it starts rather than inferred from what happens to have been read.
+     */
+    val likedTracks: StateFlow<Set<String>> = _liked.asStateFlow()
+
+    /** Tracks already asked about, saved or not, so each is asked once. */
+    private val likedAsked = mutableSetOf<String>()
+
+    fun checkLiked(uri: String?) {
+        if (uri == null || !uri.startsWith("spotify:track:")) return
+        if (!container.webApi.isReady || !likedAsked.add(uri)) return
+        viewModelScope.launch {
+            runCatching { container.api.tracksAreSaved(uri.substringAfterLast(':')) }
+                .onSuccess { answers ->
+                    if (answers.firstOrNull() == true) _liked.value = _liked.value + uri
+                }
+                .onFailure {
+                    // Asked again next time it plays: this is a decoration.
+                    likedAsked.remove(uri)
+                    android.util.Log.i(TAG, "cannot tell if $uri is saved: ${describe(it)}")
+                }
+        }
     }
 
     private val contextCache =

@@ -101,6 +101,7 @@ import dev.lelonio.square.ui.library.openLink
 import com.adamglin.phosphoricons.regular.Download
 import com.adamglin.phosphoricons.regular.LinkSimple
 import com.adamglin.phosphoricons.regular.PencilSimple
+import com.adamglin.phosphoricons.regular.PushPin
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.SpotifyLogo
@@ -301,6 +302,9 @@ fun SquareApp(
     val presets by viewModel.effectPresets.collectAsStateWithLifecycle()
     val feed by viewModel.feed.collectAsStateWithLifecycle()
     val playlistOrder by viewModel.playlistOrder.collectAsStateWithLifecycle()
+    val pinnedPlaylists by viewModel.pinnedPlaylists.collectAsStateWithLifecycle()
+    val likedTracks by viewModel.likedTracks.collectAsStateWithLifecycle()
+    val coverAura by viewModel.coverAura.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val addToPlaylist by viewModel.addToPlaylist.collectAsStateWithLifecycle()
     val trackSort by viewModel.trackSort.collectAsStateWithLifecycle()
@@ -450,6 +454,11 @@ fun SquareApp(
     var lyrics by remember { mutableStateOf<Lyrics?>(null) }
     var lyricsLoading by remember { mutableStateOf(false) }
 
+    // One small question per track: is this one saved? The player draws a heart
+    // from the answer, and there is no other way to know without reading the
+    // whole of Liked Songs.
+    LaunchedEffect(playback.mediaId) { viewModel.checkLiked(playback.mediaId) }
+
     // Fetched per track. Most of the catalogue has none, so a null result is an
     // ordinary answer that shows an empty state rather than an error.
     LaunchedEffect(playback.mediaId) {
@@ -491,6 +500,7 @@ fun SquareApp(
     val playAgainLabel = stringResource(R.string.play_again)
     val trendingLabel = stringResource(R.string.trending_now)
     val searchLabel = stringResource(R.string.search)
+    val radioLabel = stringResource(R.string.radio)
 
     val inPip by YouTubeVideoMode.pictureInPicture.collectAsStateWithLifecycle()
 
@@ -594,7 +604,11 @@ fun SquareApp(
                 // The sheets that read this one are shut most of the time, so
                 // the whole app was paying for a full-screen copy of itself for
                 // nothing.
-                val sheetsOpen = trackMenu != null || addToPlaylist.open
+                // The playlist sheet belongs in here too. Left out, the layer
+                // it refracts was not being recorded while it was the only
+                // thing open, so the glass had nothing behind it and the sheet
+                // came up as a transparent panel with no depth at all.
+                val sheetsOpen = trackMenu != null || addToPlaylist.open || playlistMenu != null
                 // Kept on a little past the close, or the layer would stop
                 // being recorded while the sheet is still fading out over it
                 // and the panel would go black on the way down.
@@ -709,6 +723,7 @@ fun SquareApp(
                                 onLogOut = viewModel::logOut,
                                 onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
                                 playlistOrder = playlistOrder,
+                                pinned = pinnedPlaylists,
                                 canEdit = viewModel.canEditPlaylists,
                                 onCreatePlaylist = { naming = NamingRequest(null) },
                                 onPlaylistMenu = { playlistMenu = it },
@@ -965,6 +980,29 @@ fun SquareApp(
                                 onAnotherDevice = remote != null,
                                 alreadySaved = playback.mediaId != null &&
                                     playback.mediaId in inPlaylists,
+                                inLikedSongs = playback.mediaId != null &&
+                                    playback.mediaId in likedTracks,
+                                auraOn = coverAura,
+                                onToggleAura = { viewModel.setCoverAura(!coverAura) },
+                                // Spotify's own radio, and only where Spotify
+                                // can answer: the station is a context on its
+                                // access point and means nothing anywhere else.
+                                onRadio = playback.mediaId
+                                    ?.takeIf {
+                                        it.startsWith("spotify:track:") &&
+                                            backend == dev.lelonio.square.backend.BackendId.SPOTIFY
+                                    }
+                                    ?.let { uri ->
+                                        {
+                                            scope.launch {
+                                                val tracks = viewModel.radioFor(uri)
+                                                if (tracks.isNotEmpty()) {
+                                                    onPlay(tracks, 0, null, false, radioLabel, 0L)
+                                                }
+                                            }
+                                            Unit
+                                        }
+                                    },
                                 onOpenDevices = viewModel::openDevices,
                                 connectAvailable =
                                     backend == dev.lelonio.square.backend.BackendId.SPOTIFY,
@@ -1027,7 +1065,21 @@ fun SquareApp(
                     onDismiss = { playlistMenu = null },
                 ) {
                     if (shownPlaylist != null) {
+                        // First action: this is the one that costs nothing and
+                        // can be undone by pressing it again.
+                        val isPinned = shownPlaylist.uri in pinnedPlaylists
                         TrackSheetAction(
+                            stringResource(if (isPinned) R.string.unpin else R.string.pin),
+                            PhosphorIcons.Regular.PushPin,
+                        ) {
+                            viewModel.togglePinned(shownPlaylist.uri)
+                            playlistMenu = null
+                        }
+                        // Liked Songs is Spotify's own list: it can be pinned
+                        // like any other row, but there is no name to change
+                        // and no way to delete it.
+                        val editable = !shownPlaylist.uri.endsWith(":collection")
+                        if (editable) TrackSheetAction(
                             stringResource(R.string.rename),
                             PhosphorIcons.Regular.PencilSimple,
                         ) {
@@ -1048,7 +1100,7 @@ fun SquareApp(
                                 sendForDownload(context, shownPlaylist.openLink())
                             }
                         }
-                        TrackSheetAction(
+                        if (editable) TrackSheetAction(
                             stringResource(R.string.delete),
                             PhosphorIcons.Regular.Trash,
                             destructive = true,
