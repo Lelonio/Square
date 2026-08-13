@@ -83,14 +83,14 @@ fun CoverAura(
             // and the whole thing is put out of focus afterwards.
             .blur(BLUR),
     ) {
-        // The bed: wide, soft, and the only part that is meant to be looked at
+        // The bed: wide, soft, and the only part meant to be looked at
         // directly. Everything after this is for the glass.
         repeat(3) { index ->
             val color = colors[index % colors.size]
             val angle = turn * DRIFT[index] + index * (TAU / 3f)
             val centre = Offset(
                 x = size.width * (0.5f + 0.34f * cos(angle)),
-                y = size.height * (0.42f + 0.30f * sin(angle * 0.8f)),
+                y = size.height * (0.42f + 0.30f * sin(angle * 2f)),
             )
             val radius = size.maxDimension * 0.62f
             drawCircle(
@@ -108,13 +108,14 @@ fun CoverAura(
         // the abrupt side is the whole point: that is the edge the panes bend.
         repeat(2) { index ->
             val color = colors[(index + 1) % colors.size]
-            val sweep = turn * BEAM[index] + index * 1.7f
-            rotate(degrees = (sweep * 18f) + index * 40f - 20f) {
+            val angle = turn * BEAM[index] + index * 1.7f
+            rotate(degrees = 20f * sin(angle) + index * 40f - 20f) {
                 beam(
                     color = color,
-                    // Travels across and wraps, so a beam is always crossing
-                    // rather than all of them arriving together.
-                    offset = ((sweep * 0.18f + index * 0.5f) % 1f),
+                    // Swung rather than wrapped. A band that travels and starts
+                    // again jumps at the moment it wraps, and the whole loop was
+                    // built so there is no such moment.
+                    offset = 0.5f + 0.42f * sin(angle * 0.5f + index),
                 )
             }
         }
@@ -127,7 +128,7 @@ fun CoverAura(
             val angle = turn * CAUSTIC[index] + index * 2.1f
             val centre = Offset(
                 x = size.width * (0.5f + 0.40f * sin(angle)),
-                y = size.height * (0.45f + 0.34f * cos(angle * 1.3f)),
+                y = size.height * (0.45f + 0.34f * cos(angle * 2f)),
             )
             val radius = size.minDimension * 0.10f
             drawCircle(
@@ -187,11 +188,22 @@ private fun DrawScope.beam(color: Color, offset: Float) {
 private val BLUR = 48.dp
 
 /** A full turn of the slowest element. Minutes, not seconds. */
-private const val CYCLE_MS = 42_000
+private const val CYCLE_MS = 60_000
 
-/** Deliberately not in simple ratios, so nothing lines up twice the same way. */
-private val DRIFT = floatArrayOf(1f, 0.61f, 1.37f)
-private val BEAM = floatArrayOf(0.83f, 1.19f)
-private val CAUSTIC = floatArrayOf(1.11f, 0.74f, 1.53f)
+/**
+ * Whole turns per cycle, and whole numbers on purpose.
+ *
+ * Everything here is a sine or a cosine of the phase times one of these, so at
+ * the end of a cycle every element is exactly where it began and the loop has
+ * no seam: there is no moment where the animation can be seen restarting.
+ * Fractions would have looked freer and shown a jump every forty seconds.
+ *
+ * They are different from one another, and paired with the doubled vertical
+ * terms above, so the paths are lissajous curves rather than circles and the
+ * three never trace the same shape.
+ */
+private val DRIFT = floatArrayOf(1f, 2f, 3f)
+private val BEAM = floatArrayOf(2f, 3f)
+private val CAUSTIC = floatArrayOf(3f, 2f, 4f)
 
 private const val TAU = (2 * Math.PI).toFloat()

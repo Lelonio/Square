@@ -255,6 +255,5 @@
     <string name="pinned">Pinned</string>
     <string name="pin">Pin to the top</string>
     <string name="unpin">Unpin</string>
-    <string name="cover_aura">Colour animation</string>
     <string name="radio">Radio</string>
 </resources>

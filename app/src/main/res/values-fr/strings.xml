@@ -234,6 +234,5 @@
     <string name="pinned">Épinglée</string>
     <string name="pin">Épingler en haut</string>
     <string name="unpin">Désépingler</string>
-    <string name="cover_aura">Animation colorée</string>
     <string name="radio">Radio</string>
 </resources>

@@ -249,6 +249,5 @@
     <string name="pinned">पिन किया</string>
     <string name="pin">ऊपर पिन करें</string>
     <string name="unpin">पिन हटाएँ</string>
-    <string name="cover_aura">रंगों की एनिमेशन</string>
     <string name="radio">रेडियो</string>
 </resources>

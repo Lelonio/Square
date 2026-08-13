@@ -234,6 +234,5 @@
     <string name="pinned">Fixada</string>
     <string name="pin">Fixar no topo</string>
     <string name="unpin">Desafixar</string>
-    <string name="cover_aura">Animação de cores</string>
     <string name="radio">Rádio</string>
 </resources>

@@ -27,22 +27,6 @@ class PreferencesStore(context: Context) {
         prefs.edit().putString(KEY_TRACK_SORT, value).apply()
     }
 
-    private val _coverAura = MutableStateFlow(prefs.getBoolean(KEY_COVER_AURA, false))
-
-    /**
-     * Whether a track with no Canvas gets the animation made from its cover.
-     *
-     * A taste rather than a property of a song, so it is remembered: whoever
-     * turns it on wants it on for the next track without one too, and for the
-     * next time they open the app.
-     */
-    val coverAura: StateFlow<Boolean> = _coverAura.asStateFlow()
-
-    fun setCoverAura(on: Boolean) {
-        _coverAura.value = on
-        prefs.edit().putBoolean(KEY_COVER_AURA, on).apply()
-    }
-
     /**
      * This phone's Connect id, made once and kept for good.
      *
@@ -135,7 +119,6 @@ class PreferencesStore(context: Context) {
     private companion object {
         const val FILE_NAME = "square_preferences"
         const val KEY_TRACK_SORT = "track_sort"
-        const val KEY_COVER_AURA = "cover_aura"
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_PLAYER_OPEN = "player_open"

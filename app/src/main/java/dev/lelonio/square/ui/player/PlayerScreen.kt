@@ -101,7 +101,6 @@ import com.adamglin.phosphoricons.regular.YoutubeLogo
 import com.adamglin.phosphoricons.regular.Repeat
 import com.adamglin.phosphoricons.regular.RepeatOnce
 import com.adamglin.phosphoricons.regular.Shuffle
-import com.adamglin.phosphoricons.regular.Sparkle
 import kotlin.math.abs
 
 /**
@@ -119,12 +118,6 @@ private const val CANVAS_SWIPE_FOLLOW = 0.35f
  * this is a paused picture, not a closed one.
  */
 private const val PAUSED_DIM = 0.55f
-
-/**
- * How long a track is given to produce a Canvas before the app decides it has
- * none. Long enough to cover a slow lookup, short enough not to feel withheld.
- */
-private const val AURA_OFFER_DELAY_MS = 1_600L
 
 /**
  * The player, as a liquid-glass prototype.
@@ -208,14 +201,6 @@ fun PlayerScreen(
      * mark: a heart, the way every Spotify client says it.
      */
     inLikedSongs: Boolean = false,
-    /**
-     * The colour animation for tracks with no Canvas, and its switch.
-     *
-     * Held outside this screen: it is remembered between sessions, and it used
-     * to be lost the moment the player was folded down to the bar.
-     */
-    auraOn: Boolean = false,
-    onToggleAura: () -> Unit = {},
     /** Starts a station from the current track; null where there is none. */
     onRadio: (() -> Unit)? = null,
     /** The playlist picker's state, shown in the panel rather than as a sheet. */
@@ -297,22 +282,8 @@ fun PlayerScreen(
     LaunchedEffect(videoOn) { if (!videoOn) ambient = null }
 
     val auraColors by dev.lelonio.square.ui.theme.rememberArtworkPalette(
-        state.artworkUrl.takeIf { auraOn && canvas == null },
+        state.artworkUrl.takeIf { canvas == null },
     )
-
-    // A Canvas is known about a moment after the track starts, not with it, so
-    // "this song has no clip" is only true once the app has waited for one. Put
-    // on screen immediately, the button appeared on every track and took itself
-    // away again half a second later.
-    var offerAura by remember { mutableStateOf(false) }
-    LaunchedEffect(state.mediaId, canvas) {
-        if (canvas != null) {
-            offerAura = false
-            return@LaunchedEffect
-        }
-        kotlinx.coroutines.delay(AURA_OFFER_DELAY_MS)
-        offerAura = true
-    }
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -345,7 +316,7 @@ fun PlayerScreen(
             // The stand-in for a Canvas, for the tracks that have none, and
             // only when it has been asked for. In the same layer as the light
             // above and for the same reason.
-            if (canvas == null && auraOn) {
+            if (canvas == null) {
                 CoverAura(colors = auraColors, playing = state.isPlaying)
             }
 
@@ -539,46 +510,14 @@ fun PlayerScreen(
                                     Modifier.fillMaxSize(),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        Cover(
-                                            state,
-                                            panel,
-                                            onNext,
-                                            onPrevious,
-                                            sharedScope,
-                                            animatedScope,
-                                        )
-                                        // Under the picture and almost against
-                                        // it, because it is about the picture:
-                                        // this is a switch for how the screen
-                                        // looks, not one of the per-track
-                                        // actions in the capsule below. Inside
-                                        // this slot rather than under it, so it
-                                        // goes away by itself whenever the
-                                        // lyrics or the effects take the space.
-                                        AnimatedVisibility(
-                                            visible = canvas == null && offerAura,
-                                            enter = fadeIn(tween(260)),
-                                            exit = fadeOut(tween(160)),
-                                        ) {
-                                            RoundGlassButton(
-                                                backdrop = glassBackdrop,
-                                                size = 28.dp,
-                                                onClick = onToggleAura,
-                                                modifier = Modifier.padding(top = 8.dp),
-                                            ) {
-                                                Icon(
-                                                    PhosphorIcons.Regular.Sparkle,
-                                                    contentDescription =
-                                                        stringResource(R.string.cover_aura),
-                                                    tint = panelTint(auraOn),
-                                                    modifier = Modifier.size(14.dp),
-                                                )
-                                            }
-                                        }
-                                    }
+                                    Cover(
+                                        state,
+                                        panel,
+                                        onNext,
+                                        onPrevious,
+                                        sharedScope,
+                                        animatedScope,
+                                    )
                                 }
 
                                 // The picture in the cover's place rather than

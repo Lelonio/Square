@@ -249,6 +249,5 @@
     <string name="pinned">Sabitlendi</string>
     <string name="pin">Yukarı sabitle</string>
     <string name="unpin">Sabitlemeyi kaldır</string>
-    <string name="cover_aura">Renk animasyonu</string>
     <string name="radio">Radyo</string>
 </resources>

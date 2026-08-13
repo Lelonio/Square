@@ -304,7 +304,6 @@ fun SquareApp(
     val playlistOrder by viewModel.playlistOrder.collectAsStateWithLifecycle()
     val pinnedPlaylists by viewModel.pinnedPlaylists.collectAsStateWithLifecycle()
     val likedTracks by viewModel.likedTracks.collectAsStateWithLifecycle()
-    val coverAura by viewModel.coverAura.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val addToPlaylist by viewModel.addToPlaylist.collectAsStateWithLifecycle()
     val trackSort by viewModel.trackSort.collectAsStateWithLifecycle()
@@ -982,8 +981,6 @@ fun SquareApp(
                                     playback.mediaId in inPlaylists,
                                 inLikedSongs = playback.mediaId != null &&
                                     playback.mediaId in likedTracks,
-                                auraOn = coverAura,
-                                onToggleAura = { viewModel.setCoverAura(!coverAura) },
                                 // Spotify's own radio, and only where Spotify
                                 // can answer: the station is a context on its
                                 // access point and means nothing anywhere else.

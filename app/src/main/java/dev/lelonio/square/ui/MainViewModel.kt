@@ -1082,11 +1082,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .getOrDefault(emptyList())
     }
 
-    /** The colour animation for tracks with no Canvas; see PreferencesStore. */
-    val coverAura: StateFlow<Boolean> get() = container.preferences.coverAura
-
-    fun setCoverAura(on: Boolean) = container.preferences.setCoverAura(on)
-
     /** How the detail screen sorts its tracks; remembered between visits. */
     val trackSort: StateFlow<String?> get() = container.preferences.trackSort
 
