@@ -3,6 +3,7 @@ package dev.lelonio.square.ui.home
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -259,10 +260,19 @@ fun HomeScreen(
                     },
                     label = "feed",
                 ) { current ->
-                val showReleases = current == Feed.ALL || current == Feed.RELEASES
-                val showArtists = current == Feed.ALL || current == Feed.ARTISTS
-                val showLibrary = current == Feed.ALL || current == Feed.LIBRARY
-                val showForYou = current == Feed.ALL || current == Feed.FOR_YOU
+                // "Everything" means Spotify's own home when there is one.
+                //
+                // The sections below it are this app standing in for a home
+                // page it could not read: what the account plays most, what it
+                // came back to, new releases. Once the real one arrives they
+                // are a second, worse answer to the same question, printed
+                // underneath the first. They keep their own chips, so nothing
+                // is lost — only the pile on the front page.
+                val ownFeed = shelves.isEmpty()
+                val showReleases = (current == Feed.ALL && ownFeed) || current == Feed.RELEASES
+                val showArtists = (current == Feed.ALL && ownFeed) || current == Feed.ARTISTS
+                val showLibrary = (current == Feed.ALL && ownFeed) || current == Feed.LIBRARY
+                val showForYou = (current == Feed.ALL && ownFeed) || current == Feed.FOR_YOU
                 val filter = current
 
                 LazyColumn(
@@ -343,7 +353,7 @@ fun HomeScreen(
                     }
                 }
 
-                if (showLibrary || filter == Feed.ALL) {
+                if (showLibrary || (filter == Feed.ALL && shelves.isEmpty())) {
                     item(contentType = Feed.LIBRARY.name) { Heading(stringResource(R.string.your_playlists)) }
                     item(contentType = Feed.LIBRARY.name) {
                         Carousel(
@@ -396,9 +406,30 @@ fun HomeScreen(
 
                 if (showArtists && feed.topArtists.isNotEmpty()) {
                     item(contentType = Feed.ARTISTS.name) { Heading(stringResource(R.string.listening_artists)) }
-                    item(contentType = Feed.ARTISTS.name) {
-                        Carousel(feed.topArtists, key = { it.uri }) { artist ->
-                            ArtistTile(artist) { onOpenItem(artist) }
+                    // A grid rather than a carousel. A row shows three artists
+                    // and hides the rest behind a sideways scroll nobody makes
+                    // twice; the same list down the page is read at a glance.
+                    // Rows of a list rather than a nested grid, which cannot go
+                    // inside a scrolling column without being given a height.
+                    items(
+                        feed.topArtists.chunked(ARTIST_COLUMNS),
+                        key = { row -> row.first().uri },
+                        contentType = { Feed.ARTISTS.name },
+                    ) { row ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            row.forEach { artist ->
+                                ArtistCell(artist, Modifier.weight(1f)) { onOpenItem(artist) }
+                            }
+                            // The last row keeps the others\' spacing instead of
+                            // stretching two artists across the page.
+                            repeat(ARTIST_COLUMNS - row.size) {
+                                Spacer(Modifier.weight(1f))
+                            }
                         }
                     }
                 }
@@ -710,6 +741,42 @@ private fun FeedCard(item: SearchItem, onClick: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+/** How many artists fit across the page without the names going to three lines. */
+private const val ARTIST_COLUMNS = 3
+
+/**
+ * One cell of the artist grid: the same round portrait, sized by its column.
+ *
+ * Separate from [ArtistTile], which is fixed at the carousel's width because a
+ * horizontal row has no column to take its width from.
+ */
+@Composable
+private fun ArtistCell(artist: SearchItem, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(
+        modifier.pressable(onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Artwork(
+            url = artist.artworkUrl,
+            title = artist.title,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .softShadow(CircleShape, elevation = 14.dp),
+            corner = 200.dp,
+            decodeSize = 160.dp,
+        )
+        Text(
+            artist.title,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 10.dp),
+        )
     }
 }
 
