@@ -532,6 +532,29 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDev
     guard_string(&mut env, "DeviceId", crate::remote::device_id)
 }
 
+/// A new running order for the queue already loaded; see `engine::set_queue_order`.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetQueueOrder(
+    mut env: JNIEnv,
+    _class: JClass,
+    uris_json: JString,
+    index: jint,
+) {
+    // JSON, like the load above and for the same reason.
+    let raw = match read_string(&mut env, &uris_json) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return;
+        }
+    };
+    guard(&mut env, "SetQueueOrder", || {
+        serde_json::from_str::<Vec<String>>(&raw)
+            .map_err(|e| format!("bad queue: {e}"))
+            .and_then(|uris| engine::set_queue_order(uris, index.max(0) as u32))
+    });
+}
+
 /// What this device itself is playing, straight from its Connect state.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlayingHere(

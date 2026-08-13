@@ -38,7 +38,9 @@ macro_rules! metadata_entry {
 
 /// Allows easy access of known metadata fields
 #[allow(dead_code)]
-pub(super) trait Metadata {
+// LOCAL PATCH: `pub(crate)` so spirc can stamp a track it builds itself; see
+// `Spirc::set_queue_tracks`.
+pub(crate) trait Metadata {
     fn metadata(&self) -> &HashMap<String, String>;
 
     fn metadata_mut(&mut self) -> &mut HashMap<String, String>;

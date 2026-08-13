@@ -27,12 +27,15 @@ use crate::{
     },
     state::{
         context::{ContextType, ResetContext},
+        metadata::Metadata,
         provider::IsProvider,
         {ConnectConfig, ConnectState},
     },
 };
 use futures_util::StreamExt;
 use librespot_protocol::context_page::ContextPage;
+use librespot_protocol::player::ProvidedTrack;
+use uuid::Uuid;
 use protobuf::MessageField;
 use std::{
     future::Future,
@@ -132,6 +135,11 @@ enum SpircCommand {
     RepeatTrack(bool),
     Disconnect { pause: bool },
     SetPosition(u32),
+    /// LOCAL PATCH: replace what comes before and after the current track.
+    SetQueueTracks {
+        prev: Vec<String>,
+        next: Vec<String>,
+    },
     SetVolume(u16),
     Activate,
     Transfer(Option<TransferRequest>),
@@ -410,6 +418,21 @@ impl Spirc {
     /// Does nothing if we are not the active device.
     pub fn shuffle(&self, shuffle: bool) -> Result<(), Error> {
         Ok(self.commands.send(SpircCommand::Shuffle(shuffle))?)
+    }
+
+    /// LOCAL PATCH: hands over a new running order, without touching what is
+    /// playing.
+    ///
+    /// The owner of this handle keeps its own list and its own idea of random,
+    /// and when that order changes the device has to be told or the two stop
+    /// agreeing about what comes next. Loading the list again would say the
+    /// same thing, but a load restarts the decoder and the listener hears a gap
+    /// in the middle of the song — for a change that is only about the tracks
+    /// after this one.
+    pub fn set_queue_tracks(&self, prev: Vec<String>, next: Vec<String>) -> Result<(), Error> {
+        Ok(self
+            .commands
+            .send(SpircCommand::SetQueueTracks { prev, next })?)
     }
 
     /// Repeats the playback context according to the value.
@@ -795,11 +818,37 @@ impl SpircTask {
             SpircCommand::Repeat(repeat) => self.handle_repeat_context(repeat)?,
             SpircCommand::RepeatTrack(repeat) => self.handle_repeat_track(repeat),
             SpircCommand::SetPosition(position) => self.handle_seek(position),
+            SpircCommand::SetQueueTracks { prev, next } => self.handle_set_queue_tracks(prev, next),
             SpircCommand::SetVolume(volume) => self.set_volume(volume),
             SpircCommand::Load(command) => self.handle_load(command, None, None).await?,
         };
 
         self.notify().await
+    }
+
+    /// LOCAL PATCH: see [`Spirc::set_queue_tracks`].
+    fn handle_set_queue_tracks(&mut self, prev: Vec<String>, next: Vec<String>) {
+        let context_uri = self.connect_state.context_uri().clone();
+        let track_of = |uri: &String| {
+            let mut track = ProvidedTrack {
+                uri: uri.clone(),
+                uid: Uuid::new_v4().as_simple().to_string(),
+                provider: "context".to_string(),
+                ..Default::default()
+            };
+            if !context_uri.is_empty() {
+                track.set_entity_uri(context_uri.clone());
+                track.set_context_uri(context_uri.clone());
+            }
+            track
+        };
+
+        self.connect_state
+            .set_prev_tracks(prev.iter().map(track_of).collect());
+        self.connect_state.clear_next_tracks();
+        self.connect_state
+            .set_next_tracks(next.iter().map(track_of).collect());
+        self.connect_state.update_queue_revision();
     }
 
     fn handle_player_event(&mut self, event: PlayerEvent) -> Result<(), Error> {

@@ -128,6 +128,18 @@ object NativeBridge {
             playAsContext,
         )
 
+    /**
+     * Tells the device a new running order, leaving the current track playing.
+     *
+     * For a shuffle turned on or off under a song: what comes after changes,
+     * the song does not, and a reload would put a gap in the middle of it.
+     */
+    fun setQueueOrder(uris: List<String>, index: Int) =
+        nativeSetQueueOrder(
+            Json.encodeToString(ListSerializer(String.serializer()), uris),
+            index,
+        )
+
     fun play() = nativePlay()
     fun pause() = nativePause()
     fun stop() = nativeStop()
@@ -374,6 +386,7 @@ object NativeBridge {
         appVersion: String,
     ): String
     private external fun nativeDeviceId(): String
+    private external fun nativeSetQueueOrder(urisJson: String, index: Int)
     private external fun nativePlayingHere(): String
     private external fun nativeRemoteState(): String
     private external fun nativeRemoteDevices(): String

@@ -1,6 +1,8 @@
 pub(super) mod context;
 mod handle;
-mod metadata;
+// LOCAL PATCH: visible to the crate, so spirc can stamp a track it builds
+// itself with the context it belongs to; see `Spirc::set_queue_tracks`.
+pub(crate) mod metadata;
 mod options;
 pub(super) mod provider;
 mod restrictions;

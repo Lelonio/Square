@@ -74,6 +74,10 @@ class LibrespotPlayer(
         // screen would be someone else's.
         val asContext = queue.contextIsOrdered && !queue.isShuffled
 
+        android.util.Log.i(
+            "SquarePlayer",
+            "load ${uris.size} tracks at $index (playing=$startPlaying, context=$asContext)",
+        )
         fadeOutThen {
             // Back on the player's looper before anything is read or called.
             // The fade runs on its own thread, and everything here — the queue,
@@ -487,6 +491,7 @@ class LibrespotPlayer(
         skipPending = false
         val target = queue.currentIndex
         val from = engineIndex
+        android.util.Log.i("SquarePlayer", "skip settles: engine at $from, wanted $target")
 
         when {
             from == target -> {
@@ -890,6 +895,32 @@ class LibrespotPlayer(
         // The order on screen is the one the user arranged, so it wins. The cost
         // is that the account shows this device as not shuffling.
         runCatching { NativeBridge.setShuffle(false) }
+
+        // And the engine is given the new order at once.
+        //
+        // Reordering only this side is what made shuffling break playback: the
+        // engine went on playing the list it was handed, the screen followed
+        // the tracks the engine announced, and the two orders no longer agreed
+        // on what came next. A skip then asked for the track after the one on
+        // screen while the engine stepped through its own list, so tracks
+        // appeared to be missed — and it survived shuffle being turned off
+        // again, because turning it off is another reorder this side only.
+        //
+        // Handed over as an order rather than as a load. A load would restart
+        // the decoder, and a reordering of what comes later has no business
+        // interrupting the song that is playing.
+        if (queue.items.isNotEmpty()) {
+            engineIndex = queue.currentIndex
+            runCatching {
+                NativeBridge.setQueueOrder(queue.items.map { it.uri }, queue.currentIndex)
+            }
+                .onFailure {
+                    // Left for the next skip to sort out, which rebuilds the
+                    // queue wholesale: better a load then than a wrong order now.
+                    android.util.Log.w("SquarePlayer", "could not reorder: ${it.message}")
+                    engineQueueStale = true
+                }
+        }
         invalidateState()
         return Futures.immediateVoidFuture()
     }
@@ -931,6 +962,7 @@ class LibrespotPlayer(
         val next = queue.currentIndex + 1
         if (!engineQueueStale || next > queue.items.lastIndex) return false
         if (!queue.items[next].queued) return false
+        android.util.Log.i("SquarePlayer", "taking over for a queued track at $next")
         requestSkipTo(next, 0L)
         return true
     }
@@ -972,6 +1004,10 @@ class LibrespotPlayer(
                     // those is a load with no play. Following only plays left
                     // the app three songs behind what was in the speaker,
                     // which is exactly how the two came apart.
+                    android.util.Log.i(
+                        "SquarePlayer",
+                        "following the engine to $index ($type), screen was at ${queue.currentIndex}",
+                    )
                     queue.currentIndex = index
                     skipInFlight = false
                     positionMs = 0

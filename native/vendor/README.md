@@ -173,3 +173,17 @@ The track list is there for the contexts Spotify makes rather than stores. A
 daily mix, a radio, "Pop Mix" resolve to nothing for a client that is not
 Spotify's own, and the only copy of that queue in existence here is the one the
 account handed the device to play.
+
+### The patch: a new running order, without a reload
+
+`Spirc::set_queue_tracks(prev, next)` replaces what comes before and after the
+current track and publishes the queue revision, leaving playback alone.
+
+The app draws its own shuffle: the order on screen is the order the device is
+given. Turning shuffle on or off therefore changes the list under a song that is
+still playing, and upstream has only one way to say so — load the queue again,
+which restarts the decoder. The listener heard a gap in the middle of the track
+for a change that was only ever about the tracks after it.
+
+`state::metadata` and its `Metadata` trait are `pub(crate)` for this, so a track
+built in `spirc.rs` can be stamped with the context it belongs to.

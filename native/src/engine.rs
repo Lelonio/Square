@@ -1338,6 +1338,18 @@ pub fn load_queue(
         // ignored: playback belongs to whichever device the account has
         // active, and taking that over is an explicit step.
         e.spirc.activate()?;
+        // Shuffle off before the list goes in, every time.
+        //
+        // The order handed over here is the order the app is showing, shuffled
+        // or not: the app draws its own random order and the engine is only
+        // asked to play the result. But the Connect state carries a shuffle
+        // flag of the account's, which another client may have set and which
+        // survives in the state this device restores, and when a context
+        // resolves with that flag on librespot shuffles it again for itself.
+        // The engine then played its own order while the screen followed
+        // another, so a skip stepped somewhere the listener could not see and
+        // whole tracks appeared to be missed.
+        e.spirc.shuffle(false)?;
         e.spirc.load(request)
     })?
     .inspect_err(|_| {
@@ -1648,6 +1660,28 @@ pub fn resume_here(context_uri: &str, track_uri: &str, position_ms: u32) -> Engi
 /// comes back refused. Activating is the same thing done directly.
 pub fn take_over() -> EngineResult<()> {
     with_bundle(|e| e.spirc.activate())?.map_err(|e| format!("could not take over: {e}"))
+}
+
+/// Hands the device a new running order without touching what is playing.
+///
+/// The app owns the order — it draws its own shuffle — and when the listener
+/// turns that on or off the list changes under a track that is still playing.
+/// Reloading the queue would say the same thing at the cost of a gap in the
+/// song, for a change that is only ever about what comes after it.
+pub fn set_queue_order(uris: Vec<String>, index: u32) -> EngineResult<()> {
+    if uris.is_empty() {
+        return Err("empty queue".into());
+    }
+    let at = (index as usize).min(uris.len() - 1);
+    let prev = uris[..at].to_vec();
+    let next = uris[at + 1..].to_vec();
+
+    if let Ok(mut stored) = QUEUE.lock() {
+        *stored = uris;
+    }
+
+    with_bundle(|e| e.spirc.set_queue_tracks(prev, next))?
+        .map_err(|e| format!("queue order failed: {e}"))
 }
 
 pub fn set_shuffle(shuffle: bool) -> EngineResult<()> {
