@@ -31,6 +31,19 @@ class SquareApplication : Application() {
     }
 
     val tokenStore: TokenStore by lazy { TokenStore(this) }
+
+    /**
+     * Whether Spotify can be used, which is not the same as holding a token.
+     *
+     * The engine keeps the credential the access point gave it and logs in with
+     * that, so an OAuth session that has lapsed is no longer a reason to show
+     * the login screen: everything the app plays goes through the access point,
+     * and the access point is still answering. Only the Web API, which is the
+     * user's own registered application, needs the token itself.
+     */
+    val spotifySignedIn: Boolean
+        get() = tokenStore.isLoggedIn ||
+            dev.lelonio.square.auth.EngineCredentials.exist(this)
     val recentStore: RecentStore by lazy { RecentStore(this) }
 
     /** Which playlists were opened most recently, for ordering the home page. */

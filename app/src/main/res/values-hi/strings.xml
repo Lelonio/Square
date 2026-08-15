@@ -142,6 +142,10 @@
     <string name="scope_private_playlists">निजी प्लेलिस्ट में जोड़ना</string>
     <string name="scope_public_playlists">सार्वजनिक प्लेलिस्ट में जोड़ना</string>
     <string name="enter_client_id">क्लाइंट आईडी डालें।</string>
+    <string name="web_api_expired_title">सत्र समाप्त हो गया</string>
+    <string name="web_api_expired_body">खोज और होम वापस पाने के लिए अपने Spotify ऐप्लिकेशन में फिर से साइन इन करें।</string>
+    <string name="web_api_expired_action">फिर से साइन इन करें</string>
+    <string name="later">बाद में</string>
     <string name="needs_your_app">आपका अपना Spotify ऐप्लिकेशन चाहिए: इसे खोज में सेट करें।</string>
 
     <!-- Web API setup -->

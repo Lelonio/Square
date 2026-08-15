@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -39,7 +42,29 @@ class TokenStore(
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
 
-    private val refreshLock = Mutex()
+    /**
+     * Shared by every store over the same file, not owned by this instance.
+     *
+     * The container hands out one store and that is how it should stay, but a
+     * second instance is a single line to write and its cost is invisible until
+     * days later: two locks are no lock, both callers refresh the same token,
+     * and whichever loses is told the session was revoked. Keying the lock on
+     * the file makes the guarantee belong to the tokens rather than to whoever
+     * remembered to reuse the object.
+     */
+    private val refreshLock = lockFor(fileName)
+
+    private val _sessionLost = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * Emitted when a stored session is dropped because Spotify refused it.
+     *
+     * Something has to say so out loud. A session that ends quietly leaves the
+     * app answering nothing and looking like it is merely slow, and the way back
+     * in is a screen the user has to go looking for. Told about it, the app can
+     * offer the one tap that fixes it.
+     */
+    val sessionLost: SharedFlow<Unit> = _sessionLost.asSharedFlow()
 
     /**
      * True when a request can be authenticated right now.
@@ -108,6 +133,7 @@ class TokenStore(
                 // recognise it: otherwise every later attempt retries the same
                 // revoked token forever and the app never offers a way back in.
                 clear()
+                _sessionLost.tryEmit(Unit)
                 throw e
             }
             save(tokens)
@@ -129,5 +155,11 @@ class TokenStore(
 
         /** Refresh early so a token cannot expire mid-request. */
         const val SKEW_MILLIS = 60_000L
+
+        private val locks = mutableMapOf<String, Mutex>()
+
+        fun lockFor(fileName: String): Mutex = synchronized(locks) {
+            locks.getOrPut(fileName) { Mutex() }
+        }
     }
 }

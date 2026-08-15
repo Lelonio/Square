@@ -179,10 +179,11 @@ struct Recipe {
     session_config: SessionConfig,
     player_config: PlayerConfig,
     connect_config: ConnectConfig,
-    /// The OAuth credentials from the original login, used only if the cache has
-    /// nothing better. After the first handshake the cache holds a reusable blob
-    /// which outlives the access token, and that is what a reconnection wants.
-    credentials: Credentials,
+    /// The OAuth credentials from the original login, if the caller had a token
+    /// to give. Only the first login really needs one: the access point answers
+    /// a successful handshake with a reusable credential, which is kept and used
+    /// from then on. Empty means "use what was kept".
+    credentials: Option<Credentials>,
     credentials_dir: String,
     cache_dir: String,
 }
@@ -323,7 +324,11 @@ pub fn start(
         session_config.device_id = device_id.to_string();
     }
 
-    let credentials = Credentials::with_access_token(access_token);
+    let credentials = if access_token.is_empty() {
+        None
+    } else {
+        Some(Credentials::with_access_token(access_token))
+    };
 
     let mixer = Arc::new(
         SoftMixer::open(MixerConfig::default()).map_err(|e| format!("mixer failed: {e}"))?,
@@ -468,13 +473,46 @@ fn build_bundle(
     // replaced it and mark a device that is perfectly alive as gone.
     let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
 
-    let mixer_volume = mixer.get_soft_volume();
     // Cloned before the async block takes ownership of the Arc as a `dyn Mixer`.
     let mixer_for_spirc: Arc<dyn Mixer> = mixer.clone();
     let session_config = recipe.session_config.clone();
     let player_config = recipe.player_config.clone();
     let connect_config = recipe.connect_config.clone();
-    let credentials = recipe.credentials.clone();
+
+    // The credential the access point issued the first time this device logged
+    // in, kept in a directory of its own.
+    //
+    // It is the difference between a session that lasts and one that has to be
+    // renewed. An OAuth access token is good for an hour, and the refresh token
+    // behind it is rotated on every use and revoked on the first mistake, so an
+    // engine that needs one at every launch is one bad refresh away from asking
+    // the listener to sign in again. The blob the handshake answers with has
+    // neither property: it is what go-librespot writes to `credentials.json` and
+    // then reuses forever, and it is why signing in there is something you do
+    // once.
+    //
+    // Kept apart from librespot's own credentials file because that file is
+    // written by the connection itself, and what has to survive is the copy
+    // nothing else touches.
+    let kept = Cache::new(
+        Some(&std::path::Path::new(&recipe.credentials_dir).join("reusable")),
+        None,
+        None,
+        None,
+    )
+    .map_err(|e| format!("cache failed: {e}"))?;
+
+    // The kept credential first, the token second. A token is only ever the way
+    // in for a device that has never been in.
+    let attempts: Vec<(&str, Credentials)> = kept
+        .credentials()
+        .into_iter()
+        .map(|c| ("the kept credential", c))
+        .chain(recipe.credentials.clone().map(|c| ("an access token", c)))
+        .collect();
+    if attempts.is_empty() {
+        return Err("no credentials".into());
+    }
 
     // The account's other devices, watched over the same dealer.
     //
@@ -487,63 +525,99 @@ fn build_bundle(
     let watch_tx = events_tx.clone();
 
     let (session, player, spirc, spirc_task) = rt.block_on(async move {
-        // Seed the cache with the OAuth credentials, then hand the cached copy
-        // to `connect` with storing switched off. Letting `connect` store
-        // instead would overwrite the cache with the handshake's reusable
-        // credentials, and that blob is what gets sent as the stored credential
-        // when login5 issues the access point's HTTP token.
-        cache.save_credentials(&credentials);
-        let session = Session::new(session_config, Some(cache));
-        let credentials = session
-            .cache()
-            .and_then(|cache| cache.credentials())
-            .unwrap_or(credentials);
+        let last = attempts.len() - 1;
+        let mut failure = String::new();
 
-        crate::remote::watch(&session, move || {
-            let _ = watch_tx.send(Pump::Cluster);
-        });
-
-        // No `session.connect` here: `Spirc::new` registers its dealer
-        // listeners and then connects the session itself. Connecting first
-        // authenticated twice and left the second attempt reporting "Session is
-        // not connected", which is what this looked like from the outside.
-
-        let player = Player::new(player_config, session.clone(), mixer_volume, move || {
-            Box::new(crate::sink::AndroidSink::new(AudioFormat::S16, generation))
-        });
-
-        let (spirc, spirc_task) = Spirc::new(
-            connect_config,
-            session.clone(),
-            credentials.clone(),
-            player.clone(),
-            mixer_for_spirc,
-        )
-        .await
-        .map_err(|e| format!("connect failed: {e}"))?;
-
-        // Spirc connects with credential storing switched on, which replaces
-        // the cached OAuth blob with the handshake's reusable one. login5 signs
-        // its stored-credential request with the session's client id, so the
-        // two have to agree or every catalogue call comes back BAD_REQUEST —
-        // putting the original back is what keeps the access point usable.
-        if let Some(cache) = session.cache() {
+        for (n, (kind, credentials)) in attempts.into_iter().enumerate() {
+            log::info!("logging in with {kind}");
+            // Seed the cache, then hand the cached copy to `connect` with
+            // storing switched off. Letting `connect` store instead would
+            // overwrite the cache with the handshake's own blob, and what is in
+            // the cache is what gets sent as the stored credential when login5
+            // issues the access point's HTTP token.
+            let cache = cache.clone();
             cache.save_credentials(&credentials);
-        }
+            let session = Session::new(session_config.clone(), Some(cache));
 
-        // Checked here rather than left to the library. The vendored
-        // librespot-core used to call exit(1) on a non-premium account, which
-        // took the app's process down and left Android restarting the service
-        // in a loop; it now only logs, so the refusal has to be made an error
-        // the caller can show.
-        if let Some(account_type) = session.get_user_attribute("type") {
-            if account_type != "premium" {
-                session.shutdown();
-                return Err(PREMIUM_REQUIRED.to_string());
+            let watch_tx = watch_tx.clone();
+            crate::remote::watch(&session, move || {
+                let _ = watch_tx.send(Pump::Cluster);
+            });
+
+            // No `session.connect` here: `Spirc::new` registers its dealer
+            // listeners and then connects the session itself. Connecting first
+            // authenticated twice and left the second attempt reporting
+            // "Session is not connected", which is what this looked like from
+            // the outside.
+
+            // Read per attempt: the getter is a box the player takes, so one
+            // made in advance would be gone by the second time round.
+            let player = Player::new(
+                player_config.clone(),
+                session.clone(),
+                mixer.get_soft_volume(),
+                move || Box::new(crate::sink::AndroidSink::new(AudioFormat::S16, generation)),
+            );
+
+            let connected = Spirc::new(
+                connect_config.clone(),
+                session.clone(),
+                credentials.clone(),
+                player.clone(),
+                mixer_for_spirc.clone(),
+            )
+            .await;
+
+            let (spirc, spirc_task) = match connected {
+                Ok(pair) => pair,
+                Err(e) => {
+                    session.shutdown();
+                    failure = format!("connect failed: {e}");
+                    // A kept credential the account no longer honours — the
+                    // password changed, the device was removed from the list —
+                    // is a dead end, not a reason to stop: it is thrown away so
+                    // the token behind it gets its turn, and so the next launch
+                    // does not try it again.
+                    if n < last {
+                        log::warn!("{failure}, trying the next credential");
+                        let _ = std::fs::remove_dir_all(
+                            std::path::Path::new(&recipe.credentials_dir).join("reusable"),
+                        );
+                        continue;
+                    }
+                    return Err(failure);
+                }
+            };
+
+            // Spirc connects with credential storing switched on, so the cache
+            // now holds the blob the access point answered with. That is the
+            // one worth keeping, and the seed goes back into the cache after it
+            // is taken: login5 signs its stored-credential request with the
+            // session's client id, and the pair that is known to agree is the
+            // one this session actually logged in with.
+            if let Some(cache) = session.cache() {
+                if let Some(reusable) = cache.credentials() {
+                    kept.save_credentials(&reusable);
+                }
+                cache.save_credentials(&credentials);
             }
+
+            // Checked here rather than left to the library. The vendored
+            // librespot-core used to call exit(1) on a non-premium account,
+            // which took the app's process down and left Android restarting the
+            // service in a loop; it now only logs, so the refusal has to be
+            // made an error the caller can show.
+            if let Some(account_type) = session.get_user_attribute("type") {
+                if account_type != "premium" {
+                    session.shutdown();
+                    return Err(PREMIUM_REQUIRED.to_string());
+                }
+            }
+
+            return Ok::<_, String>((session, player, spirc, spirc_task));
         }
 
-        Ok::<_, String>((session, player, spirc, spirc_task))
+        Err(failure)
     })?;
 
     // The event loop runs for the life of the bundle: it is what answers the

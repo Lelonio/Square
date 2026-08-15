@@ -35,7 +35,7 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
     override val id = BackendId.SPOTIFY
 
     private val _authState = MutableStateFlow<BackendAuthState>(
-        if (container.tokenStore.isLoggedIn) BackendAuthState.Connecting else BackendAuthState.LoggedOut,
+        if (container.spotifySignedIn) BackendAuthState.Connecting else BackendAuthState.LoggedOut,
     )
     override val authState: StateFlow<BackendAuthState> = _authState.asStateFlow()
 
@@ -46,10 +46,10 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
      * session every catalogue call would fail against.
      */
     override val isReady: Boolean
-        get() = container.tokenStore.isLoggedIn && NativeBridge.isConnected
+        get() = container.spotifySignedIn && NativeBridge.isConnected
 
     override suspend fun refreshAuth() {
-        if (!container.tokenStore.isLoggedIn) {
+        if (!container.spotifySignedIn) {
             _authState.value = BackendAuthState.LoggedOut
             return
         }

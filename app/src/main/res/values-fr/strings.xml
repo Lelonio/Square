@@ -130,6 +130,10 @@
     <string name="scope_private_playlists">Ajouter aux playlists privées</string>
     <string name="scope_public_playlists">Ajouter aux playlists publiques</string>
     <string name="enter_client_id">Saisissez le client ID.</string>
+    <string name="web_api_expired_title">Session expirée</string>
+    <string name="web_api_expired_body">Reconnectez-vous à votre application Spotify pour retrouver la recherche et l’accueil.</string>
+    <string name="web_api_expired_action">Se reconnecter</string>
+    <string name="later">Plus tard</string>
     <string name="needs_your_app">Votre propre application Spotify est nécessaire : configurez-la dans Rechercher.</string>
 
     <string name="turn_on_search">ACTIVER LA RECHERCHE</string>

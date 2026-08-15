@@ -73,9 +73,14 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
-        tokens = TokenStore(this)
         playbackStore = PlaybackStore(this)
         container = application as dev.lelonio.square.SquareApplication
+        // The container's own store, not one of this service's making. Two
+        // instances mean two refresh locks, so the screen and the engine could
+        // refresh the same token at once: Spotify retires it as it issues the
+        // next, the slower of the two is told the session is revoked, and the
+        // user is asked to sign in again for no reason at all.
+        tokens = container.tokenStore
         quality = container.quality
         crossfade = container.crossfade
 
@@ -144,6 +149,16 @@ class PlaybackService : MediaLibraryService() {
         // Already read by the application object, and harmless twice: `load`
         // returns at once once the file is open.
         AudioEffects.load(this)
+
+        // What was paused, back on screen before anything is authenticated.
+        //
+        // Connecting is a handshake and a catalogue call, and on a cold start
+        // that is seconds. Waiting for it meant the app came back with an empty
+        // player, as if nothing had ever been playing, and the track appeared
+        // only once the access point answered. The queue is on disk, so it goes
+        // up straight away and shows as loading; the engine is given it in
+        // `connectEngine`.
+        restoreQueue(handOverNow = false)
 
         // The bitrate is fixed when the player is built, so a change means a new
         // engine. Watched here rather than acted on from the settings screen:
@@ -539,14 +554,25 @@ class PlaybackService : MediaLibraryService() {
         // Guards against the repeated ACTION_CONNECT the UI may send: the native
         // side rejects a second start, and that error would look like a login
         // failure and clear a perfectly good session.
-        if (engineStarted || !tokens.isLoggedIn) return@launch
+        if (engineStarted || !container.spotifySignedIn) return@launch
         // Nothing to authenticate against while another backend is playing, and
         // starting the engine would take the audio device out from under it.
         val engine = librespot ?: return@launch
         engineStarted = true
 
         runCatching {
-            val accessToken = tokens.validAccessToken()
+            // Empty is a real answer here. The engine keeps the credential the
+            // access point issued and prefers it, so a token is only needed by a
+            // device logging in for the first time: refusing to start without
+            // one would throw away a session that works because the OAuth half
+            // of it, which playback does not use, has lapsed.
+            val kept = dev.lelonio.square.auth.EngineCredentials.exist(this@PlaybackService)
+            val accessToken = runCatching { tokens.validAccessToken() }
+                .getOrElse { error ->
+                    if (!kept) throw error
+                    android.util.Log.w(TAG, "no token, logging in with the kept credential", error)
+                    ""
+                }
             withContext(Dispatchers.IO) {
                 NativeBridge.start(
                     // Must match the id the OAuth token was minted for.
@@ -579,21 +605,22 @@ class PlaybackService : MediaLibraryService() {
         }.onFailure { error ->
             engineStarted = false
             android.util.Log.e(TAG, "engine start failed: $error", error)
-            // The access point rejecting the token means the session is no
-            // longer usable, so send the user back through OAuth rather than
-            // retrying with the same credentials. A revoked refresh token is
-            // already cleared by TokenStore before it gets here.
+            // Only a refused account ends the session here. Everything else the
+            // handshake can fail with — no network, an access point that is
+            // busy, a dealer that dropped — is temporary, and signing the user
+            // out over it costs them their session for a failure that would
+            // have fixed itself on the next attempt. A refresh token Spotify
+            // really has revoked is cleared by TokenStore before it gets here.
             if (error.message?.contains(PREMIUM_REQUIRED) == true) {
                 // Back to the login screen, with a reason. Staying signed in
                 // would leave an app that looks connected and plays nothing.
                 tokens.clear()
+                dev.lelonio.square.auth.EngineCredentials.clear(this@PlaybackService)
                 android.widget.Toast.makeText(
                     this@PlaybackService,
                     getString(dev.lelonio.square.R.string.premium_required),
                     android.widget.Toast.LENGTH_LONG,
                 ).show()
-            } else if (error.message?.contains("login failed") == true) {
-                tokens.clear()
             }
         }.onSuccess {
             android.util.Log.i(TAG, "engine connected")
@@ -609,9 +636,14 @@ class PlaybackService : MediaLibraryService() {
      * something and only then did the engine finish connecting, and overwriting
      * that would be worse than not restoring at all.
      */
-    private fun restoreQueue() {
+    private fun restoreQueue(handOverNow: Boolean = true) {
         val engine = librespot ?: return
-        if (player.mediaItemCount > 0) return
+        if (player.mediaItemCount > 0) {
+            // Already on screen from the early restore; all that is left is to
+            // give it to the engine that has just come up.
+            if (handOverNow) engine.handOverToEngine()
+            return
+        }
         val saved = playbackStore.load() ?: return
         // Spotify's own queue only. The store holds whichever source was last
         // playing, and handing librespot a queue of `ytmusic:` URIs would fill
@@ -629,6 +661,7 @@ class PlaybackService : MediaLibraryService() {
             contextUri = saved.contextUri,
             contextIsOrdered = saved.contextOrdered,
             contextLabel = saved.contextLabel,
+            handOverNow = handOverNow,
         )
         android.util.Log.i(TAG, "restored ${saved.tracks.size} tracks at ${saved.index}")
     }
@@ -846,6 +879,35 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         session
+
+    /**
+     * Stays in the foreground while paused, which Media3 does not do on its own.
+     *
+     * Pausing makes it call this with `false`, the service drops out of the
+     * foreground, and the notification is left attached to a process the system
+     * is now free to reclaim. It usually does, within minutes, and what the
+     * listener sees is the shade quietly emptying: the track they paused is
+     * gone, and with it the one control that would have resumed it.
+     *
+     * Media playback is exactly what this kind of service is for, and the way
+     * out of it is still the obvious one: swiping the app away stops the service
+     * in [onTaskRemoved], which is where a paused session really should end.
+     */
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        // Kept rather than started. A foreground service may only be started
+        // from the foreground, and this is also called for a service brought up
+        // in the background — a media button, the car binding — where forcing it
+        // would be the system refusing and taking the process with it. Staying
+        // in a state already entered legitimately is always allowed.
+        if (startInForegroundRequired) heldForeground = true
+        super.onUpdateNotification(
+            session,
+            startInForegroundRequired || (heldForeground && player.mediaItemCount > 0),
+        )
+    }
+
+    /** Whether playback has put this service in the foreground at least once. */
+    private var heldForeground = false
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Saved first: this is the last chance to record where the track was,

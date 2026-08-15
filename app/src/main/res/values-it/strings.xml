@@ -131,6 +131,10 @@
     <string name="scope_private_playlists">Aggiungi a playlist private</string>
     <string name="scope_public_playlists">Aggiungi a playlist pubbliche</string>
     <string name="enter_client_id">Inserisci il client id.</string>
+    <string name="web_api_expired_title">Sessione scaduta</string>
+    <string name="web_api_expired_body">Accedi di nuovo alla tua applicazione Spotify per riavere ricerca e home.</string>
+    <string name="web_api_expired_action">Accedi di nuovo</string>
+    <string name="later">Più tardi</string>
     <string name="needs_your_app">Serve la tua applicazione Spotify: configurala in Cerca.</string>
 
     <string name="turn_on_search">ATTIVA LA RICERCA</string>

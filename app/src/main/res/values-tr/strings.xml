@@ -142,6 +142,10 @@
     <string name="scope_private_playlists">Özel çalma listelerine ekleme</string>
     <string name="scope_public_playlists">Herkese açık listelere ekleme</string>
     <string name="enter_client_id">İstemci kimliğini gir.</string>
+    <string name="web_api_expired_title">Oturum sona erdi</string>
+    <string name="web_api_expired_body">Arama ve ana sayfanın geri gelmesi için Spotify uygulamana yeniden giriş yap.</string>
+    <string name="web_api_expired_action">Yeniden giriş yap</string>
+    <string name="later">Sonra</string>
     <string name="needs_your_app">Kendi Spotify uygulaman gerekiyor: Ara bölümünden ayarla.</string>
 
     <!-- Web API setup -->

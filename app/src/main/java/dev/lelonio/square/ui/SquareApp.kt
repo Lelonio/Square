@@ -826,6 +826,18 @@ fun SquareApp(
                     }
                 }
 
+                // Out here for the same reason as the bars below: it refracts
+                // `pageBackdrop`, so it cannot be drawn inside it.
+                SessionExpiredNotice(
+                    visible = webApi.expired && !webApi.connecting,
+                    backdrop = pageBackdrop,
+                    onReconnect = viewModel::connectWebApi,
+                    onDismiss = viewModel::dismissWebApiExpiry,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = statusBar + 8.dp),
+                )
+
                 // Outside the recorded layer, and that is structural rather than
                 // stylistic: these refract `pageBackdrop`, and a pane drawn
                 // inside the layer it samples recurses on the render thread

@@ -74,10 +74,6 @@ class LibrespotPlayer(
         // screen would be someone else's.
         val asContext = queue.contextIsOrdered && !queue.isShuffled
 
-        android.util.Log.i(
-            "SquarePlayer",
-            "load ${uris.size} tracks at $index (playing=$startPlaying, context=$asContext)",
-        )
         fadeOutThen {
             // Back on the player's looper before anything is read or called.
             // The fade runs on its own thread, and everything here — the queue,
@@ -491,7 +487,6 @@ class LibrespotPlayer(
         skipPending = false
         val target = queue.currentIndex
         val from = engineIndex
-        android.util.Log.i("SquarePlayer", "skip settles: engine at $from, wanted $target")
 
         when {
             from == target -> {
@@ -576,6 +571,15 @@ class LibrespotPlayer(
             // anyway would talk over it.
             if (!focus.requestFocus()) return Futures.immediateVoidFuture()
             wantPlay = true
+            // Pressed before there is an engine to press it on. Remembered
+            // rather than sent: the queue goes over the moment the access point
+            // answers, and it goes over playing.
+            if (awaitingEngine) {
+                playbackState = Player.STATE_BUFFERING
+                onPlaybackActive(true)
+                invalidateState()
+                return Futures.immediateVoidFuture()
+            }
             onPlaybackActive(true)
             // Play is where a reconnection is worth waiting for. The engine has
             // no queue of its own, so a rebuilt device knows nothing until the
@@ -791,6 +795,14 @@ class LibrespotPlayer(
         invalidateState()
     }
 
+    /**
+     * True while the queue on screen is one the engine has not been given yet.
+     *
+     * See [restore]: the saved queue is put back before there is an access point
+     * to hand it to, so this is the window between the two.
+     */
+    private var awaitingEngine = false
+
     fun restore(
         tracks: List<PlayQueue.Track>,
         shuffleOrder: List<Int>?,
@@ -801,6 +813,18 @@ class LibrespotPlayer(
         contextUri: String?,
         contextIsOrdered: Boolean,
         contextLabel: String,
+        /**
+         * Whether the engine can be handed the queue now.
+         *
+         * False when the app has only just started. Authenticating takes a
+         * handshake and a catalogue call, and none of that is a reason to leave
+         * the screen blank in the meantime: what was paused is known from disk,
+         * so it is put back straight away and shown as loading, and
+         * [handOverToEngine] gives it to the access point once there is one.
+         * The alternative, which is what this used to do, was an app that came
+         * back looking as though nothing had ever been playing.
+         */
+        handOverNow: Boolean = true,
     ) {
         if (tracks.isEmpty()) return
 
@@ -820,7 +844,11 @@ class LibrespotPlayer(
         this.positionMs = positionMs
         playWhenReady = false
         wantPlay = false
-        playbackState = Player.STATE_READY
+        awaitingEngine = !handOverNow
+        // Loading, not ready: there is a track and a position to show, and
+        // nothing that could answer a tap on play yet. Buffering is what the
+        // mini player already draws a spinner for.
+        playbackState = if (handOverNow) Player.STATE_READY else Player.STATE_BUFFERING
         onQueueChanged()
 
         // Paused: an app that starts playing by itself when opened is worse
@@ -830,9 +858,29 @@ class LibrespotPlayer(
         // done here at all when there is nothing to restore — activating on
         // launch would pull playback away from whatever the account is actually
         // playing on.
-        if (queue.items.isNotEmpty()) {
+        if (queue.items.isNotEmpty() && handOverNow) {
             pushQueue(startPlaying = false, positionMs = positionMs.toInt())
         }
+        invalidateState()
+    }
+
+    /**
+     * Gives the engine the queue that was put back before it existed.
+     *
+     * Carries [wantPlay] with it, so a listener who pressed play while the app
+     * was still connecting gets the track they asked for rather than a button
+     * that did nothing.
+     */
+    fun handOverToEngine() {
+        if (!awaitingEngine) return
+        awaitingEngine = false
+        if (queue.items.isEmpty()) {
+            playbackState = Player.STATE_IDLE
+            invalidateState()
+            return
+        }
+        playbackState = if (wantPlay) Player.STATE_BUFFERING else Player.STATE_READY
+        pushQueue(startPlaying = wantPlay, positionMs = positionMs.toInt())
         invalidateState()
     }
 
@@ -962,7 +1010,6 @@ class LibrespotPlayer(
         val next = queue.currentIndex + 1
         if (!engineQueueStale || next > queue.items.lastIndex) return false
         if (!queue.items[next].queued) return false
-        android.util.Log.i("SquarePlayer", "taking over for a queued track at $next")
         requestSkipTo(next, 0L)
         return true
     }
@@ -1004,10 +1051,6 @@ class LibrespotPlayer(
                     // those is a load with no play. Following only plays left
                     // the app three songs behind what was in the speaker,
                     // which is exactly how the two came apart.
-                    android.util.Log.i(
-                        "SquarePlayer",
-                        "following the engine to $index ($type), screen was at ${queue.currentIndex}",
-                    )
                     queue.currentIndex = index
                     skipInFlight = false
                     positionMs = 0

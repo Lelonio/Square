@@ -148,6 +148,10 @@
     <string name="scope_private_playlists">Add to private playlists</string>
     <string name="scope_public_playlists">Add to public playlists</string>
     <string name="enter_client_id">Enter the client ID.</string>
+    <string name="web_api_expired_title">Session expired</string>
+    <string name="web_api_expired_body">Sign in to your Spotify application again to bring search and the home page back.</string>
+    <string name="web_api_expired_action">Sign in again</string>
+    <string name="later">Later</string>
     <string name="needs_your_app">You need your own Spotify application: set it up in Search.</string>
 
     <!-- Web API setup -->

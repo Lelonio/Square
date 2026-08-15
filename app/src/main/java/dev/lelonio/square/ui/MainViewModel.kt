@@ -121,7 +121,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var playlistJob: Job? = null
 
     private val _state = MutableStateFlow<UiState>(
-        if (container.tokenStore.isLoggedIn) UiState.Connecting else UiState.LoggedOut,
+        if (container.spotifySignedIn) UiState.Connecting else UiState.LoggedOut,
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
 
@@ -747,6 +747,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val error: String? = null,
         /** What the user must register as a redirect URI in their dashboard. */
         val redirectUri: String = SpotifyOAuth.REDIRECT_URI,
+        /**
+         * Set when Spotify has refused the stored session, so the app can say
+         * so and offer the way back in.
+         *
+         * The client id is already known and does not expire, so signing in
+         * again is one tap: nothing has to be pasted or registered a second
+         * time.
+         */
+        val expired: Boolean = false,
     )
 
     private val _webApi = MutableStateFlow(
@@ -756,6 +765,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ),
     )
     val webApi: StateFlow<WebApiState> = _webApi.asStateFlow()
+
+    init {
+        // Only worth saying while there is a client id to sign in with again:
+        // an account that was never connected has its own setup card, and a
+        // notice about a session that expired would be about nothing.
+        viewModelScope.launch {
+            container.webApi.tokens.sessionLost.collect {
+                if (container.webApi.clientId.value == null) return@collect
+                _webApi.value = _webApi.value.copy(connected = false, expired = true)
+            }
+        }
+    }
+
+    /** The notice is dismissed by hand; search and the feed keep working without it. */
+    fun dismissWebApiExpiry() {
+        _webApi.value = _webApi.value.copy(expired = false)
+    }
 
     fun onWebApiClientIdChange(value: String) {
         _webApi.value = _webApi.value.copy(clientId = value, error = null)
@@ -775,7 +801,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return@launch
         }
 
-        _webApi.value = _webApi.value.copy(connecting = true, error = null)
+        _webApi.value = _webApi.value.copy(connecting = true, error = null, expired = false)
         container.webApi.setClientId(clientId)
         runCatching {
             // Search needs no scope — it reads public catalogue data — but the
@@ -874,7 +900,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (container.activeBackend.id != BackendId.SPOTIFY) {
             // No engine to authenticate, so nothing to send the service.
             refresh()
-        } else if (container.tokenStore.isLoggedIn) {
+        } else if (container.spotifySignedIn) {
             PlaybackService.connect(app)
             refresh()
         }
@@ -898,6 +924,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun logOut() {
         container.tokenStore.clear()
+        // The engine's own credential too, or the next launch would log itself
+        // back in with it and signing out would mean nothing.
+        dev.lelonio.square.auth.EngineCredentials.clear(getApplication())
         container.recentStore.clear()
         container.playlistOrder.clear()
         // Somebody else's library must not be sitting in the cache when the
@@ -920,7 +949,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _search.value = SearchState()
         _youtubeHome.value = YouTubeHomeState()
         _state.value = UiState.Loading
-        if (container.activeBackend.id == BackendId.SPOTIFY && container.tokenStore.isLoggedIn) {
+        if (container.activeBackend.id == BackendId.SPOTIFY && container.spotifySignedIn) {
             PlaybackService.connect(getApplication())
         }
         refresh()
@@ -963,14 +992,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return@launch
         }
 
-        if (!container.tokenStore.isLoggedIn) {
+        if (!container.spotifySignedIn) {
             _state.value = UiState.LoggedOut
             return@launch
         }
 
         _state.value = UiState.Connecting
         if (!awaitEngine()) {
-            _state.value = if (container.tokenStore.isLoggedIn) {
+            _state.value = if (container.spotifySignedIn) {
                 UiState.Failed(string(R.string.cannot_connect))
             } else {
                 UiState.LoggedOut
@@ -1587,7 +1616,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // this check the UI would sit on "connecting" for the full timeout
             // and then report a connection problem, when the real answer is
             // that the user has to log in again.
-            if (!container.tokenStore.isLoggedIn) return@withTimeoutOrNull false
+            if (!container.spotifySignedIn) return@withTimeoutOrNull false
             delay(POLL_INTERVAL_MS)
         }
         true
