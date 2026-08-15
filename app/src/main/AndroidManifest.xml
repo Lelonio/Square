@@ -18,6 +18,17 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
+      Reading the audio already on the phone. Square hands downloading to
+      another app, so what comes back is an ordinary file in the media store
+      rather than anything this app placed. Audio only: the newer permission
+      exists so a music player does not have to ask to see photographs.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!--
       Package visibility, required from Android 11 to see any of this. Without
       it a downloader is invisible to resolve and to setPackage alike, so the
       hand-off cannot tell an installed app from an absent one and every link
@@ -50,6 +61,38 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              Spotify's own scheme. Nothing verifies these, so a phone with both
+              apps installed simply asks which one, and a phone with only Square
+              opens Square.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="spotify" />
+            </intent-filter>
+
+            <!--
+              The links people actually send each other.
+
+              `autoVerify` asks Android to check for a statement file on the
+              host, and open.spotify.com will never carry one naming this app, so
+              the check fails and the link is not handled automatically. That is
+              the platform working as designed: since Android 12 a web link
+              belongs to whoever the domain vouches for, and everyone else has to
+              be chosen by hand, once, under "Open by default" — which the
+              settings screen links to.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="open.spotify.com" />
+                <data android:scheme="http" android:host="open.spotify.com" />
+                <data android:scheme="https" android:host="link.tospotify.com" />
             </intent-filter>
         </activity>
 

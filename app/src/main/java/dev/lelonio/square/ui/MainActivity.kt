@@ -49,6 +49,15 @@ class MainActivity : ComponentActivity() {
      */
     private var openPlayer by mutableStateOf(0)
 
+    /**
+     * A Spotify link the app was opened with.
+     *
+     * Carries a number for the same reason [openPlayer] does: the same link
+     * twice is two requests, and a plain string would look unchanged the second
+     * time.
+     */
+    private var link by mutableStateOf<LinkRequest?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Transparent bars; SquareTheme sets the icon colour, because it is the
@@ -66,6 +75,7 @@ class MainActivity : ComponentActivity() {
         if (intent?.opensPlayer() == true) {
             openPlayer++
         }
+        intent?.let(::takeLink)
 
         setContent {
             SquareApp(
@@ -73,6 +83,7 @@ class MainActivity : ComponentActivity() {
                 onPlay = ::play,
                 onEnqueue = ::enqueue,
                 openPlayer = openPlayer,
+                link = link,
             )
         }
     }
@@ -116,6 +127,19 @@ class MainActivity : ComponentActivity() {
         if (intent.opensPlayer()) {
             openPlayer++
         }
+        takeLink(intent)
+    }
+
+    /**
+     * The whole of link handling on this side: recognise it, and pass it on.
+     *
+     * A `singleTask` activity gets the second link through `onNewIntent` rather
+     * than a new instance, so both ways in lead here.
+     */
+    private fun takeLink(intent: android.content.Intent) {
+        if (intent.action != android.content.Intent.ACTION_VIEW) return
+        val uri = dev.lelonio.square.data.SpotifyLink.parse(intent.data) ?: return
+        link = LinkRequest(uri, (link?.n ?: 0) + 1)
     }
 
     private fun android.content.Intent.opensPlayer(): Boolean =
@@ -244,6 +268,9 @@ class MainActivity : ComponentActivity() {
             )
             .build()
 }
+
+/** A `spotify:` URI the app was opened with, and which opening it was. */
+data class LinkRequest(val uri: String, val n: Int)
 
 /** Key for the context URI carried in a media item's metadata extras. */
 const val EXTRA_CONTEXT_URI = "dev.lelonio.square.CONTEXT_URI"

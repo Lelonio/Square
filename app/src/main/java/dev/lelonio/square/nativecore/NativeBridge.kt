@@ -337,7 +337,17 @@ object NativeBridge {
      */
     fun playlistCover(uri: String): String = nativePlaylistCover(uri)
 
+    /**
+     * A playlist's title, for one arriving by link rather than from the account.
+     */
+    fun playlistName(uri: String): String = nativePlaylistName(uri)
+
+    /** What the people this account follows are listening to. */
+    fun friendActivity(): String = nativeFriendActivity()
+
+    private external fun nativeFriendActivity(): String
     private external fun nativePlaylistCover(uri: String): String
+    private external fun nativePlaylistName(uri: String): String
     private external fun nativeInitContext(context: android.content.Context)
     private external fun nativeSetAudioOutput(output: Any)
     private external fun nativeStart(

@@ -43,6 +43,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import dev.lelonio.square.ui.components.FriendsPanel
+import dev.lelonio.square.ui.components.SharedTrackCard
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -198,6 +200,8 @@ fun SquareApp(
      * already open is still a request.
      */
     openPlayer: Int = 0,
+    /** A Spotify link the app was opened with; see [LinkRequest]. */
+    link: LinkRequest? = null,
     viewModel: MainViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -304,6 +308,8 @@ fun SquareApp(
     val playlistOrder by viewModel.playlistOrder.collectAsStateWithLifecycle()
     val pinnedPlaylists by viewModel.pinnedPlaylists.collectAsStateWithLifecycle()
     val likedTracks by viewModel.likedTracks.collectAsStateWithLifecycle()
+    val friends by viewModel.friends.collectAsStateWithLifecycle()
+    val followedArtists by viewModel.followedArtists.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val addToPlaylist by viewModel.addToPlaylist.collectAsStateWithLifecycle()
     val trackSort by viewModel.trackSort.collectAsStateWithLifecycle()
@@ -320,6 +326,10 @@ fun SquareApp(
     var trackMenu by remember { mutableStateOf<TrackMenuRequest?>(null) }
     // The playlist a long press opened the actions for.
     var playlistMenu by remember { mutableStateOf<CatalogPlaylist?>(null) }
+    // A song somebody sent, waiting to be looked at; see SharedTrackCard.
+    var sharedTrack by remember { mutableStateOf<CatalogTrack?>(null) }
+    // Whether the friend list is open; the faces in the header open it.
+    var friendsOpen by remember { mutableStateOf(false) }
     // Open when a name is being asked for; the playlist is null when the name is
     // for one that does not exist yet.
     var naming by remember { mutableStateOf<NamingRequest?>(null) }
@@ -534,6 +544,26 @@ fun SquareApp(
                 val currentEntry by navController.currentBackStackEntryAsState()
                 val route = currentEntry?.destination?.route
 
+                // A link from outside.
+                //
+                // A song is offered rather than started. Whoever sent it may
+                // have meant "listen to this now" or "keep this", and a link
+                // that begins playing over whatever was already on takes the
+                // choice away: the card shows what the link is, and both
+                // answers are one tap.
+                //
+                // Everything else is a page, and the page opens in front of
+                // whatever was on screen.
+                LaunchedEffect(link) {
+                    val uri = link?.uri ?: return@LaunchedEffect
+                    if (uri.startsWith("spotify:track:")) {
+                        sharedTrack = viewModel.resolveTrack(uri)
+                    } else {
+                        viewModel.openLink(uri)
+                        navController.navigate(Routes.PLAYLIST)
+                    }
+                }
+
                 // Back to the home page when the source changes: an open
                 // playlist, a search or a detail page all belong to the
                 // catalogue that was just swapped out.
@@ -607,7 +637,8 @@ fun SquareApp(
                 // it refracts was not being recorded while it was the only
                 // thing open, so the glass had nothing behind it and the sheet
                 // came up as a transparent panel with no depth at all.
-                val sheetsOpen = trackMenu != null || addToPlaylist.open || playlistMenu != null
+                val sheetsOpen = trackMenu != null || addToPlaylist.open || playlistMenu != null ||
+                    sharedTrack != null || friendsOpen
                 // Kept on a little past the close, or the layer would stop
                 // being recorded while the sheet is still fading out over it
                 // and the panel would go black on the way down.
@@ -681,6 +712,14 @@ fun SquareApp(
                                     onPlay(tracks, index, null, false, trendingLabel, 0L)
                                 },
                                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                                friends = friends,
+                                onOpenFriends = {
+                                    friendsOpen = true
+                                    // Read again as it opens: what somebody is
+                                    // playing is only worth showing if it is
+                                    // what they are playing now.
+                                    viewModel.loadFriends()
+                                },
                             )
                         }
 
@@ -726,6 +765,15 @@ fun SquareApp(
                                 canEdit = viewModel.canEditPlaylists,
                                 onCreatePlaylist = { naming = NamingRequest(null) },
                                 onPlaylistMenu = { playlistMenu = it },
+                                artists = followedArtists,
+                                onOpenArtist = { artist ->
+                                    viewModel.openContext(
+                                        artist.uri,
+                                        artist.title,
+                                        artist.artworkUrl,
+                                    )
+                                    navController.navigate(Routes.PLAYLIST)
+                                },
                                 backdrop = artBackdrop,
                             )
                         }
@@ -819,12 +867,25 @@ fun SquareApp(
                                             item.artworkUrl,
                                         )
                                     },
+                                    onToggleFollow = viewModel::toggleFollowArtist,
                                 )
                             }
                         }
 
                     }
                 }
+
+                // Out here for the same reason as the bars below: it refracts
+                // `pageBackdrop`, so it cannot be drawn inside it.
+                SessionExpiredNotice(
+                    visible = webApi.expired && !webApi.connecting,
+                    backdrop = pageBackdrop,
+                    onReconnect = viewModel::connectWebApi,
+                    onDismiss = viewModel::dismissWebApiExpiry,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = statusBar + 8.dp),
+                )
 
                 // Out here for the same reason as the bars below: it refracts
                 // `pageBackdrop`, so it cannot be drawn inside it.
@@ -1210,6 +1271,45 @@ fun SquareApp(
                         }
                     }
                 }
+
+                FriendsPanel(
+                    visible = friendsOpen,
+                    friends = friends,
+                    backdrop = overlayBackdrop,
+                    onOpenTrack = { friend ->
+                        friendsOpen = false
+                        sharedTrack = dev.lelonio.square.data.CatalogTrack(
+                            uri = friend.trackUri,
+                            name = friend.trackName,
+                            artist = friend.artist,
+                            artworkUrl = friend.artworkUrl,
+                        )
+                    },
+                    onDismiss = { friendsOpen = false },
+                )
+
+                // A song that arrived by link. Held one beat past the dismissal
+                // for the same reason the track sheet is: the card is still on
+                // its way out, and reading the track off the state that closed
+                // it would empty the cover and the title as it goes.
+                var lastShared by remember { mutableStateOf<CatalogTrack?>(null) }
+                LaunchedEffect(sharedTrack) { sharedTrack?.let { lastShared = it } }
+                SharedTrackCard(
+                    visible = sharedTrack != null,
+                    track = sharedTrack ?: lastShared,
+                    backdrop = overlayBackdrop,
+                    onPlay = {
+                        val track = sharedTrack ?: return@SharedTrackCard
+                        sharedTrack = null
+                        onPlay(listOf(track), 0, null, false, "", 0L)
+                    },
+                    onAddToPlaylist = {
+                        val track = sharedTrack ?: return@SharedTrackCard
+                        sharedTrack = null
+                        viewModel.openAddToPlaylist(track.uri, track.name)
+                    },
+                    onDismiss = { sharedTrack = null },
+                )
 
                 // Over everything, including the player: the same sheet is
                 // opened from a track row in the library and from the plus in

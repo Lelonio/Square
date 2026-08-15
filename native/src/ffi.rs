@@ -362,6 +362,30 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeCon
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeFriendActivity(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    guard_string(&mut env, "FriendActivity", catalog::friend_activity)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlaylistName(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+) -> jstring {
+    let uri = match read_string(&mut env, &uri) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "PlaylistName", || catalog::playlist_name(&uri))
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlaylistCover(
     mut env: JNIEnv,
     _class: JClass,

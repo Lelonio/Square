@@ -248,6 +248,45 @@ interface SpotifyApi {
     @DELETE("v1/playlists/{id}/followers")
     suspend fun unfollowPlaylist(@Path("id") playlistId: String)
 
+    /**
+     * Following an artist, exactly as the green button does.
+     *
+     * Needs `user-follow-modify`, and its sibling below needs
+     * `user-follow-read`. An account connected before those existed keeps
+     * working everywhere else and is told to reconnect only here, where the
+     * permission is actually missing.
+     */
+    @PUT("v1/me/following")
+    suspend fun followArtists(
+        @Query("type") type: String = "artist",
+        @Query("ids") ids: String,
+    )
+
+    @DELETE("v1/me/following")
+    suspend fun unfollowArtists(
+        @Query("type") type: String = "artist",
+        @Query("ids") ids: String,
+    )
+
+    @GET("v1/me/following/contains")
+    suspend fun isFollowing(
+        @Query("type") type: String = "artist",
+        @Query("ids") ids: String,
+    ): List<Boolean>
+
+    /**
+     * The artists the account follows.
+     *
+     * Cursor-paged rather than offset-paged, alone among the endpoints this app
+     * reads: the answer carries the id to continue after.
+     */
+    @GET("v1/me/following")
+    suspend fun followedArtists(
+        @Query("type") type: String = "artist",
+        @Query("limit") limit: Int = 50,
+        @Query("after") after: String? = null,
+    ): FollowedArtistsDto
+
     @GET("v1/search")
     suspend fun search(
         @Query("q") query: String,
@@ -329,7 +368,28 @@ data class ArtistDto(
     val uri: String? = null,
     val name: String,
     val images: List<ImageDto> = emptyList(),
+    /** How many accounts follow them; the number under the name. */
+    val followers: FollowersDto? = null,
+    /** Spotify's own labels for them, lowercase and often several. */
+    val genres: List<String> = emptyList(),
 )
+
+@Serializable
+data class FollowersDto(val total: Int = 0)
+
+/** The cursor-paged shape `me/following` answers with, and nothing else does. */
+@Serializable
+data class FollowedArtistsDto(val artists: ArtistCursorPageDto = ArtistCursorPageDto())
+
+@Serializable
+data class ArtistCursorPageDto(
+    val items: List<ArtistDto> = emptyList(),
+    val total: Int = 0,
+    val cursors: CursorsDto? = null,
+)
+
+@Serializable
+data class CursorsDto(val after: String? = null)
 
 @Serializable
 data class AlbumDto(
@@ -337,6 +397,12 @@ data class AlbumDto(
     val uri: String? = null,
     val name: String,
     val images: List<ImageDto> = emptyList(),
+    /**
+     * Which shelf it belongs on for the artist it was asked about: `album`,
+     * `single`, `compilation` or `appears_on`. Only `artists/{id}/albums`
+     * fills it, which is the one place it is needed.
+     */
+    @SerialName("album_group") val albumGroup: String? = null,
     /** ISO date, and not always a full one — Spotify returns bare years too. */
     @SerialName("release_date") val releaseDate: String? = null,
     @SerialName("total_tracks") val totalTracks: Int = 0,
@@ -394,6 +460,17 @@ data class PlaylistDto(
     val description: String? = null,
     val images: List<ImageDto> = emptyList(),
     val tracks: PlaylistTracksRefDto? = null,
+    /**
+     * Who made it. The one field that tells "This Is Fabri Fibra", which
+     * Spotify itself built, from a playlist a stranger named the same thing.
+     */
+    val owner: OwnerDto? = null,
+)
+
+@Serializable
+data class OwnerDto(
+    val id: String? = null,
+    @SerialName("display_name") val displayName: String? = null,
 )
 
 @Serializable

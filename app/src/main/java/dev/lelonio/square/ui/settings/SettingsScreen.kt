@@ -276,6 +276,38 @@ fun SettingsScreen(
             }
         }
 
+        if (open == SettingsPage.App && android.os.Build.VERSION.SDK_INT >= 31) {
+            item("links") {
+                Section(stringResource(R.string.spotify_links)) {
+                    Text(
+                        stringResource(R.string.spotify_links_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = InkDim,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                    )
+                    RowDivider()
+                    ActionRow(
+                        stringResource(R.string.open_by_default),
+                        destructive = false,
+                    ) {
+                        // Android's own screen, because this is Android's own
+                        // decision: an app cannot claim a domain it does not
+                        // own, and the listener granting it here is the whole
+                        // point of the design.
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings
+                                        .ACTION_APP_OPEN_BY_DEFAULT_SETTINGS,
+                                    android.net.Uri.parse("package:${context.packageName}"),
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         if (open == SettingsPage.About) item("permissions") {
             Section(stringResource(R.string.permissions_asked)) {
                 Text(

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -126,6 +128,9 @@ fun HomeScreen(
     feed: MainViewModel.FeedState,
     onOpenItem: (SearchItem) -> Unit,
     onOpenSettings: () -> Unit,
+    /** Friend activity, for the faces beside the account picture. */
+    friends: List<dev.lelonio.square.data.FriendListen> = emptyList(),
+    onOpenFriends: () -> Unit = {},
     /** The layer the glass on this page refracts; see the note in SquareApp. */
     backdrop: Backdrop,
     /**
@@ -248,6 +253,8 @@ fun HomeScreen(
                     topPadding = contentPadding.calculateTopPadding(),
                     onFilter = { filter = it },
                     onOpenSettings = onOpenSettings,
+                    friends = friends,
+                    onOpenFriends = onOpenFriends,
                 )
 
                 AnimatedContent(
@@ -502,6 +509,9 @@ private fun Header(
     topPadding: Dp,
     onFilter: (Feed) -> Unit,
     onOpenSettings: () -> Unit,
+    /** Who the account follows and what they play; empty hides the control. */
+    friends: List<dev.lelonio.square.data.FriendListen> = emptyList(),
+    onOpenFriends: () -> Unit = {},
     /**
      * False on a page with no feed to filter.
      *
@@ -609,6 +619,17 @@ private fun Header(
             // The way into the settings. They have no tab of their own — see
             // SettingsScreen — and the account picture is where anyone looks for
             // them anyway.
+            // The people the account follows, as a huddle of faces.
+            //
+            // Beside the account's own picture because that is what it is about
+            // — who is listening — and because a list nobody has asked for does
+            // not deserve a tab. Absent rather than empty when nobody is
+            // playing: a control that opens onto nothing is worse than no
+            // control.
+            if (friends.isNotEmpty()) {
+                FriendFaces(friends, onOpenFriends)
+            }
+
             Artwork(
                 url = avatarUrl,
                 title = name,
@@ -1239,3 +1260,49 @@ private const val CAROUSEL_SIZE = 8
 
 /** With the library filter on, the carousel is the whole point of the page. */
 private const val LIBRARY_SIZE = 30
+
+/**
+ * Up to three friends, overlapping, as one control.
+ *
+ * Stacked rather than listed: the header has room for a gesture, not for a row
+ * of names, and overlapping faces are the one shape everybody already reads as
+ * "these people, together". The count is left off deliberately — a badge would
+ * turn a glance into a number to keep at zero.
+ */
+@Composable
+private fun FriendFaces(
+    friends: List<dev.lelonio.square.data.FriendListen>,
+    onClick: () -> Unit,
+) {
+    val shown = friends.take(3)
+    // Measured rather than laid out in a row: each face sits on the one before
+    // it, so the box is one face wide plus what the others peek out by.
+    val width = FACE + FACE_PEEK * (shown.size - 1)
+    Box(
+        Modifier
+            .padding(start = 8.dp)
+            .width(width)
+            .height(FACE)
+            .pressable(onClick, pressedScale = 0.92f),
+    ) {
+        shown.forEachIndexed { index, friend ->
+            Artwork(
+                url = friend.avatarUrl,
+                title = friend.userName,
+                modifier = Modifier
+                    .offset(x = FACE_PEEK * index)
+                    .size(FACE)
+                    .clip(CircleShape)
+                    // The first face on top, so the stack leans the way a hand
+                    // of cards does rather than away from the reader.
+                    .zIndex((shown.size - index).toFloat()),
+                corner = FACE / 2,
+                decodeSize = FACE,
+            )
+        }
+    }
+}
+
+/** One face, and how much of the one behind it is left showing. */
+private val FACE = 30.dp
+private val FACE_PEEK = 20.dp

@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,6 +80,7 @@ import dev.lelonio.square.ui.components.LazyScrollBar
 import dev.lelonio.square.ui.components.SwipeToQueue
 import dev.lelonio.square.ui.glass.LiquidButton
 import dev.lelonio.square.ui.glass.pressable
+import dev.lelonio.square.ui.theme.InkDim
 import dev.lelonio.square.ui.theme.rememberArtworkColor
 import dev.lelonio.square.ui.theme.softShadow
 import java.util.Locale
@@ -134,6 +136,8 @@ fun PlaylistScreen(
      */
     onTrackMenu: (CatalogTrack) -> Unit,
     onOpenItem: (dev.lelonio.square.data.SearchItem) -> Unit = {},
+    /** Follows or unfollows the artist this page is about. */
+    onToggleFollow: () -> Unit = {},
     /** The remembered track order, and where a change to it is stored. */
     storedSort: String? = null,
     onSortChange: (String) -> Unit = {},
@@ -302,9 +306,14 @@ fun PlaylistScreen(
                 .nestedScroll(headerScroll),
             contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
         ) {
-            if (state.albums.isNotEmpty()) {
-                item(contentType = "albums") {
-                    AlbumStrip(albums = state.albums, onOpen = onOpenItem)
+            if (state.kind == MainViewModel.DetailKind.ARTIST) {
+                item(contentType = "artistAbout") {
+                    ArtistAbout(
+                        followers = state.followers,
+                        genres = state.genres,
+                        following = state.following,
+                        onToggleFollow = onToggleFollow,
+                    )
                 }
             }
 
@@ -388,6 +397,53 @@ fun PlaylistScreen(
                             onMenu = { onTrackMenu(track) },
                         )
                     }
+                }
+            }
+
+            // Everything the artist is in, under the songs they are known for.
+            //
+            // The tracks come first because that is what an artist page is
+            // opened for: a shelf of covers above them made the reader scroll
+            // past the artist to reach the artist. Albums, then singles, then
+            // the records that are somebody else's, then what Spotify built
+            // around them — the order is how much of the artist is in each.
+            if (state.albums.isNotEmpty()) {
+                item(contentType = "albums") {
+                    AlbumStrip(
+                        albums = state.albums,
+                        title = stringResource(R.string.albums),
+                        onOpen = onOpenItem,
+                    )
+                }
+            }
+
+            if (state.singles.isNotEmpty()) {
+                item(contentType = "singles") {
+                    AlbumStrip(
+                        albums = state.singles,
+                        title = stringResource(R.string.singles_and_eps),
+                        onOpen = onOpenItem,
+                    )
+                }
+            }
+
+            if (state.appearsOn.isNotEmpty()) {
+                item(contentType = "appearsOn") {
+                    AlbumStrip(
+                        albums = state.appearsOn,
+                        title = stringResource(R.string.appears_on),
+                        onOpen = onOpenItem,
+                    )
+                }
+            }
+
+            if (state.artistPlaylists.isNotEmpty()) {
+                item(contentType = "artistPlaylists") {
+                    AlbumStrip(
+                        albums = state.artistPlaylists,
+                        title = stringResource(R.string.artist_playlists),
+                        onOpen = onOpenItem,
+                    )
                 }
             }
 
@@ -756,11 +812,12 @@ private fun CircleAction(
 @Composable
 private fun AlbumStrip(
     albums: List<dev.lelonio.square.data.SearchItem>,
+    title: String,
     onOpen: (dev.lelonio.square.data.SearchItem) -> Unit,
 ) {
     Column(Modifier.padding(top = 18.dp)) {
         Text(
-            stringResource(R.string.albums),
+            title,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(start = 24.dp, bottom = 10.dp),
         )
@@ -1024,4 +1081,82 @@ private fun formatTotal(ms: Long): String {
     val minutes = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
     return if (hours > 0) stringResource(R.string.hours_minutes, hours, minutes)
     else stringResource(R.string.minutes_only, minutes)
+}
+
+/**
+ * Who the artist is, in the two facts Spotify itself leads with, and the one
+ * thing there is to do about them.
+ *
+ * The follower count is the only number on the page that says how big somebody
+ * is, and the genres are the only words: without them an artist page is a list
+ * of records that could belong to anyone. Both are quiet — this is a caption
+ * under a name, not a dashboard.
+ */
+@Composable
+private fun ArtistAbout(
+    followers: Int,
+    genres: List<String>,
+    following: Boolean?,
+    onToggleFollow: () -> Unit,
+) {
+    Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 14.dp)) {
+        val line = listOfNotNull(
+            followers.takeIf { it > 0 }?.let { stringResource(R.string.followers_count, compact(it)) },
+            genres.take(2).joinToString(" · ") { it.replaceFirstChar(Char::uppercase) }
+                .takeIf { it.isNotEmpty() },
+        ).joinToString(" · ")
+
+        if (line.isNotEmpty()) {
+            Text(
+                line,
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDim,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        // Absent until the answer is known: see PlaylistState.following.
+        if (following != null) {
+            val shape = RoundedCornerShape(percent = 50)
+            Row(
+                Modifier
+                    .padding(top = 12.dp)
+                    .clip(shape)
+                    .background(
+                        if (following) Color.Transparent else Color.White,
+                        shape,
+                    )
+                    .then(
+                        if (following) {
+                            Modifier.border(1.dp, Color.White.copy(alpha = 0.4f), shape)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .pressable(onToggleFollow, pressedScale = 0.94f)
+                    .padding(horizontal = 20.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(if (following) R.string.following else R.string.follow),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (following) Color.White else Color.Black,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A follower count as somebody would say it out loud: 1,2 Mln, 340 mila.
+ *
+ * Spotify shows the exact number and nobody reads it; what the digits are for
+ * is the order of magnitude, and seven of them take a line to say what two do.
+ */
+private fun compact(count: Int): String = when {
+    count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000f)
+    count >= 1_000 -> "${count / 1_000}K"
+    else -> count.toString()
 }

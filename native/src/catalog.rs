@@ -95,6 +95,24 @@ pub fn lyrics(track_uri: &str) -> EngineResult<String> {
     })
 }
 
+/// What the people this account follows are listening to, as the access point's
+/// own JSON.
+///
+/// The endpoint behind Spotify's "Friend Activity": one entry per friend, each
+/// with the user, the track, and when they were last heard from.
+pub fn friend_activity() -> EngineResult<String> {
+    let session = with_session(|s| s.clone())?;
+    block_on(async move {
+        let bytes = session
+            .spclient()
+            .request_as_json(&Method::GET, "/presence-view/v1/buddylist", None, None)
+            .await
+            .map_err(|e| format!("buddylist failed: {e}"))?;
+
+        Ok(String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| "null".into()))
+    })
+}
+
 /// Track URIs belonging to a context — a playlist, album, or the collection.
 ///
 /// A context can arrive with its pages already filled or as a set of links to
@@ -350,6 +368,33 @@ pub fn playlist_cover(uri: &str) -> EngineResult<String> {
             });
 
         Ok(json!(cover).to_string())
+    })
+}
+
+/// The title of one playlist, or `null`.
+///
+/// For a playlist arriving as a link there is nowhere else to read it: the
+/// rootlist only holds what the account follows, and the Web API answers 404 for
+/// everything Spotify generates itself. The access point knows them all.
+pub fn playlist_name(uri: &str) -> EngineResult<String> {
+    let parsed = SpotifyUri::from_uri(uri).map_err(|e| format!("bad uri: {e}"))?;
+    let SpotifyUri::Playlist { id, .. } = parsed else {
+        return Ok("null".into());
+    };
+
+    let session = with_session(|s| s.clone())?;
+    block_on(async move {
+        let bytes = session
+            .spclient()
+            .get_playlist(&id)
+            .await
+            .map_err(|e| format!("playlist read failed: {e}"))?;
+
+        let list = SelectedListContent::parse_from_bytes(&bytes)
+            .map_err(|e| format!("playlist was not a SelectedListContent: {e}"))?;
+
+        let name = list.attributes.name().trim().to_string();
+        Ok(json!(if name.is_empty() { None } else { Some(name) }).to_string())
     })
 }
 

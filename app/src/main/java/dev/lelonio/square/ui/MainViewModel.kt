@@ -109,6 +109,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val kind: DetailKind = DetailKind.PLAYLIST,
         /** Populated for artists only. */
         val albums: List<SearchItem> = emptyList(),
+        /** Their singles and EPs, kept apart from the albums above. */
+        val singles: List<SearchItem> = emptyList(),
+        /** Records that are somebody else's, with them on it. */
+        val appearsOn: List<SearchItem> = emptyList(),
+        /** The playlists Spotify built around them, "This Is" first. */
+        val artistPlaylists: List<SearchItem> = emptyList(),
+        /** How many accounts follow them, and what Spotify files them under. */
+        val followers: Int = 0,
+        val genres: List<String> = emptyList(),
+        /**
+         * Whether this account follows them.
+         *
+         * Null while unknown, which is not the same as false: a button drawn as
+         * "follow" before the answer arrives is a button that lies for a second
+         * and then corrects itself in front of the reader.
+         */
+        val following: Boolean? = null,
     )
 
     private val container get() = getApplication<SquareApplication>()
@@ -828,6 +845,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // caller's, so both are asked for.
                     "playlist-modify-private",
                     "playlist-modify-public",
+                    // Following artists, and the list of the ones followed.
+                    "user-follow-read",
+                    "user-follow-modify",
                 ),
             )
         }
@@ -878,6 +898,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * Filtered rather than kept apart so that switching back finds the history
      * still there.
      */
+    private val _friends =
+        MutableStateFlow<List<dev.lelonio.square.data.FriendListen>>(emptyList())
+
+    /**
+     * What the people this account follows are playing.
+     *
+     * Kept rather than fetched per screen: it is one request, it changes on its
+     * own schedule and not on the app's, and the header shows a corner of it
+     * whether or not anybody has opened the list.
+     */
+    val friends: StateFlow<List<dev.lelonio.square.data.FriendListen>> = _friends.asStateFlow()
+
+    /**
+     * Reads the list again.
+     *
+     * Silent on failure by design. This is a private endpoint with no promises
+     * attached, an account may follow nobody, and everybody it follows may be
+     * listening privately: all three are the same empty list, and none of them
+     * is worth an error on the home page.
+     */
+    fun loadFriends() = viewModelScope.launch {
+        if (container.activeBackend.id != BackendId.SPOTIFY) {
+            _friends.value = emptyList()
+            return@launch
+        }
+        if (!awaitEngine()) return@launch
+        runCatching { dev.lelonio.square.data.FriendActivity.friends() }
+            .onSuccess { _friends.value = it }
+            .onFailure { android.util.Log.w(TAG, "friend activity unavailable: ${describe(it)}") }
+    }
+
     val recent: StateFlow<List<CatalogTrack>> =
         combine(container.recentStore.tracks, container.preferences.backend) { tracks, _ ->
             tracks.filter { container.activeBackend.owns(it.uri) }
@@ -1015,6 +1066,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 loadMissingCovers()
                 // Spotify's own shelves, once there is a session to ask with.
                 loadHomeShelves()
+                loadFriends()
+                loadFollowedArtists()
             }
             .onFailure {
                 android.util.Log.e(TAG, "library load failed: ${chain(it)}", it)
@@ -1128,6 +1181,88 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * access-point round trips, and returning to a playlist from the player is
      * the common case.
      */
+    /**
+     * Opens a page the app was handed from outside, by URI alone.
+     *
+     * A link carries no name and no picture, and a page whose title is blank
+     * until its tracks land looks broken rather than busy. The name is asked for
+     * first when there is an application to ask with, and the page is opened
+     * either way: a list of tracks under no title is still the playlist somebody
+     * sent.
+     */
+    fun openLink(uri: String) = viewModelScope.launch {
+        // A Spotify link is a Spotify page. Arriving on the other backend, it
+        // would resolve against a catalogue that has never heard of it.
+        if (container.activeBackend.id != BackendId.SPOTIFY) {
+            container.preferences.setBackend(BackendId.SPOTIFY)
+        }
+        // No name and no picture: the page asks for both itself, and shows the
+        // list without waiting for either.
+        openContext(uri, "")
+    }
+
+    /**
+     * Publishes a detail page without taking back what arrived while it was
+     * being built.
+     *
+     * The page is assembled from a snapshot taken when it opened, and the title
+     * and the picture of a page opened by URI alone are not in that snapshot:
+     * they are asked for separately and land whenever the network answers. Every
+     * later write is built from the same snapshot, so a name that arrived in
+     * between was on screen until the next one, which is a title appearing for
+     * half a second and vanishing. Neither field is ever cleared here: an empty
+     * name and a missing picture mean "not known yet", never "gone".
+     */
+    private fun publishPlaylist(state: PlaylistState) {
+        val current = _playlist.value
+        _playlist.value = if (current.uri != state.uri) {
+            state
+        } else {
+            state.copy(
+                name = state.name.ifEmpty { current.name },
+                artworkUrl = state.artworkUrl ?: current.artworkUrl,
+            )
+        }
+    }
+
+    /** A link's own title, from whichever side of Spotify will say. */
+    private suspend fun nameOf(uri: String): String? {
+        val kind = kindOf(uri)
+        val id = uri.substringAfterLast(':')
+
+        if (container.webApi.isReady) {
+            runCatching {
+                when (kind) {
+                    DetailKind.ARTIST -> container.api.artist(id).name
+                    DetailKind.ALBUM -> container.api.album(id).name
+                    DetailKind.PLAYLIST -> container.api.playlist(id).name
+                }
+            }
+                .onFailure { android.util.Log.w(TAG, "no name for $uri: ${describe(it)}") }
+                .getOrNull()
+                ?.let { return it }
+        }
+
+        // The Web API answers 404 for everything Spotify generates itself — the
+        // daily mixes, the editorial lists, the one somebody is most likely to
+        // send — and those are exactly the playlists the access point can name.
+        if (kind == DetailKind.PLAYLIST && awaitEngine()) {
+            return Catalog.playlistName(uri)
+        }
+        return null
+    }
+
+    /**
+     * One track, resolved from its URI, for a link that names a song rather
+     * than a page.
+     */
+    suspend fun resolveTrack(uri: String): CatalogTrack? {
+        if (!awaitEngine()) return null
+        return runCatching { Catalog.tracks(listOf(uri)).firstOrNull() }
+            .onFailure { android.util.Log.e(TAG, "link track failed: ${chain(it)}", it) }
+            .getOrNull()
+    }
+
     fun openContext(uri: String, name: String, artworkUrl: String? = null) =
         openPlaylist(CatalogPlaylist(uri = uri, name = name, artworkUrl = artworkUrl))
 
@@ -1258,15 +1393,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
 
         val remembered = contextCache[playlist.uri]
-        _playlist.value = base.copy(
+        publishPlaylist(base.copy(
             tracks = remembered?.tracks.orEmpty(),
             loading = remembered == null,
-        )
+        ))
 
         playlistJob = viewModelScope.launch {
             // Opened by URI alone, from a tap on the player's text: there was no
             // row to take the picture from. Asked for alongside the track list
             // rather than before it, since the list is what the page is for.
+            // Opened by URI alone from outside the app: a link carries no title
+            // either. Written through `base` like the picture below, and for the
+            // same reason: every state published here is built from it, so a
+            // name patched onto the state instead would be taken back off the
+            // screen by the next write, which is a title that appears for half a
+            // second and vanishes.
+            if (base.name.isEmpty()) launch {
+                val name = nameOf(playlist.uri) ?: return@launch
+                base = base.copy(name = name)
+                if (_playlist.value.uri == playlist.uri) {
+                    _playlist.value = _playlist.value.copy(name = name)
+                }
+            }
+
             if (base.artworkUrl == null) launch {
                 val art = artworkFor(playlist.uri, kind) ?: return@launch
                 base = base.copy(artworkUrl = art)
@@ -1281,7 +1430,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val entry = remembered ?: container.contextCache.read(playlist.uri)?.also {
                 contextCache[playlist.uri] = it
                 rememberMembership(playlist.uri, it.tracks)
-                _playlist.value = base.copy(tracks = it.tracks, loading = false)
+                publishPlaylist(base.copy(tracks = it.tracks, loading = false))
             }
             val cached = entry?.tracks.orEmpty()
 
@@ -1292,14 +1441,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // around the Web API's paging and the access point's
                     // per-track lookups, neither of which exists here.
                     val tracks = container.activeBackend.tracksOf(playlist.uri)
-                    _playlist.value = base.copy(tracks = tracks, loading = false)
+                    publishPlaylist(base.copy(tracks = tracks, loading = false))
                 } else if (kind == DetailKind.ARTIST) {
-                    val (tracks, albums) = loadArtist(playlist.uri)
-                    _playlist.value = base.copy(tracks = tracks, albums = albums)
+                    val page = loadArtist(playlist.uri)
+                    publishPlaylist(
+                        base.copy(
+                            tracks = page.tracks,
+                            albums = page.albums,
+                            singles = page.singles,
+                            appearsOn = page.appearsOn,
+                            artistPlaylists = page.playlists,
+                            followers = page.followers,
+                            genres = page.genres,
+                            following = _playlist.value.following,
+                        ),
+                    )
                 } else if (cached.isNotEmpty() && isUnchanged(playlist.uri, entry?.snapshotId)) {
                     // Nothing to do: one small request said the copy on screen
                     // is the current one.
-                    _playlist.value = base.copy(tracks = cached, loadingMore = false)
+                    publishPlaylist(base.copy(tracks = cached, loadingMore = false))
                 } else {
                     loadContextInto(base, playlist.uri, showProgress = cached.isEmpty())
                 }
@@ -1308,8 +1468,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     android.util.Log.e(TAG, "detail load failed: ${chain(it)}", it)
                     // Only when there is nothing to show. A refresh that fails
                     // over a list already on screen should leave the list.
-                    _playlist.value =
-                        if (cached.isEmpty()) base.copy(error = describe(it)) else base.copy(tracks = cached)
+                    publishPlaylist(
+                        if (cached.isEmpty()) base.copy(error = describe(it)) else base.copy(tracks = cached),
+                    )
                 }
         }
     }
@@ -1340,6 +1501,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .getOrNull()
             if (fetched != null) return fetched
         }
+
+        // The access point carries the art for the lists Spotify generates,
+        // which is where the Web API answers 404.
+        if (kind == DetailKind.PLAYLIST) return Catalog.playlistCover(uri)
 
         // An album's cover is on every one of its tracks, which is the way in
         // when the user has not registered an application of their own.
@@ -1494,7 +1659,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         val tracks = viaWebApi ?: accessPointTracks(base, uri, showProgress)
 
-        _playlist.value = base.copy(tracks = tracks, loadingMore = false)
+        publishPlaylist(base.copy(tracks = tracks, loadingMore = false))
 
         // Stamped with the version it was read from, so the next open can ask
         // one question instead of reading it all again. Without a stamp the
@@ -1537,10 +1702,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             offset += page.items.size
             if (showProgress) {
-                _playlist.value = base.copy(
+                publishPlaylist(base.copy(
                     tracks = loaded.toList(),
                     loadingMore = offset < page.total,
-                )
+                ))
             }
             if (page.items.isEmpty() || offset >= page.total) return loaded
         }
@@ -1559,14 +1724,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         batches.forEachIndexed { index, batch ->
             loaded += Catalog.tracks(batch)
             if (showProgress) {
-                _playlist.value = base.copy(
+                publishPlaylist(base.copy(
                     tracks = loaded.toList(),
                     // Counted in batches, not in tracks: a delisted track
                     // resolves to nothing, so the list is legitimately shorter
                     // than the URIs asked for and comparing the two totals left
                     // "more coming" on forever.
                     loadingMore = index < batches.lastIndex,
-                )
+                ))
             }
         }
         return loaded
@@ -1580,21 +1745,183 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * screen which cannot work until the user has registered their own
      * application, hence the explicit message rather than a raw 401.
      */
-    private suspend fun loadArtist(uri: String): Pair<List<CatalogTrack>, List<SearchItem>> {
+    /** Everything an artist page shows, gathered in one go. */
+    private data class ArtistPage(
+        val tracks: List<CatalogTrack>,
+        val albums: List<SearchItem>,
+        val singles: List<SearchItem>,
+        val appearsOn: List<SearchItem>,
+        val playlists: List<SearchItem>,
+        val followers: Int,
+        val genres: List<String>,
+    )
+
+    private suspend fun loadArtist(uri: String): ArtistPage {
         if (!container.webApi.isReady) {
             error(string(R.string.artist_needs_app))
         }
         val id = uri.substringAfterLast(':')
         val tracks = container.api.artistTopTracks(id).tracks.map { it.toCatalogTrack() }
-        val albums = container.api.artistAlbums(id).items.mapNotNull { album ->
-            SearchItem(
-                uri = album.uri ?: return@mapNotNull null,
-                title = album.name,
-                subtitle = album.releaseDate?.take(4).orEmpty(),
-                artworkUrl = album.images.firstOrNull()?.url,
-            )
+
+        // One request for every kind of record rather than three. Spotify says
+        // which shelf each one belongs on, and asking per shelf would spend the
+        // account's quota three times for the same answer.
+        val releases = container.api.artistAlbums(
+            id,
+            groups = "album,single,compilation,appears_on",
+            limit = 50,
+        ).items
+
+        fun shelf(vararg groups: String): List<SearchItem> = releases
+            .filter { it.albumGroup in groups }
+            .mapNotNull { album ->
+                SearchItem(
+                    uri = album.uri ?: return@mapNotNull null,
+                    title = album.name,
+                    subtitle = album.releaseDate?.take(4).orEmpty(),
+                    artworkUrl = album.images.firstOrNull()?.url,
+                )
+            }
+            // The same record is often listed several times, once per market.
+            .distinctBy { it.title.lowercase() }
+            .sortedByDescending { it.subtitle }
+
+        // Not fatal, either of them. The page is worth showing without the
+        // number under the name, and an account whose application predates the
+        // follow permissions still gets everything else.
+        val artist = runCatching { container.api.artist(id) }.getOrNull()
+        val following = runCatching { container.api.isFollowing(ids = id).firstOrNull() }
+            .onFailure { android.util.Log.w(TAG, "cannot tell if followed: ${describe(it)}") }
+            .getOrNull()
+
+        if (following != null) {
+            _playlist.value = _playlist.value.let {
+                if (it.uri == uri) it.copy(following = following) else it
+            }
         }
-        return tracks to albums
+
+        return ArtistPage(
+            playlists = artistPlaylists(artist?.name.orEmpty()),
+            tracks = tracks,
+            albums = shelf("album", "compilation"),
+            singles = shelf("single"),
+            appearsOn = shelf("appears_on"),
+            followers = artist?.followers?.total ?: 0,
+            genres = artist?.genres.orEmpty(),
+        )
+    }
+
+    /**
+     * The playlists Spotify built around one artist.
+     *
+     * There is no endpoint for this. The desktop client reads it from the
+     * gateway that answers the personalised pages, addressed by a hash of a
+     * query this app does not have, so the way in is the search: "This Is" and
+     * the rest are ordinary public playlists, and what makes them Spotify's own
+     * rather than a stranger's copy is the owner.
+     *
+     * Named after the artist too, because searching a name returns everything
+     * anybody ever titled after them.
+     */
+    private suspend fun artistPlaylists(name: String): List<SearchItem> {
+        if (name.isEmpty()) return emptyList()
+        val needle = name.lowercase()
+        return runCatching {
+            container.api.search(
+                query = "\"This Is $name\"",
+                type = "playlist",
+                limit = 20,
+            ).playlists?.items.orEmpty()
+                .filterNotNull()
+                .filter { it.owner?.id == "spotify" && it.name.lowercase().contains(needle) }
+                .map { playlist ->
+                    SearchItem(
+                        uri = playlist.uri,
+                        title = playlist.name,
+                        subtitle = playlist.description.orEmpty(),
+                        artworkUrl = playlist.images.firstOrNull()?.url,
+                    )
+                }
+                // "This Is" first when it is there: it is the one everybody
+                // means by "the artist's playlist".
+                .sortedBy { if (it.title.lowercase().startsWith("this is")) 0 else 1 }
+                .take(10)
+        }
+            .onFailure { android.util.Log.w(TAG, "no playlists for $name: ${describe(it)}") }
+            .getOrDefault(emptyList())
+    }
+
+    /**
+     * Follows or unfollows the artist whose page is open.
+     *
+     * The button moves first and is put back if Spotify refuses: this is one
+     * request over a network, and a control that waits for a round trip before
+     * acknowledging a tap feels broken even when it works.
+     */
+    fun toggleFollowArtist() = viewModelScope.launch {
+        val page = _playlist.value
+        val uri = page.uri ?: return@launch
+        if (page.kind != DetailKind.ARTIST) return@launch
+        val was = page.following ?: false
+        val id = uri.substringAfterLast(':')
+
+        _playlist.value = _playlist.value.copy(following = !was)
+        runCatching {
+            if (was) container.api.unfollowArtists(ids = id) else container.api.followArtists(ids = id)
+        }
+            .onSuccess { loadFollowedArtists() }
+            .onFailure {
+                android.util.Log.e(TAG, "follow failed: ${chain(it)}", it)
+                if (_playlist.value.uri == uri) {
+                    _playlist.value = _playlist.value.copy(following = was)
+                }
+                // Almost always the same cause: an application connected before
+                // this feature existed, whose token carries no permission to
+                // follow anybody. Saying so is more use than the error itself.
+                _webApi.value = _webApi.value.copy(expired = true)
+            }
+    }
+
+    private val _followedArtists = MutableStateFlow<List<SearchItem>>(emptyList())
+
+    /** The artists this account follows, for the library. */
+    val followedArtists: StateFlow<List<SearchItem>> = _followedArtists.asStateFlow()
+
+    fun loadFollowedArtists() = viewModelScope.launch {
+        if (!container.webApi.isReady || container.activeBackend.id != BackendId.SPOTIFY) {
+            _followedArtists.value = emptyList()
+            return@launch
+        }
+        runCatching {
+            val gathered = mutableListOf<SearchItem>()
+            var after: String? = null
+            // Cursor-paged, and an account can follow hundreds: walk it to the
+            // end rather than showing the first page and calling it the list.
+            while (true) {
+                val page = container.api.followedArtists(after = after).artists
+                gathered += page.items.mapNotNull { artist ->
+                    SearchItem(
+                        uri = artist.uri ?: return@mapNotNull null,
+                        title = artist.name,
+                        subtitle = "",
+                        artworkUrl = artist.images.firstOrNull()?.url,
+                    )
+                }
+                after = page.cursors?.after?.takeIf { page.items.isNotEmpty() } ?: break
+            }
+            gathered.sortedBy { it.title.lowercase() }
+        }
+            .onSuccess { _followedArtists.value = it }
+            .onFailure {
+                android.util.Log.w(TAG, "followed artists unavailable: ${describe(it)}")
+                // 403 here has one cause: an application connected before the
+                // follow permissions were asked for. The token is valid and
+                // will never be allowed to read this, so the way out is the
+                // same one an expired session takes — sign in again, once.
+                if (describe(it).contains("403")) {
+                    _webApi.value = _webApi.value.copy(expired = true)
+                }
+            }
     }
 
     private fun kindOf(uri: String): DetailKind = when {

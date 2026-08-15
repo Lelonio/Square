@@ -196,6 +196,13 @@ object Catalog {
         runCatching { json.decodeFromString<String?>(NativeBridge.playlistCover(uri)) }.getOrNull()
     }
 
+    /** The title of a playlist the account does not follow; see the native side. */
+    suspend fun playlistName(uri: String): String? = withContext(Dispatchers.IO) {
+        runCatching { json.decodeFromString<String?>(NativeBridge.playlistName(uri)) }
+            .onFailure { android.util.Log.w("SquareCatalog", "no name for $uri: $it") }
+            .getOrNull()
+    }
+
     /**
      * Tracks of the account's first playlist.
      *

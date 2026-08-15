@@ -29,6 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
@@ -92,6 +96,9 @@ fun LibraryScreen(
     onCreatePlaylist: () -> Unit = {},
     /** Long press: rename and delete live in a sheet, like a track's actions. */
     onPlaylistMenu: (CatalogPlaylist) -> Unit = {},
+    /** The artists the account follows; empty leaves the shelf out entirely. */
+    artists: List<dev.lelonio.square.data.SearchItem> = emptyList(),
+    onOpenArtist: (dev.lelonio.square.data.SearchItem) -> Unit = {},
     backdrop: Backdrop,
 ) {
     when (state) {
@@ -172,6 +179,12 @@ fun LibraryScreen(
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
+                        if (artists.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }, key = "artists") {
+                                ArtistShelf(artists, onOpenArtist)
+                            }
+                        }
+
                         items(playlists, key = { it.uri }) { playlist ->
                             GridTile(
                                 playlist,
@@ -191,6 +204,10 @@ fun LibraryScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         modifier = Modifier.fillMaxSize(),
                     ) {
+                        if (artists.isNotEmpty()) {
+                            item(key = "artists") { ArtistShelf(artists, onOpenArtist) }
+                        }
+
                         items(playlists, key = { it.uri }) { playlist ->
                             ListRow(
                                 playlist,
@@ -433,3 +450,56 @@ private fun Centered(content: @Composable () -> Unit) {
 
 /** A harder film for the chip that is on, matching the home page. */
 private val SelectedFilm = Color.White.copy(alpha = 0.26f)
+
+/**
+ * The artists the account follows, along the top of the library.
+ *
+ * Round, and in a row that scrolls sideways: it is the shape Spotify made mean
+ * "a person" and the one that keeps a long list from pushing the playlists off
+ * the screen. Part of the list rather than pinned above it, so it scrolls away
+ * with everything else — a shelf that will not leave is a shelf in the way.
+ */
+@Composable
+private fun ArtistShelf(
+    artists: List<dev.lelonio.square.data.SearchItem>,
+    onOpen: (dev.lelonio.square.data.SearchItem) -> Unit,
+) {
+    Column(Modifier.padding(bottom = 18.dp)) {
+        Text(
+            stringResource(R.string.artists_you_follow),
+            style = MaterialTheme.typography.titleSmall,
+            color = Ink,
+            modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(artists, key = { it.uri }) { artist ->
+                Column(
+                    Modifier
+                        .width(76.dp)
+                        .pressable({ onOpen(artist) }),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Artwork(
+                        url = artist.artworkUrl,
+                        title = artist.title,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .softShadow(CircleShape, elevation = 10.dp),
+                        corner = 36.dp,
+                        decodeSize = 72.dp,
+                    )
+                    Text(
+                        artist.title,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
