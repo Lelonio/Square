@@ -107,6 +107,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val loadingMore: Boolean = false,
         val error: String? = null,
         val kind: DetailKind = DetailKind.PLAYLIST,
+        /** What the source says the list is about; empty when it says nothing. */
+        val description: String = "",
         /** Populated for artists only. */
         val albums: List<SearchItem> = emptyList(),
         /** Their singles and EPs, kept apart from the albums above. */
@@ -1221,8 +1223,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             state.copy(
                 name = state.name.ifEmpty { current.name },
                 artworkUrl = state.artworkUrl ?: current.artworkUrl,
+                description = state.description.ifEmpty { current.description },
             )
         }
+    }
+
+    /**
+     * A playlist's own words about itself.
+     *
+     * Spotify writes them in HTML, entities and anchors included, because the
+     * field is meant for a web page. What belongs under a title is the sentence,
+     * so the markup is taken back out.
+     */
+    private suspend fun descriptionOf(uri: String): String? {
+        if (!container.webApi.isReady || !uri.startsWith("spotify:playlist:")) return null
+        return runCatching {
+            container.api.playlist(uri.substringAfterLast(':')).description
+                ?.replace(Regex("<[^>]*>"), "")
+                ?.replace("&amp;", "&")
+                ?.replace("&quot;", "\"")
+                ?.replace("&#x27;", "'")
+                ?.replace("&#39;", "'")
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }.getOrNull()
     }
 
     /** A link's own title, from whichever side of Spotify will say. */
@@ -1413,6 +1437,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 base = base.copy(name = name)
                 if (_playlist.value.uri == playlist.uri) {
                     _playlist.value = _playlist.value.copy(name = name)
+                }
+            }
+
+            // What the list says about itself, when its source says anything.
+            // Asked for beside the picture and written the same way, through
+            // `base`, so a later publish cannot take it back off the screen.
+            if (base.description.isEmpty() && kind == DetailKind.PLAYLIST) launch {
+                val text = descriptionOf(playlist.uri) ?: return@launch
+                base = base.copy(description = text)
+                if (_playlist.value.uri == playlist.uri) {
+                    _playlist.value = _playlist.value.copy(description = text)
                 }
             }
 

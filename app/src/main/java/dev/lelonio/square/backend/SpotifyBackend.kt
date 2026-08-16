@@ -109,7 +109,7 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
         runCatching { Catalog.playlists() }
             .recoverCatching {
                 check(container.webApi.isReady) { it.message ?: "rootlist non disponibile" }
-                container.api.playlists(limit = WEB_API_PAGE).items.map { dto ->
+                container.api.playlists(limit = WEB_API_LIBRARY_PAGE).items.map { dto ->
                     CatalogPlaylist(
                         uri = dto.uri,
                         name = dto.name,
@@ -153,7 +153,7 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
         val loaded = mutableListOf<CatalogTrack>()
         var offset = 0
         while (true) {
-            val page = container.api.savedTracks(limit = WEB_API_PAGE, offset = offset)
+            val page = container.api.savedTracks(limit = WEB_API_LIBRARY_PAGE, offset = offset)
             loaded += page.items.mapNotNull { saved ->
                 saved.track
                     .takeIf { it.isPlayable != false && it.uri.startsWith("spotify:track:") }
@@ -242,7 +242,19 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
 
     private companion object {
         /** The Web API's own maximum page size for playlist tracks. */
+        /** What the playlist endpoints take a page at a time. */
         const val WEB_API_PAGE = 100
+
+        /**
+         * What the account's own lists take, which is half that.
+         *
+         * `me/playlists` and `me/tracks` cap at 50 and answer 400 to anything
+         * larger — not an empty page, an error. It surfaced only when the access
+         * point was unreachable and these were asked instead of it, which is to
+         * say on a bad connection: the library then failed twice over and
+         * reported the second failure.
+         */
+        const val WEB_API_LIBRARY_PAGE = 50
 
         /**
          * The purple heart Spotify's own clients draw for Liked Songs.

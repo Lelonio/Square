@@ -160,7 +160,7 @@ interface SpotifyApi {
     @GET("v1/playlists/{id}")
     suspend fun playlist(
         @Path("id") playlistId: String,
-        @Query("fields") fields: String = "id,uri,name,images",
+        @Query("fields") fields: String = "id,uri,name,images,description",
     ): PlaylistDto
 
     /**

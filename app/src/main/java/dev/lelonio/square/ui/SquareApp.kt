@@ -868,6 +868,28 @@ fun SquareApp(
                                         )
                                     },
                                     onToggleFollow = viewModel::toggleFollowArtist,
+                                    onShare = {
+                                        val uri = playlist.uri ?: return@PlaylistScreen
+                                        context.startActivity(
+                                            android.content.Intent.createChooser(
+                                                android.content.Intent(android.content.Intent.ACTION_SEND)
+                                                    .setType("text/plain")
+                                                    .putExtra(
+                                                        android.content.Intent.EXTRA_TEXT,
+                                                        dev.lelonio.square.ui.library.openLinkOf(uri),
+                                                    ),
+                                                null,
+                                            ),
+                                        )
+                                    },
+                                    onMenu = {
+                                        val uri = playlist.uri ?: return@PlaylistScreen
+                                        playlistMenu = CatalogPlaylist(
+                                            uri = uri,
+                                            name = playlist.name,
+                                            artworkUrl = playlist.artworkUrl,
+                                        )
+                                    },
                                 )
                             }
                         }

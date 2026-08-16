@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -95,6 +96,7 @@ import com.adamglin.phosphoricons.regular.ArrowLeft
 import com.adamglin.phosphoricons.regular.ArrowsDownUp
 import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.DotsThree
+import com.adamglin.phosphoricons.regular.Export
 import com.adamglin.phosphoricons.regular.LinkSimple
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.Queue
@@ -138,6 +140,10 @@ fun PlaylistScreen(
     onOpenItem: (dev.lelonio.square.data.SearchItem) -> Unit = {},
     /** Follows or unfollows the artist this page is about. */
     onToggleFollow: () -> Unit = {},
+    /** Hands the page's own link to whoever wants it. */
+    onShare: () -> Unit = {},
+    /** Opens the sheet with everything else this page can do. */
+    onMenu: () -> Unit = {},
     /** The remembered track order, and where a change to it is stored. */
     storedSort: String? = null,
     onSortChange: (String) -> Unit = {},
@@ -276,6 +282,8 @@ fun PlaylistScreen(
         DetailHeader(
             name = state.name,
             kind = state.kind,
+            description = state.description,
+            pageColor = pageColor,
             trackCount = state.tracks.size,
             totalMs = state.tracks.sumOf { it.durationMs },
             backdrop = pageBackdrop,
@@ -488,6 +496,49 @@ fun PlaylistScreen(
                 ),
         )
 
+        // Share and everything else, in one capsule opposite the back button.
+        // Two round buttons side by side would have read as two destinations;
+        // one pane with a divide down it reads as what it is, a place where the
+        // page's own actions live.
+        Row(
+            Modifier
+                .padding(top = contentPadding.calculateTopPadding() + 8.dp, end = 14.dp)
+                .align(Alignment.TopEnd)
+                .graphicsLayer { alpha = 1f - collapseFraction() },
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            LiquidButton(
+                onClick = onShare,
+                backdrop = pageBackdrop,
+                modifier = Modifier.size(42.dp),
+                contentHeight = 42.dp,
+                contentPadding = 0.dp,
+                blurRadius = 8.dp,
+            ) {
+                Icon(
+                    PhosphorIcons.Regular.Export,
+                    contentDescription = stringResource(R.string.copy_link),
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            LiquidButton(
+                onClick = onMenu,
+                backdrop = pageBackdrop,
+                modifier = Modifier.size(42.dp),
+                contentHeight = 42.dp,
+                contentPadding = 0.dp,
+                blurRadius = 8.dp,
+            ) {
+                Icon(
+                    PhosphorIcons.Regular.DotsThree,
+                    contentDescription = stringResource(R.string.more),
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+
         // Floating rather than a top bar: the list scrolls under it, so the
         // picture stays uninterrupted. It gives way to the collapsed bar, which
         // carries a back button of its own.
@@ -557,6 +608,9 @@ private fun IntOffset.leftOf(density: androidx.compose.ui.unit.Density): IntOffs
 private fun DetailHeader(
     name: String,
     kind: MainViewModel.DetailKind,
+    description: String,
+    /** The page's own colour; the solid Play button prints its label in it. */
+    pageColor: Color,
     trackCount: Int,
     totalMs: Long,
     backdrop: Backdrop,
@@ -594,6 +648,19 @@ private fun DetailHeader(
                 .graphicsLayer { alpha = (1f - collapse() * 2f).coerceIn(0f, 1f) },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // The name first and what it is underneath, which is the order
+            // somebody reads them in: the title is the thing, "Album" is a
+            // caption on it.
+            Text(
+                text = name,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
             Text(
                 text = stringResource(kind.label) + if (trackCount > 0) {
                     stringResource(R.string.track_count_and_length, trackCount, formatTotal(totalMs))
@@ -602,55 +669,67 @@ private fun DetailHeader(
                 },
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White.copy(alpha = 0.72f),
-            )
-
-            Text(
-                text = name,
-                style = MaterialTheme.typography.displayLarge,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 6.dp),
+                modifier = Modifier.padding(top = 4.dp),
             )
 
             Row(
-                Modifier.padding(top = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                Modifier.padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CircleAction(
                     icon = PhosphorIcons.Regular.Shuffle,
                     description = stringResource(R.string.shuffle),
-                    size = 46.dp,
+                    size = 52.dp,
                     backdrop = backdrop,
                     onClick = onShuffle,
                 )
-                // The one solid control on the screen. Everything else here is
-                // glass, so weight has to come from the fill rather than from
-                // size alone.
-                Box(
+                // The one solid control on the screen, and the only one that
+                // says what it does in words. Everything else here is glass, so
+                // weight has to come from the fill rather than from size.
+                Row(
                     Modifier
-                        .size(68.dp)
                         .softShadow(CircleShape, elevation = 18.dp, spot = 0.3f)
                         .clip(CircleShape)
                         .background(Color.White)
-                        .pressable(onPlay, pressedScale = 0.92f),
-                    contentAlignment = Alignment.Center,
+                        .pressable(onPlay, pressedScale = 0.95f)
+                        .padding(horizontal = 40.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
                         PhosphorIcons.Fill.Play,
-                        contentDescription = stringResource(R.string.play),
-                        tint = Color.Black,
-                        modifier = Modifier.size(34.dp),
+                        contentDescription = null,
+                        tint = pageColor,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Text(
+                        stringResource(R.string.play),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = pageColor,
                     )
                 }
                 CircleAction(
                     icon = if (searching) PhosphorIcons.Regular.X else PhosphorIcons.Fill.MagnifyingGlass,
                     description = stringResource(R.string.search_in_tracks),
-                    size = 46.dp,
+                    size = 52.dp,
                     backdrop = backdrop,
                     onClick = onToggleSearch,
+                )
+            }
+
+            // What the list is, in its own words. Only the sources that carry
+            // one have it, and a page without it simply has one line less.
+            if (description.isNotEmpty()) {
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.62f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 14.dp, start = 8.dp, end = 8.dp),
                 )
             }
         }
@@ -956,26 +1035,41 @@ private fun TrackRow(
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The number is replaced by a level meter on the playing row, so the
-        // state survives without relying on the accent being distinguishable.
-        Box(Modifier.width(30.dp), contentAlignment = Alignment.CenterStart) {
+        // The record, not the row number. A list of covers is scanned by
+        // recognition rather than by reading, and the position of a song in a
+        // playlist is the least interesting thing about it. The playing row
+        // still says so, with the meter drawn over its own cover.
+        Box(contentAlignment = Alignment.Center) {
+            Artwork(
+                url = track.artworkUrl,
+                title = track.name,
+                modifier = Modifier.size(46.dp),
+                corner = 8.dp,
+                decodeSize = 46.dp,
+            )
             if (isCurrent) {
-                Icon(
-                    PhosphorIcons.Fill.Waveform,
-                    contentDescription = stringResource(R.string.now_playing),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-            } else {
-                Text(
-                    text = "%02d".format(position),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                )
+                Box(
+                    Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        PhosphorIcons.Fill.Waveform,
+                        contentDescription = stringResource(R.string.now_playing),
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
 
-        Column(Modifier.weight(1f)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(start = 14.dp),
+        ) {
             Text(
                 text = track.name,
                 style = MaterialTheme.typography.titleMedium,
@@ -1033,6 +1127,22 @@ fun CatalogTrack.openLink(): String {
     } else {
         "https://open.spotify.com/track/$id"
     }
+}
+
+/**
+ * The web address for a page: a playlist, an album, an artist.
+ *
+ * The same shape as a track's, and told apart the same way — a `ytmusic:` uri
+ * belongs to one service and a `spotify:` one to the other, and a link handed to
+ * the wrong service points at nothing.
+ */
+fun openLinkOf(uri: String): String {
+    val id = uri.substringAfterLast(':')
+    if (uri.startsWith("ytmusic:")) {
+        return "https://music.youtube.com/playlist?list=$id"
+    }
+    val kind = uri.split(':').getOrNull(1) ?: "playlist"
+    return "https://open.spotify.com/$kind/$id"
 }
 
 @Composable
