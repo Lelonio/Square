@@ -50,7 +50,7 @@ import com.adamglin.phosphoricons.regular.ArrowUpRight
 import com.adamglin.phosphoricons.regular.CaretDown
 import com.adamglin.phosphoricons.regular.CaretRight
 import com.adamglin.phosphoricons.regular.CaretUp
-import com.kyant.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.BuildConfig
 import dev.lelonio.square.R
 import dev.lelonio.square.data.AppLanguages
@@ -262,6 +262,12 @@ fun SettingsScreen(
         // The effects run on our own output, so this one holds for both backends.
         if (open == SettingsPage.Playback) item("effect-quality") {
             EffectQualitySection()
+        }
+
+        // How the app looks and what that costs, so under the app rather than
+        // under playback: nothing here touches a note of audio.
+        if (open == SettingsPage.App) item("glass") {
+            GlassSection(backdrop)
         }
 
         if (open == SettingsPage.App) item("language") {
