@@ -2,6 +2,7 @@ package dev.lelonio.square.ui.player
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -9,25 +10,17 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.liquidGlass
 
 /**
  * A pane of glass over [backdrop].
  *
- * Wraps the one call every glass surface in this screen makes, so the numbers
- * that decide what the material *is* — how far it blurs, how hard it bends light
- * at the edge — live in one place instead of being re-picked per component.
- *
- * The three effects are ordered deliberately and are not interchangeable:
- * `vibrancy` lifts the colour of what shows through so it does not go grey under
- * the blur, `blur` is the frosting, and `lens` is the refraction that makes the
- * edge read as a thick slab rather than as a translucent rectangle. Without the
- * lens this is just a blurred panel, which is the thing most "glass" UIs
- * actually are.
+ * One call for every glass surface outside the bottom bar: the sheets, the
+ * menus, the cards a link opens, the player's own panels. What it is made of is
+ * not decided here any more — it defers to the bar's [liquidGlass], so there is
+ * a single answer in the app to what glass looks like, and changing it changes
+ * everything at once.
  *
  * Everything degrades on its own below Android 13: the library checks for
  * RuntimeShader support and skips the refraction, leaving the blur, and below
@@ -50,17 +43,23 @@ fun GlassSurface(
     backdrop: Backdrop,
     shape: Shape,
     modifier: Modifier = Modifier,
-    blurRadius: Dp = 8.dp,
-    /** How far in from the edge the refraction reaches. */
-    refractionHeight: Dp = 24.dp,
-    /** How hard light bends there. */
-    refractionAmount: Dp = 24.dp,
     /**
-     * A film drawn over the refracted backdrop.
+     * How thick this pane is, as a multiple of the app's own frost.
      *
-     * Without it a pane is pure refraction and reads darker than the buttons
-     * beside it, which do draw one — the surfaces stop looking like the same
-     * material. Unspecified leaves the glass clear.
+     * The one thing a caller still decides, and it is a ratio rather than a
+     * number of dp on purpose: a panel covering half the screen has to hide what
+     * is under it in a way a pill the size of a word does not, but both have to
+     * answer the setting. Fixed dp here is what made the player's surfaces stop
+     * listening to it — a hardcoded 8 next to a bar on 2 is a different
+     * material, whatever the slider says.
+     */
+    blurScale: Float = 1f,
+    /**
+     * The film, for the surfaces that do not get real glass.
+     *
+     * Where they do, the film comes from the shared recipe with everything else
+     * about the material. This is what an unsupported device, a shape the
+     * refraction cannot follow, or a moving player falls back to.
      */
     surfaceColor: Color = Color.Unspecified,
     content: @Composable () -> Unit,
@@ -77,30 +76,61 @@ fun GlassSurface(
         return
     }
 
+    // The same material the bottom bar is made of, so one app has one glass.
+    //
+    // The bar came from elsewhere and brought its own recipe with it, and next
+    // to it every other pane in this app read as a different substance: a
+    // different saturation, a different bend at the edge, and a thin white film
+    // where the bar has a lit grey one. Asking both recipes to agree by hand was
+    // the previous attempt and it changed nothing anybody could see, so there is
+    // only one recipe now — [Modifier.liquidGlass], the bar's own — and the
+    // parameters below are what a pane is still allowed to choose.
+    //
+    // Only how thick it is, in other words. How far it blurs is a real
+    // difference between a small pill and a panel covering half the screen; what
+    // the material *is* is not.
+    val config = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
+    // The refraction is part of that recipe now, and it is the reason this takes
+    // a shape it can bend light along. Anything else keeps the film below.
+    val blurDp = (config.blurRadius * blurScale).coerceAtLeast(0f)
+    val cornerShape = shape as? CornerBasedShape
+    if (cornerShape == null) {
+        Box(
+            modifier.background(
+                color = if (surfaceColor.isSpecified) surfaceColor else FallbackFilm,
+                shape = shape,
+            ),
+        ) {
+            content()
+        }
+        return
+    }
+
     Box(
-        modifier.drawBackdrop(
-            backdrop = backdrop,
-            shape = { shape },
-            effects = {
-                vibrancy()
-                blur(blurRadius.toPx())
-                // Deliberately the same numbers LiquidBottomTabs uses. They were
-                // tuned by eye at first and came out a different material — a
-                // shallower, harder edge than the bar and the buttons beside
-                // it, which is exactly what "the player doesn't look like the
-                // rest" was.
-                lens(refractionHeight.toPx(), refractionAmount.toPx())
-            },
-            onDrawSurface = if (surfaceColor.isSpecified) {
-                { drawRect(surfaceColor) }
-            } else {
-                null
-            },
+        modifier.liquidGlass(
+            config = config,
+            shape = cornerShape,
+            blurRadiusDp = blurDp,
+            // The bar's rim, not the library's default: the app's chrome is one
+            // material and the edge light is most of what says so.
+            highlightAlpha = BarHighlightAlpha,
+            // Panes sit over their own backdrop: the player's is the artwork
+            // behind it rather than the page under that.
+            ownBackdrop = backdrop,
         ),
     ) {
         content()
     }
 }
+
+/**
+ * The rim every surface in this app is lit with.
+ *
+ * The bottom bar picked this when it arrived and everything else kept the
+ * library's brighter default, which is why the player read as a different
+ * material even once the rest of the recipe was shared.
+ */
+internal const val BarHighlightAlpha = 0.3f
 
 /** What a pane looks like with the refraction switched off. */
 private val FallbackFilm = Color.White.copy(alpha = 0.12f)

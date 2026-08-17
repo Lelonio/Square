@@ -130,6 +130,8 @@
     <string name="scope_private_playlists">Adicionar a playlists privadas</string>
     <string name="scope_public_playlists">Adicionar a playlists públicas</string>
     <string name="enter_client_id">Informe o client ID.</string>
+    <string name="add_to_library">Adicionar à biblioteca</string>
+    <string name="remove_from_library">Remover da biblioteca</string>
     <string name="artist_playlists">Playlists com este artista</string>
     <string name="singles_and_eps">Singles e EP</string>
     <string name="appears_on">Aparece em</string>
@@ -241,7 +243,7 @@
     <string name="page_app">Aplicativo</string>
     <string name="page_account_summary">Sua conta, o aplicativo da Web API e sair</string>
     <string name="page_playback_summary">De onde vem a música, qualidade e transição</string>
-    <string name="page_app_summary">Idioma</string>
+    <string name="page_app_summary">Idioma, vidro e barra inferior</string>
     <string name="page_about_summary">Versão, permissões, licenças e desenvolvedor</string>
     <string name="playing_on">Reproduzindo em %1$s</string>
     <string name="switching">Trocando…</string>
@@ -256,4 +258,34 @@
     <string name="pin">Fixar no topo</string>
     <string name="unpin">Desafixar</string>
     <string name="radio">Rádio</string>
+
+    <string name="glass">Vidro</string>
+    <string name="glass_performance">Mais rápido</string>
+    <string name="glass_performance_note">Uma película colorida, sem amostrar nada por trás. Custa o mesmo que desenhar um retângulo.</string>
+    <string name="glass_balanced">Equilibrado</string>
+    <string name="glass_balanced_note">Fosco e refração, nas intensidades para que a aplicação foi desenhada.</string>
+    <string name="glass_quality">Qualidade</string>
+    <string name="glass_quality_note">Fosco mais profundo, refração mais forte e cor a separar-se nas bordas. A primeira coisa a custar fotogramas num telemóvel ocupado.</string>
+    <string name="glass_unsupported">Este telemóvel não tem desfoque por hardware, por isso todas as superfícies usam a película colorida.</string>
+    <string name="glass_advanced">Ajustar manualmente</string>
+    <string name="glass_vibrancy">Cor</string>
+    <string name="glass_blur">Fosco</string>
+    <string name="glass_refraction_depth">Profundidade da borda</string>
+    <string name="glass_refraction_amount">Curvatura</string>
+    <string name="glass_rim">Luz da borda</string>
+    <string name="glass_film">Película</string>
+    <string name="glass_dispersion">Separação de cor</string>
+    <string name="glass_dispersion_note">A luz a decompor-se em cores nas bordas, como no vidro espesso.</string>
+    <string name="glass_depth">Profundidade</string>
+    <string name="glass_depth_note">Faz a superfície parecer uma placa mais espessa. Em controlos pequenos custa mais do que se vê.</string>
+    <string name="glass_where_bar">Vidro na barra inferior</string>
+    <string name="glass_where_mini_player">Vidro na barra de reprodução</string>
+    <string name="glass_where_player">Vidro no reprodutor</string>
+    <string name="glass_reset">Voltar ao perfil</string>
+
+    <string name="bar_folds">A barra recolhe-se</string>
+    <string name="bar_folds_note">A barra inferior encolhe para uma cápsula enquanto percorre. É a animação mais cara da aplicação: desligada é mais fluida em telemóveis antigos.</string>
+    <string name="delete_playlist_title">Eliminar esta playlist?</string>
+    <string name="delete_playlist_message">%1$s vai desaparecer de todos os dispositivos desta conta, e não há forma de voltar atrás.</string>
+    <string name="glass_indicator">Separador ativo</string>
 </resources>

@@ -148,6 +148,8 @@
     <string name="scope_private_playlists">Add to private playlists</string>
     <string name="scope_public_playlists">Add to public playlists</string>
     <string name="enter_client_id">Enter the client ID.</string>
+    <string name="add_to_library">Add to library</string>
+    <string name="remove_from_library">Remove from library</string>
     <string name="artist_playlists">Playlists with this artist</string>
     <string name="singles_and_eps">Singles and EPs</string>
     <string name="appears_on">Appears on</string>
@@ -262,7 +264,7 @@
     <string name="page_app">App</string>
     <string name="page_account_summary">Your account, the Web API application and signing out</string>
     <string name="page_playback_summary">Where music comes from, quality and crossfade</string>
-    <string name="page_app_summary">Language</string>
+    <string name="page_app_summary">Language, glass and the bottom bar</string>
     <string name="page_about_summary">Version, permissions, licences and the developer</string>
     <string name="playing_on">Playing on %1$s</string>
     <string name="switching">Switching…</string>
@@ -277,4 +279,34 @@
     <string name="pin">Pin to the top</string>
     <string name="unpin">Unpin</string>
     <string name="radio">Radio</string>
+
+    <string name="glass">Glass</string>
+    <string name="glass_performance">Fastest</string>
+    <string name="glass_performance_note">A tinted film, with nothing sampled from behind it. Costs about as much as drawing a rectangle.</string>
+    <string name="glass_balanced">Balanced</string>
+    <string name="glass_balanced_note">Frost and refraction, at the strengths the app was designed against.</string>
+    <string name="glass_quality">Quality</string>
+    <string name="glass_quality_note">Deeper frost, stronger refraction and colour splitting at the edges. The first thing to cost frames on a busy phone.</string>
+    <string name="glass_unsupported">This phone has no hardware blur, so every surface uses the tinted film.</string>
+    <string name="glass_advanced">Adjust it yourself</string>
+    <string name="glass_vibrancy">Colour</string>
+    <string name="glass_blur">Frost</string>
+    <string name="glass_refraction_depth">Edge depth</string>
+    <string name="glass_refraction_amount">Bend</string>
+    <string name="glass_rim">Edge light</string>
+    <string name="glass_film">Film</string>
+    <string name="glass_dispersion">Colour splitting</string>
+    <string name="glass_dispersion_note">Light breaking into colour at the edges, as thick glass does.</string>
+    <string name="glass_depth">Depth</string>
+    <string name="glass_depth_note">Makes the surface read as a thicker slab. Costs more than it shows on small controls.</string>
+    <string name="glass_where_bar">Glass on the bottom bar</string>
+    <string name="glass_where_mini_player">Glass on the playing bar</string>
+    <string name="glass_where_player">Glass in the player</string>
+    <string name="glass_reset">Back to the profile</string>
+
+    <string name="bar_folds">Bar folds away</string>
+    <string name="bar_folds_note">The bottom bar shrinks to a pill as you scroll. The app\'s most expensive animation: off is smoother on older phones.</string>
+    <string name="delete_playlist_title">Delete this playlist?</string>
+    <string name="delete_playlist_message">%1$s will be gone from every device on this account, and there is no way back.</string>
+    <string name="glass_indicator">Active tab</string>
 </resources>

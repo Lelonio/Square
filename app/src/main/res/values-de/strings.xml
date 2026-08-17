@@ -130,6 +130,8 @@
     <string name="scope_private_playlists">Zu privaten Playlists hinzufügen</string>
     <string name="scope_public_playlists">Zu öffentlichen Playlists hinzufügen</string>
     <string name="enter_client_id">Gib die Client ID ein.</string>
+    <string name="add_to_library">Zur Bibliothek hinzufügen</string>
+    <string name="remove_from_library">Aus der Bibliothek entfernen</string>
     <string name="artist_playlists">Playlists mit diesem Künstler</string>
     <string name="singles_and_eps">Singles und EPs</string>
     <string name="appears_on">Mit dabei auf</string>
@@ -241,7 +243,7 @@
     <string name="page_app">App</string>
     <string name="page_account_summary">Ihr Konto, die Web-API-Anwendung und das Abmelden</string>
     <string name="page_playback_summary">Woher die Musik kommt, Qualität und Überblendung</string>
-    <string name="page_app_summary">Sprache</string>
+    <string name="page_app_summary">Sprache, Glas und untere Leiste</string>
     <string name="page_about_summary">Version, Berechtigungen, Lizenzen und Entwickler</string>
     <string name="playing_on">Wiedergabe auf %1$s</string>
     <string name="switching">Wechsel…</string>
@@ -256,4 +258,34 @@
     <string name="pin">Oben anheften</string>
     <string name="unpin">Lösen</string>
     <string name="radio">Radio</string>
+
+    <string name="glass">Glas</string>
+    <string name="glass_performance">Am schnellsten</string>
+    <string name="glass_performance_note">Ein getönter Film, ohne etwas dahinter abzutasten. Kostet etwa so viel wie ein gezeichnetes Rechteck.</string>
+    <string name="glass_balanced">Ausgewogen</string>
+    <string name="glass_balanced_note">Milchglas und Brechung, in der Stärke, für die die App gestaltet wurde.</string>
+    <string name="glass_quality">Qualität</string>
+    <string name="glass_quality_note">Tieferes Milchglas, stärkere Brechung und Farbaufspaltung an den Kanten. Das Erste, was auf einem ausgelasteten Telefon Bilder kostet.</string>
+    <string name="glass_unsupported">Dieses Telefon hat keine Hardware-Unschärfe, daher nutzen alle Flächen den getönten Film.</string>
+    <string name="glass_advanced">Selbst einstellen</string>
+    <string name="glass_vibrancy">Farbe</string>
+    <string name="glass_blur">Milchglas</string>
+    <string name="glass_refraction_depth">Kantentiefe</string>
+    <string name="glass_refraction_amount">Krümmung</string>
+    <string name="glass_rim">Kantenlicht</string>
+    <string name="glass_film">Film</string>
+    <string name="glass_dispersion">Farbaufspaltung</string>
+    <string name="glass_dispersion_note">Licht, das sich an den Kanten in Farben zerlegt, wie in dickem Glas.</string>
+    <string name="glass_depth">Tiefe</string>
+    <string name="glass_depth_note">Lässt die Fläche wie eine dickere Platte wirken. Bei kleinen Bedienelementen kostet es mehr, als man sieht.</string>
+    <string name="glass_where_bar">Glas in der unteren Leiste</string>
+    <string name="glass_where_mini_player">Glas in der Wiedergabeleiste</string>
+    <string name="glass_where_player">Glas im Player</string>
+    <string name="glass_reset">Zurück zum Profil</string>
+
+    <string name="bar_folds">Leiste klappt ein</string>
+    <string name="bar_folds_note">Die untere Leiste schrumpft beim Scrollen zu einer Pille. Die teuerste Animation der App: ausgeschaltet läuft es auf älteren Telefonen runder.</string>
+    <string name="delete_playlist_title">Diese Playlist löschen?</string>
+    <string name="delete_playlist_message">%1$s verschwindet von allen Geräten dieses Kontos, und es gibt keinen Weg zurück.</string>
+    <string name="glass_indicator">Aktiver Tab</string>
 </resources>

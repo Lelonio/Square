@@ -100,7 +100,7 @@ fun PlayerPanelSection(
     onSavePreset: (String) -> Unit,
     onDeletePreset: (String) -> Unit,
     /** The layer the panel refracts; see the liquid-glass note in PlayerScreen. */
-    backdrop: com.kyant.backdrop.Backdrop,
+    backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -245,7 +245,7 @@ internal fun EffectsPanel(
     onApplyPreset: (EffectPreset) -> Unit,
     onSavePreset: (String) -> Unit,
     onDeletePreset: (String) -> Unit,
-    backdrop: com.kyant.backdrop.Backdrop,
+    backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop,
 ) {
     var naming by remember { mutableStateOf(false) }
 
@@ -474,7 +474,7 @@ private fun EffectSlider(
      * answer to "what am I choosing?" until it had already been chosen.
      */
     reading: (Float) -> String,
-    backdrop: com.kyant.backdrop.Backdrop,
+    backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop,
     onChange: (Float) -> Unit,
     onReset: () -> Unit,
 ) {

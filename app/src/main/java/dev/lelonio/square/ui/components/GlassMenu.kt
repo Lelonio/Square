@@ -13,8 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import dev.lelonio.square.ui.player.GlassSurface
 import dev.lelonio.square.ui.theme.softShadow
-import com.kyant.backdrop.Backdrop
-import com.kyant.shapes.Capsule
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.shapes.ContinuousCapsule
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
@@ -187,7 +187,7 @@ fun BoxScope.GlassIconMenu(
             .align(Alignment.TopStart)
             .offset { anchor },
     ) {
-        val shape = Capsule()
+        val shape = ContinuousCapsule()
         GlassSurface(
             backdrop = backdrop,
             shape = shape,
@@ -285,7 +285,7 @@ fun BoxScope.GlassChoiceMenu(
             // them showing through its own labels — legibility beats keeping
             // every surface the same film.
             surfaceColor = ChoiceFilm,
-            blurRadius = 30.dp,
+            blurScale = 15.0f,
             modifier = Modifier
                 .width(CHOICE_MENU_WIDTH)
                 .clip(shape)

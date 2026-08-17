@@ -142,6 +142,8 @@
     <string name="scope_private_playlists">Özel çalma listelerine ekleme</string>
     <string name="scope_public_playlists">Herkese açık listelere ekleme</string>
     <string name="enter_client_id">İstemci kimliğini gir.</string>
+    <string name="add_to_library">Kitaplığa ekle</string>
+    <string name="remove_from_library">Kitaplıktan kaldır</string>
     <string name="artist_playlists">Bu sanatçının çalma listeleri</string>
     <string name="singles_and_eps">Single ve EP</string>
     <string name="appears_on">Yer aldığı albümler</string>
@@ -256,7 +258,7 @@
     <string name="page_app">Uygulama</string>
     <string name="page_account_summary">Hesabın, Web API uygulaması ve çıkış</string>
     <string name="page_playback_summary">Müziğin kaynağı, kalite ve çapraz geçiş</string>
-    <string name="page_app_summary">Dil</string>
+    <string name="page_app_summary">Dil, cam ve alt çubuk</string>
     <string name="page_about_summary">Sürüm, izinler, lisanslar ve geliştirici</string>
     <string name="playing_on">%1$s cihazında çalıyor</string>
     <string name="switching">Geçiliyor…</string>
@@ -271,4 +273,34 @@
     <string name="pin">Yukarı sabitle</string>
     <string name="unpin">Sabitlemeyi kaldır</string>
     <string name="radio">Radyo</string>
+
+    <string name="glass">Cam</string>
+    <string name="glass_performance">En hızlı</string>
+    <string name="glass_performance_note">Renkli bir film; arkasından hiçbir şey örneklenmez. Bir dikdörtgen çizmek kadar maliyetli.</string>
+    <string name="glass_balanced">Dengeli</string>
+    <string name="glass_balanced_note">Buzlanma ve kırılma, uygulamanın tasarlandığı şiddetlerde.</string>
+    <string name="glass_quality">Kalite</string>
+    <string name="glass_quality_note">Daha derin buzlanma, daha güçlü kırılma ve kenarlarda renk ayrışması. Yoğun bir telefonda kare kaybettiren ilk şey.</string>
+    <string name="glass_unsupported">Bu telefonda donanımsal bulanıklık yok, bu yüzden tüm yüzeyler renkli filmi kullanıyor.</string>
+    <string name="glass_advanced">Kendin ayarla</string>
+    <string name="glass_vibrancy">Renk</string>
+    <string name="glass_blur">Buzlanma</string>
+    <string name="glass_refraction_depth">Kenar derinliği</string>
+    <string name="glass_refraction_amount">Bükülme</string>
+    <string name="glass_rim">Kenar ışığı</string>
+    <string name="glass_film">Film</string>
+    <string name="glass_dispersion">Renk ayrışması</string>
+    <string name="glass_dispersion_note">Kalın camda olduğu gibi, kenarlarda ışığın renklere ayrılması.</string>
+    <string name="glass_depth">Derinlik</string>
+    <string name="glass_depth_note">Yüzeyi daha kalın bir levha gibi gösterir. Küçük denetimlerde göründüğünden fazlasına mal olur.</string>
+    <string name="glass_where_bar">Alt çubukta cam</string>
+    <string name="glass_where_mini_player">Çalma çubuğunda cam</string>
+    <string name="glass_where_player">Oynatıcıda cam</string>
+    <string name="glass_reset">Profile dön</string>
+
+    <string name="bar_folds">Çubuk katlanır</string>
+    <string name="bar_folds_note">Alt çubuk kaydırdıkça bir hapa küçülür. Uygulamanın en pahalı animasyonu: kapalıyken eski telefonlarda daha akıcı.</string>
+    <string name="delete_playlist_title">Bu çalma listesi silinsin mi?</string>
+    <string name="delete_playlist_message">%1$s bu hesaptaki tüm cihazlardan kaybolacak ve geri dönüşü yok.</string>
+    <string name="glass_indicator">Etkin sekme</string>
 </resources>

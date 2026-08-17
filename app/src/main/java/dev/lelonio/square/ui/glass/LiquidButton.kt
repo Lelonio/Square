@@ -30,12 +30,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceAtMost
 import androidx.compose.ui.util.lerp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.shapes.Capsule
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.shapes.ContinuousCapsule
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -49,6 +45,14 @@ fun LiquidButton(
     modifier: Modifier = Modifier,
     isInteractive: Boolean = true,
     tint: Color = Color.Unspecified,
+    /**
+     * A wash of this control's own, over the shared film.
+     *
+     * No longer the material — that comes from the glass configuration, like
+     * everywhere else — but still what a chip is lit with while it is the chosen
+     * one. Dropping it entirely made the filter rows in search and the library
+     * read as five identical buttons.
+     */
     surfaceColor: Color = Color.Unspecified,
     // LOCAL CHANGE: upstream pins the height at 48dp and the horizontal padding
     // at 16dp, which silently overrode any size the caller asked for — a 62dp
@@ -56,11 +60,23 @@ fun LiquidButton(
     // are parameters now, with the upstream values as defaults.
     contentHeight: Dp = 48f.dp,
     contentPadding: Dp = 16f.dp,
-    // LOCAL CHANGE: upstream frosts these by 2dp, which is nearly clear. Next to
-    // LiquidBottomTabs — 8dp — the two read as different materials: the bar looks
-    // frosted and the buttons look like bare refraction. A parameter rather than
-    // a new default so the upstream value is still what you get by not asking.
-    blurRadius: Dp = 2f.dp,
+    // LOCAL CHANGE: how thick this button is, as a multiple of the app's own
+    // frost rather than a number of dp. Upstream pins it at 2dp and this app
+    // pinned various call sites at 8, which is how the player's controls ended
+    // up ignoring the frost setting entirely: a button on a fixed 8 beside a bar
+    // on a configurable 2 is a different material no matter where the slider is.
+    blurScale: Float = 1f,
+    /**
+     * Draws the material without sampling anything behind it.
+     *
+     * For the buttons that live in a scrolling page rather than in the chrome.
+     * A pane that moves with the content re-photographs the screen on every
+     * frame of every scroll, and the five filter chips at the top of the home
+     * page cost 8ms a frame between them — for a reflection of a page that is
+     * usually flat colour behind them anyway. The film and the rim are the same,
+     * so they still read as the same glass.
+     */
+    flat: Boolean = false,
     content: @Composable RowScope.() -> Unit
 ) {
     val animationScope = rememberCoroutineScope()
@@ -71,16 +87,30 @@ fun LiquidButton(
         )
     }
 
+    // LOCAL CHANGE: the material is the app's, not this file's. Upstream picks
+    // its own vibrancy, blur and lens here, which is right for a catalog of one
+    // component and wrong in an app where the bottom bar is the reference: next
+    // to it these buttons read as a thinner, harder glass. What stays is
+    // everything that makes this a button rather than a pane — the press squash
+    // below, the pull towards the finger, the tint of an active control.
+    val configured = LocalGlassEffectConfig.current
+    val config = if (flat) configured.copy(style = GlassStyle.TRANSPARENT) else configured
     Row(
         modifier
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { Capsule() },
-                effects = {
-                    vibrancy()
-                    blur(blurRadius.toPx())
-                    lens(12f.dp.toPx(), 24f.dp.toPx())
-                },
+            .liquidGlass(
+                config = config,
+                shape = ContinuousCapsule(),
+                blurRadiusDp = (config.blurRadius * blurScale).coerceAtLeast(0f),
+                // LOCAL CHANGE: buttons sample the screen at a fraction of their
+                // own resolution. There are a lot of them — five filter chips at
+                // the top of the home page alone — and each one is a capture plus
+                // a shader chain per frame: measured at 8ms a frame together.
+                // They are small, filmed and rounded, which is exactly where the
+                // upscaling does not show.
+                backdropScale = 0.4f,
+                // The bar's rim, so a button beside it is cut from the same pane.
+                highlightAlpha = dev.lelonio.square.ui.player.BarHighlightAlpha,
+                ownBackdrop = backdrop,
                 layerBlock = if (isInteractive) {
                     {
                         val width = size.width
@@ -109,15 +139,21 @@ fun LiquidButton(
                 } else {
                     null
                 },
-                onDrawSurface = {
-                    if (tint.isSpecified) {
-                        drawRect(tint, blendMode = BlendMode.Hue)
-                        drawRect(tint.copy(alpha = 0.75f))
+                // The shared film is drawn first; these are only what this
+                // particular control adds to it.
+                onDrawTint = if (tint.isSpecified || surfaceColor.isSpecified) {
+                    {
+                        if (tint.isSpecified) {
+                            drawRect(tint, blendMode = BlendMode.Hue)
+                            drawRect(tint.copy(alpha = 0.75f))
+                        }
+                        if (surfaceColor.isSpecified) {
+                            drawRect(surfaceColor)
+                        }
                     }
-                    if (surfaceColor.isSpecified) {
-                        drawRect(surfaceColor)
-                    }
-                }
+                } else {
+                    null
+                },
             )
             .clickable(
                 interactionSource = null,

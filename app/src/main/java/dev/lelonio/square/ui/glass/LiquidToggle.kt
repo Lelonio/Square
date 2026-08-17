@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -39,18 +40,18 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.Capsule
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
+import dev.lelonio.square.ui.glass.backdrop.effects.blur
+import dev.lelonio.square.ui.glass.backdrop.effects.lens
+import dev.lelonio.square.ui.glass.backdrop.highlight.Highlight
+import dev.lelonio.square.ui.glass.backdrop.shadow.InnerShadow
+import dev.lelonio.square.ui.glass.backdrop.shadow.Shadow
+import dev.lelonio.square.ui.glass.shapes.ContinuousCapsule
 import kotlinx.coroutines.flow.collectLatest
 
 @Composable
@@ -58,12 +59,21 @@ fun LiquidToggle(
     selected: () -> Boolean,
     onSelect: (Boolean) -> Unit,
     backdrop: Backdrop,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // LOCAL CHANGE: upstream is iOS, so its switches are iOS green. This app is
+    // tinted from whatever is playing, and a green switch in a page washed with
+    // the cover's colour is the one control that came from somewhere else.
+    // Unspecified keeps the upstream green.
+    accent: Color = Color.Unspecified
 ) {
     val isLightTheme = !isSystemInDarkTheme()
-    val accentColor =
-        if (isLightTheme) Color(0xFF34C759)
-        else Color(0xFF30D158)
+    val accentColor = if (accent.isSpecified) {
+        accent
+    } else if (isLightTheme) {
+        Color(0xFF34C759)
+    } else {
+        Color(0xFF30D158)
+    }
     val trackColor =
         if (isLightTheme) Color(0xFF787878).copy(0.2f)
         else Color(0xFF787880).copy(0.36f)
@@ -130,7 +140,7 @@ fun LiquidToggle(
         Box(
             Modifier
                 .layerBackdrop(trackBackdrop)
-                .clip(Capsule())
+                .clip(ContinuousCapsule())
                 .drawBehind {
                     val fraction = dampedDragAnimation.value
                     drawRect(lerp(trackColor, accentColor, fraction))
@@ -163,7 +173,7 @@ fun LiquidToggle(
                             }
                         }
                     ),
-                    shape = { Capsule() },
+                    shape = { ContinuousCapsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
                         blur(8f.dp.toPx() * (1f - progress))

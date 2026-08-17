@@ -42,9 +42,9 @@ import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.fill.Play
 import com.adamglin.phosphoricons.regular.Plus
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
+import dev.lelonio.square.ui.glass.backdrop.effects.blur
 import dev.lelonio.square.R
 import dev.lelonio.square.data.CatalogTrack
 import dev.lelonio.square.ui.glass.pressable
@@ -108,7 +108,7 @@ fun BoxScope.SharedTrackCard(
             backdrop = backdrop,
             shape = shape,
             surfaceColor = Color.White.copy(alpha = 0.07f),
-            blurRadius = 46.dp,
+            blurScale = 23.0f,
             modifier = Modifier
                 .padding(horizontal = 26.dp)
                 .fillMaxWidth()

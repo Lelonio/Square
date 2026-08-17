@@ -29,9 +29,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
+import dev.lelonio.square.ui.glass.backdrop.effects.blur
 import dev.lelonio.square.ui.player.GlassSurface
 import dev.lelonio.square.ui.theme.softShadow
 
@@ -101,7 +101,7 @@ fun BoxScope.TrackSheet(
             // *unblurred* layer, so at the usual 8dp the rows underneath came
             // through sharper inside the sheet than outside it — the one thing
             // that reads as a mistake rather than as a material.
-            blurRadius = 46.dp,
+            blurScale = 23.0f,
             modifier = Modifier
                 .padding(horizontal = 28.dp)
                 .fillMaxWidth()

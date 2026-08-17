@@ -49,18 +49,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.Capsule
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
+import dev.lelonio.square.ui.glass.backdrop.effects.blur
+import dev.lelonio.square.ui.glass.backdrop.effects.lens
+import dev.lelonio.square.ui.glass.backdrop.effects.vibrancy
+import dev.lelonio.square.ui.glass.backdrop.highlight.Highlight
+import dev.lelonio.square.ui.glass.backdrop.shadow.InnerShadow
+import dev.lelonio.square.ui.glass.backdrop.shadow.Shadow
+import dev.lelonio.square.ui.glass.shapes.ContinuousCapsule
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -202,21 +202,23 @@ fun LiquidBottomTabs(
                 .graphicsLayer {
                     translationX = panelOffset
                 }
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { Capsule() },
-                    effects = {
-                        vibrancy()
-                        blur(8f.dp.toPx())
-                        lens(lensDepth.toPx(), lensDepth.toPx())
-                    },
+                // LOCAL CHANGE: the shell is made of the app's glass, like every
+                // other pane. The puck below keeps its own recipe on purpose —
+                // what it does is press-driven, a bend and a rim that only exist
+                // while a finger is on it, which is not a material.
+                .liquidGlass(
+                    config = LocalGlassEffectConfig.current,
+                    shape = ContinuousCapsule(),
+                    // Follows the setting like everything else; the shell of a
+                    // panel switcher is not a different material from the bar.
+                    blurRadiusDp = LocalGlassEffectConfig.current.blurRadius,
+                    ownBackdrop = backdrop,
                     layerBlock = {
                         val progress = dampedDragAnimation.pressProgress
                         val scale = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
                         scaleX = scale
                         scaleY = scale
                     },
-                    onDrawSurface = { drawRect(containerColor) }
                 )
                 .then(interactiveHighlight.modifier)
                 .height(height)
@@ -241,7 +243,7 @@ fun LiquidBottomTabs(
                     }
                     .drawBackdrop(
                         backdrop = backdrop,
-                        shape = { Capsule() },
+                        shape = { ContinuousCapsule() },
                         effects = {
                             val progress = dampedDragAnimation.pressProgress
                             vibrancy()
@@ -286,7 +288,7 @@ fun LiquidBottomTabs(
                 .then(dampedDragAnimation.modifier)
                 .drawBackdrop(
                     backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
-                    shape = { Capsule() },
+                    shape = { ContinuousCapsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
                         lens(

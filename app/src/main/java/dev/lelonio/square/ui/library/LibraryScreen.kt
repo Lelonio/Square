@@ -39,7 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.R
 import dev.lelonio.square.data.CatalogPlaylist
 import dev.lelonio.square.data.sortedByRecentlyOpened
@@ -271,8 +271,6 @@ private fun Header(
                         .size(42.dp),
                     contentHeight = 42.dp,
                     contentPadding = 0.dp,
-                    blurRadius = 8.dp,
-                    surfaceColor = GlassFilm,
                 ) {
                     Icon(
                         PhosphorIcons.Regular.Plus,
@@ -292,8 +290,6 @@ private fun Header(
                 modifier = Modifier.size(42.dp),
                 contentHeight = 42.dp,
                 contentPadding = 0.dp,
-                blurRadius = 8.dp,
-                surfaceColor = GlassFilm,
             ) {
                 Icon(
                     if (layout == Layout.GRID) PhosphorIcons.Regular.ListBullets
@@ -318,10 +314,10 @@ private fun Header(
                 LiquidButton(
                     onClick = { onOrder(entry) },
                     backdrop = backdrop,
+                    flat = true,
                     contentHeight = 36.dp,
                     contentPadding = 14.dp,
-                    blurRadius = 8.dp,
-                    surfaceColor = if (selected) SelectedFilm else GlassFilm,
+                    surfaceColor = if (selected) SelectedFilm else Color.Unspecified,
                 ) {
                     Text(
                         stringResource(entry.label),
@@ -431,8 +427,6 @@ private fun GlassAction(label: String, backdrop: Backdrop, onClick: () -> Unit) 
         backdrop = backdrop,
         contentHeight = 50.dp,
         contentPadding = 26.dp,
-        blurRadius = 8.dp,
-        surfaceColor = GlassFilm,
     ) {
         Text(label, style = MaterialTheme.typography.titleMedium, color = Ink)
     }

@@ -142,6 +142,8 @@
     <string name="scope_private_playlists">निजी प्लेलिस्ट में जोड़ना</string>
     <string name="scope_public_playlists">सार्वजनिक प्लेलिस्ट में जोड़ना</string>
     <string name="enter_client_id">क्लाइंट आईडी डालें।</string>
+    <string name="add_to_library">लाइब्रेरी में जोड़ें</string>
+    <string name="remove_from_library">लाइब्रेरी से हटाएँ</string>
     <string name="artist_playlists">इस कलाकार की प्लेलिस्ट</string>
     <string name="singles_and_eps">सिंगल और EP</string>
     <string name="appears_on">इनमें शामिल</string>
@@ -256,7 +258,7 @@
     <string name="page_app">ऐप</string>
     <string name="page_account_summary">आपका खाता, Web API ऐप्लिकेशन और साइन आउट</string>
     <string name="page_playback_summary">संगीत का स्रोत, गुणवत्ता और क्रॉसफ़ेड</string>
-    <string name="page_app_summary">भाषा</string>
+    <string name="page_app_summary">भाषा, काँच और नीचे की पट्टी</string>
     <string name="page_about_summary">संस्करण, अनुमतियाँ, लाइसेंस और डेवलपर</string>
     <string name="playing_on">%1$s पर चल रहा है</string>
     <string name="switching">बदला जा रहा है…</string>
@@ -271,4 +273,34 @@
     <string name="pin">ऊपर पिन करें</string>
     <string name="unpin">पिन हटाएँ</string>
     <string name="radio">रेडियो</string>
+
+    <string name="glass">काँच</string>
+    <string name="glass_performance">सबसे तेज़</string>
+    <string name="glass_performance_note">एक रंगी हुई परत, पीछे से कुछ भी लिए बिना। लागत बस एक आयत बनाने जितनी।</string>
+    <string name="glass_balanced">संतुलित</string>
+    <string name="glass_balanced_note">धुंध और अपवर्तन, उसी मात्रा में जिसके लिए ऐप बनाया गया है।</string>
+    <string name="glass_quality">गुणवत्ता</string>
+    <string name="glass_quality_note">गहरी धुंध, तेज़ अपवर्तन और किनारों पर रंगों का बँटवारा। व्यस्त फ़ोन पर सबसे पहले यही फ़्रेम खाता है।</string>
+    <string name="glass_unsupported">इस फ़ोन में हार्डवेयर ब्लर नहीं है, इसलिए हर सतह रंगी हुई परत का उपयोग करती है।</string>
+    <string name="glass_advanced">खुद समायोजित करें</string>
+    <string name="glass_vibrancy">रंग</string>
+    <string name="glass_blur">धुंध</string>
+    <string name="glass_refraction_depth">किनारे की गहराई</string>
+    <string name="glass_refraction_amount">मोड़</string>
+    <string name="glass_rim">किनारे की रोशनी</string>
+    <string name="glass_film">परत</string>
+    <string name="glass_dispersion">रंगों का बँटवारा</string>
+    <string name="glass_dispersion_note">मोटे काँच की तरह, किनारों पर रोशनी का रंगों में टूटना।</string>
+    <string name="glass_depth">गहराई</string>
+    <string name="glass_depth_note">सतह को मोटी पट्टी जैसा दिखाता है। छोटे नियंत्रणों पर दिखने से ज़्यादा खर्च करता है।</string>
+    <string name="glass_where_bar">नीचे की पट्टी पर काँच</string>
+    <string name="glass_where_mini_player">चल रही पट्टी पर काँच</string>
+    <string name="glass_where_player">प्लेयर में काँच</string>
+    <string name="glass_reset">प्रोफ़ाइल पर लौटें</string>
+
+    <string name="bar_folds">पट्टी सिमटती है</string>
+    <string name="bar_folds_note">स्क्रॉल करने पर नीचे की पट्टी सिकुड़कर गोली बन जाती है। यह ऐप का सबसे महँगा एनिमेशन है: बंद रखने पर पुराने फ़ोन पर ज़्यादा सहज चलता है।</string>
+    <string name="delete_playlist_title">यह प्लेलिस्ट हटाएँ?</string>
+    <string name="delete_playlist_message">%1$s इस खाते के हर डिवाइस से चली जाएगी, और वापस लाने का कोई तरीका नहीं है।</string>
+    <string name="glass_indicator">सक्रिय टैब</string>
 </resources>

@@ -35,7 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.R
 import dev.lelonio.square.ui.components.Artwork
 import dev.lelonio.square.ui.glass.LiquidButton
@@ -163,16 +163,19 @@ fun MiniPlayer(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(10.dp),
+                    // The reference's own numbers for the phone strip: a 36dp
+                    // thumbnail with a 9dp corner, 36dp controls, and 10 by 6 of
+                    // padding round the lot.
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Artwork(
                     state.artworkUrl,
                     state.title,
                     Modifier
-                        .size(42.dp)
+                        .size(36.dp)
                         .sharedArtwork(sharedScope, animatedScope),
-                    corner = 12.dp,
+                    corner = 9.dp,
                 )
 
                 // Slides up on a track change, so an auto-advance is visible
@@ -185,13 +188,13 @@ fun MiniPlayer(
                     },
                     label = "nowPlaying",
                     modifier = Modifier
-                        .padding(horizontal = 14.dp)
+                        .padding(start = 8.dp, end = 8.dp)
                         .weight(1f),
                 ) { (title, artist) ->
                     Column {
                         Text(
                             title,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
                             color = MiniPlayerInk,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -237,10 +240,9 @@ fun MiniPlayer(
                 LiquidButton(
                     onClick = onTogglePlay,
                     backdrop = backdrop,
-                    surfaceColor = GlassFilm,
-                    contentHeight = 42.dp,
+                    contentHeight = 36.dp,
                     contentPadding = 0.dp,
-                    modifier = Modifier.size(42.dp),
+                    modifier = Modifier.size(36.dp),
                 ) {
                     // Same ring as the player's; see the note there.
                     Box(contentAlignment = Alignment.Center) {
@@ -287,8 +289,8 @@ fun MiniPlayer(
  * Fixed light, like everything else on the glass: what sits behind this bar is
  * the darkened artwork, not a page colour.
  */
-private val MiniPlayerInk = Color(0xFFF7F8FA)
-private val MiniPlayerInkDim = Color(0xFFF7F8FA).copy(alpha = 0.66f)
+internal val MiniPlayerInk = Color(0xFFF7F8FA)
+internal val MiniPlayerInkDim = Color(0xFFF7F8FA).copy(alpha = 0.66f)
 
 /**
  * The green everyone already reads as "this is coming out of something else".
@@ -304,7 +306,12 @@ fun progressOf(positionMs: Long, durationMs: Long): Float =
     if (durationMs <= 0) 0f else (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
 /** Spacer height so lists can scroll clear of the mini player. */
-val MiniPlayerHeight = 74.dp
+/**
+ * 52dp, measured off the reference: the pill above the tabs is shorter than the
+ * tab capsule under it, and a mini player as tall as the bar made the two read
+ * as one slab.
+ */
+val MiniPlayerHeight = 48.dp
 
 @Composable
 fun MiniPlayerSpacer() = Box(Modifier.height(MiniPlayerHeight))

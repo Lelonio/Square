@@ -32,9 +32,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
+import dev.lelonio.square.ui.glass.backdrop.effects.blur
 import dev.lelonio.square.R
 import dev.lelonio.square.data.FriendListen
 import dev.lelonio.square.ui.glass.pressable
@@ -90,7 +90,7 @@ fun BoxScope.FriendsPanel(
             backdrop = backdrop,
             shape = shape,
             surfaceColor = Color.White.copy(alpha = 0.08f),
-            blurRadius = 46.dp,
+            blurScale = 23.0f,
             modifier = Modifier
                 .padding(horizontal = 22.dp)
                 .fillMaxWidth()

@@ -70,6 +70,11 @@ class SquareApplication : Application() {
         dev.lelonio.square.data.EffectQualityStore(this)
     }
 
+    /** What the glass is made of, and how much of it the phone has to pay for. */
+    val glass: dev.lelonio.square.data.GlassStore by lazy {
+        dev.lelonio.square.data.GlassStore(this)
+    }
+
     /** How long one track dissolves into the next. */
     val crossfade: dev.lelonio.square.data.CrossfadeStore by lazy {
         dev.lelonio.square.data.CrossfadeStore(this)

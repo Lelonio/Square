@@ -1,8 +1,8 @@
 package dev.lelonio.square.ui.player
 
 import androidx.compose.foundation.background
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.drawBackdrop
+import dev.lelonio.square.ui.glass.backdrop.effects.blur
+import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.slideInVertically
@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.Check
-import com.kyant.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.R
 import dev.lelonio.square.data.CatalogPlaylist
 import dev.lelonio.square.ui.MainViewModel
@@ -100,7 +100,7 @@ fun AddToPlaylistSheet(
             // Heavier than the page behind it: the panel samples the unblurred
             // layer, so at the usual radius the rows underneath came through
             // sharper inside the sheet than outside it.
-            blurRadius = 46.dp,
+            blurScale = 23.0f,
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth()

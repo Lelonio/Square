@@ -131,6 +131,8 @@
     <string name="scope_private_playlists">Aggiungi a playlist private</string>
     <string name="scope_public_playlists">Aggiungi a playlist pubbliche</string>
     <string name="enter_client_id">Inserisci il client id.</string>
+    <string name="add_to_library">Aggiungi alla libreria</string>
+    <string name="remove_from_library">Togli dalla libreria</string>
     <string name="artist_playlists">Playlist con questo artista</string>
     <string name="singles_and_eps">Singoli ed EP</string>
     <string name="appears_on">Compare in</string>
@@ -242,7 +244,7 @@
     <string name="page_app">App</string>
     <string name="page_account_summary">Il tuo account, l’applicazione Web API e la disconnessione</string>
     <string name="page_playback_summary">Da dove arriva la musica, qualità e dissolvenza</string>
-    <string name="page_app_summary">Lingua</string>
+    <string name="page_app_summary">Lingua, vetro e barra in basso</string>
     <string name="page_about_summary">Versione, permessi, licenze e sviluppatore</string>
     <string name="playing_on">In riprod. su %1$s</string>
     <string name="switching">Passaggio in corso…</string>
@@ -257,4 +259,34 @@
     <string name="pin">Fissa in alto</string>
     <string name="unpin">Togli dall\'alto</string>
     <string name="radio">Radio</string>
+
+    <string name="glass">Vetro</string>
+    <string name="glass_performance">Più veloce</string>
+    <string name="glass_performance_note">Una pellicola colorata, senza niente campionato da dietro. Costa quanto disegnare un rettangolo.</string>
+    <string name="glass_balanced">Bilanciato</string>
+    <string name="glass_balanced_note">Brina e rifrazione, alle intensità per cui l\'app è stata disegnata.</string>
+    <string name="glass_quality">Qualità</string>
+    <string name="glass_quality_note">Brina più profonda, rifrazione più forte e colore che si separa ai bordi. La prima cosa che costa fotogrammi su un telefono impegnato.</string>
+    <string name="glass_unsupported">Questo telefono non ha la sfocatura hardware, quindi ogni superficie usa la pellicola colorata.</string>
+    <string name="glass_advanced">Regolalo tu</string>
+    <string name="glass_vibrancy">Colore</string>
+    <string name="glass_blur">Brina</string>
+    <string name="glass_refraction_depth">Profondità del bordo</string>
+    <string name="glass_refraction_amount">Curvatura</string>
+    <string name="glass_rim">Luce sul bordo</string>
+    <string name="glass_film">Pellicola</string>
+    <string name="glass_dispersion">Separazione dei colori</string>
+    <string name="glass_dispersion_note">La luce che si scompone in colori ai bordi, come nel vetro spesso.</string>
+    <string name="glass_depth">Profondità</string>
+    <string name="glass_depth_note">Fa sembrare la superficie una lastra più spessa. Sui controlli piccoli costa più di quanto si veda.</string>
+    <string name="glass_where_bar">Vetro nella barra in basso</string>
+    <string name="glass_where_mini_player">Vetro nella barra di riproduzione</string>
+    <string name="glass_where_player">Vetro nel player</string>
+    <string name="glass_reset">Torna al profilo</string>
+
+    <string name="bar_folds">La barra si richiude</string>
+    <string name="bar_folds_note">La barra in basso si stringe in una pillola mentre scorri. È l\'animazione più costosa dell\'app: disattivarla è più fluido sui telefoni vecchi.</string>
+    <string name="delete_playlist_title">Eliminare questa playlist?</string>
+    <string name="delete_playlist_message">%1$s sparirà da ogni dispositivo di questo account, e non si può tornare indietro.</string>
+    <string name="glass_indicator">Tab attiva</string>
 </resources>

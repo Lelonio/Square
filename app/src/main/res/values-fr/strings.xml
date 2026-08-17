@@ -130,6 +130,8 @@
     <string name="scope_private_playlists">Ajouter aux playlists privées</string>
     <string name="scope_public_playlists">Ajouter aux playlists publiques</string>
     <string name="enter_client_id">Saisissez le client ID.</string>
+    <string name="add_to_library">Ajouter à la bibliothèque</string>
+    <string name="remove_from_library">Retirer de la bibliothèque</string>
     <string name="artist_playlists">Playlists avec cet artiste</string>
     <string name="singles_and_eps">Singles et EP</string>
     <string name="appears_on">Apparaît sur</string>
@@ -241,7 +243,7 @@
     <string name="page_app">Application</string>
     <string name="page_account_summary">Votre compte, l’application Web API et la déconnexion</string>
     <string name="page_playback_summary">D’où vient la musique, qualité et fondu enchaîné</string>
-    <string name="page_app_summary">Langue</string>
+    <string name="page_app_summary">Langue, verre et barre du bas</string>
     <string name="page_about_summary">Version, autorisations, licences et développeur</string>
     <string name="playing_on">Lecture sur %1$s</string>
     <string name="switching">Transfert…</string>
@@ -256,4 +258,34 @@
     <string name="pin">Épingler en haut</string>
     <string name="unpin">Désépingler</string>
     <string name="radio">Radio</string>
+
+    <string name="glass">Verre</string>
+    <string name="glass_performance">Le plus rapide</string>
+    <string name="glass_performance_note">Un film teinté, sans rien prélever derrière. Coûte à peu près autant que dessiner un rectangle.</string>
+    <string name="glass_balanced">Équilibré</string>
+    <string name="glass_balanced_note">Givre et réfraction, aux intensités pour lesquelles l\'application a été conçue.</string>
+    <string name="glass_quality">Qualité</string>
+    <string name="glass_quality_note">Givre plus profond, réfraction plus forte et couleurs qui se séparent sur les bords. La première chose qui coûte des images sur un téléphone chargé.</string>
+    <string name="glass_unsupported">Ce téléphone n\'a pas de flou matériel : toutes les surfaces utilisent le film teinté.</string>
+    <string name="glass_advanced">Régler soi-même</string>
+    <string name="glass_vibrancy">Couleur</string>
+    <string name="glass_blur">Givre</string>
+    <string name="glass_refraction_depth">Profondeur du bord</string>
+    <string name="glass_refraction_amount">Courbure</string>
+    <string name="glass_rim">Lumière du bord</string>
+    <string name="glass_film">Film</string>
+    <string name="glass_dispersion">Séparation des couleurs</string>
+    <string name="glass_dispersion_note">La lumière qui se décompose en couleurs sur les bords, comme dans le verre épais.</string>
+    <string name="glass_depth">Profondeur</string>
+    <string name="glass_depth_note">Donne à la surface l\'épaisseur d\'une dalle. Sur les petits contrôles, coûte plus qu\'il ne se voit.</string>
+    <string name="glass_where_bar">Verre sur la barre du bas</string>
+    <string name="glass_where_mini_player">Verre sur la barre de lecture</string>
+    <string name="glass_where_player">Verre dans le lecteur</string>
+    <string name="glass_reset">Revenir au profil</string>
+
+    <string name="bar_folds">La barre se replie</string>
+    <string name="bar_folds_note">La barre du bas se réduit en pastille quand vous faites défiler. C\'est l\'animation la plus coûteuse de l\'application : la désactiver est plus fluide sur les téléphones anciens.</string>
+    <string name="delete_playlist_title">Supprimer cette playlist ?</string>
+    <string name="delete_playlist_message">%1$s disparaîtra de tous les appareils de ce compte, sans retour possible.</string>
+    <string name="glass_indicator">Onglet actif</string>
 </resources>

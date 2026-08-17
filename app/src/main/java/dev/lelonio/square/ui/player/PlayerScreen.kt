@@ -73,10 +73,10 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
 import dev.lelonio.square.R
 import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
@@ -1348,13 +1348,11 @@ private fun RoundGlassButton(
             // Dimmed rather than removed when there is nowhere to go: a control
             // that disappears makes the whole row jump.
             .graphicsLayer { alpha = if (enabled) 1f else 0.4f },
-        surfaceColor = GlassFilm,
         contentHeight = size,
         contentPadding = 0.dp,
         // Matched to the bottom bar and the mini player. At the upstream 2dp
         // these were the one place in the app where the glass barely frosted
         // what was behind it.
-        blurRadius = 8.dp,
     ) {
         content()
     }

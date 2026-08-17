@@ -17,8 +17,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,13 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.R
 import dev.lelonio.square.data.CatalogTrack
 import dev.lelonio.square.data.SearchItem
@@ -53,9 +50,7 @@ import dev.lelonio.square.ui.theme.InkDim
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
-import com.adamglin.phosphoricons.fill.MagnifyingGlass
 import com.adamglin.phosphoricons.regular.DotsThree
-import com.adamglin.phosphoricons.regular.X
 
 /** Which kind of result the page is showing. */
 private enum class Kind(@StringRes val label: Int) {
@@ -81,7 +76,6 @@ fun SearchScreen(
     webApi: MainViewModel.WebApiState,
     contentPadding: PaddingValues,
     nowPlayingUri: String?,
-    onQueryChange: (String) -> Unit,
     onClientIdChange: (String) -> Unit,
     onConnectWebApi: () -> Unit,
     onPlayTrack: (List<CatalogTrack>, Int) -> Unit,
@@ -98,17 +92,11 @@ fun SearchScreen(
     remember(query) { kind = Kind.ALL }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding) {
-        item(contentType = "field") {
-            Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 36.dp)) {
-                Text(stringResource(R.string.search), style = MaterialTheme.typography.displayLarge)
-                SearchField(
-                    query = state.query,
-                    enabled = !state.needsSetup,
-                    backdrop = backdrop,
-                    onQueryChange = onQueryChange,
-                )
-            }
-        }
+        // No field, and no title over it. Both are in the bottom bar now: the
+        // search button there grows into the box you type in, which is the whole
+        // point of that control, and a page that answers it by drawing a second
+        // box asks which of the two is listening. What is left here is the
+        // answer, which is what the page was ever for.
 
         if (!state.results.isEmpty && !state.loading) {
             item(contentType = "chips") {
@@ -184,75 +172,6 @@ fun SearchScreen(
     }
 }
 
-/**
- * The query box, in the app's own glass rather than Material's outline.
- *
- * Built from [BasicTextField] because an `OutlinedTextField` carries a label, a
- * container colour and a border that belong to a design this app does not use —
- * every other control on the page is a pane of glass over the artwork.
- */
-@Composable
-private fun SearchField(
-    query: String,
-    enabled: Boolean,
-    backdrop: Backdrop,
-    onQueryChange: (String) -> Unit,
-) {
-    LiquidButton(
-        onClick = {},
-        backdrop = backdrop,
-        surfaceColor = GlassFilm,
-        contentHeight = 52.dp,
-        contentPadding = 18.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 16.dp),
-    ) {
-        Icon(
-            PhosphorIcons.Fill.MagnifyingGlass,
-            contentDescription = null,
-            tint = InkDim,
-            modifier = Modifier.size(18.dp),
-        )
-        Box(
-            Modifier
-                .padding(start = 12.dp)
-                .weight(1f),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            if (query.isEmpty()) {
-                Text(
-                    stringResource(R.string.search_placeholder),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = InkDim,
-                    maxLines = 1,
-                )
-            }
-            BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                enabled = enabled,
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = Ink),
-                cursorBrush = SolidColor(Ink),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        if (query.isNotEmpty()) {
-            Icon(
-                PhosphorIcons.Regular.X,
-                contentDescription = stringResource(R.string.clear),
-                tint = InkDim,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .pressable({ onQueryChange("") }, pressedScale = 0.88f)
-                    .size(20.dp),
-            )
-        }
-    }
-}
-
 /** The same chips the home page filters with; see the note there. */
 @Composable
 private fun KindRow(selected: Kind, backdrop: Backdrop, onSelect: (Kind) -> Unit) {
@@ -266,10 +185,10 @@ private fun KindRow(selected: Kind, backdrop: Backdrop, onSelect: (Kind) -> Unit
             LiquidButton(
                 onClick = { onSelect(entry) },
                 backdrop = backdrop,
+                flat = true,
                 contentHeight = 38.dp,
                 contentPadding = 18.dp,
-                blurRadius = 8.dp,
-                surfaceColor = if (isSelected) SelectedFilm else GlassFilm,
+                surfaceColor = if (isSelected) SelectedFilm else Color.Unspecified,
             ) {
                 Text(
                     stringResource(entry.label),

@@ -44,18 +44,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.Capsule
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
+import dev.lelonio.square.ui.glass.backdrop.effects.blur
+import dev.lelonio.square.ui.glass.backdrop.effects.lens
+import dev.lelonio.square.ui.glass.backdrop.highlight.Highlight
+import dev.lelonio.square.ui.glass.backdrop.shadow.InnerShadow
+import dev.lelonio.square.ui.glass.backdrop.shadow.Shadow
+import dev.lelonio.square.ui.glass.shapes.ContinuousCapsule
 import kotlinx.coroutines.flow.collectLatest
 
 @Composable
@@ -144,6 +144,12 @@ fun LiquidSlider(
                 .matchParentSize()
                 .pointerInput(animationScope, trackWidth) {
                     fun seekTo(x: Float) {
+                        // Nothing to divide by before the track has been
+                        // measured, and the answer if you try is an enormous
+                        // number that clamps to the end of the range — a value
+                        // the user never asked for, written to wherever this
+                        // slider stores itself.
+                        if (trackWidth <= 0) return
                         val delta =
                             (valueRange.endInclusive - valueRange.start) * (x / trackWidth)
                         val target =
@@ -186,7 +192,7 @@ fun LiquidSlider(
         Box(Modifier.layerBackdrop(trackBackdrop)) {
             Box(
                 Modifier
-                    .clip(Capsule())
+                    .clip(ContinuousCapsule())
                     .background(trackColor)
                     .pointerInput(animationScope) {
                         detectTapGestures { position ->
@@ -205,7 +211,7 @@ fun LiquidSlider(
 
             Box(
                 Modifier
-                    .clip(Capsule())
+                    .clip(ContinuousCapsule())
                     .background(accentColor)
                     .height(6f.dp)
                     .layout { measurable, constraints ->
@@ -238,7 +244,7 @@ fun LiquidSlider(
                             }
                         }
                     ),
-                    shape = { Capsule() },
+                    shape = { ContinuousCapsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
                         blur(8f.dp.toPx() * (1f - progress))

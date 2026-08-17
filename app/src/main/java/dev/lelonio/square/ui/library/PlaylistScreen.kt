@@ -4,6 +4,9 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.RowScope
+import dev.lelonio.square.ui.glass.liquidGlass
+import dev.lelonio.square.ui.player.GlassFilm
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.border
@@ -69,10 +72,10 @@ import androidx.compose.foundation.layout.BoxScope
 import dev.lelonio.square.R
 import dev.lelonio.square.data.CatalogTrack
 import dev.lelonio.square.ui.MainViewModel
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
 import dev.lelonio.square.ui.components.Artwork
 import dev.lelonio.square.ui.components.CHOICE_MENU_WIDTH
 import dev.lelonio.square.ui.components.GlassChoiceItem
@@ -89,6 +92,7 @@ import java.util.concurrent.TimeUnit
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.fill.Check
 import com.adamglin.phosphoricons.fill.MagnifyingGlass
 import com.adamglin.phosphoricons.fill.Play
 import com.adamglin.phosphoricons.fill.Waveform
@@ -144,6 +148,8 @@ fun PlaylistScreen(
     onShare: () -> Unit = {},
     /** Opens the sheet with everything else this page can do. */
     onMenu: () -> Unit = {},
+    /** Keeps the page in the library, or lets it go. */
+    onToggleSaved: () -> Unit = {},
     /** The remembered track order, and where a change to it is stored. */
     storedSort: String? = null,
     onSortChange: (String) -> Unit = {},
@@ -284,6 +290,8 @@ fun PlaylistScreen(
             kind = state.kind,
             description = state.description,
             pageColor = pageColor,
+            saved = state.saved,
+            onToggleSaved = onToggleSaved,
             trackCount = state.tracks.size,
             totalMs = state.tracks.sumOf { it.durationMs },
             backdrop = pageBackdrop,
@@ -500,43 +508,32 @@ fun PlaylistScreen(
         // Two round buttons side by side would have read as two destinations;
         // one pane with a divide down it reads as what it is, a place where the
         // page's own actions live.
-        Row(
-            Modifier
+        // One pane of glass with a line down it, not two buttons side by side.
+        // Two would have read as two destinations; one capsule reads as what it
+        // is, the place the page's own actions live.
+        GlassCapsule(
+            backdrop = pageBackdrop,
+            modifier = Modifier
                 .padding(top = contentPadding.calculateTopPadding() + 8.dp, end = 14.dp)
                 .align(Alignment.TopEnd)
                 .graphicsLayer { alpha = 1f - collapseFraction() },
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            LiquidButton(
+            CapsuleAction(
+                icon = PhosphorIcons.Regular.Export,
+                description = stringResource(R.string.copy_link),
                 onClick = onShare,
-                backdrop = pageBackdrop,
-                modifier = Modifier.size(42.dp),
-                contentHeight = 42.dp,
-                contentPadding = 0.dp,
-                blurRadius = 8.dp,
-            ) {
-                Icon(
-                    PhosphorIcons.Regular.Export,
-                    contentDescription = stringResource(R.string.copy_link),
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            LiquidButton(
+            )
+            Box(
+                Modifier
+                    .height(20.dp)
+                    .width(1.dp)
+                    .background(Color.White.copy(alpha = 0.22f)),
+            )
+            CapsuleAction(
+                icon = PhosphorIcons.Regular.DotsThree,
+                description = stringResource(R.string.more),
                 onClick = onMenu,
-                backdrop = pageBackdrop,
-                modifier = Modifier.size(42.dp),
-                contentHeight = 42.dp,
-                contentPadding = 0.dp,
-                blurRadius = 8.dp,
-            ) {
-                Icon(
-                    PhosphorIcons.Regular.DotsThree,
-                    contentDescription = stringResource(R.string.more),
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+            )
         }
 
         // Floating rather than a top bar: the list scrolls under it, so the
@@ -552,7 +549,6 @@ fun PlaylistScreen(
                 .graphicsLayer { alpha = 1f - collapseFraction() },
             contentHeight = 42.dp,
             contentPadding = 0.dp,
-            blurRadius = 8.dp,
         ) {
             Icon(
                 PhosphorIcons.Regular.ArrowLeft,
@@ -611,6 +607,9 @@ private fun DetailHeader(
     description: String,
     /** The page's own colour; the solid Play button prints its label in it. */
     pageColor: Color,
+    /** Whether the page is kept in the library; null hides the button. */
+    saved: Boolean?,
+    onToggleSaved: () -> Unit,
     trackCount: Int,
     totalMs: Long,
     backdrop: Backdrop,
@@ -710,13 +709,21 @@ private fun DetailHeader(
                         color = pageColor,
                     )
                 }
-                CircleAction(
-                    icon = if (searching) PhosphorIcons.Regular.X else PhosphorIcons.Fill.MagnifyingGlass,
-                    description = stringResource(R.string.search_in_tracks),
-                    size = 52.dp,
-                    backdrop = backdrop,
-                    onClick = onToggleSearch,
-                )
+                // Keeping the page, which is what the reference puts here.
+                // Absent while the answer is unknown and on the pages the
+                // question does not apply to: a button that cannot say whether
+                // it is on or off is worse than no button.
+                if (saved != null) {
+                    CircleAction(
+                        icon = if (saved) PhosphorIcons.Fill.Check else PhosphorIcons.Regular.Plus,
+                        description = stringResource(
+                            if (saved) R.string.remove_from_library else R.string.add_to_library,
+                        ),
+                        size = 52.dp,
+                        backdrop = backdrop,
+                        onClick = onToggleSaved,
+                    )
+                }
             }
 
             // What the list is, in its own words. Only the sources that carry
@@ -863,6 +870,64 @@ private fun Modifier.heroCollapse(
     }
 }.clipToBounds()
 
+/**
+ * A pane of glass shaped like a capsule, for actions that belong together.
+ *
+ * Refraction alone is invisible here. The page under these controls is a flat
+ * colour taken from the cover, and bending a flat colour gives the same flat
+ * colour back: the buttons came out as plain discs, which is the note in the
+ * layer above about glass having nothing to bend. What makes glass read against
+ * a flat field is its edge, so this adds the two things an edge has — a film so
+ * the pane is a shade lighter than what it lies on, and a bright rim where the
+ * light would catch it.
+ */
+@Composable
+private fun GlassCapsule(
+    backdrop: Backdrop,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(percent = 50)
+    Row(
+        modifier
+            .height(42.dp)
+            .clip(shape)
+            .liquidGlass(
+                config = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current,
+                shape = shape,
+                blurRadiusDp = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current.blurRadius,
+                ownBackdrop = backdrop,
+            )
+            // The rim comes with the material now; this is the drawn edge that
+            // separates the two halves' pane from the artwork behind it.
+            .border(0.6.dp, Color.White.copy(alpha = 0.30f), shape),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+/** One half of [GlassCapsule], sized so the two halves are the same target. */
+@Composable
+private fun CapsuleAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(width = 46.dp, height = 42.dp)
+            .pressable(onClick, pressedScale = 0.92f),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = description,
+            tint = Color.White,
+            modifier = Modifier.size(19.dp),
+        )
+    }
+}
+
 @Composable
 private fun CircleAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -874,10 +939,13 @@ private fun CircleAction(
     LiquidButton(
         onClick = onClick,
         backdrop = backdrop,
-        modifier = Modifier.size(size),
+        // See GlassCapsule: over the page's flat colour the refraction has
+        // nothing to bend, and only the film and the rim say this is glass.
+        modifier = Modifier
+            .size(size)
+            .border(0.6.dp, Color.White.copy(alpha = 0.30f), CircleShape),
         contentHeight = size,
         contentPadding = 0.dp,
-        blurRadius = 8.dp,
     ) {
         Icon(
             icon,

@@ -55,7 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
-import com.kyant.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.SpotifyLogo
@@ -668,13 +668,14 @@ private fun FilterRow(selected: Feed, backdrop: Backdrop, onSelect: (Feed) -> Un
             LiquidButton(
                 onClick = { onSelect(entry) },
                 backdrop = backdrop,
+                // Scrolls with the page; see LiquidButton's `flat`.
+                flat = true,
                 contentHeight = 38.dp,
                 contentPadding = 18.dp,
-                blurRadius = 8.dp,
                 // The selected chip is the same glass, filled a little harder.
                 // A tinted fill would put the artwork's colour on a control
                 // whose whole job is to be legible over any artwork.
-                surfaceColor = if (isSelected) SelectedFilm else GlassFilm,
+                surfaceColor = if (isSelected) SelectedFilm else Color.Unspecified,
             ) {
                 Text(
                     stringResource(entry.label),
@@ -1030,8 +1031,6 @@ private fun GlassAction(label: String, backdrop: Backdrop, onClick: () -> Unit) 
         backdrop = backdrop,
         contentHeight = 50.dp,
         contentPadding = 26.dp,
-        blurRadius = 8.dp,
-        surfaceColor = GlassFilm,
     ) {
         Text(label, style = MaterialTheme.typography.titleMedium, color = Ink)
     }
