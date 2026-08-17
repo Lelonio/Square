@@ -347,6 +347,12 @@ fun SquareApp(
     var trackMenu by remember { mutableStateOf<TrackMenuRequest?>(null) }
     // The playlist a long press opened the actions for.
     var playlistMenu by remember { mutableStateOf<CatalogPlaylist?>(null) }
+    // What the menu may offer for the playlist it is open on. Defaults say yes,
+    // because the library's own rows are the account's own library: only the
+    // detail page, which can be a playlist belonging to anyone, ever says no.
+    var playlistMenuMine by remember { mutableStateOf(true) }
+    var playlistMenuSaved by remember { mutableStateOf(true) }
+    var deleting by remember { mutableStateOf<CatalogPlaylist?>(null) }
     // A song somebody sent, waiting to be looked at; see SharedTrackCard.
     var sharedTrack by remember { mutableStateOf<CatalogTrack?>(null) }
     // Whether the friend list is open; the faces in the header open it.
@@ -976,6 +982,11 @@ fun SquareApp(
                                     },
                                     onMenu = {
                                         val uri = playlist.uri ?: return@PlaylistScreen
+                                        // What the menu is allowed to offer, from
+                                        // the page that knows: whose list this is,
+                                        // and whether it is in the library at all.
+                                        playlistMenuMine = playlist.mine != false
+                                        playlistMenuSaved = playlist.saved != false
                                         playlistMenu = CatalogPlaylist(
                                             uri = uri,
                                             name = playlist.name,
@@ -1489,7 +1500,10 @@ fun SquareApp(
                         // First action: this is the one that costs nothing and
                         // can be undone by pressing it again.
                         val isPinned = shownPlaylist.uri in pinnedPlaylists
-                        TrackSheetAction(
+                        // Pinning is about where a row sits in the library, so
+                        // it is offered for what is in the library. A playlist
+                        // you are only looking at has no row to move.
+                        if (playlistMenuSaved) TrackSheetAction(
                             stringResource(if (isPinned) R.string.unpin else R.string.pin),
                             PhosphorIcons.Regular.PushPin,
                         ) {
@@ -1498,8 +1512,13 @@ fun SquareApp(
                         }
                         // Liked Songs is Spotify's own list: it can be pinned
                         // like any other row, but there is no name to change
-                        // and no way to delete it.
-                        val editable = !shownPlaylist.uri.endsWith(":collection")
+                        // and no way to delete it. Nor is anything editable on
+                        // somebody else's playlist — Spotify has no request for
+                        // "delete the list an editor made", and the app offering
+                        // one meant offering a button whose only outcome was an
+                        // error.
+                        val editable = !shownPlaylist.uri.endsWith(":collection") &&
+                            playlistMenuMine
                         if (editable) TrackSheetAction(
                             stringResource(R.string.rename),
                             PhosphorIcons.Regular.PencilSimple,
@@ -1526,10 +1545,24 @@ fun SquareApp(
                             PhosphorIcons.Regular.Trash,
                             destructive = true,
                         ) {
-                            viewModel.deletePlaylist(shownPlaylist.uri)
+                            // Asked rather than done: see ConfirmDialog.
+                            deleting = shownPlaylist
                             playlistMenu = null
                         }
                     }
+                }
+
+                deleting?.let { target ->
+                    dev.lelonio.square.ui.components.ConfirmDialog(
+                        title = stringResource(R.string.delete_playlist_title),
+                        message = stringResource(R.string.delete_playlist_message, target.name),
+                        confirmLabel = stringResource(R.string.delete),
+                        onConfirm = {
+                            viewModel.deletePlaylist(target.uri)
+                            deleting = null
+                        },
+                        onDismiss = { deleting = null },
+                    )
                 }
 
                 naming?.let { request ->

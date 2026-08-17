@@ -287,6 +287,29 @@ interface SpotifyApi {
         @Query("after") after: String? = null,
     ): FollowedArtistsDto
 
+    /**
+     * Keeping a playlist, and keeping an album, which Spotify calls two
+     * different things: a playlist is followed and an album is saved. Same
+     * button on the page, two endpoints underneath.
+     */
+    @PUT("v1/playlists/{id}/followers")
+    suspend fun followPlaylist(@Path("id") playlistId: String)
+
+    @GET("v1/playlists/{id}/followers/contains")
+    suspend fun playlistIsFollowed(
+        @Path("id") playlistId: String,
+        @Query("ids") userIds: String,
+    ): List<Boolean>
+
+    @PUT("v1/me/albums")
+    suspend fun saveAlbums(@Query("ids") ids: String)
+
+    @DELETE("v1/me/albums")
+    suspend fun removeAlbums(@Query("ids") ids: String)
+
+    @GET("v1/me/albums/contains")
+    suspend fun albumsAreSaved(@Query("ids") ids: String): List<Boolean>
+
     @GET("v1/search")
     suspend fun search(
         @Query("q") query: String,

@@ -109,6 +109,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val kind: DetailKind = DetailKind.PLAYLIST,
         /** What the source says the list is about; empty when it says nothing. */
         val description: String = "",
+        /**
+         * Whether this page is in the account's library — followed, for a
+         * playlist, saved for an album.
+         *
+         * Null while unknown, and null forever for the pages where the question
+         * does not apply: the button is absent rather than wrong.
+         */
+        val saved: Boolean? = null,
+        /**
+         * Whether this playlist is one the listener made.
+         *
+         * Null while unknown, and null for everything that is not a Spotify
+         * playlist. It decides which of the actions in the menu are real:
+         * Spotify has no way to delete somebody else's list, and offering it
+         * meant offering a button that could only fail. Renaming is the same.
+         */
+        val mine: Boolean? = null,
         /** Populated for artists only. */
         val albums: List<SearchItem> = emptyList(),
         /** Their singles and EPs, kept apart from the albums above. */
@@ -1128,6 +1145,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** The account's own Spotify id, once the profile has been read. */
+    private var meId: String? = null
+
     private fun loadProfile() = viewModelScope.launch {
         if (!container.webApi.isReady) return@launch
         runCatching { container.api.me() }
@@ -1138,6 +1158,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         ?: ready.displayName,
                     avatarUrl = profile.images.lastOrNull()?.url,
                 )
+                // Kept for the one question the playlist menu asks: is this
+                // list mine. The id, not the display name — two accounts can
+                // be called the same thing and only one of them owns it.
+                meId = profile.id
             }
             .onFailure { android.util.Log.w(TAG, "profile unavailable: ${describe(it)}") }
     }
@@ -1224,29 +1248,101 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 name = state.name.ifEmpty { current.name },
                 artworkUrl = state.artworkUrl ?: current.artworkUrl,
                 description = state.description.ifEmpty { current.description },
+                saved = state.saved ?: current.saved,
+                mine = state.mine ?: current.mine,
             )
         }
     }
 
     /**
-     * A playlist's own words about itself.
+     * The two things one lookup answers: what the list says, and whose it is.
      *
-     * Spotify writes them in HTML, entities and anchors included, because the
-     * field is meant for a web page. What belongs under a title is the sentence,
-     * so the markup is taken back out.
+     * One request rather than two. They are asked at the same moment and the
+     * playlist endpoint returns both, so splitting them would double the
+     * traffic for a page that is already waiting on its tracks.
      */
-    private suspend fun descriptionOf(uri: String): String? {
+    private suspend fun detailsOf(uri: String): Pair<String?, Boolean?>? {
         if (!container.webApi.isReady || !uri.startsWith("spotify:playlist:")) return null
+        val dto = runCatching { container.api.playlist(uri.substringAfterLast(':')) }
+            .onFailure { android.util.Log.w(TAG, "no details for $uri: ${describe(it)}") }
+            .getOrNull() ?: return null
+        val owner = dto.owner?.id
+        // Null rather than false when either side is missing: "not yours" hides
+        // the actions, and hiding them because a request came back thin is
+        // worse than the button that was there before.
+        val mine = if (owner == null || meId == null) null else owner == meId
+        val text = dto.description
+            ?.replace(Regex("<[^>]*>"), "")
+            ?.replace("&amp;", "&")
+            ?.replace("&quot;", "\"")
+            ?.replace("&#x27;", "'")
+            ?.replace("&#39;", "'")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        return text to mine
+    }
+
+
+    /**
+     * Whether a playlist is followed or an album saved.
+     *
+     * Two endpoints for one idea, because Spotify keeps the two words apart:
+     * you follow somebody else's list and you save a record. Null when there is
+     * no application to ask with, which leaves the button off the page rather
+     * than showing a state nobody checked.
+     */
+    private suspend fun savedState(uri: String): Boolean? {
+        if (!container.webApi.isReady) return null
+        val id = uri.substringAfterLast(':')
         return runCatching {
-            container.api.playlist(uri.substringAfterLast(':')).description
-                ?.replace(Regex("<[^>]*>"), "")
-                ?.replace("&amp;", "&")
-                ?.replace("&quot;", "\"")
-                ?.replace("&#x27;", "'")
-                ?.replace("&#39;", "'")
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
-        }.getOrNull()
+            when {
+                uri.startsWith("spotify:album:") ->
+                    container.api.albumsAreSaved(id).firstOrNull()
+
+                uri.startsWith("spotify:playlist:") ->
+                    container.api.playlistIsFollowed(id, container.api.me().id).firstOrNull()
+
+                else -> null
+            }
+        }
+            .onFailure { android.util.Log.w(TAG, "cannot tell if kept: ${describe(it)}") }
+            .getOrNull()
+    }
+
+    /**
+     * Keeps the open page, or lets it go.
+     *
+     * The button moves first and is put back if Spotify refuses, for the same
+     * reason the follow button does: this is a round trip, and a control that
+     * waits for one before acknowledging a tap feels broken even when it works.
+     */
+    fun toggleSaved() = viewModelScope.launch {
+        val page = _playlist.value
+        val uri = page.uri ?: return@launch
+        val was = page.saved ?: return@launch
+        val id = uri.substringAfterLast(':')
+
+        _playlist.value = _playlist.value.copy(saved = !was)
+        runCatching {
+            when {
+                uri.startsWith("spotify:album:") ->
+                    if (was) container.api.removeAlbums(id) else container.api.saveAlbums(id)
+
+                else ->
+                    if (was) container.api.unfollowPlaylist(id) else container.api.followPlaylist(id)
+            }
+        }
+            .onSuccess {
+                // The library is what this button is about, so it is the library
+                // that has to show the answer.
+                refresh()
+            }
+            .onFailure {
+                android.util.Log.e(TAG, "keeping failed: ${chain(it)}", it)
+                if (_playlist.value.uri == uri) {
+                    _playlist.value = _playlist.value.copy(saved = was)
+                }
+            }
     }
 
     /** A link's own title, from whichever side of Spotify will say. */
@@ -1444,11 +1540,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Asked for beside the picture and written the same way, through
             // `base`, so a later publish cannot take it back off the screen.
             if (base.description.isEmpty() && kind == DetailKind.PLAYLIST) launch {
-                val text = descriptionOf(playlist.uri) ?: return@launch
-                base = base.copy(description = text)
+                val details = detailsOf(playlist.uri) ?: return@launch
+                val text = details.first
+                val mine = details.second
+                base = base.copy(description = text.orEmpty(), mine = mine)
                 if (_playlist.value.uri == playlist.uri) {
-                    _playlist.value = _playlist.value.copy(description = text)
+                    _playlist.value = _playlist.value.copy(
+                        description = text.orEmpty().ifEmpty { _playlist.value.description },
+                        mine = mine,
+                    )
                 }
+            }
+
+            // Whether it is already kept, for the button that keeps it.
+            if (kind != DetailKind.ARTIST) launch {
+                val kept = savedState(playlist.uri) ?: return@launch
+                if (_playlist.value.uri == playlist.uri) {
+                    _playlist.value = _playlist.value.copy(saved = kept)
+                }
+                base = base.copy(saved = kept)
             }
 
             if (base.artworkUrl == null) launch {
