@@ -1,0 +1,20 @@
+# What to compile ahead of time, so the first fold of the bar is as smooth as
+# the tenth.
+#
+# The bar was stuttering the first time it moved and settling after that, which
+# is not the animation: it is the code being compiled while it runs. Forcing the
+# whole app to compile ahead of time on the phone took the same cold gesture
+# from 43% dropped frames and 85ms at the 90th percentile to 28% and 57 — the
+# same numbers a warm run gives. These rules ship that head start.
+#
+# Coarse on purpose. A generated profile would name individual methods, and it
+# would be out of date the next time the UI changes; the drawing and animation
+# packages are small enough that compiling them whole costs little and keeps
+# being right.
+# The whole interface, not a chosen part of it. The first version named the
+# glass, the player and the shared components, and left out the screens: home,
+# library and search are where the scrolling happens, so the one gesture the
+# profile exists for was running interpreted anyway.
+HSPLdev/lelonio/square/ui/**->**(**)**
+HSPLdev/lelonio/square/playback/**->**(**)**
+HSPLdev/lelonio/square/data/**->**(**)**
