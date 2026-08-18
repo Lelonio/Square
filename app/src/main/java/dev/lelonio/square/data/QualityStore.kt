@@ -51,8 +51,41 @@ class QualityStore(context: Context) {
     fun bitrateKbps(): Int {
         val chosen = _quality.value
         if (chosen != Quality.Auto) return chosen.kbps
-        return if (isMetered()) Quality.Medium.kbps else Quality.High.kbps
+        return automatic()
     }
+
+    /**
+     * What automatic means: how fast the connection actually is.
+     *
+     * It used to mean "is this connection metered", which answers a question
+     * about the bill rather than about the link. A limited wi-fi is unmetered
+     * and can still be slower than the stream, which is exactly the case where
+     * the setting matters: 320 kbps over a link that cannot carry it is a track
+     * that stalls, and the app went on asking for it because the connection was
+     * free.
+     *
+     * The system's own downstream estimate decides, with room above each step:
+     * a 320 kbps stream needs about 40 kB/s and nothing else on the phone is
+     * idle, so asking for roughly three times the stream keeps the buffer ahead
+     * of the decoder. Where there is no estimate — some networks report
+     * nothing — the old question is still worth asking, and metered falls back
+     * to the middle step.
+     */
+    fun automatic(): Int {
+        val capabilities = capabilities()
+        val kbps = capabilities?.linkDownstreamBandwidthKbps ?: 0
+        if (kbps <= 0) {
+            return if (isMetered()) Quality.Medium.kbps else Quality.High.kbps
+        }
+        return when {
+            kbps < LOW_CEILING_KBPS -> Quality.Low.kbps
+            kbps < MEDIUM_CEILING_KBPS -> Quality.Medium.kbps
+            else -> Quality.High.kbps
+        }
+    }
+
+    /** The estimate the choice above is made from, for the settings to show. */
+    fun linkKbps(): Int = capabilities()?.linkDownstreamBandwidthKbps ?: 0
 
     /**
      * Whether the connection is one the user pays by the megabyte.
@@ -62,12 +95,25 @@ class QualityStore(context: Context) {
      * such is not.
      */
     private fun isMetered(): Boolean {
-        val manager = app.getSystemService(ConnectivityManager::class.java) ?: return false
-        val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
+        val capabilities = capabilities() ?: return false
         return !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
     }
 
+    private fun capabilities(): NetworkCapabilities? {
+        val manager = app.getSystemService(ConnectivityManager::class.java) ?: return null
+        return manager.getNetworkCapabilities(manager.activeNetwork)
+    }
+
     private companion object {
+        /**
+         * Below this, ask for the smallest file; below the next, the middle one.
+         *
+         * Three times the stream itself, near enough: 96 kbps of audio wants
+         * 300 of link, 160 wants 600. Under those the buffer never gets ahead.
+         */
+        const val LOW_CEILING_KBPS = 300
+        const val MEDIUM_CEILING_KBPS = 700
+
         const val FILE_NAME = "square_quality"
         const val KEY_QUALITY = "quality"
     }

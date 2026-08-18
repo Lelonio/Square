@@ -149,6 +149,48 @@ class LibrespotPlayer(
     private val handler = android.os.Handler(looper)
 
     /**
+     * The quality the listener asked for, which decides whether the one below
+     * is allowed to have an opinion.
+     */
+    private val quality =
+        (context.applicationContext as dev.lelonio.square.SquareApplication).quality
+
+    /**
+     * Follows what the connection can actually carry; see [BandwidthWatch].
+     *
+     * Only while the setting is automatic. On a fixed choice the listener has
+     * said which file they want and a stall is their business, not ours.
+     */
+    private val bandwidth = BandwidthWatch { kbps ->
+        if (quality.quality.value == dev.lelonio.square.data.Quality.Auto) {
+            runCatching { dev.lelonio.square.nativecore.NativeBridge.setBitrate(kbps) }
+        }
+    }
+
+    /**
+     * Fires when the music should have reported progress and did not.
+     *
+     * Position arrives once a second from the decoding loop, so silence there
+     * while the player still means to be playing is the buffer having run dry.
+     * It is the one measurement of a connection that cannot be argued with.
+     */
+    private val stallWatch = Runnable {
+        // Not while a track is being fetched: the decoding loop reports nothing
+        // during a load, so a slow one looks exactly like a buffer that ran dry
+        // and was being counted twice — once as a slow load, once as a stall.
+        if (loadInFlight) return@Runnable
+        if (playWhenReady && playbackState == Player.STATE_READY) bandwidth.stalled()
+    }
+
+    /** True between a track being asked for and that same track playing. */
+    private var loadInFlight = false
+
+    private fun expectProgress() {
+        handler.removeCallbacks(stallWatch)
+        if (playWhenReady) handler.postDelayed(stallWatch, STALL_AFTER_MS)
+    }
+
+    /**
      * The other device's playback, when the account is playing on one.
      *
      * Mirrored into this player rather than drawn only by the app, because the
@@ -1061,10 +1103,16 @@ class LibrespotPlayer(
         when (type) {
             "loading" -> {
                 playbackState = Player.STATE_BUFFERING
+                if (uri.isNotEmpty()) bandwidth.loading(uri)
+                loadInFlight = true
+                handler.removeCallbacks(stallWatch)
             }
             "playing" -> {
                 playbackState = Player.STATE_READY
                 playWhenReady = true
+                if (uri.isNotEmpty()) bandwidth.playing(uri)
+                loadInFlight = false
+                expectProgress()
                 if (!skipInFlight) positionMs = eventPositionMs
                 // Here as well as in handleSetPlayWhenReady: a pause can arrive
                 // from the notification, from a headset button or from another
@@ -1074,10 +1122,15 @@ class LibrespotPlayer(
             "paused" -> {
                 playbackState = Player.STATE_READY
                 playWhenReady = false
+                // A pause is not a stall.
+                handler.removeCallbacks(stallWatch)
                 if (!skipInFlight) positionMs = eventPositionMs
                 onPlaybackActive(false)
             }
             "position" -> {
+                // Progress arrived, so the stream is keeping up: the watch is
+                // wound again rather than left to fire.
+                expectProgress()
                 // The old track goes on reporting until the new one starts.
                 // Taking those would run the bar forward on a song that is no
                 // longer the one on screen.
@@ -1116,8 +1169,20 @@ class LibrespotPlayer(
                 return
             }
 
-            "end_of_track", "unavailable" -> {
+            "end_of_track" -> {
                 takeOverForQueued()
+                return
+            }
+
+            // A track the engine could not load, after it has already tried
+            // again a few times. Only ever acted on for the track that is
+            // actually playing: the same event is sent when the *next* track
+            // fails to preload, and taking that as "move on" skipped the song
+            // the listener was in the middle of because a later one was slow to
+            // arrive.
+            "unavailable" -> {
+                val current = queue.items.getOrNull(queue.currentIndex)?.uri
+                if (uri.isEmpty() || uri == current) takeOverForQueued()
                 return
             }
             else -> return
@@ -1189,6 +1254,14 @@ class LibrespotPlayer(
             .build()
 
     private companion object {
+        /**
+         * How long the music may go without reporting progress before the
+         * buffer is taken to have run dry.
+         *
+         * Progress arrives once a second, so three is a gap and not a jitter.
+         */
+        const val STALL_AFTER_MS = 3_500L
+
         /**
          * How long skips are gathered for before the engine is told.
          *

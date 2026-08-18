@@ -242,7 +242,7 @@
     <string name="quality_high">High</string>
     <string name="quality_medium">Medium</string>
     <string name="quality_low">Low</string>
-    <string name="quality_auto_note">Full quality on wi-fi, one step down on a metered connection.</string>
+    <string name="quality_auto_note">Automatic starts from the connection\'s own estimate and then follows the music: a track that stalls or is slow to start drops it a step, and several quick ones in a row raise it again.</string>
     <string name="quality_restarts">Changing this reloads what is playing.</string>
     <string name="premium_required">Square needs Spotify Premium. A free account can sign in, but Spotify does not stream to a client like this one.</string>
     <string name="new_playlist">New playlist</string>
@@ -309,4 +309,7 @@
     <string name="delete_playlist_title">Delete this playlist?</string>
     <string name="delete_playlist_message">%1$s will be gone from every device on this account, and there is no way back.</string>
     <string name="glass_indicator">Active tab</string>
+    <string name="quality_link">Connection</string>
+    <string name="quality_link_value">%1$d kbps, so %2$d kbps audio</string>
+    <string name="quality_link_unknown">unknown, so %1$d kbps audio</string>
 </resources>

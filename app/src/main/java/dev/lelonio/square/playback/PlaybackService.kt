@@ -168,6 +168,11 @@ class PlaybackService : MediaLibraryService() {
             quality.quality.drop(1).collect { reconfigureEngine("quality") }
         }
 
+        // The link estimate is the opening guess only. What corrects it is the
+        // music itself, in BandwidthWatch: a rebuild for every change of
+        // network was a second of silence for an answer that is often wrong,
+        // and the engine can now be told a new bitrate without one.
+
         // Which stretcher does speed and pitch. Unlike the bitrate this one is
         // switchable while playing: it is a property of the output, not of the
         // session.
@@ -511,6 +516,11 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
+                    android.util.Log.i(
+                        TAG,
+                        "quality: asking for ${'$'}{quality.bitrateKbps()} kbps" +
+                            " (link estimate ${'$'}{quality.linkKbps()} kbps)",
+                    )
                     NativeBridge.setQuality(quality.bitrateKbps(), crossfade.durationMs())
                 }
                     .onFailure { android.util.Log.e(TAG, "could not rebuild the player: $it") }
@@ -532,6 +542,7 @@ class PlaybackService : MediaLibraryService() {
      * the first one.
      */
     private var rebuilding = false
+
 
     /**
      * Re-runs [connectEngine] on demand.
@@ -596,7 +607,13 @@ class PlaybackService : MediaLibraryService() {
                     // generated playlists carry the language in the cover's
                     // URL, so the tiles came back in English.
                     language = appLanguage(),
-                    bitrateKbps = quality.bitrateKbps(),
+                    bitrateKbps = quality.bitrateKbps().also {
+                        android.util.Log.i(
+                            TAG,
+                            "quality: starting at ${'$'}it kbps" +
+                                " (link estimate ${'$'}{quality.linkKbps()} kbps)",
+                        )
+                    },
                     // Off is zero, which is upstream librespot's own behaviour.
                     crossfadeMs = crossfade.durationMs(),
                     listener = engine,

@@ -221,7 +221,7 @@
     <string name="quality_high">Haute</string>
     <string name="quality_medium">Moyenne</string>
     <string name="quality_low">Basse</string>
-    <string name="quality_auto_note">Qualité maximale en wi-fi, un cran en dessous sur une connexion facturée.</string>
+    <string name="quality_auto_note">Automatique part de l\'estimation de la connexion puis suit la musique : un morceau qui se coupe ou qui tarde à démarrer la fait descendre d\'un cran, et plusieurs morceaux rapides la font remonter.</string>
     <string name="quality_restarts">La changer recharge le titre en cours.</string>
     <string name="premium_required">Square demande Spotify Premium. Un compte gratuit peut se connecter, mais Spotify ne diffuse pas vers un client comme celui-ci.</string>
     <string name="new_playlist">Nouvelle playlist</string>
@@ -288,4 +288,7 @@
     <string name="delete_playlist_title">Supprimer cette playlist ?</string>
     <string name="delete_playlist_message">%1$s disparaîtra de tous les appareils de ce compte, sans retour possible.</string>
     <string name="glass_indicator">Onglet actif</string>
+    <string name="quality_link">Connexion</string>
+    <string name="quality_link_value">%1$d kbps, donc audio à %2$d kbps</string>
+    <string name="quality_link_unknown">inconnue, donc audio à %1$d kbps</string>
 </resources>

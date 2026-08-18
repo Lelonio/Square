@@ -221,7 +221,7 @@
     <string name="quality_high">Alta</string>
     <string name="quality_medium">Media</string>
     <string name="quality_low">Baja</string>
-    <string name="quality_auto_note">Calidad plena con wi-fi, un paso menos con datos medidos.</string>
+    <string name="quality_auto_note">Automática parte de la estimación de la conexión y luego sigue a la música: una canción que se corta o que tarda en empezar la baja un paso, y varias rápidas seguidas la vuelven a subir.</string>
     <string name="quality_restarts">Al cambiarla, la canción en curso se vuelve a cargar.</string>
     <string name="premium_required">Square necesita Spotify Premium. Una cuenta gratuita puede entrar, pero Spotify no transmite a un cliente como este.</string>
     <string name="new_playlist">Nueva lista</string>
@@ -288,4 +288,7 @@
     <string name="delete_playlist_title">¿Eliminar esta lista?</string>
     <string name="delete_playlist_message">%1$s desaparecerá de todos los dispositivos de esta cuenta, y no hay vuelta atrás.</string>
     <string name="glass_indicator">Pestaña activa</string>
+    <string name="quality_link">Conexión</string>
+    <string name="quality_link_value">%1$d kbps, así que audio a %2$d kbps</string>
+    <string name="quality_link_unknown">desconocida, así que audio a %1$d kbps</string>
 </resources>

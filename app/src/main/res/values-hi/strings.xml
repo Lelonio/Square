@@ -236,7 +236,7 @@
     <string name="quality_high">उच्च</string>
     <string name="quality_medium">मध्यम</string>
     <string name="quality_low">कम</string>
-    <string name="quality_auto_note">वाई-फ़ाई पर पूरी गुणवत्ता, मीटर वाले कनेक्शन पर एक कदम नीचे।</string>
+    <string name="quality_auto_note">स्वचालित कनेक्शन के अनुमान से शुरू होता है और फिर संगीत का अनुसरण करता है: कोई गाना अटके या देर से शुरू हो तो एक कदम नीचे, और लगातार कई तेज़ गाने फिर से ऊपर।</string>
     <string name="quality_restarts">इसे बदलने पर जो चल रहा है वह फिर से लोड होता है।</string>
     <string name="premium_required">Square को Spotify Premium चाहिए। मुफ़्त खाता लॉग इन तो कर सकता है, पर Spotify ऐसे क्लाइंट को स्ट्रीम नहीं देता।</string>
     <string name="new_playlist">नई प्लेलिस्ट</string>
@@ -303,4 +303,7 @@
     <string name="delete_playlist_title">यह प्लेलिस्ट हटाएँ?</string>
     <string name="delete_playlist_message">%1$s इस खाते के हर डिवाइस से चली जाएगी, और वापस लाने का कोई तरीका नहीं है।</string>
     <string name="glass_indicator">सक्रिय टैब</string>
+    <string name="quality_link">कनेक्शन</string>
+    <string name="quality_link_value">%1$d kbps, इसलिए %2$d kbps ऑडियो</string>
+    <string name="quality_link_unknown">अज्ञात, इसलिए %1$d kbps ऑडियो</string>
 </resources>

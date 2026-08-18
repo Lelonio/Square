@@ -627,6 +627,20 @@ private fun QualitySection() {
                 selected = quality == chosen,
             ) { store.set(quality) }
         }
+        // What automatic is deciding, and from what. A setting that answers
+        // "it depends" should say what it depends on.
+        if (chosen == Quality.Auto) {
+            RowDivider()
+            val link = store.linkKbps()
+            InfoRow(
+                stringResource(R.string.quality_link),
+                if (link > 0) {
+                    stringResource(R.string.quality_link_value, link, store.automatic())
+                } else {
+                    stringResource(R.string.quality_link_unknown, store.automatic())
+                },
+            )
+        }
         RowDivider()
         Text(
             stringResource(R.string.quality_auto_note) + " " +

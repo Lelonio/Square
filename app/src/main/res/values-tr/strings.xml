@@ -236,7 +236,7 @@
     <string name="quality_high">Yüksek</string>
     <string name="quality_medium">Orta</string>
     <string name="quality_low">Düşük</string>
-    <string name="quality_auto_note">Wi-Fi\'de tam kalite, sayaçlı bağlantıda bir kademe düşük.</string>
+    <string name="quality_auto_note">Otomatik, bağlantının tahminiyle başlar ve sonra müziği izler: takılan ya da geç başlayan bir parça bir kademe düşürür, arka arkaya birkaç hızlı parça yeniden yükseltir.</string>
     <string name="quality_restarts">Bunu değiştirmek çalan parçayı yeniden yükler.</string>
     <string name="premium_required">Square, Spotify Premium gerektirir. Ücretsiz hesap giriş yapabilir ama Spotify böyle bir istemciye yayın vermez.</string>
     <string name="new_playlist">Yeni çalma listesi</string>
@@ -303,4 +303,7 @@
     <string name="delete_playlist_title">Bu çalma listesi silinsin mi?</string>
     <string name="delete_playlist_message">%1$s bu hesaptaki tüm cihazlardan kaybolacak ve geri dönüşü yok.</string>
     <string name="glass_indicator">Etkin sekme</string>
+    <string name="quality_link">Bağlantı</string>
+    <string name="quality_link_value">%1$d kbps, yani %2$d kbps ses</string>
+    <string name="quality_link_unknown">bilinmiyor, yani %1$d kbps ses</string>
 </resources>
