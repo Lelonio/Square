@@ -366,6 +366,14 @@ fun Modifier.liquidGlass(
     // bar's bounds animate and would otherwise force a full-screen re-capture
     // plus effect chain on every frame.
     frozen: () -> Boolean = LocalGlassFrozen.current,
+    /**
+     * Hold the capture even while this surface is moving.
+     *
+     * For a surface that is changing shape: see the use site in
+     * `DrawBackdropModifier`. Off everywhere else, where a moved surface must
+     * take a fresh capture or it reflects the place it used to be.
+     */
+    heldWhileMoving: () -> Boolean = { false },
     // Forwarded to drawBackdrop: see LocalBackdropLoopBucket's doc. Defaults to
     // whatever's provided in composition, so player control pills over a
     // looping video pick this up without every call site naming it explicitly.
@@ -578,6 +586,7 @@ fun Modifier.liquidGlass(
         // every frame of its fold, was accepted and dropped.
         backdropScale = resolutionScale,
         frozen = heldStill,
+        heldWhileMoving = heldWhileMoving,
         loopBucket = loopBucket,
     )
 }

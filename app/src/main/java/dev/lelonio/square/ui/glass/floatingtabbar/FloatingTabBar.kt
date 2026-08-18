@@ -272,6 +272,18 @@ fun FloatingTabBar(
         val frozenWhileAnimating = remember(transition) {
             { transition.currentState != transition.targetState }
         }
+        // LOCAL CHANGE: and the same fact where the caller can see it.
+        //
+        // The composition local only reaches surfaces built inside this
+        // composable — the selection puck. The bar's own pane and the pill above
+        // it are built by the caller and passed in as `tabBarContentModifier`,
+        // so reading the local there gave the default, "never frozen", and the
+        // one moment the freeze exists for was the one it never covered. The
+        // scroll connection is the object both sides already share.
+        val morphing = transition.currentState != transition.targetState
+        LaunchedEffect(scrollConnection, morphing) {
+            scrollConnection.morphing = morphing
+        }
         CompositionLocalProvider(LocalTabBarBackdropFrozen provides frozenWhileAnimating) {
         // Always applied: `gooey` is a no-op at radius 0 (no offscreen layer,
         // no filter), so there is nothing to gate on and nothing to recompose.
@@ -370,6 +382,14 @@ class FloatingTabBarScrollConnection(
      * in it is wrong even without that.
      */
     var locked by mutableStateOf(false)
+
+    /**
+     * LOCAL CHANGE: true for exactly the frames the bar is changing shape.
+     *
+     * Published here rather than through a composition local because the bar's
+     * glass is applied by whoever uses the bar, from outside its composition.
+     */
+    var morphing by mutableStateOf(false)
 
     /**
      * LOCAL CHANGE: true while the page under the bar is moving.

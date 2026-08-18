@@ -18,6 +18,7 @@ import dev.lelonio.square.ui.glass.backdrop.effects.lens
 import dev.lelonio.square.ui.glass.backdrop.effects.vibrancy
 import dev.lelonio.square.ui.glass.backdrop.highlight.Highlight
 import dev.lelonio.square.ui.glass.backdrop.shadow.Shadow
+import dev.lelonio.square.ui.glass.floatingtabbar.gooey
 import dev.lelonio.square.ui.glass.shapes.ContinuousCapsule
 
 /**
@@ -35,6 +36,13 @@ import dev.lelonio.square.ui.glass.shapes.ContinuousCapsule
  * it folded. So it is drawn at a hundredth of its opacity, which is enough for
  * the shaders to be compiled for real and not enough for anyone to see, and it
  * stops being composed once the first frames it exists for have gone by.
+ *
+ * The fold has a shader of its own that no ordinary surface uses: the gooey
+ * merge, a blur followed by a steep alpha threshold, which is what makes the
+ * shapes bleed into one another and pinch off instead of cross-fading. It was
+ * not warmed with the rest, so the very first fold still paid for compiling it —
+ * which is a good part of "the first one stutters and then it is fine". It is
+ * warmed here too, on the same invisible pixel.
  */
 @Composable
 fun GlassWarmUp(backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop) {
@@ -50,6 +58,10 @@ fun GlassWarmUp(backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop) {
         Modifier
             .size(1.dp)
             .graphicsLayer { alpha = 0.01f }
+            // The fold's own effect, around the pane rather than on it: that is
+            // where it sits in the bar, and a shader is compiled for the way it
+            // is used.
+            .gooey { 6f }
             .drawBackdrop(
                 backdrop = backdrop,
                 shape = { ContinuousCapsule() },

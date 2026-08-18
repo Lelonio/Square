@@ -261,6 +261,7 @@ fun GlassSection(backdrop: Backdrop) {
                     onChange = store::setPlayerEnabled,
                 )
 
+
                 SettingsDivider()
                 GlassSwitch(
                     label = stringResource(R.string.bar_folds),

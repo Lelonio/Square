@@ -49,6 +49,9 @@ import dev.lelonio.square.ui.components.SharedTrackCard
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.focus.FocusRequester
@@ -1067,17 +1070,22 @@ fun SquareApp(
                     } else {
                         glassConfig.copy(style = flat)
                     }
+                    // Nothing special while the bar changes shape.
+                    //
+                    // Two things were tried there and both were worse than what
+                    // they fixed. Taking the glass away for the length of the
+                    // fold was the cheapest and you could see it go. Holding the
+                    // last capture instead was invisible while it lasted, but
+                    // the bar's two states are two different pieces of
+                    // composition, so the fresh capture arrives on a node that
+                    // has just been created and the correction is a cut nothing
+                    // can fade. The glass simply keeps working.
+                    val barShape = androidx.compose.foundation.shape.RoundedCornerShape(percent = 50)
+
                     val barGlass = Modifier.liquidGlass(
                         config = barConfig,
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(percent = 50),
+                        shape = barShape,
                         highlightAlpha = 0.3f,
-                        // Held still while the bar morphs. Its bounds animate
-                        // across the whole fold, and without this every frame
-                        // re-records the screen and runs the blur and the lens
-                        // over it again — which is most of what made the
-                        // animation crawl.
-                        frozen = dev.lelonio.square.ui.glass.floatingtabbar
-                            .LocalTabBarBackdropFrozen.current,
                     )
                     // The same pane, on the pill above it, unless the settings
                     // have singled that one out.
@@ -1086,10 +1094,8 @@ fun SquareApp(
                     } else {
                         Modifier.liquidGlass(
                             config = pillConfig,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(percent = 50),
+                            shape = barShape,
                             highlightAlpha = 0.3f,
-                            frozen = dev.lelonio.square.ui.glass.floatingtabbar
-                                .LocalTabBarBackdropFrozen.current,
                         )
                     }
 

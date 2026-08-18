@@ -28,6 +28,12 @@ class SquareApplication : Application() {
         // exist by then and either can announce a default that would be saved
         // over what the listener had set.
         dev.lelonio.square.playback.AudioEffects.load(this)
+
+        // Not a feature: a line in the log saying whether this install has been
+        // compiled ahead of time yet. See reportProfileStatus.
+        reportProfileStatus(
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()),
+        )
     }
 
     val tokenStore: TokenStore by lazy { TokenStore(this) }

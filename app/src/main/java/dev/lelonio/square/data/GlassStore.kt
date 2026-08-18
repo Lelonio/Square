@@ -128,6 +128,7 @@ class GlassStore(context: Context) {
     /** How strongly the selected tab is washed; see [read]. */
     fun setPuckOpacity(value: Float) = putFloat(KEY_PUCK, value)
 
+
     /**
      * Whether the bottom bar folds away as you scroll.
      *

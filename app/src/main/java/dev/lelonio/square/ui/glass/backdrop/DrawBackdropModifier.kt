@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.LayoutModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
@@ -40,6 +41,7 @@ import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.unit.toSize
 import dev.lelonio.square.ui.glass.backdrop.backdrops.LayerBackdrop
 import dev.lelonio.square.ui.glass.backdrop.highlight.Highlight
@@ -54,6 +56,24 @@ import dev.lelonio.square.ui.glass.backdrop.shadow.ShadowElement
 private val DefaultHighlight = { Highlight.Default }
 private val DefaultShadow = { Shadow.Default }
 private val DefaultOnDrawBackdrop: DrawScope.(DrawScope.() -> Unit) -> Unit = { it() }
+/**
+ * How long the fresh capture takes to replace the held one.
+ *
+ * Long enough to read as the reflection settling rather than as a cut, short
+ * enough that it is over before anyone looks for it. Two layers are alive for
+ * this window and one of them is released at the end of it.
+ */
+private const val HandoverMillis = 180f
+
+/**
+ * How stale a held capture is allowed to get before it is taken again.
+ *
+ * Three or four recordings across a fold rather than one per frame, and a
+ * reflection that is never more than this far behind — which is close enough
+ * that the moment it catches up is not an event.
+ */
+private const val HoldRefreshMillis = 110f
+
 private val NeverFrozen: () -> Boolean = { false }
 
 /** Defensive cap on a loop-bucket pool's size — see [DrawBackdropNode.drawBucketedLayer]. */
@@ -83,7 +103,8 @@ fun Modifier.drawPlainBackdrop(
     // transition: 9 frames at a 250-450ms median with the nav bar's glass on,
     // versus 77 frames at 42ms with it off. The bar is moving and heavily
     // blurred for those ~300ms, so reusing the previous capture is not visible.
-    frozen: () -> Boolean = NeverFrozen
+    frozen: () -> Boolean = NeverFrozen,
+    heldWhileMoving: () -> Boolean = NeverFrozen
 ): Modifier {
     val shapeProvider = ShapeProvider(shape)
     return this
@@ -107,6 +128,7 @@ fun Modifier.drawPlainBackdrop(
                 onDrawFront = onDrawFront,
                 backdropScale = backdropScale.coerceIn(0.05f, 1f),
                 frozen = frozen,
+                heldWhileMoving = heldWhileMoving,
                 loopBucket = null
             )
         )
@@ -140,6 +162,8 @@ fun Modifier.drawBackdrop(
     // versus 77 frames at 42ms with it off. The bar is moving and heavily
     // blurred for those ~300ms, so reusing the previous capture is not visible.
     frozen: () -> Boolean = NeverFrozen,
+    /** See the use site: hold the capture even while this surface moves. */
+    heldWhileMoving: () -> Boolean = NeverFrozen,
     // When set, this surface caches one recorded+effect-processed layer PER
     // bucket returned here instead of a single reused layer, and replays a
     // bucket's cached layer on repeat instead of re-recording. Meant for a
@@ -202,6 +226,7 @@ fun Modifier.drawBackdrop(
                 onDrawFront = onDrawFront,
                 backdropScale = backdropScale.coerceIn(0.05f, 1f),
                 frozen = frozen,
+                heldWhileMoving = heldWhileMoving,
                 loopBucket = loopBucket
             )
         )
@@ -219,6 +244,7 @@ private class DrawBackdropElement(
     val onDrawFront: (DrawScope.() -> Unit)?,
     val backdropScale: Float,
     val frozen: () -> Boolean,
+    val heldWhileMoving: () -> Boolean,
     val loopBucket: (() -> Int)?
 ) : ModifierNodeElement<DrawBackdropNode>() {
 
@@ -235,6 +261,7 @@ private class DrawBackdropElement(
             onDrawFront = onDrawFront,
             backdropScale = backdropScale,
             frozen = frozen,
+            heldWhileMoving = heldWhileMoving,
             loopBucket = loopBucket
         )
     }
@@ -268,6 +295,7 @@ private class DrawBackdropElement(
         node.onDrawFront = onDrawFront
         node.backdropScale = backdropScale
         node.frozen = frozen
+        node.heldWhileMoving = heldWhileMoving
         if (node.loopBucket !== loopBucket) {
             // A different bucket function (or losing/gaining one) invalidates
             // whatever's pooled — the old buckets no longer mean anything under
@@ -345,6 +373,7 @@ private class DrawBackdropNode(
     var onDrawFront: (DrawScope.() -> Unit)?,
     var backdropScale: Float,
     var frozen: () -> Boolean,
+    var heldWhileMoving: () -> Boolean,
     var loopBucket: (() -> Int)?
 ) : LayoutModifierNode, DrawModifierNode, GlobalPositionAwareModifierNode, ObserverModifierNode, Modifier.Node() {
 
@@ -447,6 +476,16 @@ private class DrawBackdropNode(
      * resizing) invalidate every pooled bucket, since they were all captured at
      * the old size/offset.
      */
+    /** True on the previous frame; see the hand-over in [drawBackdropLayer]. */
+    private var wasHolding = false
+
+    /** When this surface last recorded, for the refresh while held. */
+    private var lastRecordedAt = 0L
+
+    /** The capture being faded out of, and when that fade began. */
+    private var handoverLayer: GraphicsLayer? = null
+    private var handoverStartedAt = 0L
+
     private fun DrawScope.drawBucketedLayer(bucket: Int): Boolean {
         val padding = padding
         val scale = backdropScale
@@ -531,11 +570,68 @@ private class DrawBackdropNode(
             // old recording is reflecting somewhere else on the screen: the mini
             // player sliding as the bar folds showed the page from the position
             // it used to be in, not the one under it.
-            val needsRecord = if (frozen() && hasRecording && !geometryChanged) {
-                false
-            } else {
-                (geometryChanged || versionChanged) && !versionChangeIsElsewhere
+            //
+            // Unless the caller says it is worth it anyway, which is what
+            // [heldWhileMoving] is for: a surface in the middle of changing
+            // shape re-records on every frame of the animation, which is the
+            // most expensive thing this app does at the busiest moment it does
+            // it. A reflection that lags for the length of a morph is not
+            // something anyone can see; the alternative, taking the glass away
+            // and putting it back, is.
+            // Held, but not indefinitely.
+            //
+            // A capture frozen for the whole of an animation is a reflection
+            // that has to be corrected at the end of it, and that correction is
+            // a visible jump however it is dressed up: the fade meant to cover
+            // it belongs to a node the animation is about to throw away, since
+            // the bar's two states are two different pieces of composition. The
+            // answer is not to let it drift that far. While held, the capture is
+            // still refreshed a few times a second, which costs three or four
+            // recordings across a fold instead of one per frame, and leaves
+            // nothing at the end big enough to see.
+            val now = System.nanoTime()
+            val heldLongEnough = (now - lastRecordedAt) / 1_000_000f >= HoldRefreshMillis
+            val holding = frozen() &&
+                hasRecording &&
+                !heldLongEnough &&
+                (!geometryChanged || heldWhileMoving())
+
+            // Coming out of a hold always takes a fresh capture, whether or not
+            // anything else says to.
+            //
+            // Without this the held reflection could last for good: the page
+            // only bumps its version when it redraws, and a page that has
+            // stopped scrolling does not redraw. So the surface sat on the
+            // capture it took before the scroll — the bar showing a piece of
+            // artwork that had long since moved on, in a screen where nothing
+            // was moving to correct it.
+            val refreshAfterHold = wasHolding && !holding
+            val needsRecord = when {
+                holding -> false
+                refreshAfterHold -> true
+                else -> (geometryChanged || versionChanged) && !versionChangeIsElsewhere
             }
+
+            // The first capture after a hold is a jump: the reflection has been
+            // still through a whole animation and then, in one frame, it is
+            // right again. That cut is more noticeable than the staleness it
+            // corrects, so the old capture is kept and the new one is brought up
+            // over it. Only after a hold — an ordinary re-record during a scroll
+            // is a small change from the frame before it, and crossing them
+            // would only cost an extra layer for nothing.
+            val endingHold = refreshAfterHold
+            if (endingHold) {
+                val keeper = handoverLayer
+                    ?: requireGraphicsContext().createGraphicsLayer().also { handoverLayer = it }
+                // A copy of what is on screen right now, to fade out from.
+                recordLayer(this@DrawBackdropNode, keeper, size = recordedBackdropSize) {
+                    drawLayer(layer)
+                }
+                keeper.renderEffect = null
+                handoverStartedAt = System.nanoTime()
+            }
+            wasHolding = holding
+
             if (needsRecord) {
                 recordLayer(
                     this@DrawBackdropNode,
@@ -546,20 +642,52 @@ private class DrawBackdropNode(
                 recordedBackdropVersion = version
                 recordedBackdropOffset = offset
                 recordedBackdropSize = recordSize
+                lastRecordedAt = now
             }
 
             layer.topLeft =
                 if (padding != 0f) IntOffset(-padding.toInt(), -padding.toInt())
                 else IntOffset.Zero
-            if (scale != 1f) {
-                // Vendored addition: stretch the low resolution layer back over the
-                // full surface; the blur in the effect chain masks the upscaling.
-                scale(1f / scale, pivot = Offset.Zero) {
-                    drawLayer(layer)
-                }
+
+            val handover = handoverLayer
+            val fade = if (handover != null && handoverStartedAt != 0L) {
+                val elapsed = (System.nanoTime() - handoverStartedAt) / 1_000_000f
+                (elapsed / HandoverMillis).fastCoerceIn(0f, 1f)
             } else {
-                drawLayer(layer)
+                1f
             }
+
+            fun DrawScope.paint(target: GraphicsLayer) {
+                if (scale != 1f) {
+                    // Vendored addition: stretch the low resolution layer back over
+                    // the full surface; the blur in the chain masks the upscaling.
+                    scale(1f / scale, pivot = Offset.Zero) {
+                        drawLayer(target)
+                    }
+                } else {
+                    drawLayer(target)
+                }
+            }
+
+            if (fade < 1f && handover != null) {
+                handover.topLeft = layer.topLeft
+                handover.alpha = 1f - fade
+                paint(handover)
+                layer.alpha = fade
+                paint(layer)
+                layer.alpha = 1f
+                // Nothing else is changing, so the next frame has to be asked
+                // for or the fade would stop on its first step.
+                this@DrawBackdropNode.invalidateDraw()
+            } else {
+                if (handover != null) {
+                    requireGraphicsContext().releaseGraphicsLayer(handover)
+                    handoverLayer = null
+                    handoverStartedAt = 0L
+                }
+                paint(layer)
+            }
+
             needsRecord
         } else {
             false
@@ -651,6 +779,10 @@ private class DrawBackdropNode(
         graphicsLayer?.let { layer ->
             graphicsContext.releaseGraphicsLayer(layer)
             graphicsLayer = null
+        }
+        handoverLayer?.let { layer ->
+            graphicsContext.releaseGraphicsLayer(layer)
+            handoverLayer = null
         }
         clearLoopPool()
 
