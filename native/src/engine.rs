@@ -757,6 +757,33 @@ pub fn set_quality(bitrate_kbps: i32, crossfade_ms: i32) -> EngineResult<()> {
     reconnect()
 }
 
+/// Changes the quality of what is asked for next, without rebuilding anything.
+///
+/// The bitrate is read while a track is being loaded, to put the formats it
+/// exists in into order of preference, and nowhere else. Rebuilding the session
+/// for it — which is what [`set_quality`] does, because the crossfade beside it
+/// really is fixed for the life of a player — costs a second of silence, so
+/// following a connection as it changes was never worth doing. This is the same
+/// change at the cost of a message.
+///
+/// What is playing keeps the file it started with. The next track gets this.
+pub fn set_bitrate(bitrate_kbps: i32) -> EngineResult<()> {
+    let bitrate = match bitrate_kbps {
+        96 => Bitrate::Bitrate96,
+        160 => Bitrate::Bitrate160,
+        _ => Bitrate::Bitrate320,
+    };
+    let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+    let engine = guard.as_mut().ok_or("engine not started")?;
+    // Kept on the recipe as well, so a session rebuilt for any other reason
+    // starts where the listening left it rather than back at the setting.
+    engine.recipe.player_config.bitrate = bitrate;
+    if let Some(bundle) = engine.bundle.as_ref() {
+        bundle.player.set_bitrate(bitrate);
+    }
+    Ok(())
+}
+
 /// Throws away a bundle and builds another one, leaving the runtime and the
 /// audio output alone.
 ///
@@ -1581,6 +1608,17 @@ pub fn play() -> EngineResult<()> {
 }
 
 pub fn pause() -> EngineResult<()> {
+    // The sound stops here, before anything is asked of the network.
+    //
+    // A pause is a message to the Connect task, and that task also talks to
+    // Spotify: while it is waiting on a request it does not read its own
+    // channel, so on a weak signal the music went on playing for seconds after
+    // the button. The player is the thing making the noise and it is right
+    // here, so it is told first and the account is told whenever it can be.
+    // Pausing a player that is already paused, or one that was never playing
+    // because the music is on another device, costs nothing.
+    let _ = with_bundle(|engine| engine.player.pause());
+
     transport("pause", |e| e.spirc.pause(), |e| e.player.pause())
 }
 

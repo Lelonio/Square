@@ -474,6 +474,16 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
     });
 }
 
+/// Changes the quality asked for from the next track on, with no rebuild.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetBitrate(
+    mut env: JNIEnv,
+    _class: JClass,
+    bitrate_kbps: jint,
+) {
+    guard(&mut env, "SetBitrate", || engine::set_bitrate(bitrate_kbps));
+}
+
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeReconnect(
     mut env: JNIEnv,

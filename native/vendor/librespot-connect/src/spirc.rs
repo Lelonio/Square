@@ -153,6 +153,10 @@ const VOLUME_UPDATE_DELAY: Duration = Duration::from_millis(500);
 // to reduce updates to remote, we group some request by waiting for a set amount of time
 const UPDATE_STATE_DELAY: Duration = Duration::from_millis(200);
 
+/// LOCAL PATCH: how long the loop will wait for the account to acknowledge a
+/// state update before going back to reading commands. See the use site.
+const STATE_UPDATE_TIMEOUT: Duration = Duration::from_millis(1500);
+
 /// The spotify connect handle
 pub struct Spirc {
     commands: mpsc::UnboundedSender<SpircCommand>,
@@ -649,8 +653,26 @@ impl SpircTask {
                 _ = async { sleep(UPDATE_STATE_DELAY).await }, if self.update_state => {
                     self.update_state = false;
 
-                    if let Err(why) = self.notify().await {
-                        error!("state update: {why}")
+                    // LOCAL PATCH: bounded, because this loop is the only thing
+                    // reading the command channel.
+                    //
+                    // Telling the account what this device is doing is an HTTP
+                    // request, and awaiting it here suspends the whole select:
+                    // the pause the listener just pressed sits unread in its
+                    // channel until the request comes back. On a weak signal
+                    // that is many seconds of music playing under a finger that
+                    // has already asked for silence. The account can be told
+                    // late; the listener cannot be answered late.
+                    match tokio::time::timeout(STATE_UPDATE_TIMEOUT, self.notify()).await {
+                        Ok(Err(why)) => error!("state update: {why}"),
+                        Err(_) => {
+                            warn!("state update timed out, telling the account later");
+                            // Left set, so the next turn of the loop tries
+                            // again rather than leaving the account with a
+                            // state this device has moved on from.
+                            self.update_state = true;
+                        }
+                        Ok(Ok(())) => (),
                     }
                 },
                 _ = async { sleep(VOLUME_UPDATE_DELAY).await }, if self.update_volume => {

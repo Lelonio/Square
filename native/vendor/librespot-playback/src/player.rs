@@ -31,7 +31,7 @@ use crate::{
     mixer::VolumeGetter,
 };
 use futures_util::{
-    StreamExt, TryFutureExt, future, future::FusedFuture,
+    FutureExt, StreamExt, TryFutureExt, future, future::FusedFuture,
     stream::futures_unordered::FuturesUnordered,
 };
 use librespot_metadata::{audio::UniqueFields, track::Tracks};
@@ -41,6 +41,15 @@ use symphonia::core::probe::Hint;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{NUM_CHANNELS, SAMPLE_RATE, SAMPLES_PER_SECOND};
+
+/// LOCAL PATCH: how many times a failed load is tried again before the track is
+/// called unavailable, and how long the first wait is (it doubles each time).
+///
+/// Four attempts over about seven seconds. Long enough to ride out a lift, a
+/// tunnel or a handover between cells, short enough that a track which really
+/// is gone does not hold the queue for a minute.
+const MAX_LOAD_ATTEMPTS: u8 = 3;
+const LOAD_RETRY_BACKOFF: Duration = Duration::from_millis(900);
 
 const PRELOAD_NEXT_TRACK_BEFORE_END_DURATION_MS: u32 = 30000;
 
@@ -106,6 +115,11 @@ struct PlayerInternal {
     fade_out: Option<FadeOut>,
     /// LOCAL PATCH: the play request whose end has already been announced early.
     early_end: Option<u64>,
+    /// LOCAL PATCH: how many times the track being loaded has been retried, and
+    /// from what position, so a retry resumes the same load. See the failure
+    /// branch of the loading state in `poll`.
+    load_attempt: u8,
+    load_position_ms: u32,
 }
 
 /// LOCAL PATCH: the outgoing half of a crossfade.
@@ -152,6 +166,8 @@ enum PlayerCommand {
     SetSinkEventCallback(Option<SinkEventCallback>),
     EmitVolumeChangedEvent(u16),
     SetAutoNormaliseAsAlbum(bool),
+    /// LOCAL PATCH: the quality to ask for from the next load onwards.
+    SetBitrate(Bitrate),
     EmitSessionDisconnectedEvent {
         connection_id: String,
         user_name: String,
@@ -535,6 +551,8 @@ impl Player {
 
                 fade_out: None,
                 early_end: None,
+                load_attempt: 0,
+                load_position_ms: 0,
                 normalisation_peaks: [0.0; 2],
                 normalisation_integrators: [0.0; 2],
                 normalisation_channel: 0,
@@ -638,6 +656,18 @@ impl Player {
 
     pub fn set_auto_normalise_as_album(&self, setting: bool) {
         self.command(PlayerCommand::SetAutoNormaliseAsAlbum(setting));
+    }
+
+    /// LOCAL PATCH: change the quality without building another player.
+    ///
+    /// The bitrate is only ever read while a track is being loaded, to put the
+    /// available formats in order of preference, so there is nothing about it
+    /// that has to be fixed for the life of the player. Upstream keeps it in
+    /// the immutable config anyway, which meant that following a connection as
+    /// it changed cost a whole new session and a second of silence. What is
+    /// playing keeps the file it started with; the next track gets this.
+    pub fn set_bitrate(&self, bitrate: Bitrate) {
+        self.command(PlayerCommand::SetBitrate(bitrate));
     }
 
     pub fn emit_filter_explicit_content_changed_event(&self, filter: bool) {
@@ -1091,6 +1121,16 @@ impl PlayerTrackLoader {
                 }
             };
 
+        // LOCAL PATCH: says which file is actually being streamed.
+        //
+        // The bitrate setting picks an order of preference, not a file: what
+        // arrives depends on what the track is offered in, and a track already
+        // in the cache is played from disk whatever the setting now says. With
+        // nothing in the log naming the format, "the quality setting does
+        // nothing" could not be told apart from "this track only exists at
+        // that quality" or "you have heard this one before".
+        info!("<{}> streaming as {:?}", audio_item.name, format);
+
         let bytes_per_second = self.stream_data_rate(format)?;
 
         // This is only a loop to be able to reload the file if an error occurred
@@ -1407,13 +1447,57 @@ impl Future for PlayerInternal {
                             }
                         }
                         Poll::Ready(Err(e)) => {
-                            error!(
-                                "Skipping to next track, unable to load track <{track_id:?}>: {e:?}"
-                            );
-                            self.send_event(PlayerEvent::Unavailable {
-                                track_id,
-                                play_request_id,
-                            })
+                            // LOCAL PATCH: try again before declaring the track
+                            // gone.
+                            //
+                            // Upstream treats one failed load as "this track
+                            // cannot be played" and Spirc answers that by
+                            // skipping to the next one. On a bad connection
+                            // every track fails, so the queue ran itself out in
+                            // a few seconds, one skip per song, and nothing
+                            // played at all — and each failure also marks the
+                            // track unavailable for the rest of the session, so
+                            // songs kept being skipped long after the signal
+                            // came back. A slow network should mean the music
+                            // takes longer to start, not that the queue empties.
+                            if self.load_attempt < MAX_LOAD_ATTEMPTS {
+                                let backoff = LOAD_RETRY_BACKOFF * (1 << self.load_attempt);
+                                self.load_attempt += 1;
+                                warn!(
+                                    "retrying load of <{track_id:?}> in {backoff:?}, attempt {} of {MAX_LOAD_ATTEMPTS}: {e:?}",
+                                    self.load_attempt + 1,
+                                );
+                                // Says it is still working on this track rather
+                                // than leaving the listener at a dead screen.
+                                let position_ms = self.load_position_ms;
+                                self.send_event(PlayerEvent::Loading {
+                                    track_id: track_id.clone(),
+                                    play_request_id,
+                                    position_ms,
+                                });
+                                let again = self.load_track(track_id.clone(), position_ms);
+                                let loader = Box::pin(
+                                    async move {
+                                        tokio::time::sleep(backoff).await;
+                                        again.await
+                                    }
+                                    .fuse(),
+                                );
+                                self.state = PlayerState::Loading {
+                                    track_id,
+                                    play_request_id,
+                                    start_playback,
+                                    loader,
+                                };
+                            } else {
+                                error!(
+                                    "Skipping to next track, unable to load track <{track_id:?}>: {e:?}"
+                                );
+                                self.send_event(PlayerEvent::Unavailable {
+                                    track_id,
+                                    play_request_id,
+                                })
+                            }
                         }
                         Poll::Pending => (),
                     }
@@ -1438,21 +1522,21 @@ impl Future for PlayerInternal {
                         };
                     }
                     Poll::Ready(Err(_)) => {
-                        debug!("Unable to preload {track_id:?}");
+                        // LOCAL PATCH: a preload that failed is not a track
+                        // that cannot be played.
+                        //
+                        // Upstream tells Spirc the track is unavailable, and
+                        // Spirc answers by taking it out of the queue. But this
+                        // is the *next* track being fetched early, while the
+                        // current one is still playing and the connection is
+                        // busy carrying it: on a weak link the head start is
+                        // the first thing to fail, and songs were disappearing
+                        // from the queue before anyone had tried to play them.
+                        // Forgetting the head start is enough. The track is
+                        // loaded normally when it is reached, with the retries
+                        // that path has.
+                        warn!("could not preload {track_id:?}, leaving it for its turn");
                         self.preload = PlayerPreload::None;
-                        // Let Spirc know that the track was unavailable.
-                        if let PlayerState::Playing {
-                            play_request_id, ..
-                        }
-                        | PlayerState::Paused {
-                            play_request_id, ..
-                        } = self.state
-                        {
-                            self.send_event(PlayerEvent::Unavailable {
-                                track_id,
-                                play_request_id,
-                            });
-                        }
                     }
                     Poll::Pending => (),
                 }
@@ -2328,6 +2412,11 @@ impl PlayerInternal {
 
         self.preload = PlayerPreload::None;
 
+        // LOCAL PATCH: a fresh load is a fresh set of attempts, and a retry has
+        // to know where this one was starting from.
+        self.load_attempt = 0;
+        self.load_position_ms = position_ms;
+
         // If we don't have a loader yet, create one from scratch.
         let loader =
             loader.unwrap_or_else(|| Box::pin(self.load_track(track_id.clone(), position_ms)));
@@ -2533,6 +2622,18 @@ impl PlayerInternal {
                 self.auto_normalise_as_album = setting
             }
 
+            // LOCAL PATCH: see Player::set_bitrate.
+            PlayerCommand::SetBitrate(bitrate) => {
+                if self.config.bitrate != bitrate {
+                    info!("bitrate is now {bitrate:?}, from the next track");
+                    self.config.bitrate = bitrate;
+                    // What was preloaded was fetched at the old quality, and
+                    // keeping it would silently undo the change for exactly one
+                    // track — the next one, which is the one this was asked for.
+                    self.preload = PlayerPreload::None;
+                }
+            }
+
             PlayerCommand::EmitFilterExplicitContentChangedEvent(filter) => {
                 self.send_event(PlayerEvent::FilterExplicitContentChanged { filter });
 
@@ -2685,6 +2786,9 @@ impl fmt::Debug for PlayerCommand {
                 .debug_tuple("EmitVolumeChangedEvent")
                 .field(&volume)
                 .finish(),
+            PlayerCommand::SetBitrate(bitrate) => {
+                f.debug_tuple("SetBitrate").field(bitrate).finish()
+            }
             PlayerCommand::SetAutoNormaliseAsAlbum(setting) => f
                 .debug_tuple("SetAutoNormaliseAsAlbum")
                 .field(&setting)

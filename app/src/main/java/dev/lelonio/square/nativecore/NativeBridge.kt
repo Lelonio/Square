@@ -180,6 +180,16 @@ object NativeBridge {
     fun setQuality(bitrateKbps: Int, crossfadeMs: Int) = nativeSetQuality(bitrateKbps, crossfadeMs)
 
     /**
+     * Changes the quality asked for from the next track on.
+     *
+     * Unlike [setQuality] this rebuilds nothing: the bitrate is only read while
+     * a track loads, so a message is enough. What is playing keeps the file it
+     * started with, which is also why there is nothing to hear when this is
+     * called — no gap, no restart.
+     */
+    fun setBitrate(bitrateKbps: Int) = nativeSetBitrate(bitrateKbps)
+
+    /**
      * Builds a new session, player and Connect device, keeping everything else.
      *
      * The answer to [spircLost]. A dead Connect device cannot be revived on the
@@ -384,6 +394,8 @@ object NativeBridge {
     private external fun nativeIsConnected(): Boolean
     private external fun nativeSpircLost(): Boolean
     private external fun nativeSetQuality(bitrateKbps: Int, crossfadeMs: Int)
+
+    private external fun nativeSetBitrate(bitrateKbps: Int)
     private external fun nativeReconnect()
     private external fun nativePlaybackElsewhere(): Boolean
     private external fun nativePublishContext(positionMs: Int): Boolean

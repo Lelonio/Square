@@ -131,6 +131,47 @@ wraps to the bottom and is heard as a click.
 A track shorter than the fade simply drains early: the incoming track goes on
 rising, over silence rather than over music.
 
+### The patch: a slow connection is not a missing track
+
+Upstream gives a load one attempt. If it fails, the player sends `Unavailable`,
+and Connect answers that by skipping to the next track and dropping the failed
+one out of the queue. That is right for a track the account cannot play, and
+wrong for every other reason a load fails: on a weak signal each track failed in
+turn, so the queue ran itself out in seconds without a note being heard, and the
+songs it gave up on were gone from the queue for the rest of the session.
+
+The loading state now retries the same track, three times, waiting 0.9s, 1.8s
+and 3.6s, and sends a fresh `Loading` each time so the app can go on saying it
+is working. `Unavailable` is only sent once all of them have failed, which
+leaves its meaning intact for the case it was written for.
+
+The counter and the position it retries from live on `PlayerInternal` and are
+reset by `handle_command_load`, so every new load starts with a full set of
+attempts.
+
+### The patch: a failed head start is not a missing track
+
+The player fetches the next track while the current one plays, and upstream
+answers a failed fetch by telling Spirc the track is unavailable, which takes it
+out of the queue. On a weak link that head start is the first thing to fail, and
+it fails while the connection is busy carrying the song being listened to: songs
+were vanishing from the queue before anything had tried to play them.
+
+A failed preload now just forgets the head start. The track is loaded normally
+when its turn comes, with the retries that path has.
+
+### The patch: the quality can change without a new player
+
+The bitrate is read in one place, while a track is being loaded, to put the
+formats it exists in into order of preference. Upstream keeps it in the
+player's immutable config all the same, so following a connection as it changes
+meant building a new session, which costs a second of silence and a Connect
+device that has to be handed the queue again.
+
+`PlayerCommand::SetBitrate` and `Player::set_bitrate` change it in place, and
+drop whatever was preloaded, since that was fetched at the old quality. What is
+playing keeps the file it started with; the next track gets the new one.
+
 ### Maintenance
 
 The markers are `LOCAL PATCH` in `src/player.rs` and `src/config.rs`.
@@ -173,6 +214,19 @@ The track list is there for the contexts Spotify makes rather than stores. A
 daily mix, a radio, "Pop Mix" resolve to nothing for a client that is not
 Spotify's own, and the only copy of that queue in existence here is the one the
 account handed the device to play.
+
+### The patch: a weak signal must not hold the buttons
+
+The task's `select!` is the only thing reading the command channel, and one of
+its branches tells the account what this device is doing, which is an HTTP
+request. Awaiting it inline suspends the whole loop, so a pause sent from the
+app sat unread until the request came back: on a weak signal, seconds of music
+under a finger that had already asked for silence.
+
+The state update is now bounded by `STATE_UPDATE_TIMEOUT`, one and a half
+seconds, after which the loop goes back to reading commands and leaves the
+update flagged so the next turn tries again. The account can be told late. The
+listener cannot.
 
 ### The patch: a new running order, without a reload
 
