@@ -301,6 +301,10 @@ interface SpotifyApi {
         @Query("ids") userIds: String,
     ): List<Boolean>
 
+    /** Saves tracks to Liked Songs, which is what the heart in the player says. */
+    @PUT("v1/me/tracks")
+    suspend fun saveTracks(@Query("ids") ids: String)
+
     @PUT("v1/me/albums")
     suspend fun saveAlbums(@Query("ids") ids: String)
 

@@ -679,16 +679,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (current.busy != null) return
         val id = playlist.uri.substringAfterLast(':')
 
+        // Liked Songs is in this list like any other, and is the one entry that
+        // is not a playlist: it is the account's library, saved to by its own
+        // endpoint. Picking it is what puts the heart on the track, and picking
+        // anything else is what puts the tick there.
+        val toLibrary = playlist.uri.endsWith(":collection")
+
         _addToPlaylist.value = current.copy(busy = playlist.uri, done = null, error = null)
         viewModelScope.launch {
-            runCatching { container.api.addToPlaylist(id, AddTracksRequestDto(listOf(trackUri))) }
+            runCatching {
+                if (toLibrary) {
+                    container.api.saveTracks(trackUri.substringAfterLast(':'))
+                } else {
+                    container.api.addToPlaylist(id, AddTracksRequestDto(listOf(trackUri)))
+                }
+            }
                 .onSuccess {
                     _addToPlaylist.value =
                         _addToPlaylist.value.copy(busy = null, done = playlist.name)
                     // Known at once, rather than when that playlist is next
                     // read: the tick is about the track, and the track is in a
                     // playlist from this moment.
-                    _inPlaylists.value = _inPlaylists.value + trackUri
+                    if (toLibrary) _liked.value = _liked.value + trackUri
+                    else _inPlaylists.value = _inPlaylists.value + trackUri
                     // The detail screen holds a list resolved before this track
                     // was in it; if that is the playlist just written to, read
                     // it again.
@@ -1454,6 +1467,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // a heart rather than a tick.
         if (contextUri.endsWith(":collection")) {
             _liked.value = _liked.value + tracks.map { it.uri }
+            // Just read, so nothing missing from it is saved.
+            likedSeeded = true
+            likedListTrusted = true
             return
         }
         if (!contextUri.startsWith("spotify:playlist:")) return
@@ -1465,29 +1481,97 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Tracks known to be in Liked Songs.
      *
-     * Unlike [inPlaylists] this one can be asked outright: Spotify answers
-     * "is this saved?" in a single call, so the track on screen is checked as
-     * it starts rather than inferred from what happens to have been read.
+     * Read from the list itself wherever possible rather than asked about one
+     * track at a time. Spotify will answer "is this saved?" for a single URI,
+     * and asking that once a song for as long as the music plays is both a
+     * request the app does not need — it has usually read the whole list
+     * already — and a pattern nothing but a machine produces. So the copy of
+     * Liked Songs on disk answers first, and the network only hears about the
+     * tracks it cannot.
      */
     val likedTracks: StateFlow<Set<String>> = _liked.asStateFlow()
 
     /** Tracks already asked about, saved or not, so each is asked once. */
     private val likedAsked = mutableSetOf<String>()
 
+    /** Waiting to be asked about, so a run of skips is one question. */
+    private val likedPending = linkedSetOf<String>()
+    private var likedBatch: kotlinx.coroutines.Job? = null
+
+    /** Whether the copy of Liked Songs on disk has been looked at yet. */
+    private var likedSeeded = false
+
+    /**
+     * Whether that copy is recent enough to answer for itself.
+     *
+     * When it is, a track missing from the set is simply not saved and there
+     * is nothing to ask. When it is not — an old copy, or none — a miss is a
+     * question, because the listener may have saved it somewhere else since.
+     */
+    private var likedListTrusted = false
+
     fun checkLiked(uri: String?) {
         if (uri == null || !uri.startsWith("spotify:track:")) return
-        if (!container.webApi.isReady || !likedAsked.add(uri)) return
         viewModelScope.launch {
-            runCatching { container.api.tracksAreSaved(uri.substringAfterLast(':')) }
-                .onSuccess { answers ->
-                    if (answers.firstOrNull() == true) _liked.value = _liked.value + uri
-                }
-                .onFailure {
-                    // Asked again next time it plays: this is a decoration.
-                    likedAsked.remove(uri)
-                    android.util.Log.i(TAG, "cannot tell if $uri is saved: ${describe(it)}")
-                }
+            seedLiked()
+            if (uri in _liked.value || likedListTrusted) return@launch
+            if (!likedAsked.add(uri)) return@launch
+
+            likedPending += uri
+            // A skip is not an answer worth having: while the listener is
+            // still moving, the questions pile up and go out together.
+            likedBatch?.cancel()
+            likedBatch = viewModelScope.launch {
+                kotlinx.coroutines.delay(LIKED_BATCH_WAIT_MS)
+                val batch = likedPending.toList()
+                likedPending.clear()
+                askLiked(batch)
+            }
         }
+    }
+
+    /** Fills the set from the copy of Liked Songs already on disk, at no cost. */
+    private suspend fun seedLiked() {
+        if (likedSeeded) return
+        likedSeeded = true
+
+        val uri = runCatching { withContext(Dispatchers.IO) { NativeBridge.collectionUri() } }
+            .getOrNull()
+            .orEmpty()
+        if (uri.isEmpty()) return
+
+        val entry = contextCache[uri] ?: container.contextCache.read(uri) ?: return
+        _liked.value = _liked.value + entry.tracks.map { it.uri }
+        likedListTrusted = System.currentTimeMillis() - entry.savedAt < LIKED_TRUSTED_MS
+    }
+
+    /**
+     * Asks about a handful of tracks at once.
+     *
+     * The gateway first, as everywhere else: it answers for anyone logged in,
+     * and it takes the whole batch in one request. The Web API answers the
+     * same question against the listener's own application.
+     */
+    private suspend fun askLiked(uris: List<String>) {
+        if (uris.isEmpty()) return
+        val answers = container.gateway.inLibrary(uris) ?: webApiSaved(uris)
+        if (answers == null) {
+            // Asked again next time they play: this is a decoration.
+            likedAsked -= uris.toSet()
+            return
+        }
+        val saved = uris.filterIndexed { index, _ -> answers.getOrNull(index) == true }
+        if (saved.isNotEmpty()) _liked.value = _liked.value + saved
+    }
+
+    /** The same question through the listener's own application. */
+    private suspend fun webApiSaved(uris: List<String>): List<Boolean>? {
+        if (!container.webApi.isReady) return null
+        return runCatching {
+            container.api.tracksAreSaved(uris.joinToString(",") { it.substringAfterLast(':') })
+        }
+            .onFailure { android.util.Log.i(TAG, "cannot tell what is saved: ${describe(it)}") }
+            .getOrNull()
     }
 
     private val contextCache =
@@ -2211,6 +2295,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          * answers 400 to anything larger rather than an empty page.
          */
         const val WEB_API_LIBRARY_PAGE = 50
+
+        /**
+         * How long the copy of Liked Songs on disk answers for the whole list.
+         *
+         * Long enough that a listening session costs nothing, short enough
+         * that a track saved on another device is not denied all day.
+         */
+        const val LIKED_TRUSTED_MS = 6L * 60 * 60 * 1000
+
+        /** How long a question about a track waits for the next one. */
+        const val LIKED_BATCH_WAIT_MS = 400L
 
         /** How many track lists to keep resolved; see contextCache. */
         const val CONTEXT_CACHE_SIZE = 8

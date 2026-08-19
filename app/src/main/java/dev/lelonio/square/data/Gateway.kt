@@ -42,6 +42,37 @@ class Gateway(private val keys: PathfinderKeys) {
     )
 
     /**
+     * Whether each of these is in the account's library, in the order asked.
+     *
+     * One request for a handful of tracks rather than one request per track,
+     * which is the shape that matters here as much as the count: a question
+     * asked once a song, all day, is a pattern nothing but a machine makes.
+     *
+     * Null when the gateway will not answer, or when it answers about a
+     * different number of things than it was asked about.
+     */
+    suspend fun inLibrary(uris: List<String>): List<Boolean>? {
+        if (uris.isEmpty()) return emptyList()
+        keys.refresh()
+        return runCatching {
+            val raw = query(
+                operation = "areEntitiesInLibrary",
+                hash = keys.library,
+                variables = """{"uris":[${uris.joinToString(",") { "\"$it\"" }}]}""",
+            )
+            val lookup = org.json.JSONObject(raw)
+                .getJSONObject("data")
+                .getJSONArray("lookup")
+            if (lookup.length() != uris.size) return null
+            (0 until lookup.length()).map { index ->
+                lookup.optJSONObject(index)?.optJSONObject("data")?.optBoolean("saved") == true
+            }
+        }
+            .onFailure { android.util.Log.i(TAG, "library lookup unavailable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /**
      * Reads a list to its end.
      *
      * Null when the first page will not come back, and null part way through

@@ -40,6 +40,9 @@ class PathfinderKeys(context: Context) {
     /** And for `fetchPlaylistContents`; see PlaylistContents. */
     val playlist: String get() = prefs.getString(KEY_PLAYLIST, null) ?: DEFAULT_PLAYLIST
 
+    /** And for `areEntitiesInLibrary`, which answers the heart on a track. */
+    val library: String get() = prefs.getString(KEY_LIBRARY, null) ?: DEFAULT_LIBRARY
+
     /** The web client version the gateway is told about. */
     val appVersion: String get() = prefs.getString(KEY_VERSION, null) ?: DEFAULT_VERSION
 
@@ -66,6 +69,8 @@ class PathfinderKeys(context: Context) {
                     ?.let { edit.putString(KEY_LIKED, it) }
                 body.optString("playlist").takeIf { it.length == HASH_LENGTH }
                     ?.let { edit.putString(KEY_PLAYLIST, it) }
+                body.optString("library").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_LIBRARY, it) }
                 body.optString("appVersion").takeIf { it.isNotEmpty() }
                     ?.let { edit.putString(KEY_VERSION, it) }
                 edit.apply()
@@ -79,6 +84,7 @@ class PathfinderKeys(context: Context) {
         const val KEY_HOME = "home"
         const val KEY_LIKED = "liked_songs"
         const val KEY_PLAYLIST = "playlist"
+        const val KEY_LIBRARY = "library"
         const val KEY_VERSION = "app_version"
         const val KEY_CHECKED = "checked_at"
 
@@ -99,6 +105,8 @@ class PathfinderKeys(context: Context) {
             "c2c53c28f71da143c0753c22dc84d98b315cb4275472ea5a597c29338ae20b23"
         const val DEFAULT_PLAYLIST =
             "86dde7b9d9356e2369414647cf6950cfed96e778e129cfdfc99aea6c1613b3b0"
+        const val DEFAULT_LIBRARY =
+            "134337999233cc6fdd6b1e6dbf94841409f04a946c5c7b744b09ba0dfe5a85ed"
         const val DEFAULT_VERSION = "1.2.97.155.g5dd0dcaf-development"
     }
 }
