@@ -69,20 +69,22 @@ class LibrespotPlayer(
         if (uris.isEmpty()) return
         val index = queue.currentIndex
         val contextUri = queue.contextUri.orEmpty()
-        // Only when the queue is that context in its own order, and not while
-        // shuffled: the engine would then play Spotify's order and the list on
-        // screen would be someone else's.
+        // Never as a context, whatever it is.
         //
-        // Liked Songs is never handed over as a context, however much the two
-        // agree. Resolved by the engine it is Spotify's own copy of the
-        // collection, which is not what this screen is showing: the rows here
-        // came from the Web API with everything unplayable taken out. The two
-        // lists then disagree about what comes after a track, so one tap on
-        // next moved the account several songs along and the engine spent the
-        // difference failing to load songs this market has no copy of. Sent as
-        // the tracks themselves, the engine plays the list that is on screen.
-        val asContext = queue.contextIsOrdered && !queue.isShuffled &&
-            !contextUri.endsWith(":collection")
+        // Handing the engine a playlist URI asks Spotify to resolve the list
+        // itself, and its copy is not the one on screen: it steps over tracks
+        // the account is not offered here, quietly and without a word in the
+        // log, so a song sitting plainly in the list is jumped as if it were
+        // not there. Liked Songs hit this first and was fixed on its own; the
+        // same thing happens to any playlist.
+        //
+        // What goes over instead is this list, in this order, published under
+        // the playlist it came from — see native/src/engine.rs, which files it
+        // with the context so the account still records the listen against the
+        // playlist and other devices still name it. What is lost is Spotify's
+        // own ordering of a list the app has already read, which is nothing,
+        // and what is gained is that the queue plays what it shows.
+        val asContext = false
 
         fadeOutThen {
             // Back on the player's looper before anything is read or called.
