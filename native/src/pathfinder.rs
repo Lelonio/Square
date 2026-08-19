@@ -42,7 +42,7 @@ const APP_VERSION: &str = "1.2.97.155.g5dd0dcaf-development";
 
 /// One persisted query, by name and hash. See the note at the top of the file.
 struct Query {
-    name: &'static str,
+    name: String,
     hash: String,
 }
 
@@ -57,7 +57,7 @@ const HOME_HASH: &str = "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e845
 const LIKED_HASH: &str = "c2c53c28f71da143c0753c22dc84d98b315cb4275472ea5a597c29338ae20b23";
 
 /// Runs one persisted query and returns the raw JSON body.
-async fn query(
+async fn query_with(
     session: &Session,
     query: &Query,
     variables: String,
@@ -181,7 +181,7 @@ pub fn home(
     );
 
     let home = Query {
-        name: "home",
+        name: "home".to_string(),
         hash: if hash.is_empty() {
             HOME_HASH.to_string()
         } else {
@@ -190,7 +190,36 @@ pub fn home(
     };
     let app_version = app_version.to_string();
 
-    handle.block_on(async move { query(&session, &home, variables, &language, &app_version).await })
+    handle.block_on(async move { query_with(&session, &home, variables, &language, &app_version).await })
+}
+
+/// Any persisted query the caller can name, by hash.
+///
+/// The gateway is one endpoint serving dozens of queries, and every one of
+/// them is the same request with a different name, hash and set of variables.
+/// Named by the caller so a query can be added, or its hash replaced, without
+/// anything on this side changing; see PathfinderKeys.
+pub fn gateway(
+    operation: &str,
+    hash: &str,
+    variables: &str,
+    language: &str,
+    app_version: &str,
+) -> engine::EngineResult<String> {
+    if operation.is_empty() || hash.is_empty() {
+        return Err("a gateway query needs a name and a hash".into());
+    }
+    let handle = engine::runtime_handle()?;
+    let session = engine::with_session(|session| session.clone())?;
+    let language = if language.is_empty() { "en" } else { language }.to_string();
+    let variables = if variables.is_empty() { "{}" } else { variables }.to_string();
+    let app_version = app_version.to_string();
+    let query = Query {
+        name: operation.to_string(),
+        hash: hash.to_string(),
+    };
+
+    handle.block_on(async move { query_with(&session, &query, variables, &language, &app_version).await })
 }
 
 /// The account's saved tracks, as the web player's library page reads them.
@@ -210,7 +239,7 @@ pub fn liked_songs(
     let language = if language.is_empty() { "en" } else { language }.to_string();
 
     let liked = Query {
-        name: "getLikedSongs",
+        name: "getLikedSongs".to_string(),
         hash: if hash.is_empty() {
             LIKED_HASH.to_string()
         } else {
@@ -221,6 +250,6 @@ pub fn liked_songs(
     let variables = if variables.is_empty() { "{}" } else { variables }.to_string();
 
     handle.block_on(async move {
-        query(&session, &liked, variables, &language, &app_version).await
+        query_with(&session, &liked, variables, &language, &app_version).await
     })
 }

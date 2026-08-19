@@ -274,6 +274,21 @@ object NativeBridge {
     ): String = nativeHomeFeed(timeZone, language, hash, appVersion)
 
     /**
+     * Any of the gateway's persisted queries, named and addressed by hash.
+     *
+     * The same endpoint and the same fragility as [homeFeed]: the hash is of a
+     * query Spotify already knows, and it retires them when its web client is
+     * rebuilt. Callers must be able to carry on with nothing. Blocking.
+     */
+    fun gatewayQuery(
+        operation: String,
+        hash: String,
+        variables: String,
+        language: String,
+        appVersion: String,
+    ): String = nativeGatewayQuery(operation, hash, variables, language, appVersion)
+
+    /**
      * The account's saved tracks, as raw JSON from Spotify's gateway.
      *
      * The same gateway and the same fragility as [homeFeed]. Here for the one
@@ -420,6 +435,13 @@ object NativeBridge {
         timeZone: String,
         language: String,
         hash: String,
+        appVersion: String,
+    ): String
+    private external fun nativeGatewayQuery(
+        operation: String,
+        hash: String,
+        variables: String,
+        language: String,
         appVersion: String,
     ): String
     private external fun nativeLikedSongs(

@@ -37,6 +37,9 @@ class PathfinderKeys(context: Context) {
     /** The same for `getLikedSongs`; see SavedTracks. */
     val likedSongs: String get() = prefs.getString(KEY_LIKED, null) ?: DEFAULT_LIKED
 
+    /** And for `fetchPlaylistContents`; see PlaylistContents. */
+    val playlist: String get() = prefs.getString(KEY_PLAYLIST, null) ?: DEFAULT_PLAYLIST
+
     /** The web client version the gateway is told about. */
     val appVersion: String get() = prefs.getString(KEY_VERSION, null) ?: DEFAULT_VERSION
 
@@ -61,6 +64,8 @@ class PathfinderKeys(context: Context) {
                     ?.let { edit.putString(KEY_HOME, it) }
                 body.optString("likedSongs").takeIf { it.length == HASH_LENGTH }
                     ?.let { edit.putString(KEY_LIKED, it) }
+                body.optString("playlist").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_PLAYLIST, it) }
                 body.optString("appVersion").takeIf { it.isNotEmpty() }
                     ?.let { edit.putString(KEY_VERSION, it) }
                 edit.apply()
@@ -73,6 +78,7 @@ class PathfinderKeys(context: Context) {
         const val FILE_NAME = "square_pathfinder"
         const val KEY_HOME = "home"
         const val KEY_LIKED = "liked_songs"
+        const val KEY_PLAYLIST = "playlist"
         const val KEY_VERSION = "app_version"
         const val KEY_CHECKED = "checked_at"
 
@@ -91,6 +97,8 @@ class PathfinderKeys(context: Context) {
             "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a"
         const val DEFAULT_LIKED =
             "c2c53c28f71da143c0753c22dc84d98b315cb4275472ea5a597c29338ae20b23"
+        const val DEFAULT_PLAYLIST =
+            "86dde7b9d9356e2369414647cf6950cfed96e778e129cfdfc99aea6c1613b3b0"
         const val DEFAULT_VERSION = "1.2.97.155.g5dd0dcaf-development"
     }
 }

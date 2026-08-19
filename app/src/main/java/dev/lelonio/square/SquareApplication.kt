@@ -71,6 +71,11 @@ class SquareApplication : Application() {
         dev.lelonio.square.data.PathfinderKeys(this)
     }
 
+    /** Track lists from Spotify's own gateway; see [dev.lelonio.square.data.Gateway]. */
+    val gateway: dev.lelonio.square.data.Gateway by lazy {
+        dev.lelonio.square.data.Gateway(pathfinderKeys)
+    }
+
     /** Which stretcher works out speed and pitch. */
     val effectQuality: dev.lelonio.square.data.EffectQualityStore by lazy {
         dev.lelonio.square.data.EffectQualityStore(this)

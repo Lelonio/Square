@@ -10,7 +10,6 @@ import dev.lelonio.square.data.PlaylistDetailsDto
 import dev.lelonio.square.data.SearchResults
 import dev.lelonio.square.data.toCatalogTrack
 import dev.lelonio.square.data.toResults
-import dev.lelonio.square.data.SavedTracks
 import dev.lelonio.square.nativecore.NativeBridge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -133,57 +132,31 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
                 .map { it.toCatalogTrack() }
         }
 
-        container.webApi.isReady && uri.startsWith("spotify:playlist:") ->
-            webApiPlaylistTracks(uri.substringAfterLast(':'))
+        // Spotify's own gateway first, for both of the lists it answers for:
+        // it needs nothing of the listener beyond being logged in, and hands
+        // back whole tracks rather than URIs to look up one at a time. The Web
+        // API, which is metered against an application the listener has to
+        // register themselves, is what is left when a query hash is retired.
+        uri.startsWith("spotify:playlist:") ->
+            container.gateway.readAll { offset -> container.gateway.playlistTracks(uri, offset) }
+                ?: if (container.webApi.isReady) {
+                    webApiPlaylistTracks(uri.substringAfterLast(':'))
+                } else {
+                    Catalog.tracks(Catalog.contextTrackUris(uri))
+                }
 
-        // Liked Songs is not a context the access point will resolve: asked
-        // for it answers 503. Spotify's own gateway answers it for anyone
-        // logged in, and the Web API — which needs the listener's registered
-        // application — is what is left when a query hash has been retired.
-        uri.endsWith(":collection") -> gatewaySavedTracks() ?: run {
-            check(container.webApi.isReady) {
-                container.getString(dev.lelonio.square.R.string.liked_songs_failed)
+        // Liked Songs is not a context the access point will resolve either:
+        // asked for it answers 503. So when both of these fail there is
+        // nothing left to try.
+        uri.endsWith(":collection") ->
+            container.gateway.readAll { offset -> container.gateway.savedTracks(offset) } ?: run {
+                check(container.webApi.isReady) {
+                    container.getString(dev.lelonio.square.R.string.liked_songs_failed)
+                }
+                savedTracks()
             }
-            savedTracks()
-        }
 
         else -> Catalog.tracks(Catalog.contextTrackUris(uri))
-    }
-
-    /**
-     * Everything the account has saved, from the gateway; see SavedTracks.
-     *
-     * Null when the gateway will not answer, which is the caller's cue to ask
-     * the Web API the same question.
-     */
-    private suspend fun gatewaySavedTracks(): List<CatalogTrack>? {
-        val keys = container.pathfinderKeys
-        keys.refresh()
-        val language = java.util.Locale.getDefault().language
-
-        val loaded = mutableListOf<CatalogTrack>()
-        var offset = 0
-        while (true) {
-            val page = runCatching {
-                val raw = withContext(Dispatchers.IO) {
-                    NativeBridge.likedSongs(
-                        """{"offset":$offset,"limit":$GATEWAY_LIBRARY_PAGE}""",
-                        language,
-                        keys.likedSongs,
-                        keys.appVersion,
-                    )
-                }
-                SavedTracks.parse(raw)
-                // A page that will not come back gives up the whole read, part
-                // way through as much as at the start: half a list handed to
-                // the queue is a queue that ends where the page did.
-            }.getOrNull() ?: return null
-
-            loaded += page.tracks
-            val next = page.nextOffset
-            if (next == null || next <= offset || loaded.size >= page.total) return loaded
-            offset = next
-        }
     }
 
     /** Everything the account has saved, newest first, a page at a time. */
@@ -293,9 +266,6 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
          * reported the second failure.
          */
         const val WEB_API_LIBRARY_PAGE = 50
-
-        /** What the gateway takes at a time; see MainViewModel. */
-        const val GATEWAY_LIBRARY_PAGE = 200
 
         /**
          * The purple heart Spotify's own clients draw for Liked Songs.

@@ -557,6 +557,27 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeHom
     })
 }
 
+/// Any of the gateway's persisted queries, by name and hash; raw JSON back.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeGatewayQuery(
+    mut env: JNIEnv,
+    _class: JClass,
+    operation: JString,
+    hash: JString,
+    variables: JString,
+    language: JString,
+    app_version: JString,
+) -> jstring {
+    let operation = read_string(&mut env, &operation).unwrap_or_default();
+    let hash = read_string(&mut env, &hash).unwrap_or_default();
+    let variables = read_string(&mut env, &variables).unwrap_or_default();
+    let language = read_string(&mut env, &language).unwrap_or_default();
+    let app_version = read_string(&mut env, &app_version).unwrap_or_default();
+    guard_string(&mut env, "GatewayQuery", || {
+        crate::pathfinder::gateway(&operation, &hash, &variables, &language, &app_version)
+    })
+}
+
 /// The account's saved tracks, as raw JSON from Spotify's gateway.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeLikedSongs(
