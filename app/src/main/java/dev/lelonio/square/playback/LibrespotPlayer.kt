@@ -72,7 +72,17 @@ class LibrespotPlayer(
         // Only when the queue is that context in its own order, and not while
         // shuffled: the engine would then play Spotify's order and the list on
         // screen would be someone else's.
-        val asContext = queue.contextIsOrdered && !queue.isShuffled
+        //
+        // Liked Songs is never handed over as a context, however much the two
+        // agree. Resolved by the engine it is Spotify's own copy of the
+        // collection, which is not what this screen is showing: the rows here
+        // came from the Web API with everything unplayable taken out. The two
+        // lists then disagree about what comes after a track, so one tap on
+        // next moved the account several songs along and the engine spent the
+        // difference failing to load songs this market has no copy of. Sent as
+        // the tracks themselves, the engine plays the list that is on screen.
+        val asContext = queue.contextIsOrdered && !queue.isShuffled &&
+            !contextUri.endsWith(":collection")
 
         fadeOutThen {
             // Back on the player's looper before anything is read or called.
