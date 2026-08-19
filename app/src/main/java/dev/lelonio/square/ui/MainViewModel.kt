@@ -1829,7 +1829,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         uri: String,
         showProgress: Boolean,
     ): List<CatalogTrack>? {
-        if (!container.webApi.isReady || !uri.startsWith("spotify:playlist:")) return null
+        if (!container.webApi.isReady) return null
+        if (uri.endsWith(":collection")) return savedTracks(base, showProgress)
+        if (!uri.startsWith("spotify:playlist:")) return null
         val id = uri.substringAfterLast(':')
 
         val loaded = mutableListOf<CatalogTrack>()
@@ -1844,6 +1846,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 item.track
                     ?.takeIf { it.isPlayable != false && it.uri.startsWith("spotify:track:") }
                     ?.toCatalogTrack(item.addedAt)
+            }
+            offset += page.items.size
+            if (showProgress) {
+                publishPlaylist(base.copy(
+                    tracks = loaded.toList(),
+                    loadingMore = offset < page.total,
+                ))
+            }
+            if (page.items.isEmpty() || offset >= page.total) return loaded
+        }
+    }
+
+    /**
+     * Liked Songs, fifty complete tracks a request.
+     *
+     * It is not a playlist and the access point will not resolve it as a
+     * context, so it used to fall through to [accessPointTracks] — which asks
+     * for the track list and then spends one round trip per track turning each
+     * URI into a name. Two thousand saved songs were two thousand requests:
+     * minutes of them, the account's quota with them, and a page that looked
+     * like it would never finish. `me/tracks` answers with whole tracks and
+     * caps at fifty a page, so the same two thousand are forty requests.
+     */
+    private suspend fun savedTracks(
+        base: PlaylistState,
+        showProgress: Boolean,
+    ): List<CatalogTrack> {
+        val loaded = mutableListOf<CatalogTrack>()
+        var offset = 0
+        while (true) {
+            val page = container.api.savedTracks(limit = WEB_API_LIBRARY_PAGE, offset = offset)
+            // The same rule as a playlist's pages: anything the engine could
+            // only skip has no business being in the queue.
+            loaded += page.items.mapNotNull { saved ->
+                saved.track
+                    .takeIf { it.isPlayable != false && it.uri.startsWith("spotify:track:") }
+                    ?.toCatalogTrack(saved.addedAt)
             }
             offset += page.items.size
             if (showProgress) {
@@ -2128,6 +2167,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         /** The Web API's own maximum page size for playlist tracks. */
         const val WEB_API_PAGE = 100
+
+        /**
+         * And what the account's own lists take, which is half that: `me/tracks`
+         * answers 400 to anything larger rather than an empty page.
+         */
+        const val WEB_API_LIBRARY_PAGE = 50
 
         /** How many track lists to keep resolved; see contextCache. */
         const val CONTEXT_CACHE_SIZE = 8
