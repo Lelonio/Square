@@ -79,6 +79,7 @@
     <string name="hours_minutes">%1$d Std. %2$d Min.</string>
     <string name="minutes_only">%1$d Min.</string>
     <string name="artist_needs_app">Für einen Künstler braucht es deine eigene Spotify-Anwendung: richte sie unter Suchen ein.</string>
+    <string name="liked_songs_failed">Deine Lieblingssongs konnten nicht gelesen werden: versuch es gleich noch einmal.</string>
 
     <string name="add_to_queue">Zur Warteschlange</string>
     <string name="add_to_playlist">Zu einer Playlist hinzufügen</string>

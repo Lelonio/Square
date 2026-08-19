@@ -87,6 +87,7 @@
     <string name="hours_minutes">%1$d घं %2$d मि</string>
     <string name="minutes_only">%1$d मि</string>
     <string name="artist_needs_app">किसी कलाकार को खोलने के लिए आपका अपना Spotify ऐप्लिकेशन चाहिए; इसे खोज में सेट करें।</string>
+    <string name="liked_songs_failed">पसंद किए गए गाने पढ़े नहीं जा सके; थोड़ी देर बाद फिर कोशिश करें।</string>
 
     <!-- Track menu -->
     <string name="add_to_queue">कतार में जोड़ें</string>

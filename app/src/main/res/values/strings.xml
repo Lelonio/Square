@@ -93,6 +93,7 @@
     <string name="hours_minutes">%1$dh %2$dmin</string>
     <string name="minutes_only">%1$dmin</string>
     <string name="artist_needs_app">Opening an artist needs your own Spotify application; set it up in Search.</string>
+    <string name="liked_songs_failed">Liked Songs could not be read; try again in a moment.</string>
 
     <!-- Track menu -->
     <string name="add_to_queue">Add to queue</string>

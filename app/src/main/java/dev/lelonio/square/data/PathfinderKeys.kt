@@ -21,8 +21,9 @@ import org.json.JSONObject
  * The same goes for the client version the gateway is told about, which ages
  * for the same reason and is fixed the same way.
  *
- * Nothing here is a secret and nothing here is trusted: the file names queries,
- * and a wrong value costs the home page and nothing else.
+ * Nothing here is a secret and nothing here is trusted: the file names
+ * queries, and a wrong value costs the pages those queries serve — the
+ * personalised home, and Liked Songs, which has the Web API to fall back on.
  */
 class PathfinderKeys(context: Context) {
 
@@ -32,6 +33,9 @@ class PathfinderKeys(context: Context) {
 
     /** The hash for the `home` query, freshest first. */
     val home: String get() = prefs.getString(KEY_HOME, null) ?: DEFAULT_HOME
+
+    /** The same for `getLikedSongs`; see SavedTracks. */
+    val likedSongs: String get() = prefs.getString(KEY_LIKED, null) ?: DEFAULT_LIKED
 
     /** The web client version the gateway is told about. */
     val appVersion: String get() = prefs.getString(KEY_VERSION, null) ?: DEFAULT_VERSION
@@ -55,6 +59,8 @@ class PathfinderKeys(context: Context) {
                 val edit = prefs.edit().putLong(KEY_CHECKED, System.currentTimeMillis())
                 body.optString("home").takeIf { it.length == HASH_LENGTH }
                     ?.let { edit.putString(KEY_HOME, it) }
+                body.optString("likedSongs").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_LIKED, it) }
                 body.optString("appVersion").takeIf { it.isNotEmpty() }
                     ?.let { edit.putString(KEY_VERSION, it) }
                 edit.apply()
@@ -66,6 +72,7 @@ class PathfinderKeys(context: Context) {
         const val TAG = "PathfinderKeys"
         const val FILE_NAME = "square_pathfinder"
         const val KEY_HOME = "home"
+        const val KEY_LIKED = "liked_songs"
         const val KEY_VERSION = "app_version"
         const val KEY_CHECKED = "checked_at"
 
@@ -82,6 +89,8 @@ class PathfinderKeys(context: Context) {
         /** What was true when this version was built; see the note above. */
         const val DEFAULT_HOME =
             "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a"
+        const val DEFAULT_LIKED =
+            "c2c53c28f71da143c0753c22dc84d98b315cb4275472ea5a597c29338ae20b23"
         const val DEFAULT_VERSION = "1.2.97.155.g5dd0dcaf-development"
     }
 }

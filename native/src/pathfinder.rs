@@ -53,6 +53,9 @@ struct Query {
 /// this is the floor rather than the answer.
 const HOME_HASH: &str = "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a";
 
+/// The same, for the saved-tracks query the web player's library page uses.
+const LIKED_HASH: &str = "c2c53c28f71da143c0753c22dc84d98b315cb4275472ea5a597c29338ae20b23";
+
 /// Runs one persisted query and returns the raw JSON body.
 async fn query(
     session: &Session,
@@ -188,4 +191,36 @@ pub fn home(
     let app_version = app_version.to_string();
 
     handle.block_on(async move { query(&session, &home, variables, &language, &app_version).await })
+}
+
+/// The account's saved tracks, as the web player's library page reads them.
+///
+/// The one list the Web API cannot be asked for without the listener having
+/// registered an application of their own, and the one the access point will
+/// not resolve as a context. Paged by the caller: `{"offset":n,"limit":n}`,
+/// and the gateway answers with the whole of each track rather than its URI.
+pub fn liked_songs(
+    variables: &str,
+    language: &str,
+    hash: &str,
+    app_version: &str,
+) -> engine::EngineResult<String> {
+    let handle = engine::runtime_handle()?;
+    let session = engine::with_session(|session| session.clone())?;
+    let language = if language.is_empty() { "en" } else { language }.to_string();
+
+    let liked = Query {
+        name: "getLikedSongs",
+        hash: if hash.is_empty() {
+            LIKED_HASH.to_string()
+        } else {
+            hash.to_string()
+        },
+    };
+    let app_version = app_version.to_string();
+    let variables = if variables.is_empty() { "{}" } else { variables }.to_string();
+
+    handle.block_on(async move {
+        query(&session, &liked, variables, &language, &app_version).await
+    })
 }

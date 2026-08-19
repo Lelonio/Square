@@ -273,6 +273,21 @@ object NativeBridge {
         appVersion: String,
     ): String = nativeHomeFeed(timeZone, language, hash, appVersion)
 
+    /**
+     * The account's saved tracks, as raw JSON from Spotify's gateway.
+     *
+     * The same gateway and the same fragility as [homeFeed]. Here for the one
+     * list that has nowhere else to come from: the Web API can only be asked
+     * for it by a listener who has registered an application of their own, and
+     * the access point refuses it as a context. Blocking.
+     */
+    fun likedSongs(
+        variables: String,
+        language: String,
+        hash: String,
+        appVersion: String,
+    ): String = nativeLikedSongs(variables, language, hash, appVersion)
+
     /** This device's own Connect id, which is what says "here" rather than "there". */
     fun deviceId(): String = runCatching { nativeDeviceId() }.getOrDefault("")
 
@@ -403,6 +418,12 @@ object NativeBridge {
     private external fun nativeTakeOver()
     private external fun nativeHomeFeed(
         timeZone: String,
+        language: String,
+        hash: String,
+        appVersion: String,
+    ): String
+    private external fun nativeLikedSongs(
+        variables: String,
         language: String,
         hash: String,
         appVersion: String,

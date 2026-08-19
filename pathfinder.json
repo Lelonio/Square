@@ -1,5 +1,6 @@
 {
   "_comment": "Identifiers Spotify's GraphQL gateway wants from a caller. Read by Square at runtime so a change here needs no new version of the app: see app/src/main/java/dev/lelonio/square/data/PathfinderKeys.kt. Both values are retired by Spotify whenever it rebuilds its web client, and both are readable from a network capture of open.spotify.com.",
   "home": "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a",
+  "likedSongs": "c2c53c28f71da143c0753c22dc84d98b315cb4275472ea5a597c29338ae20b23",
   "appVersion": "1.2.97.155.g5dd0dcaf-development"
 }

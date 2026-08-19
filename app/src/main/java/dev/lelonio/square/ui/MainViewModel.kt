@@ -20,6 +20,7 @@ import dev.lelonio.square.data.HomeShelf
 import dev.lelonio.square.data.SpotifyHome
 import dev.lelonio.square.data.CatalogTrack
 import dev.lelonio.square.data.ContextCacheStore
+import dev.lelonio.square.data.SavedTracks
 import dev.lelonio.square.data.SearchItem
 import dev.lelonio.square.data.TransferRequestDto
 import dev.lelonio.square.data.SearchResults
@@ -1829,8 +1830,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         uri: String,
         showProgress: Boolean,
     ): List<CatalogTrack>? {
-        if (!container.webApi.isReady) return null
+        // Liked Songs first, and without the registered-application check: it
+        // comes from the gateway, which asks only that somebody is logged in.
         if (uri.endsWith(":collection")) return savedTracks(base, showProgress)
+        if (!container.webApi.isReady) return null
         if (!uri.startsWith("spotify:playlist:")) return null
         val id = uri.substringAfterLast(':')
 
@@ -1873,6 +1876,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         base: PlaylistState,
         showProgress: Boolean,
     ): List<CatalogTrack> {
+        gatewaySavedTracks(base, showProgress)?.let { return it }
+
+        // The gateway said nothing usable — a retired query hash, most likely.
+        // The Web API knows the same list, fifty at a time, for a listener who
+        // has registered an application of their own.
+        check(container.webApi.isReady) { string(R.string.liked_songs_failed) }
+
         val loaded = mutableListOf<CatalogTrack>()
         var offset = 0
         while (true) {
@@ -1892,6 +1902,68 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ))
             }
             if (page.items.isEmpty() || offset >= page.total) return loaded
+        }
+    }
+
+    /**
+     * Liked Songs from Spotify's own gateway, two hundred at a time.
+     *
+     * The list nobody else will answer for: the access point refuses the
+     * collection as a context, and the Web API wants the listener to have
+     * registered an application. This is the same gateway the personalised
+     * home comes from, so it costs nothing that the home page does not already
+     * cost, and it hands back whole tracks rather than URIs to look up one by
+     * one.
+     *
+     * Null rather than an exception when the gateway will not answer: the
+     * query is addressed by a hash Spotify retires on its own schedule, and
+     * the caller has a second way to read the same list.
+     */
+    private suspend fun gatewaySavedTracks(
+        base: PlaylistState,
+        showProgress: Boolean,
+    ): List<CatalogTrack>? {
+        val keys = container.pathfinderKeys
+        keys.refresh()
+        val language = java.util.Locale.getDefault().language
+
+        val loaded = mutableListOf<CatalogTrack>()
+        var offset = 0
+        while (true) {
+            val page = runCatching {
+                val raw = withContext(Dispatchers.IO) {
+                    NativeBridge.likedSongs(
+                        """{"offset":$offset,"limit":$GATEWAY_LIBRARY_PAGE}""",
+                        language,
+                        keys.likedSongs,
+                        keys.appVersion,
+                    )
+                }
+                SavedTracks.parse(raw)
+            }
+                .onFailure { android.util.Log.i(TAG, "no liked songs from the gateway: ${describe(it)}") }
+                .getOrNull()
+            // A page that will not come back gives up the whole read, part
+            // way through as much as at the start. What is returned here is
+            // written to the cache and stamped as the list, so half of Liked
+            // Songs would be remembered as all of it.
+            if (page == null) return null
+
+            loaded += page.tracks
+            val next = page.nextOffset
+            if (showProgress) {
+                publishPlaylist(base.copy(
+                    tracks = loaded.toList(),
+                    loadingMore = next != null,
+                ))
+            }
+            // Counted as well as followed: a page that names itself as its own
+            // successor would otherwise be read for ever.
+            if (next == null || next <= offset || loaded.size >= page.total) {
+                android.util.Log.i(TAG, "liked songs: ${loaded.size} of ${page.total} from the gateway")
+                return loaded
+            }
+            offset = next
         }
     }
 
@@ -2173,6 +2245,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          * answers 400 to anything larger rather than an empty page.
          */
         const val WEB_API_LIBRARY_PAGE = 50
+
+        /**
+         * And what the gateway takes, which is four times either.
+         *
+         * Two hundred whole tracks came back in half a second on a phone, so
+         * the account's whole collection is a handful of requests.
+         */
+        const val GATEWAY_LIBRARY_PAGE = 200
 
         /** How many track lists to keep resolved; see contextCache. */
         const val CONTEXT_CACHE_SIZE = 8

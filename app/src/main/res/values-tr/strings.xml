@@ -87,6 +87,7 @@
     <string name="hours_minutes">%1$d sa %2$d dk</string>
     <string name="minutes_only">%1$d dk</string>
     <string name="artist_needs_app">Bir sanatçıyı açmak için kendi Spotify uygulaman gerekir; Ara bölümünden ayarla.</string>
+    <string name="liked_songs_failed">Beğenilen şarkılar okunamadı; birazdan tekrar dene.</string>
 
     <!-- Track menu -->
     <string name="add_to_queue">Sıraya ekle</string>

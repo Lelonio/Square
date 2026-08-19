@@ -79,6 +79,7 @@
     <string name="hours_minutes">%1$d h %2$d min</string>
     <string name="minutes_only">%1$d min</string>
     <string name="artist_needs_app">Para abrir un artista hace falta tu propia aplicación de Spotify: configúrala en Buscar.</string>
+    <string name="liked_songs_failed">No se han podido leer tus canciones que te gustan: inténtalo dentro de un momento.</string>
 
     <string name="add_to_queue">Añadir a la cola</string>
     <string name="add_to_playlist">Añadir a una playlist</string>

@@ -557,6 +557,25 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeHom
     })
 }
 
+/// The account's saved tracks, as raw JSON from Spotify's gateway.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeLikedSongs(
+    mut env: JNIEnv,
+    _class: JClass,
+    variables: JString,
+    language: JString,
+    hash: JString,
+    app_version: JString,
+) -> jstring {
+    let variables = read_string(&mut env, &variables).unwrap_or_default();
+    let language = read_string(&mut env, &language).unwrap_or_default();
+    let hash = read_string(&mut env, &hash).unwrap_or_default();
+    let app_version = read_string(&mut env, &app_version).unwrap_or_default();
+    guard_string(&mut env, "LikedSongs", || {
+        crate::pathfinder::liked_songs(&variables, &language, &hash, &app_version)
+    })
+}
+
 /// This device's own Connect id.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDeviceId(
