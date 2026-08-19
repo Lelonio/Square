@@ -200,8 +200,19 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
         durationMs: Long,
     ) = Catalog.lyrics(uri)
 
+    /**
+     * Whether playlists can be made and changed.
+     *
+     * The listener's own registered application is what does the writing, so
+     * that is what this asks about. It used to ask for the app's own OAuth
+     * session as well, and that session lapses while everything else goes on
+     * working — playback holds the access point's credential and does not need
+     * it. What the listener saw was the long press on a playlist doing nothing
+     * and the button for a new one gone, on an account that was signed in and
+     * could perfectly well edit.
+     */
     override val canEditPlaylists: Boolean
-        get() = container.tokenStore.isLoggedIn && container.webApi.isReady
+        get() = container.spotifySignedIn && container.webApi.isReady
 
     override suspend fun createPlaylist(name: String): CatalogPlaylist {
         // The account's own id: Spotify creates a playlist under a user rather
