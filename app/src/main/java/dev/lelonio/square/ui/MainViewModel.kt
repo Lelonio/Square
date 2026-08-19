@@ -635,6 +635,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val busy: String? = null,
         /** Name of the playlist the track just went into. */
         val done: String? = null,
+        /** And of the one it just came out of, which only Liked Songs can be. */
+        val removed: String? = null,
+        /**
+         * Whether the track is already in Liked Songs.
+         *
+         * The one row in this list whose answer is known, and the one that can
+         * be undone: picking it again takes the track back out.
+         */
+        val liked: Boolean = false,
         val error: String? = null,
     )
 
@@ -651,6 +660,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             trackUri = trackUri,
             trackTitle = trackTitle,
             playlists = (_state.value as? UiState.Ready)?.playlists.orEmpty(),
+            liked = trackUri != null && trackUri in _liked.value,
             error = when {
                 trackUri?.startsWith("spotify:track:") != true ->
                     string(R.string.track_cannot_be_added)
@@ -684,23 +694,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // endpoint. Picking it is what puts the heart on the track, and picking
         // anything else is what puts the tick there.
         val toLibrary = playlist.uri.endsWith(":collection")
+        // Picking Liked Songs when the track is already there takes it out
+        // again: the heart is the one mark in this list that can be undone,
+        // and pressing it twice is how everything else undoes a like.
+        val unsaving = toLibrary && current.liked
 
-        _addToPlaylist.value = current.copy(busy = playlist.uri, done = null, error = null)
+        _addToPlaylist.value =
+            current.copy(busy = playlist.uri, done = null, removed = null, error = null)
         viewModelScope.launch {
             runCatching {
-                if (toLibrary) {
-                    container.api.saveTracks(trackUri.substringAfterLast(':'))
-                } else {
-                    container.api.addToPlaylist(id, AddTracksRequestDto(listOf(trackUri)))
+                when {
+                    unsaving -> container.api.removeSavedTracks(trackUri.substringAfterLast(':'))
+                    toLibrary -> container.api.saveTracks(trackUri.substringAfterLast(':'))
+                    else -> container.api.addToPlaylist(id, AddTracksRequestDto(listOf(trackUri)))
                 }
             }
                 .onSuccess {
-                    _addToPlaylist.value =
-                        _addToPlaylist.value.copy(busy = null, done = playlist.name)
+                    _addToPlaylist.value = _addToPlaylist.value.copy(
+                        busy = null,
+                        done = if (unsaving) null else playlist.name,
+                        removed = if (unsaving) playlist.name else null,
+                        liked = toLibrary && !unsaving,
+                    )
                     // Known at once, rather than when that playlist is next
                     // read: the tick is about the track, and the track is in a
                     // playlist from this moment.
-                    if (toLibrary) _liked.value = _liked.value + trackUri
+                    if (unsaving) _liked.value = _liked.value - trackUri
+                    else if (toLibrary) _liked.value = _liked.value + trackUri
                     else _inPlaylists.value = _inPlaylists.value + trackUri
                     // The detail screen holds a list resolved before this track
                     // was in it; if that is the playlist just written to, read
@@ -715,7 +735,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         // A playlist the account follows but does not own is the
                         // one failure worth naming: it looks identical to the
                         // user's own in every list the app draws.
-                        error = string(R.string.add_failed, playlist.name),
+                        error = if (unsaving) {
+                            string(R.string.remove_failed, playlist.name)
+                        } else {
+                            string(R.string.add_failed, playlist.name)
+                        },
                     )
                 }
         }

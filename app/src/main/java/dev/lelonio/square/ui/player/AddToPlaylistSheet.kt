@@ -36,7 +36,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.fill.Heart
 import com.adamglin.phosphoricons.regular.Check
 import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.R
@@ -135,9 +137,13 @@ fun AddToPlaylistSheet(
                     )
                 }
 
-                if (state.done != null) {
+                if (state.done != null || state.removed != null) {
                     Text(
-                        stringResource(R.string.added_to, state.done.orEmpty()),
+                        if (state.removed != null) {
+                            stringResource(R.string.removed_from, state.removed.orEmpty())
+                        } else {
+                            stringResource(R.string.added_to, state.done.orEmpty())
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
@@ -163,6 +169,10 @@ fun AddToPlaylistSheet(
                                 playlist = playlist,
                                 busy = state.busy == playlist.uri,
                                 added = state.done == playlist.name,
+                                // Liked Songs is the one row that knows where
+                                // the track already is, and the one a second
+                                // press takes it out of.
+                                liked = state.liked && playlist.uri.endsWith(":collection"),
                                 enabled = state.trackUri != null && state.busy == null,
                                 onClick = { onSelect(playlist) },
                             )
@@ -213,9 +223,13 @@ fun PlaylistPicker(
                     )
                 }
 
-                if (state.done != null) {
+                if (state.done != null || state.removed != null) {
                     Text(
-                        stringResource(R.string.added_to, state.done.orEmpty()),
+                        if (state.removed != null) {
+                            stringResource(R.string.removed_from, state.removed.orEmpty())
+                        } else {
+                            stringResource(R.string.added_to, state.done.orEmpty())
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
@@ -241,6 +255,10 @@ fun PlaylistPicker(
                                 playlist = playlist,
                                 busy = state.busy == playlist.uri,
                                 added = state.done == playlist.name,
+                                // Liked Songs is the one row that knows where
+                                // the track already is, and the one a second
+                                // press takes it out of.
+                                liked = state.liked && playlist.uri.endsWith(":collection"),
                                 enabled = state.trackUri != null && state.busy == null,
                                 onClick = { onSelect(playlist) },
                             )
@@ -255,6 +273,8 @@ private fun PlaylistRow(
     playlist: CatalogPlaylist,
     busy: Boolean,
     added: Boolean,
+    /** In Liked Songs already, so this row removes rather than adds. */
+    liked: Boolean = false,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
@@ -287,6 +307,13 @@ private fun PlaylistRow(
                 color = GlassInkDim,
                 strokeWidth = 2.dp,
                 modifier = Modifier.size(18.dp),
+            )
+
+            liked -> Icon(
+                PhosphorIcons.Fill.Heart,
+                contentDescription = stringResource(R.string.remove_from_liked),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
             )
 
             added -> Icon(

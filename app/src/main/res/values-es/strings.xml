@@ -87,10 +87,13 @@
     <string name="remove_from_playlist">Quitar de la playlist</string>
     <string name="queued">En cola</string>
     <string name="added_to">Añadido a %1$s</string>
+    <string name="removed_from">Eliminado de %1$s</string>
+    <string name="remove_from_liked">Quitar de tus canciones que te gustan</string>
     <string name="no_playlists_in_account">No hay playlists en tu cuenta</string>
     <string name="track_cannot_be_added">Esta canción no se puede añadir.</string>
     <string name="connect_app_in_settings">Conecta tu aplicación en los ajustes.</string>
     <string name="add_failed">No se ha podido añadir a %1$s. Si la playlist no es tuya, no puedes modificarla.</string>
+    <string name="remove_failed">No se ha podido modificar %1$s. Inténtalo dentro de un momento.</string>
 
     <string name="play_on">Reproducir en</string>
     <string name="no_devices">Ningún dispositivo disponible</string>

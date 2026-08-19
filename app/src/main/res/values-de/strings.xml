@@ -87,10 +87,13 @@
     <string name="remove_from_playlist">Aus der Playlist entfernen</string>
     <string name="queued">In der Warteschlange</string>
     <string name="added_to">Zu %1$s hinzugefügt</string>
+    <string name="removed_from">Aus %1$s entfernt</string>
+    <string name="remove_from_liked">Aus deinen Lieblingssongs entfernen</string>
     <string name="no_playlists_in_account">Keine Playlists in deinem Konto</string>
     <string name="track_cannot_be_added">Dieser Titel lässt sich nicht hinzufügen.</string>
     <string name="connect_app_in_settings">Verbinde deine Anwendung in den Einstellungen.</string>
     <string name="add_failed">Zu %1$s konnte nichts hinzugefügt werden. Wenn die Playlist nicht dir gehört, kannst du sie nicht ändern.</string>
+    <string name="remove_failed">%1$s konnte nicht geändert werden. Versuch es gleich noch einmal.</string>
 
     <string name="play_on">Abspielen auf</string>
     <string name="no_devices">Keine Geräte verfügbar</string>

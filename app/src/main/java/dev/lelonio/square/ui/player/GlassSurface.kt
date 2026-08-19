@@ -28,13 +28,20 @@ import dev.lelonio.square.ui.glass.liquidGlass
  * the screen stays usable rather than breaking on older phones.
  */
 /**
- * Whether panes actually refract, or fall back to a plain film.
+ * Whether panes refresh what they are reflecting, or hold the last look at it.
  *
  * False while the player is in motion. A pane's blur and lens are RuntimeShaders
  * sampling a recorded layer, and during the expansion that layer changes every
  * frame — several full-screen shader passes per frame, which is most of what
- * made the animation stutter. Nobody can see refraction through a surface that
- * is travelling anyway.
+ * made the animation stutter.
+ *
+ * It used to mean "no glass at all", and the pane fell back to a plain film for
+ * the length of the travel. That saved the same work and cost a visible one:
+ * this is the only surface in the player that answers the flag, so the title
+ * capsule alone arrived as a flat grey patch among panes of glass and turned
+ * into glass a frame after the player stopped. Holding the recording gets the
+ * saving without the change of material — what is behind the player barely
+ * moves anyway, being the artwork it is opening over.
  */
 val LocalGlassEnabled = androidx.compose.runtime.staticCompositionLocalOf { true }
 
@@ -64,18 +71,6 @@ fun GlassSurface(
     surfaceColor: Color = Color.Unspecified,
     content: @Composable () -> Unit,
 ) {
-    if (!LocalGlassEnabled.current) {
-        Box(
-            modifier.background(
-                color = if (surfaceColor.isSpecified) surfaceColor else FallbackFilm,
-                shape = shape,
-            ),
-        ) {
-            content()
-        }
-        return
-    }
-
     // The same material the bottom bar is made of, so one app has one glass.
     //
     // The bar came from elsewhere and brought its own recipe with it, and next
@@ -106,11 +101,15 @@ fun GlassSurface(
         return
     }
 
+    // Held rather than dropped while the player travels; see LocalGlassEnabled.
+    val moving = !LocalGlassEnabled.current
+
     Box(
         modifier.liquidGlass(
             config = config,
             shape = cornerShape,
             blurRadiusDp = blurDp,
+            frozen = { moving },
             // The bar's rim, not the library's default: the app's chrome is one
             // material and the edge light is most of what says so.
             highlightAlpha = BarHighlightAlpha,

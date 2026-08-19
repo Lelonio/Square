@@ -102,10 +102,13 @@
     <string name="remove_from_playlist">Remove from playlist</string>
     <string name="queued">Queued</string>
     <string name="added_to">Added to %1$s</string>
+    <string name="removed_from">Removed from %1$s</string>
+    <string name="remove_from_liked">Remove from Liked Songs</string>
     <string name="no_playlists_in_account">No playlists in your account</string>
     <string name="track_cannot_be_added">This song cannot be added.</string>
     <string name="connect_app_in_settings">Connect your application in settings.</string>
     <string name="add_failed">%1$s could not be added to. If the playlist is not yours, you cannot change it.</string>
+    <string name="remove_failed">%1$s could not be changed. Try again in a moment.</string>
 
     <!-- Player -->
     <string name="play_on">Play on</string>

@@ -96,10 +96,13 @@
     <string name="remove_from_playlist">प्लेलिस्ट से हटाएँ</string>
     <string name="queued">कतार में</string>
     <string name="added_to">%1$s में जोड़ा गया</string>
+    <string name="removed_from">%1$s से हटाया गया</string>
+    <string name="remove_from_liked">पसंद किए गए गानों से हटाएं</string>
     <string name="no_playlists_in_account">आपके खाते में कोई प्लेलिस्ट नहीं</string>
     <string name="track_cannot_be_added">यह गाना जोड़ा नहीं जा सकता।</string>
     <string name="connect_app_in_settings">सेटिंग में अपना ऐप्लिकेशन कनेक्ट करें।</string>
     <string name="add_failed">%1$s में नहीं जोड़ा जा सका। अगर प्लेलिस्ट आपकी नहीं है तो आप उसे बदल नहीं सकते।</string>
+    <string name="remove_failed">%1$s को बदला नहीं जा सका। थोड़ी देर बाद फिर कोशिश करें।</string>
 
     <!-- Player -->
     <string name="play_on">यहाँ चलाएँ</string>

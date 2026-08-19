@@ -96,10 +96,13 @@
     <string name="remove_from_playlist">Çalma listesinden çıkar</string>
     <string name="queued">Sıraya eklendi</string>
     <string name="added_to">%1$s listesine eklendi</string>
+    <string name="removed_from">%1$s içinden kaldırıldı</string>
+    <string name="remove_from_liked">Beğenilen şarkılardan kaldır</string>
     <string name="no_playlists_in_account">Hesabında çalma listesi yok</string>
     <string name="track_cannot_be_added">Bu şarkı eklenemiyor.</string>
     <string name="connect_app_in_settings">Uygulamanı ayarlardan bağla.</string>
     <string name="add_failed">%1$s listesine eklenemedi. Liste senin değilse değiştiremezsin.</string>
+    <string name="remove_failed">%1$s değiştirilemedi. Birazdan tekrar dene.</string>
 
     <!-- Player -->
     <string name="play_on">Şurada çal</string>

@@ -305,6 +305,10 @@ interface SpotifyApi {
     @PUT("v1/me/tracks")
     suspend fun saveTracks(@Query("ids") ids: String)
 
+    /** And takes them out again, which is the heart pressed a second time. */
+    @DELETE("v1/me/tracks")
+    suspend fun removeSavedTracks(@Query("ids") ids: String)
+
     @PUT("v1/me/albums")
     suspend fun saveAlbums(@Query("ids") ids: String)
 
