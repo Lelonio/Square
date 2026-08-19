@@ -869,6 +869,35 @@ private fun SharedTransitionScope.ExpandedBar(
     val density = LocalDensity.current
     var tabRowWidthPx by remember { mutableIntStateOf(0) }
 
+    // Vendored addition: the pill is never wider than the room the circle
+    // beside it leaves.
+    //
+    // tabWidth is a ceiling and not a promise. The pill was laid out at that
+    // width whatever the screen could take, and on a narrow one — a 360dp
+    // phone, or any phone at a larger display size — the tabs plus the circle
+    // came to more than the bar had. A row does not clip what does not fit, so
+    // what was left over was the circle drawn on top of the last tab.
+    //
+    // Both halves are measured rather than assumed: the bar's own width, and
+    // the circle's, which is the row's height and so does not depend on this.
+    // Measured, therefore a frame late — the weight below is what holds the
+    // first frame together, since a weighted child cannot be given more room
+    // than the row has left.
+    val layoutDirection = LocalLayoutDirection.current
+    var barWidthPx by remember { mutableIntStateOf(0) }
+    var circleWidthPx by remember { mutableIntStateOf(0) }
+    val tabsCount = scope.tabs.size
+    val fittedSizes = if (barWidthPx > 0 && circleWidthPx > 0 && tabsCount > 0) {
+        val inset = sizes.tabBarContentPadding.calculateStartPadding(layoutDirection) +
+            sizes.tabBarContentPadding.calculateEndPadding(layoutDirection)
+        val room = with(density) {
+            ((barWidthPx - circleWidthPx).toDp() - sizes.componentSpacing - inset) / tabsCount
+        }
+        if (room < sizes.tabWidth) sizes.copy(tabWidth = room.coerceAtLeast(0.dp)) else sizes
+    } else {
+        sizes
+    }
+
     // The standalone tab (search) is always its own floating circle — same as
     // the inline (collapsed) state — never merged into the tab group pill, so
     // it reads as one consistent circular element through both inline and
@@ -877,7 +906,8 @@ private fun SharedTransitionScope.ExpandedBar(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(sizes.componentSpacing),
-        modifier = Modifier.fillMaxWidth()
+        // fillMaxWidth, so this measures the bar rather than its contents.
+        modifier = Modifier.fillMaxWidth().onSizeChanged { barWidthPx = it.width }
     ) {
         if (accessory != null) {
             ExpandedAccessory(
@@ -910,14 +940,17 @@ private fun SharedTransitionScope.ExpandedBar(
                     scope = scope,
                     selectedTabKey = selectedTabKey,
                     shapes = shapes,
-                    sizes = sizes,
+                    sizes = fittedSizes,
                     colors = colors,
                     elevations = elevations,
                     animatedVisibilityScope = animatedVisibilityScope,
                     tabBarContentModifier = tabBarContentModifier,
                     backdrop = backdrop,
                     accentColor = accentColor ?: colors.backgroundColor,
-                    modifier = Modifier
+                    // Weighted, so the row can never hand it more than what is
+                    // left beside the circle; fill = false so a wide screen
+                    // does not stretch it past its own width either.
+                    modifier = Modifier.weight(1f, fill = false)
                 )
             }
 
@@ -931,6 +964,7 @@ private fun SharedTransitionScope.ExpandedBar(
                     animatedVisibilityScope = animatedVisibilityScope,
                     tabBarContentModifier = tabBarContentModifier,
                     modifier = Modifier
+                        .onSizeChanged { circleWidthPx = it.width }
                         // Same floor the inline row already needed: IntrinsicSize.Max
                         // can under-report the tab group's real height, and without a
                         // floor this circle shrinks to that under-reported value while
@@ -1137,6 +1171,7 @@ private fun SharedTransitionScope.ExpandedAccessory(
         )
     }
 }
+
 @Composable
 private fun SharedTransitionScope.ExpandedTabs(
     scope: FloatingTabBarScopeImpl,
