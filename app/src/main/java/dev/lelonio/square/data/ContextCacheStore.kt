@@ -30,6 +30,16 @@ class ContextCacheStore(context: Context) {
         /** Spotify's stamp for the version this was read from; null for albums. */
         val snapshotId: String? = null,
         val savedAt: Long = 0,
+        /**
+         * What this is a copy of.
+         *
+         * The file is named after a hash of it, which cannot be read back, and
+         * something has to be able to tell a playlist from an album without
+         * being told which URI to look for; see [tracksInPlaylists]. Empty for
+         * anything written before this was carried, which simply means it is
+         * skipped there until it is read again.
+         */
+        val uri: String = "",
     )
 
     private val dir = File(context.applicationContext.cacheDir, DIR_NAME)
@@ -40,20 +50,61 @@ class ContextCacheStore(context: Context) {
         if (!file.exists()) return@withContext null
         // A half-written or outdated file is not worth a crash: dropping it
         // costs one reload, and the next save repairs it.
-        runCatching { json.decodeFromString(Entry.serializer(), file.readText()) }
+        val entry = runCatching { json.decodeFromString(Entry.serializer(), file.readText()) }
             .onFailure { file.delete() }
             .getOrNull()
             ?.takeIf { it.savedAt > System.currentTimeMillis() - MAX_AGE_MS }
+            ?: return@withContext null
+
+        // Written before the entry carried what it is a copy of. Filled in
+        // here rather than left for the next full read: a playlist whose
+        // stored version is still current is never written again, so it would
+        // stay nameless for as long as it stays unchanged, and
+        // [tracksInPlaylists] would go on skipping it.
+        if (entry.uri.isEmpty()) {
+            val named = entry.copy(uri = uri)
+            runCatching { file.writeText(json.encodeToString(Entry.serializer(), named)) }
+            return@withContext named
+        }
+        entry
     }
 
     suspend fun write(uri: String, tracks: List<CatalogTrack>, snapshotId: String?) =
         withContext(Dispatchers.IO) {
             if (tracks.isEmpty()) return@withContext
             dir.mkdirs()
-            val entry = Entry(tracks, snapshotId, System.currentTimeMillis())
+            val entry = Entry(tracks, snapshotId, System.currentTimeMillis(), uri)
             runCatching { fileFor(uri).writeText(json.encodeToString(Entry.serializer(), entry)) }
             trim()
         }
+
+    /**
+     * Every track in every playlist this device has read and still holds.
+     *
+     * For the tick in the player, which says a track is already in one of the
+     * listener's playlists. Spotify has no endpoint for that question — see
+     * MainViewModel.inPlaylists — so the answer can only be what the app has
+     * seen, and until now "seen" meant since the app was last started: reopening
+     * it turned every tick back into a plus, on a queue it had just restored
+     * from the same disk this reads.
+     *
+     * Albums are left out on purpose. Being on a record is not being in a list
+     * the listener made.
+     */
+    suspend fun tracksInPlaylists(): Set<String> = withContext(Dispatchers.IO) {
+        val files = dir.listFiles().orEmpty()
+        val cutoff = System.currentTimeMillis() - MAX_AGE_MS
+        buildSet {
+            for (file in files) {
+                val entry = runCatching {
+                    json.decodeFromString(Entry.serializer(), file.readText())
+                }.getOrNull() ?: continue
+                if (entry.savedAt <= cutoff) continue
+                if (!entry.uri.startsWith("spotify:playlist:")) continue
+                entry.tracks.forEach { add(it.uri) }
+            }
+        }
+    }
 
     suspend fun remove(uri: String) = withContext(Dispatchers.IO) {
         fileFor(uri).delete()

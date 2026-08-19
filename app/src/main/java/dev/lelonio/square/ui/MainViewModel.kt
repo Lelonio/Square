@@ -1467,8 +1467,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // a heart rather than a tick.
         if (contextUri.endsWith(":collection")) {
             _liked.value = _liked.value + tracks.map { it.uri }
-            // Just read, so nothing missing from it is saved.
-            likedSeeded = true
+            // Just read, so nothing missing from it is saved. The seeding
+            // below is left to run: it is the tick's half that this says
+            // nothing about.
             likedListTrusted = true
             return
         }
@@ -1498,8 +1499,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val likedPending = linkedSetOf<String>()
     private var likedBatch: kotlinx.coroutines.Job? = null
 
-    /** Whether the copy of Liked Songs on disk has been looked at yet. */
-    private var likedSeeded = false
+    /** Whether what is on disk has been looked at yet, for both marks. */
+    private var membershipSeeded = false
 
     /**
      * Whether that copy is recent enough to answer for itself.
@@ -1513,7 +1514,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun checkLiked(uri: String?) {
         if (uri == null || !uri.startsWith("spotify:track:")) return
         viewModelScope.launch {
-            seedLiked()
+            seedMembership()
             if (uri in _liked.value || likedListTrusted) return@launch
             if (!likedAsked.add(uri)) return@launch
 
@@ -1530,19 +1531,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Fills the set from the copy of Liked Songs already on disk, at no cost. */
-    private suspend fun seedLiked() {
-        if (likedSeeded) return
-        likedSeeded = true
+    /**
+     * Fills both marks from what is already on disk, at no cost in requests.
+     *
+     * Both used to start every run empty. The heart then asked Spotify about
+     * each track as it played, and the tick — which nobody can be asked about —
+     * simply went missing: a song from one of the listener's own playlists
+     * showed a plus until that playlist happened to be opened again, even
+     * though the queue it was playing from had just been restored from this
+     * same disk.
+     */
+    private suspend fun seedMembership() {
+        if (membershipSeeded) return
+        membershipSeeded = true
 
-        val uri = runCatching { withContext(Dispatchers.IO) { NativeBridge.collectionUri() } }
+        val collection = runCatching { withContext(Dispatchers.IO) { NativeBridge.collectionUri() } }
             .getOrNull()
             .orEmpty()
-        if (uri.isEmpty()) return
+        val liked = collection.takeIf { it.isNotEmpty() }
+            ?.let { contextCache[it] ?: container.contextCache.read(it) }
+        if (liked != null) {
+            _liked.value = _liked.value + liked.tracks.map { it.uri }
+            // Never downwards: this run may already have read the list itself,
+            // which is fresher than anything on disk.
+            likedListTrusted = likedListTrusted ||
+                System.currentTimeMillis() - liked.savedAt < LIKED_TRUSTED_MS
+        }
 
-        val entry = contextCache[uri] ?: container.contextCache.read(uri) ?: return
-        _liked.value = _liked.value + entry.tracks.map { it.uri }
-        likedListTrusted = System.currentTimeMillis() - entry.savedAt < LIKED_TRUSTED_MS
+        val inPlaylists = runCatching { container.contextCache.tracksInPlaylists() }
+            .onFailure { android.util.Log.i(TAG, "no playlists remembered: ${describe(it)}") }
+            .getOrDefault(emptySet())
+        if (inPlaylists.isNotEmpty()) _inPlaylists.value = _inPlaylists.value + inPlaylists
     }
 
     /**
