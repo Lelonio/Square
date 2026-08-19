@@ -28,5 +28,7 @@ keystore.properties
 .DS_Store
 
 # Network captures taken while reverse-engineering. They hold session
-# headers, so they stay on the machine that made them.
+# headers, so they stay on the machine that made them. Whatever they are
+# named: a capture saved as .txt is still a capture.
 *.har
+*.har.txt
