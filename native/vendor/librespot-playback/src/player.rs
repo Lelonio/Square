@@ -1153,9 +1153,35 @@ impl PlayerTrackLoader {
             // Not all audio files are encrypted. If we can't get a key, try loading the track
             // without decryption. If the file was encrypted after all, the decoder will fail
             // parsing and bail out, so we should be safe from outputting ear-piercing noise.
+            //
+            // LOCAL PATCH: a refused key ends the load instead.
+            //
+            // Spotify refuses keys when it is throttling a session, and the
+            // refusal says nothing about the track. Carrying on without one
+            // means handing the decoder an encrypted file: it dies on the first
+            // frame, the track "ends" in half a second, and the engine moves to
+            // the next one — which is refused too. The listener sees the whole
+            // queue flick past in silence, with nothing in the log but a
+            // decoder complaining about the end of the stream.
+            //
+            // Failing the load here puts it on the retry path instead (see
+            // MAX_LOAD_ATTEMPTS above), which waits and tries again, and says
+            // so plainly if it still cannot. Only a refusal or a timeout is
+            // treated this way; any other key failure keeps upstream's
+            // behaviour, since a file that is genuinely unencrypted has to go
+            // on playing.
             let key = match self.session.audio_key().request(track_id, file_id).await {
                 Ok(key) => Some(key),
                 Err(e) => {
+                    let refused = matches!(
+                        e.error.downcast_ref::<librespot_core::audio_key::AudioKeyError>(),
+                        Some(librespot_core::audio_key::AudioKeyError::AesKey)
+                            | Some(librespot_core::audio_key::AudioKeyError::Timeout)
+                    );
+                    if refused {
+                        warn!("no key for <{track_id:?}>, not playing it undecrypted: {e}");
+                        return None;
+                    }
                     warn!("Unable to load key, continuing without decryption: {e}");
                     None
                 }

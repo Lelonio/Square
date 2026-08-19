@@ -172,6 +172,25 @@ device that has to be handed the queue again.
 drop whatever was preloaded, since that was fetched at the old quality. What is
 playing keeps the file it started with; the next track gets the new one.
 
+### The patch: a refused key ends the load
+
+Spotify hands out a decryption key per file, and it refuses them when it is
+throttling a session — which says nothing about the track being asked for.
+Upstream then loads the file anyway, without a key, on the grounds that a file
+which turns out to be unencrypted still plays and an encrypted one will simply
+fail to parse.
+
+What that failure looks like from the outside is the whole queue flicking past
+in silence: the decoder dies on the first frame, the track "ends" in half a
+second, the engine moves to the next one, and that one is refused too. Nothing
+in the log says the word key.
+
+A refusal or a timeout now ends the load, which puts it on the retry path with
+the rest, and says so if it still cannot be played. Any other key failure keeps
+upstream's behaviour, since a genuinely unencrypted file has to go on playing.
+See also the retry in `librespot-core`'s `audio_key.rs`, which is what tries a
+refused key again before it gets this far.
+
 ### Maintenance
 
 The markers are `LOCAL PATCH` in `src/player.rs` and `src/config.rs`.
