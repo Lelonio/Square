@@ -292,11 +292,22 @@ fun FloatingTabBar(
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
                 contentAlignment = Alignment.BottomCenter
             ) { targetVisual ->
+            // Vendored addition: the accessory is built for the state being
+            // arrived at, and not for the one being left.
+            //
+            // Both states are composed for the length of a fold, so everything
+            // in them is built twice — and the accessory is by far the heaviest
+            // thing either of them holds: a cover to decode and draw, two lines
+            // of text to lay out, controls, a progress line. It is a shared
+            // element, so only one copy was ever drawn; the other was built,
+            // measured and thrown away sixty times a second. Measured on the
+            // fold, having it at all costs a third of the animation.
+            val leaving = targetVisual != transition.targetState
             when (targetVisual) {
                 FloatingTabBarVisual.INLINE -> InlineBar(
                     scope = scope,
                     selectedTabKey = selectedTabKey,
-                    accessory = inlineAccessory,
+                    accessory = inlineAccessory.takeIf { !leaving },
                     isAccessoryShared = isAccessoryShared,
                     onInlineTabClick = { scrollConnection.expand() },
                     colors = colors,
@@ -309,7 +320,7 @@ fun FloatingTabBar(
                 FloatingTabBarVisual.EXPANDED -> ExpandedBar(
                     scope = scope,
                     selectedTabKey = selectedTabKey,
-                    accessory = expandedAccessory,
+                    accessory = expandedAccessory.takeIf { !leaving },
                     isAccessoryShared = isAccessoryShared,
                     colors = colors,
                     shapes = shapes,
@@ -324,7 +335,7 @@ fun FloatingTabBar(
                 FloatingTabBarVisual.SEARCH_EXPANDED -> SearchExpandedBar(
                     scope = scope,
                     selectedTabKey = selectedTabKey,
-                    accessory = expandedAccessory,
+                    accessory = expandedAccessory.takeIf { !leaving },
                     isAccessoryShared = isAccessoryShared,
                     colors = colors,
                     shapes = shapes,
