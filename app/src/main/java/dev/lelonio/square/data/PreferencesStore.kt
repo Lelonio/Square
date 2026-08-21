@@ -27,6 +27,16 @@ class PreferencesStore(context: Context) {
         prefs.edit().putString(KEY_TRACK_SORT, value).apply()
     }
 
+    private val _trackSortDescending = MutableStateFlow(prefs.getBoolean(KEY_TRACK_DESC, false))
+
+    /** Whether that order runs backwards; the direction is part of the sort. */
+    val trackSortDescending: StateFlow<Boolean> = _trackSortDescending.asStateFlow()
+
+    fun setTrackSortDescending(value: Boolean) {
+        _trackSortDescending.value = value
+        prefs.edit().putBoolean(KEY_TRACK_DESC, value).apply()
+    }
+
     /**
      * This phone's Connect id, made once and kept for good.
      *
@@ -119,6 +129,7 @@ class PreferencesStore(context: Context) {
     private companion object {
         const val FILE_NAME = "square_preferences"
         const val KEY_TRACK_SORT = "track_sort"
+        const val KEY_TRACK_DESC = "track_sort_descending"
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_PLAYER_OPEN = "player_open"
