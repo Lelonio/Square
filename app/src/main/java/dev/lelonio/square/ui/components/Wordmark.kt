@@ -2,6 +2,7 @@ package dev.lelonio.square.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -86,10 +87,31 @@ fun AppLockup(
     nameHeight: Dp = 14.dp,
 ) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        AppIcon(iconSize)
+        AppGlyph(iconSize)
         Spacer(Modifier.width(iconSize * 0.32f))
         SquareWordmark(nameHeight)
     }
+}
+
+/**
+ * The app's mark with no plate under it.
+ *
+ * The launcher icon is a tile: artwork on a coloured square, because that is
+ * what a launcher draws. On a page of the app itself there is nothing for a
+ * tile to sit on — it reads as a sticker of the icon rather than as the app's
+ * own mark — so the header takes the wave alone, in the page's ink.
+ *
+ * The themed form is exactly that drawing without its plate, which is what it
+ * exists for, so this is the same artwork rather than a second copy of it.
+ */
+@Composable
+fun AppGlyph(size: Dp, modifier: Modifier = Modifier, tint: Color = Ink) {
+    Icon(
+        painter = painterResource(R.drawable.ic_launcher_monochrome),
+        contentDescription = null,
+        tint = tint,
+        modifier = modifier.size(size),
+    )
 }
 
 @Composable
