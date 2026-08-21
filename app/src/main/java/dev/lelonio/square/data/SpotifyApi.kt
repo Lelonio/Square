@@ -38,6 +38,13 @@ interface SpotifyApi {
         @Query("offset") offset: Int = 0,
     ): PageDto<SavedTrackDto>
 
+    /** The albums the account has saved, which the library shows beside playlists. */
+    @GET("v1/me/albums")
+    suspend fun savedAlbums(
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0,
+    ): PageDto<SavedAlbumDto>
+
     @GET("v1/me/playlists")
     suspend fun playlists(
         @Query("limit") limit: Int = 50,
@@ -421,6 +428,13 @@ data class ArtistCursorPageDto(
 
 @Serializable
 data class CursorsDto(val after: String? = null)
+
+/** One row of `me/albums`: the album, plus when it was saved. */
+@Serializable
+data class SavedAlbumDto(
+    val album: AlbumDto,
+    @SerialName("added_at") val addedAt: String? = null,
+)
 
 @Serializable
 data class AlbumDto(

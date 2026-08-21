@@ -43,6 +43,7 @@ import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.R
 import dev.lelonio.square.data.CatalogPlaylist
 import dev.lelonio.square.data.sortedByRecentlyOpened
+import dev.lelonio.square.data.withLocalFilesFirst
 import dev.lelonio.square.data.withPinnedFirst
 import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
@@ -52,10 +53,22 @@ import dev.lelonio.square.ui.player.GlassFilm
 import dev.lelonio.square.ui.theme.Ink
 import dev.lelonio.square.ui.theme.InkDim
 import dev.lelonio.square.ui.theme.softShadow
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import dev.lelonio.square.ui.components.CHOICE_MENU_WIDTH
+import dev.lelonio.square.ui.components.GlassChoiceItem
+import dev.lelonio.square.ui.components.GlassMenuRule
+import dev.lelonio.square.ui.components.GlassChoiceMenu
+import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.fill.PushPin
 import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.ArrowsDownUp
 import com.adamglin.phosphoricons.regular.ListBullets
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.SquaresFour
@@ -64,10 +77,25 @@ import com.adamglin.phosphoricons.regular.SquaresFour
 private enum class Layout { GRID, LIST }
 
 /** What the library is sorted by. */
-private enum class Order(@StringRes val label: Int) {
-    RECENT(R.string.recently_opened),
-    NAME(R.string.name),
-    ADDED(R.string.spotify_order),
+private enum class Order(val key: String, @StringRes val label: Int) {
+    RECENT("recent", R.string.recently_opened),
+    NAME("name", R.string.name),
+    ADDED("added", R.string.spotify_order),
+}
+
+/**
+ * Which kind of thing the library is showing.
+ *
+ * The chips used to be the sort, which put the three least-used controls in the
+ * most prominent place on the screen and left no way at all to say "only
+ * albums". The sort is a menu now; the chips answer the question a library is
+ * actually asked, which is what am I looking at.
+ */
+private enum class Filter(@StringRes val label: Int, @StringRes val count: Int) {
+    ALL(R.string.library_all, R.string.item_count),
+    PLAYLISTS(R.string.playlists, R.string.playlist_count),
+    ARTISTS(R.string.artists, R.string.artist_count),
+    ALBUMS(R.string.albums, R.string.album_count),
 }
 
 /**
@@ -99,6 +127,8 @@ fun LibraryScreen(
     /** The artists the account follows; empty leaves the shelf out entirely. */
     artists: List<dev.lelonio.square.data.SearchItem> = emptyList(),
     onOpenArtist: (dev.lelonio.square.data.SearchItem) -> Unit = {},
+    /** The albums the account has saved; see MainViewModel.savedAlbums. */
+    albums: List<CatalogPlaylist> = emptyList(),
     backdrop: Backdrop,
 ) {
     when (state) {
@@ -133,33 +163,93 @@ fun LibraryScreen(
         }
 
         is MainViewModel.UiState.Ready -> {
-            var layout by remember { mutableStateOf(Layout.GRID) }
-            var order by remember { mutableStateOf(Order.RECENT) }
+            // Both are the listener's own decision about their library rather
+            // than a mode of this screen, so they are read from where they were
+            // left and written as they change; see LibraryViewStore.
+            val appContext = LocalContext.current.applicationContext
+            val view = remember(appContext) {
+                (appContext as dev.lelonio.square.SquareApplication).libraryView
+            }
+            var layout by remember { mutableStateOf(if (view.grid) Layout.GRID else Layout.LIST) }
+            var order by remember {
+                mutableStateOf(Order.entries.firstOrNull { it.key == view.order } ?: Order.RECENT)
+            }
+            var filter by remember { mutableStateOf(Filter.ALL) }
+            var sortOpen by remember { mutableStateOf(false) }
+            // Recorded so the menu has the tiles behind it to blur, rather than
+            // the page colour: over a flat fill glass has nothing to bend and
+            // comes out looking like a hole. Safe to record — the menu is drawn
+            // outside the grid, so nothing in this layer samples it.
+            val listBackdrop = rememberLayerBackdrop()
+            var descending by remember { mutableStateOf(view.descending) }
+            val onOrderChosen: (Order) -> Unit = {
+                order = it
+                view.order = it.key
+            }
+            var sortAnchor by remember { mutableStateOf(androidx.compose.ui.unit.IntOffset.Zero) }
+            val density = androidx.compose.ui.platform.LocalDensity.current
 
-            val playlists = remember(state.playlists, playlistOrder, pinned, order) {
+            val artistItems = remember(artists) {
+                artists.map { artist ->
+                    CatalogPlaylist(
+                        uri = artist.uri,
+                        name = artist.title,
+                        artworkUrl = artist.artworkUrl,
+                    )
+                }
+            }
+
+            // What the chips are asking for, before any sorting.
+            val shown = remember(state.playlists, albums, artistItems, filter) {
+                when (filter) {
+                    Filter.ALL -> state.playlists + albums
+                    Filter.PLAYLISTS -> state.playlists
+                    Filter.ALBUMS -> albums
+                    Filter.ARTISTS -> artistItems
+                }
+            }
+
+            val playlists = remember(shown, playlistOrder, pinned, order, descending) {
                 when (order) {
-                    Order.RECENT -> state.playlists.sortedByRecentlyOpened(playlistOrder)
-                    Order.NAME -> state.playlists.sortedWith(
+                    Order.RECENT -> shown.sortedByRecentlyOpened(playlistOrder)
+                    Order.NAME -> shown.sortedWith(
                         compareBy(String.CASE_INSENSITIVE_ORDER) { it.name },
                     )
                     // The order the account added them, which is what the
                     // rootlist arrives in.
-                    Order.ADDED -> state.playlists
+                    Order.ADDED -> shown
                 }
+                    // The direction belongs to the sort rather than beside it:
+                    // reversing "recently opened" is "least recently", and a
+                    // separate control for that would be a second sort.
+                    .let { if (descending) it.reversed() else it }
                     // Pinning outranks the sort: it is the one instruction the
                     // listener gave about this list themselves.
                     .withPinnedFirst(pinned)
+                    // And the phone's own music outranks that, because it is
+                    // not a playlist competing for a place: it is a fixed shelf
+                    // of the library, and one nobody has opened yet would
+                    // otherwise sit sixtieth among lists they have.
+                    .withLocalFilesFirst()
             }
 
+            Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
                 Header(
                     count = playlists.size,
                     layout = layout,
                     order = order,
+                    filter = filter,
                     backdrop = backdrop,
                     topPadding = contentPadding.calculateTopPadding(),
-                    onLayout = { layout = it },
-                    onOrder = { order = it },
+                    onLayout = {
+                        layout = it
+                        view.grid = it == Layout.GRID
+                    },
+                    onOrder = { onOrderChosen(it) },
+                    onFilter = { filter = it },
+                    onSort = { sortOpen = true },
+                    onSortAnchor = { sortAnchor = it },
                     canEdit = canEdit,
                     onCreatePlaylist = onCreatePlaylist,
                 )
@@ -177,9 +267,11 @@ fun LibraryScreen(
                         contentPadding = listPadding,
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp),
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .layerBackdrop(listBackdrop),
                     ) {
-                        if (artists.isNotEmpty()) {
+                        if (artists.isNotEmpty() && filter == Filter.ALL) {
                             item(span = { GridItemSpan(maxLineSpan) }, key = "artists") {
                                 ArtistShelf(artists, onOpenArtist)
                             }
@@ -189,7 +281,7 @@ fun LibraryScreen(
                             GridTile(
                                 playlist,
                                 pinned = playlist.uri in pinned,
-                                onClick = { onOpenPlaylist(playlist) },
+                                onClick = { open(playlist, artists, onOpenPlaylist, onOpenArtist) },
                                 onLongClick = if (canEdit) {
                                     { onPlaylistMenu(playlist) }
                                 } else {
@@ -202,9 +294,11 @@ fun LibraryScreen(
                     Layout.LIST -> LazyColumn(
                         contentPadding = listPadding,
                         verticalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .layerBackdrop(listBackdrop),
                     ) {
-                        if (artists.isNotEmpty()) {
+                        if (artists.isNotEmpty() && filter == Filter.ALL) {
                             item(key = "artists") { ArtistShelf(artists, onOpenArtist) }
                         }
 
@@ -212,7 +306,7 @@ fun LibraryScreen(
                             ListRow(
                                 playlist,
                                 pinned = playlist.uri in pinned,
-                                onClick = { onOpenPlaylist(playlist) },
+                                onClick = { open(playlist, artists, onOpenPlaylist, onOpenArtist) },
                                 onLongClick = if (canEdit) {
                                     { onPlaylistMenu(playlist) }
                                 } else {
@@ -223,8 +317,70 @@ fun LibraryScreen(
                     }
                 }
             }
+
+            // The app's own menu rather than Material's card: see GlassMenu.
+            // The same one the track sort on a playlist page opens, for the
+            // same reason — a menu that arrives from another design system is
+            // the one surface on screen that says so.
+            GlassChoiceMenu(
+                visible = sortOpen,
+                anchor = sortAnchor.leftOf(density),
+                backdrop = rememberCombinedBackdrop(backdrop, listBackdrop),
+                onDismiss = { sortOpen = false },
+            ) {
+                Order.entries.forEach { entry ->
+                    GlassChoiceItem(
+                        stringResource(entry.label),
+                        selected = entry == order,
+                    ) {
+                        sortOpen = false
+                        onOrderChosen(entry)
+                    }
+                }
+                GlassMenuRule()
+
+                // Deliberately leaves the menu open: the direction is the one
+                // choice people flip back and forth to compare, and reopening
+                // for each flip makes a sort feel heavy.
+                GlassChoiceItem(
+                    stringResource(R.string.sort_descending),
+                    selected = descending,
+                ) {
+                    descending = !descending
+                    view.descending = descending
+                }
+            }
+            }
         }
     }
+}
+
+/** Where a menu hanging off the sort button's right edge goes. */
+private fun androidx.compose.ui.unit.IntOffset.leftOf(
+    density: androidx.compose.ui.unit.Density,
+): androidx.compose.ui.unit.IntOffset {
+    val width = with(density) {
+        CHOICE_MENU_WIDTH.roundToPx()
+    }
+    val gap = with(density) { 8.dp.roundToPx() }
+    return androidx.compose.ui.unit.IntOffset((x - width + gap).coerceAtLeast(gap), y + gap)
+}
+
+/**
+ * Opens whatever the tile stands for.
+ *
+ * The grid holds playlists, albums and, under the artists chip, artists. The
+ * first two are track lists and open the same way; an artist is a page of its
+ * own, and the only thing that knows which is which is the URI.
+ */
+private fun open(
+    item: CatalogPlaylist,
+    artists: List<dev.lelonio.square.data.SearchItem>,
+    onOpenPlaylist: (CatalogPlaylist) -> Unit,
+    onOpenArtist: (dev.lelonio.square.data.SearchItem) -> Unit,
+) {
+    val artist = artists.firstOrNull { it.uri == item.uri }
+    if (artist != null) onOpenArtist(artist) else onOpenPlaylist(item)
 }
 
 @Composable
@@ -232,10 +388,14 @@ private fun Header(
     count: Int,
     layout: Layout,
     order: Order,
+    filter: Filter,
     backdrop: Backdrop,
     topPadding: Dp,
     onLayout: (Layout) -> Unit,
     onOrder: (Order) -> Unit,
+    onFilter: (Filter) -> Unit,
+    onSort: () -> Unit,
+    onSortAnchor: (androidx.compose.ui.unit.IntOffset) -> Unit,
     canEdit: Boolean,
     onCreatePlaylist: () -> Unit,
 ) {
@@ -252,8 +412,11 @@ private fun Header(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.library), style = MaterialTheme.typography.displayLarge)
+                // Counting whatever the chips are showing, and saying so: the
+                // same number labelled "playlists" under the albums chip is a
+                // line that contradicts the screen it sits on.
                 Text(
-                    stringResource(R.string.playlist_count, count),
+                    stringResource(filter.count, count),
                     style = MaterialTheme.typography.bodySmall,
                     color = InkDim,
                 )
@@ -301,18 +464,20 @@ private fun Header(
             }
         }
 
-        // The sort is three chips rather than a menu: there are only three, and
-        // a menu hides which one is active behind a tap.
+        // The chips say what is being shown; the sort sits at the end of the
+        // same row as a menu, because it is a choice among three that is made
+        // once and then left alone.
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Order.entries.forEach { entry ->
-                val selected = entry == order
+            Filter.entries.forEach { entry ->
+                val selected = entry == filter
                 LiquidButton(
-                    onClick = { onOrder(entry) },
+                    onClick = { onFilter(entry) },
                     backdrop = backdrop,
                     flat = true,
                     contentHeight = 36.dp,
@@ -326,6 +491,32 @@ private fun Header(
                         maxLines = 1,
                     )
                 }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            LiquidButton(
+                onClick = onSort,
+                backdrop = backdrop,
+                flat = true,
+                contentHeight = 36.dp,
+                contentPadding = 12.dp,
+                modifier = Modifier.onGloballyPositioned {
+                    val bounds = it.boundsInRoot()
+                    onSortAnchor(
+                        androidx.compose.ui.unit.IntOffset(
+                            bounds.right.toInt(),
+                            bounds.bottom.toInt(),
+                        ),
+                    )
+                },
+            ) {
+                Icon(
+                    PhosphorIcons.Regular.ArrowsDownUp,
+                    contentDescription = stringResource(R.string.sort),
+                    tint = InkDim,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }

@@ -59,6 +59,10 @@ class SquareApplication : Application() {
     val pinnedPlaylists: dev.lelonio.square.data.PinnedPlaylistStore by lazy {
         dev.lelonio.square.data.PinnedPlaylistStore(this)
     }
+    /** How the library was left looking: grid or list, and the sort. */
+    val libraryView: dev.lelonio.square.data.LibraryViewStore by lazy {
+        dev.lelonio.square.data.LibraryViewStore(this)
+    }
     val preferences: PreferencesStore by lazy { PreferencesStore(this) }
 
     /** Which file the engine asks Spotify for. */
