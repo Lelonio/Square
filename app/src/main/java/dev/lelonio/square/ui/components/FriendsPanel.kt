@@ -32,6 +32,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
 import dev.lelonio.square.ui.glass.backdrop.effects.blur
@@ -59,6 +71,15 @@ fun BoxScope.FriendsPanel(
     backdrop: Backdrop,
     onOpenTrack: (FriendListen) -> Unit,
     onDismiss: () -> Unit,
+    /**
+     * Follows somebody by their profile link or username.
+     *
+     * Typed rather than searched because Spotify has no user search: see
+     * MainViewModel.addFriend.
+     */
+    onAddFriend: (String) -> Unit = {},
+    addState: dev.lelonio.square.ui.MainViewModel.AddFriend =
+        dev.lelonio.square.ui.MainViewModel.AddFriend.IDLE,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -116,6 +137,7 @@ fun BoxScope.FriendsPanel(
                         color = Color.White.copy(alpha = 0.6f),
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
                     )
+                    AddFriendField(addState, onAddFriend)
                     return@Column
                 }
 
@@ -130,7 +152,84 @@ fun BoxScope.FriendsPanel(
                         FriendRow(friend) { onOpenTrack(friend) }
                     }
                 }
+
+                AddFriendField(addState, onAddFriend)
             }
+        }
+    }
+}
+
+/**
+ * Where a friend is added, at the foot of the list of them.
+ *
+ * A field rather than a search box, and the difference matters: nothing is
+ * being looked up. Spotify's search has never covered people, so the only way
+ * to reach somebody is the profile they sent you — as a link, as a
+ * `spotify:user:` uri, or as their name on its own. All three are accepted.
+ */
+@Composable
+private fun AddFriendField(
+    state: dev.lelonio.square.ui.MainViewModel.AddFriend,
+    onAdd: (String) -> Unit,
+) {
+    var typed by remember { mutableStateOf("") }
+    val working = state == dev.lelonio.square.ui.MainViewModel.AddFriend.WORKING
+
+    Column(Modifier.padding(start = 22.dp, end = 22.dp, top = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BasicTextField(
+                value = typed,
+                onValueChange = { typed = it },
+                singleLine = true,
+                enabled = !working,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+                cursorBrush = SolidColor(Color.White),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onAdd(typed) }),
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.10f))
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                decorationBox = { field ->
+                    if (typed.isEmpty()) {
+                        Text(
+                            stringResource(R.string.add_friend_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.45f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    field()
+                },
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                stringResource(R.string.add_friend),
+                style = MaterialTheme.typography.labelLarge,
+                color = if (working) Color.White.copy(alpha = 0.4f) else Color.White,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .pressable(onClick = { if (!working) onAdd(typed) })
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            )
+        }
+
+        val message = when (state) {
+            dev.lelonio.square.ui.MainViewModel.AddFriend.DONE -> R.string.add_friend_done
+            dev.lelonio.square.ui.MainViewModel.AddFriend.FAILED -> R.string.add_friend_failed
+            dev.lelonio.square.ui.MainViewModel.AddFriend.UNSUPPORTED ->
+                R.string.add_friend_unsupported
+            else -> null
+        }
+        if (message != null) {
+            Text(
+                stringResource(message),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.6f),
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
     }
 }
