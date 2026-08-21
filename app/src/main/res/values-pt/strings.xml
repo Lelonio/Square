@@ -40,6 +40,7 @@
     <string name="settings">Configurações</string>
     <string name="home">Início</string>
     <string name="library">Biblioteca</string>
+    <string name="library_all">Tudo</string>
     <string name="search">Buscar</string>
     <string name="now_playing">Tocando agora</string>
     <string name="unofficial_client">Cliente não oficial para contas Premium</string>
@@ -66,7 +67,13 @@
     <string name="recently_opened">Abertas há pouco</string>
     <string name="spotify_order">Ordem do Spotify</string>
     <string name="change_layout">Mudar a disposição</string>
+    <string name="sort_descending">Decrescente</string>
+    <string name="layout_grid">Grelha</string>
+    <string name="layout_list">Lista</string>
     <string name="playlist_count">%1$d playlists</string>
+    <string name="item_count">%1$d itens</string>
+    <string name="artist_count">%1$d artistas</string>
+    <string name="album_count">%1$d álbuns</string>
 
     <string name="playlist_order">Ordem da playlist</string>
     <string name="recently_added">Adicionadas há pouco</string>
@@ -145,6 +152,11 @@
     <string name="artists_you_follow">Artistas que segue</string>
     <string name="friends_listening">Amigos</string>
     <string name="friends_none">Ninguém está a ouvir agora, ou ninguém que segue partilha o que reproduz.</string>
+    <string name="add_friend">Adicionar um amigo</string>
+    <string name="add_friend_hint">Ligação do perfil ou nome de utilizador</string>
+    <string name="add_friend_done">Já o segue. Aparece aqui se partilhar o que ouve.</string>
+    <string name="add_friend_failed">Essa ligação não leva a um perfil.</string>
+    <string name="add_friend_unsupported">Ligue a sua aplicação Spotify para seguir alguém.</string>
     <string name="just_now">Agora</string>
     <string name="minutes_ago">há %1$d min</string>
     <string name="hours_ago">há %1$d h</string>
@@ -258,6 +270,9 @@
     <string name="effect_quality_light">Leve</string>
     <string name="effect_quality_light_note">O telefone é que trata disso. Melhor para aparelhos antigos, mais áspera nos ataques.</string>
     <string name="liked_songs">Músicas curtidas</string>
+    <string name="local_files">Ficheiros locais</string>
+    <string name="local_files_needs_permission">O Square pode ver a música neste telemóvel se lhe der permissão.</string>
+    <string name="local_files_allow">Permitir</string>
     <string name="pinned">Fixada</string>
     <string name="pin">Fixar no topo</string>
     <string name="unpin">Desafixar</string>

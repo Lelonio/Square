@@ -146,6 +146,13 @@ fun PlaylistScreen(
     onToggleFollow: () -> Unit = {},
     /** Hands the page's own link to whoever wants it. */
     onShare: () -> Unit = {},
+    /**
+     * Asks for the permission to read the music on the phone.
+     *
+     * Only ever called from the local files shelf; see
+     * MainViewModel.openLocalFiles.
+     */
+    onAskLocalPermission: () -> Unit = {},
     /** Opens the sheet with everything else this page can do. */
     onMenu: () -> Unit = {},
     /** Keeps the page in the library, or lets it go. */
@@ -153,6 +160,9 @@ fun PlaylistScreen(
     /** The remembered track order, and where a change to it is stored. */
     storedSort: String? = null,
     onSortChange: (String) -> Unit = {},
+    /** And which way round it runs; see the same menu. */
+    storedSortDescending: Boolean = false,
+    onSortDescendingChange: (Boolean) -> Unit = {},
 ) {
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
@@ -164,20 +174,25 @@ fun PlaylistScreen(
             TrackSort.entries.firstOrNull { it.name == storedSort } ?: TrackSort.ORIGINAL,
         )
     }
+    var descending by remember(storedSortDescending) { mutableStateOf(storedSortDescending) }
     var sortOpen by remember { mutableStateOf(false) }
 
     // Whether the rows on screen are the playlist itself, in its order. Sorting
     // or searching makes them a selection out of it, and playing that as the
     // context would have Spotify play the playlist's own order instead of the
     // one on screen.
-    val asContext = sort == TrackSort.ORIGINAL && query.isBlank()
+    val asContext = sort == TrackSort.ORIGINAL && !descending && query.isBlank()
 
     // Derived, not stored: keeping a second list in state would leave the two
     // able to disagree after a reload.
-    val visible = remember(state.tracks, query, sort) {
+    val visible = remember(state.tracks, query, sort, descending) {
         state.tracks
             .filter { it.matches(query) }
             .sortedWith(sort.comparator())
+            // Reversed after sorting rather than by a second comparator: the
+            // playlist's own order has no comparator to invert, and turning it
+            // upside down is exactly what "descending" means there too.
+            .let { if (descending) it.reversed() else it }
     }
 
     // Taken from *this* screen's cover, not from whatever is playing. The two
@@ -375,6 +390,33 @@ fun PlaylistScreen(
                     StatusBox { CircularProgressIndicator(strokeWidth = 2.dp) }
                 }
 
+                // The one empty list in the app that is a question rather than
+                // an answer: there may well be music here, and nobody has been
+                // allowed to look.
+                state.needsPermission -> item(contentType = "status") {
+                    StatusBox {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                stringResource(R.string.local_files_needs_permission),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            LiquidButton(
+                                onClick = onAskLocalPermission,
+                                backdrop = pageBackdrop,
+                                contentPadding = 18.dp,
+                            ) {
+                                Text(
+                                    stringResource(R.string.local_files_allow),
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
+                        }
+                    }
+                }
+
                 state.error != null -> item(contentType = "status") {
                     StatusBox {
                         Text(
@@ -564,7 +606,7 @@ fun PlaylistScreen(
         GlassChoiceMenu(
             visible = sortOpen,
             anchor = sortAnchor.leftOf(density),
-            backdrop = rememberCombinedBackdrop(pageBackdrop, listBackdrop),
+            backdrop = listBackdrop,
             onDismiss = { sortOpen = false },
         ) {
             TrackSort.entries.forEach { option ->
@@ -573,6 +615,18 @@ fun PlaylistScreen(
                     onSortChange(option.name)
                     sortOpen = false
                 }
+            }
+            dev.lelonio.square.ui.components.GlassMenuRule()
+
+            // Deliberately leaves the menu open: the direction is the one choice
+            // people flip back and forth to compare, and reopening for each flip
+            // makes a sort feel heavy.
+            GlassChoiceItem(
+                stringResource(R.string.sort_descending),
+                selected = descending,
+            ) {
+                descending = !descending
+                onSortDescendingChange(descending)
             }
         }
     }

@@ -197,6 +197,25 @@ private val BottomBarHeight = 62.dp
  * Large enough that the blur has something to work with, small enough that
  * blurring it costs nothing and it never reads as a photograph.
  */
+/**
+ * The permission that lets the app see the phone's own music.
+ *
+ * Returns what to call to ask for it. Already-granted is answered without a
+ * dialog: the system shows nothing for a permission it has, and the caller
+ * still needs to hear that the answer is yes so the shelf can fill itself in.
+ */
+@Composable
+private fun rememberLocalAudioPermission(onAnswered: () -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { onAnswered() }
+    return {
+        if (dev.lelonio.square.data.LocalLibrary.granted(context)) onAnswered()
+        else launcher.launch(dev.lelonio.square.data.LocalLibrary.permission)
+    }
+}
+
 private const val BACKDROP_DECODE_PX = 128
 
 /** Radius in pixels of the decoded image; see [BlurTransformation]. */
@@ -333,10 +352,13 @@ fun SquareApp(
     val pinnedPlaylists by viewModel.pinnedPlaylists.collectAsStateWithLifecycle()
     val likedTracks by viewModel.likedTracks.collectAsStateWithLifecycle()
     val friends by viewModel.friends.collectAsStateWithLifecycle()
+    val addFriendState by viewModel.addFriendState.collectAsStateWithLifecycle()
     val followedArtists by viewModel.followedArtists.collectAsStateWithLifecycle()
+    val savedAlbums by viewModel.savedAlbums.collectAsStateWithLifecycle()
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val addToPlaylist by viewModel.addToPlaylist.collectAsStateWithLifecycle()
     val trackSort by viewModel.trackSort.collectAsStateWithLifecycle()
+    val trackSortDescending by viewModel.trackSortDescending.collectAsStateWithLifecycle()
     val onboarded by viewModel.onboarded.collectAsStateWithLifecycle()
 
     // Asked for again from the settings, after it has already been finished.
@@ -578,6 +600,15 @@ fun SquareApp(
             (context.applicationContext as dev.lelonio.square.SquareApplication).glass
         }
         val glassConfig by glassStore.config.collectAsStateWithLifecycle()
+
+        // Asking to read the music on the phone.
+        //
+        // Held at this level rather than in the shelf that needs it: a launcher
+        // belongs to the activity, and the answer has to reach the view model
+        // whether or not the screen that asked is still on top when it arrives.
+        val askLocalPermission = rememberLocalAudioPermission(
+            onAnswered = viewModel::onLocalPermissionAnswered,
+        )
 
         // What folds the bar, and what tells the glass the page is moving. Built
         // here rather than beside the bar because both of those are read at the
@@ -866,6 +897,7 @@ fun SquareApp(
                                 onCreatePlaylist = { naming = NamingRequest(null) },
                                 onPlaylistMenu = { playlistMenu = it },
                                 artists = followedArtists,
+                                albums = savedAlbums,
                                 onOpenArtist = { artist ->
                                     viewModel.openContext(
                                         artist.uri,
@@ -913,6 +945,7 @@ fun SquareApp(
                                     contentPadding = listPadding,
                                     nowPlayingUri = playback.mediaId,
                                     onBack = { navController.popBackStack() },
+                                    onAskLocalPermission = { askLocalPermission() },
                                     onPlay = { tracks, index, asContext ->
                                         onPlay(
                                             tracks,
@@ -960,6 +993,8 @@ fun SquareApp(
                                     },
                                     storedSort = trackSort,
                                     onSortChange = viewModel::setTrackSort,
+                                    storedSortDescending = trackSortDescending,
+                                    onSortDescendingChange = viewModel::setTrackSortDescending,
                                     onOpenItem = { item ->
                                         viewModel.openContext(
                                             item.uri,
@@ -1675,7 +1710,12 @@ fun SquareApp(
                             artworkUrl = friend.artworkUrl,
                         )
                     },
-                    onDismiss = { friendsOpen = false },
+                    onAddFriend = viewModel::addFriend,
+                    addState = addFriendState,
+                    onDismiss = {
+                        friendsOpen = false
+                        viewModel.clearAddFriend()
+                    },
                 )
 
                 // A song that arrived by link. Held one beat past the dismissal

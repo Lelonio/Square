@@ -45,6 +45,7 @@
     <string name="settings">सेटिंग</string>
     <string name="home">होम</string>
     <string name="library">लाइब्रेरी</string>
+    <string name="library_all">सब कुछ</string>
     <string name="search">खोजें</string>
     <string name="now_playing">अभी चल रहा है</string>
     <string name="unofficial_client">प्रीमियम खातों के लिए गैर-आधिकारिक क्लाइंट</string>
@@ -73,7 +74,13 @@
     <string name="recently_opened">हाल में खोले गए</string>
     <string name="spotify_order">Spotify का क्रम</string>
     <string name="change_layout">लेआउट बदलें</string>
+    <string name="sort_descending">अवरोही</string>
+    <string name="layout_grid">ग्रिड</string>
+    <string name="layout_list">सूची</string>
     <string name="playlist_count">%1$d प्लेलिस्ट</string>
+    <string name="item_count">%1$d आइटम</string>
+    <string name="artist_count">%1$d कलाकार</string>
+    <string name="album_count">%1$d एल्बम</string>
 
     <!-- Playlist, album, artist -->
     <string name="playlist_order">प्लेलिस्ट का क्रम</string>
@@ -157,6 +164,11 @@
     <string name="artists_you_follow">आपके फ़ॉलो किए कलाकार</string>
     <string name="friends_listening">दोस्त</string>
     <string name="friends_none">अभी कोई नहीं सुन रहा, या आप जिन्हें फ़ॉलो करते हैं वे अपना संगीत साझा नहीं करते।</string>
+    <string name="add_friend">मित्र जोड़ें</string>
+    <string name="add_friend_hint">प्रोफ़ाइल लिंक या उपयोगकर्ता नाम</string>
+    <string name="add_friend_done">अब आप फ़ॉलो करते हैं। साझा करने पर यहाँ दिखेंगे।</string>
+    <string name="add_friend_failed">वह लिंक किसी प्रोफ़ाइल तक नहीं ले जाता।</string>
+    <string name="add_friend_unsupported">किसी को फ़ॉलो करने के लिए अपना Spotify ऐप्लिकेशन जोड़ें।</string>
     <string name="just_now">अभी</string>
     <string name="minutes_ago">%1$d मिनट पहले</string>
     <string name="hours_ago">%1$d घंटे पहले</string>
@@ -273,6 +285,9 @@
     <string name="effect_quality_light">हल्का</string>
     <string name="effect_quality_light_note">काम फ़ोन करता है। पुराने डिवाइस के लिए आसान, तेज़ आघातों पर थोड़ा खुरदरा।</string>
     <string name="liked_songs">पसंद किए गए गाने</string>
+    <string name="local_files">स्थानीय फ़ाइलें</string>
+    <string name="local_files_needs_permission">अनुमति देने पर Square इस फ़ोन का संगीत देख सकता है।</string>
+    <string name="local_files_allow">अनुमति दें</string>
     <string name="pinned">पिन किया</string>
     <string name="pin">ऊपर पिन करें</string>
     <string name="unpin">पिन हटाएँ</string>

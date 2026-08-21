@@ -21,6 +21,7 @@ import dev.lelonio.square.data.SpotifyHome
 import dev.lelonio.square.data.CatalogTrack
 import dev.lelonio.square.data.ContextCacheStore
 import dev.lelonio.square.data.GatewayPage
+import dev.lelonio.square.data.LocalLibrary
 import dev.lelonio.square.data.SearchItem
 import dev.lelonio.square.data.TransferRequestDto
 import dev.lelonio.square.data.SearchResults
@@ -146,6 +147,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          * and then corrects itself in front of the reader.
          */
         val following: Boolean? = null,
+        /**
+         * Empty because nobody has been allowed to look, rather than because
+         * there is nothing there.
+         *
+         * Only the phone's own music can be in this state; see openLocalFiles.
+         */
+        val needsPermission: Boolean = false,
     )
 
     private val container get() = getApplication<SquareApplication>()
@@ -986,6 +994,80 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { android.util.Log.w(TAG, "friend activity unavailable: ${describe(it)}") }
     }
 
+    /**
+     * How adding a friend is going, for the panel that asks for one.
+     *
+     * Idle until somebody types; a message afterwards, kept until the panel is
+     * closed. Following somebody is a write to the account, and a write with no
+     * answer is a button people press twice.
+     */
+    enum class AddFriend { IDLE, WORKING, DONE, FAILED, UNSUPPORTED }
+
+    private val _addFriend = MutableStateFlow(AddFriend.IDLE)
+    val addFriendState: StateFlow<AddFriend> = _addFriend.asStateFlow()
+
+    fun clearAddFriend() {
+        _addFriend.value = AddFriend.IDLE
+    }
+
+    /**
+     * Follows a Spotify listener, which is what "adding a friend" is here.
+     *
+     * By link or username, and only by those: Spotify's search covers tracks,
+     * albums, artists and playlists, and has never covered people. So there is
+     * nobody to look up — what can be done is take the profile the listener was
+     * given, in any of the shapes it arrives in, and follow it.
+     *
+     * Appearing in the activity list afterwards is a separate matter and not
+     * this app's to promise: that list is only ever people who both are
+     * followed and have chosen to share what they play.
+     */
+    fun addFriend(input: String) = viewModelScope.launch {
+        val id = friendIdOf(input)
+        if (id == null) {
+            _addFriend.value = AddFriend.FAILED
+            return@launch
+        }
+        if (!container.webApi.isReady) {
+            _addFriend.value = AddFriend.UNSUPPORTED
+            return@launch
+        }
+        _addFriend.value = AddFriend.WORKING
+        runCatching { container.api.followArtists(type = "user", ids = id) }
+            .onSuccess {
+                _addFriend.value = AddFriend.DONE
+                loadFriends()
+            }
+            .onFailure {
+                android.util.Log.w(TAG, "could not follow $id: ${describe(it)}")
+                _addFriend.value = AddFriend.FAILED
+            }
+    }
+
+    /**
+     * The account id inside whatever was pasted.
+     *
+     * A profile link, a `spotify:user:` uri, or the username on its own — the
+     * three shapes somebody's profile arrives in, from a browser, from the
+     * share sheet, and from being read out.
+     */
+    private fun friendIdOf(input: String): String? {
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return null
+        val raw = when {
+            trimmed.startsWith("spotify:user:") -> trimmed.removePrefix("spotify:user:")
+            "open.spotify.com/user/" in trimmed ->
+                trimmed.substringAfter("open.spotify.com/user/")
+            // Some links carry the locale: /intl-it/user/<id>
+            "spotify.com" in trimmed && "/user/" in trimmed -> trimmed.substringAfter("/user/")
+            else -> trimmed
+        }
+        val id = raw.substringBefore('?').substringBefore('/').trim()
+        // A username is url-safe text; anything else came from a link this did
+        // not understand, and following it would fail with a worse message.
+        return id.takeIf { it.isNotEmpty() && it.all { c -> c.isLetterOrDigit() || c in "._-" } }
+    }
+
     val recent: StateFlow<List<CatalogTrack>> =
         combine(container.recentStore.tracks, container.preferences.backend) { tracks, _ ->
             tracks.filter { container.activeBackend.owns(it.uri) }
@@ -1087,7 +1169,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess { playlists ->
                     _state.value = UiState.Ready(
                         displayName = name.orEmpty(),
-                        playlists = playlists,
+                        playlists = withLocalFiles(playlists),
                     )
                 }
                 .onFailure {
@@ -1095,7 +1177,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // Not a failure worth a whole error screen: the library is
                     // the one part that needs an account, and everything else
                     // on this backend works without one.
-                    _state.value = UiState.Ready(displayName = name.orEmpty(), playlists = emptyList())
+                    _state.value =
+                        UiState.Ready(displayName = name.orEmpty(), playlists = withLocalFiles(emptyList()))
                 }
             return@launch
         }
@@ -1125,6 +1208,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 loadHomeShelves()
                 loadFriends()
                 loadFollowedArtists()
+                loadSavedAlbums()
             }
             .onFailure {
                 android.util.Log.e(TAG, "library load failed: ${chain(it)}", it)
@@ -1148,7 +1232,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * missed everything added there.
      */
     private suspend fun playlists(): List<CatalogPlaylist> =
-        container.activeBackend.playlists()
+        withLocalFiles(container.activeBackend.playlists())
+
+    /**
+     * The phone's own music, at the head of whichever library is on screen.
+     *
+     * Not a third service to switch to: a file on this phone is there whether
+     * the listener is on Spotify or on YouTube Music, exactly as it is in
+     * Spotify's own client, so it belongs in both libraries rather than behind
+     * a setting that swaps one for the other.
+     *
+     * Shown whether or not the permission has been given. Hiding it until then
+     * would leave the listener nowhere to say yes: the shelf is where the
+     * asking happens.
+     */
+    private fun withLocalFiles(playlists: List<CatalogPlaylist>): List<CatalogPlaylist> =
+        listOf(
+            CatalogPlaylist(
+                uri = LocalLibrary.CONTEXT_URI,
+                name = string(R.string.local_files),
+                artworkUrl = LocalLibrary.COVER,
+            ),
+        ) + playlists.filterNot { it.uri == LocalLibrary.CONTEXT_URI }
 
     /** Covers already looked up, so a second visit to the home page is free. */
     private val coverCache = mutableMapOf<String, String>()
@@ -1232,6 +1337,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val trackSort: StateFlow<String?> get() = container.preferences.trackSort
 
     fun setTrackSort(value: String) = container.preferences.setTrackSort(value)
+
+    val trackSortDescending: StateFlow<Boolean> get() = container.preferences.trackSortDescending
+
+    fun setTrackSortDescending(value: Boolean) =
+        container.preferences.setTrackSortDescending(value)
 
     /** False until the welcome tutorial has been finished once. */
     val onboarded: StateFlow<Boolean> get() = container.preferences.onboarded
@@ -1628,6 +1738,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // the home page should keep at the front.
         container.playlistOrder.record(playlist.uri)
 
+        // The phone's own music answers for itself: no service to ask, no
+        // snapshot to compare, and nothing worth keeping on disk about files
+        // that are already on disk.
+        if (LocalLibrary.isLocalContext(playlist.uri)) {
+            openLocalFiles(playlist)
+            return
+        }
+
         val kind = kindOf(playlist.uri)
         playlistJob?.cancel()
         // Reassigned when the picture arrives late; every state published below
@@ -1746,6 +1864,55 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
         }
+    }
+
+    /**
+     * The music on this phone, read straight from the media index.
+     *
+     * Empty is two different answers, and the screen has to tell them apart:
+     * a phone with no music on it, and a phone this app has not been allowed
+     * to look at. The second is what [PlaylistState.needsPermission] says, and
+     * it is the only case in the app where an empty list is something to act
+     * on rather than to report.
+     */
+    private fun openLocalFiles(playlist: CatalogPlaylist) {
+        playlistJob?.cancel()
+        val base = PlaylistState(
+            uri = playlist.uri,
+            name = playlist.name,
+            // The shelf's own tile, drawn rather than fetched; see Artwork.
+            artworkUrl = playlist.artworkUrl ?: LocalLibrary.COVER,
+            kind = DetailKind.PLAYLIST,
+            // Nothing here belongs to an account, so none of what a playlist
+            // page offers applies: no following, no editing, no removing.
+            mine = false,
+        )
+        publishPlaylist(base.copy(loading = true))
+
+        playlistJob = viewModelScope.launch {
+            val granted = LocalLibrary.granted(getApplication())
+            val tracks = if (granted) LocalLibrary.tracks(getApplication()) else emptyList()
+            publishPlaylist(
+                base.copy(
+                    tracks = tracks,
+                    loading = false,
+                    needsPermission = !granted,
+                ),
+            )
+        }
+    }
+
+    /** Called once the listener has answered the system's permission dialog. */
+    fun onLocalPermissionAnswered() {
+        val open = _playlist.value
+        if (!LocalLibrary.isLocalContext(open.uri)) return
+        openLocalFiles(
+            CatalogPlaylist(
+                uri = open.uri.orEmpty(),
+                name = open.name,
+                artworkUrl = LocalLibrary.COVER,
+            ),
+        )
     }
 
     /**
@@ -2231,6 +2398,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
     }
 
+    private val _savedAlbums = MutableStateFlow<List<CatalogPlaylist>>(emptyList())
+
+    /**
+     * The albums the account has saved, for the library's own shelf of them.
+     *
+     * Kept apart from [UiState.Ready.playlists] rather than mixed into it: the
+     * rootlist is playlists and nothing else, and a screen that filters by kind
+     * needs to be able to say which is which without reading URIs.
+     */
+    val savedAlbums: StateFlow<List<CatalogPlaylist>> = _savedAlbums.asStateFlow()
+
+    fun loadSavedAlbums() = viewModelScope.launch {
+        if (!container.webApi.isReady || container.activeBackend.id != BackendId.SPOTIFY) {
+            _savedAlbums.value = emptyList()
+            return@launch
+        }
+        runCatching {
+            val gathered = mutableListOf<CatalogPlaylist>()
+            var offset = 0
+            // Offset-paged, unlike the artists: walked to the end for the same
+            // reason, which is that a first page is not a library.
+            while (true) {
+                val page = container.api.savedAlbums(limit = ALBUM_PAGE, offset = offset)
+                gathered += page.items.mapNotNull { saved ->
+                    CatalogPlaylist(
+                        uri = saved.album.uri ?: return@mapNotNull null,
+                        name = saved.album.name,
+                        artworkUrl = saved.album.images.firstOrNull()?.url,
+                    )
+                }
+                if (page.items.size < ALBUM_PAGE) break
+                offset += ALBUM_PAGE
+            }
+            gathered
+        }
+            .onSuccess { _savedAlbums.value = it }
+            .onFailure { android.util.Log.w(TAG, "saved albums unavailable: ${describe(it)}") }
+    }
+
     private val _followedArtists = MutableStateFlow<List<SearchItem>>(emptyList())
 
     /** The artists this account follows, for the library. */
@@ -2319,6 +2525,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Artists asked for new records on the home page; one request each. */
         const val FRESH_ARTISTS = 6
+
+        /** A page of saved albums; the API's own maximum. */
+        const val ALBUM_PAGE = 50
 
         /** How long a home row gets before it stops being worth scrolling. */
         const val FEED_ROW = 12

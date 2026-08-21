@@ -45,6 +45,7 @@
     <string name="settings">Ayarlar</string>
     <string name="home">Ana sayfa</string>
     <string name="library">Kitaplık</string>
+    <string name="library_all">Tümü</string>
     <string name="search">Ara</string>
     <string name="now_playing">Şimdi çalıyor</string>
     <string name="unofficial_client">Premium hesaplar için resmi olmayan istemci</string>
@@ -73,7 +74,13 @@
     <string name="recently_opened">Son açılanlar</string>
     <string name="spotify_order">Spotify\'ın sırası</string>
     <string name="change_layout">Görünümü değiştir</string>
+    <string name="sort_descending">Azalan</string>
+    <string name="layout_grid">Izgara</string>
+    <string name="layout_list">Liste</string>
     <string name="playlist_count">%1$d çalma listesi</string>
+    <string name="item_count">%1$d öğe</string>
+    <string name="artist_count">%1$d sanatçı</string>
+    <string name="album_count">%1$d albüm</string>
 
     <!-- Playlist, album, artist -->
     <string name="playlist_order">Çalma listesi sırası</string>
@@ -157,6 +164,11 @@
     <string name="artists_you_follow">Takip ettiğin sanatçılar</string>
     <string name="friends_listening">Arkadaşlar</string>
     <string name="friends_none">Şu anda kimse dinlemiyor ya da takip ettiğin kimse ne çaldığını paylaşmıyor.</string>
+    <string name="add_friend">Arkadaş ekle</string>
+    <string name="add_friend_hint">Profil bağlantısı veya kullanıcı adı</string>
+    <string name="add_friend_done">Artık takip ediyorsun. Paylaşırsa burada görünür.</string>
+    <string name="add_friend_failed">Bu bağlantı bir profile gitmiyor.</string>
+    <string name="add_friend_unsupported">Birini takip etmek için kendi Spotify uygulamanı bağla.</string>
     <string name="just_now">Az önce</string>
     <string name="minutes_ago">%1$d dk önce</string>
     <string name="hours_ago">%1$d sa önce</string>
@@ -273,6 +285,9 @@
     <string name="effect_quality_light">Hafif</string>
     <string name="effect_quality_light_note">İşi telefon yapar. Eski cihazlara nazik, vuruşlarda daha kaba.</string>
     <string name="liked_songs">Beğenilen Şarkılar</string>
+    <string name="local_files">Yerel dosyalar</string>
+    <string name="local_files_needs_permission">İzin verirsen Square bu telefondaki müziği görebilir.</string>
+    <string name="local_files_allow">İzin ver</string>
     <string name="pinned">Sabitlendi</string>
     <string name="pin">Yukarı sabitle</string>
     <string name="unpin">Sabitlemeyi kaldır</string>

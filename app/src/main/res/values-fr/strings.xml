@@ -40,6 +40,7 @@
     <string name="settings">Réglages</string>
     <string name="home">Accueil</string>
     <string name="library">Bibliothèque</string>
+    <string name="library_all">Tout</string>
     <string name="search">Rechercher</string>
     <string name="now_playing">En cours de lecture</string>
     <string name="unofficial_client">Client non officiel pour comptes Premium</string>
@@ -66,7 +67,13 @@
     <string name="recently_opened">Ouvertes récemment</string>
     <string name="spotify_order">Ordre de Spotify</string>
     <string name="change_layout">Changer la disposition</string>
+    <string name="sort_descending">Décroissant</string>
+    <string name="layout_grid">Grille</string>
+    <string name="layout_list">Liste</string>
     <string name="playlist_count">%1$d playlists</string>
+    <string name="item_count">%1$d éléments</string>
+    <string name="artist_count">%1$d artistes</string>
+    <string name="album_count">%1$d albums</string>
 
     <string name="playlist_order">Ordre de la playlist</string>
     <string name="recently_added">Ajoutés récemment</string>
@@ -145,6 +152,11 @@
     <string name="artists_you_follow">Artistes que vous suivez</string>
     <string name="friends_listening">Amis</string>
     <string name="friends_none">Personne n’écoute en ce moment, ou personne que vous suivez ne partage ce qu’il joue.</string>
+    <string name="add_friend">Ajouter un ami</string>
+    <string name="add_friend_hint">Lien du profil ou identifiant</string>
+    <string name="add_friend_done">Vous le suivez. Il apparaîtra ici s\'il partage ses écoutes.</string>
+    <string name="add_friend_failed">Ce lien ne mène pas à un profil.</string>
+    <string name="add_friend_unsupported">Connectez votre application Spotify pour suivre quelqu\'un.</string>
     <string name="just_now">À l’instant</string>
     <string name="minutes_ago">il y a %1$d min</string>
     <string name="hours_ago">il y a %1$d h</string>
@@ -258,6 +270,9 @@
     <string name="effect_quality_light">Légère</string>
     <string name="effect_quality_light_note">Le téléphone s’en charge. Plus douce pour les appareils anciens, plus rêche sur les attaques.</string>
     <string name="liked_songs">Titres likés</string>
+    <string name="local_files">Fichiers locaux</string>
+    <string name="local_files_needs_permission">Square peut voir la musique de ce téléphone si vous l\'autorisez.</string>
+    <string name="local_files_allow">Autoriser</string>
     <string name="pinned">Épinglée</string>
     <string name="pin">Épingler en haut</string>
     <string name="unpin">Désépingler</string>

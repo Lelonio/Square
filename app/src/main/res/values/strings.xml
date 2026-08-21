@@ -51,6 +51,7 @@
     <string name="settings">Settings</string>
     <string name="home">Home</string>
     <string name="library">Library</string>
+    <string name="library_all">Everything</string>
     <string name="search">Search</string>
     <string name="now_playing">Now playing</string>
     <string name="unofficial_client">Unofficial client for Premium accounts</string>
@@ -79,7 +80,13 @@
     <string name="recently_opened">Recently opened</string>
     <string name="spotify_order">Spotify\'s order</string>
     <string name="change_layout">Change layout</string>
+    <string name="sort_descending">Descending</string>
+    <string name="layout_grid">Grid</string>
+    <string name="layout_list">List</string>
     <string name="playlist_count">%1$d playlists</string>
+    <string name="item_count">%1$d items</string>
+    <string name="artist_count">%1$d artists</string>
+    <string name="album_count">%1$d albums</string>
 
     <!-- Playlist, album, artist -->
     <string name="playlist_order">Playlist order</string>
@@ -163,6 +170,11 @@
     <string name="artists_you_follow">Artists you follow</string>
     <string name="friends_listening">Friends</string>
     <string name="friends_none">Nobody is listening right now, or nobody you follow shares what they play.</string>
+    <string name="add_friend">Add a friend</string>
+    <string name="add_friend_hint">Profile link or username</string>
+    <string name="add_friend_done">Following. They appear here when they share what they play.</string>
+    <string name="add_friend_failed">That link did not lead to a profile.</string>
+    <string name="add_friend_unsupported">Connect your own Spotify application to follow people.</string>
     <string name="just_now">Just now</string>
     <string name="minutes_ago">%1$d min ago</string>
     <string name="hours_ago">%1$d h ago</string>
@@ -279,6 +291,9 @@
     <string name="effect_quality_light">Light</string>
     <string name="effect_quality_light_note">The phone does the work. Kinder to older devices, rougher on attacks.</string>
     <string name="liked_songs">Liked Songs</string>
+    <string name="local_files">Local files</string>
+    <string name="local_files_needs_permission">Square can see the music on this phone once you allow it.</string>
+    <string name="local_files_allow">Allow</string>
     <string name="pinned">Pinned</string>
     <string name="pin">Pin to the top</string>
     <string name="unpin">Unpin</string>
