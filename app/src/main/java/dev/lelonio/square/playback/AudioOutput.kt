@@ -181,34 +181,13 @@ class AudioOutput {
 
         reverb = effect
         runCatching {
-            // The room grows with the amount: a longer tail and a louder
-            // reflection, from a small live room up to a hall.
-            effect.decayTime = (MIN_DECAY_MS + amount * (MAX_DECAY_MS - MIN_DECAY_MS)).toInt()
-            effect.reverbLevel = (MIN_LEVEL_MB + amount * (MAX_LEVEL_MB - MIN_LEVEL_MB)).toInt().toShort()
-            // This is the one that made the effect nearly inaudible. An
-            // EnvironmentalReverb starts with roomLevel at -9000 mB — ninety
-            // decibels down, which is silence — and it is a master attenuation
-            // sitting in front of everything else, so raising reverbLevel and
-            // the send alone changed almost nothing.
-            effect.roomLevel = (MIN_ROOM_MB + amount * (MAX_ROOM_MB - MIN_ROOM_MB)).toInt().toShort()
-            // Keeps the tail from being all low end, which is what a room with
-            // its highs rolled off sounds like: muddy rather than spacious.
-            effect.roomHFLevel = (-400).toShort()
-            // Held steady: these shape the character of the room rather than its
-            // size, and moving them with the slider makes the low end swell as
-            // well as the tail, which reads as the track getting muddier rather
-            // than more distant.
-            effect.decayHFRatio = 700
-            effect.density = 1000
-            effect.diffusion = 1000
+            // The room itself is described in one place, since the players that
+            // are not this one put a listener in the same one; see ReverbTuning.
+            ReverbTuning.tune(effect, amount)
             effect.enabled = true
 
             output.attachAuxEffect(effect.id)
-            // The dry path is untouched, so this is purely how much goes to the
-            // tail. Curved rather than linear: the first part of the range is
-            // where the audible change happens, and a straight mapping leaves
-            // most of the slider doing almost nothing.
-            output.setAuxEffectSendLevel(amount * amount * 0.85f + amount * 0.15f)
+            output.setAuxEffectSendLevel(ReverbTuning.sendLevel(amount))
             if (fresh) android.util.Log.i(TAG, "reverb on at $amount, id ${effect.id}")
         }.onFailure { android.util.Log.w(TAG, "reverb not applied: ${it.message}") }
     }
