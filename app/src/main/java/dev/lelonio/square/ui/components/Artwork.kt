@@ -13,7 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.background
+import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Color
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.FolderSimple
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -51,7 +56,9 @@ fun Artwork(
     val density = LocalDensity.current
 
     Box(modifier.clip(shape), contentAlignment = Alignment.Center) {
-        if (url != null) {
+        if (url == dev.lelonio.square.data.LocalLibrary.COVER) {
+            LocalFilesCover()
+        } else if (url != null) {
             val request = remember(url, decodeSize) {
                 ImageRequest.Builder(context)
                     .data(url)
@@ -92,6 +99,35 @@ fun Artwork(
  * soft off-centre highlight, and the initial set large and dimmed so it reads as
  * texture rather than as a label.
  */
+/**
+ * The tile for the phone's own music.
+ *
+ * Drawn rather than shipped as a picture: this is the one shelf in the library
+ * with no artwork behind it, and it is asked for at every size from a row's
+ * thumbnail to the top of a page, where a bitmap would either be soft or be
+ * three bitmaps. A folder because that is what it is.
+ */
+@Composable
+private fun LocalFilesCover() {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(LocalFilesTile),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            PhosphorIcons.Regular.FolderSimple,
+            contentDescription = null,
+            tint = LocalFilesGlyph,
+            modifier = Modifier.fillMaxSize(0.44f),
+        )
+    }
+}
+
+/** The two colours of that tile, deep enough to sit in a grid of covers. */
+private val LocalFilesTile = Color(0xFF20306E)
+private val LocalFilesGlyph = Color(0xFF2ECC57)
+
 @Composable
 private fun GeneratedCover(title: String, corner: Dp) {
     val seed = remember(title) { title.hashCode().absoluteValue }

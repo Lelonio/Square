@@ -60,6 +60,16 @@ class PlaylistOrderStore(context: Context) {
  * opened must not be shuffled among themselves, or the tail of the list would
  * rearrange itself every time one of them was touched.
  */
+/**
+ * The phone's own music first, whatever the rest are sorted by.
+ *
+ * A fixed shelf rather than a playlist among playlists; see LocalLibrary.
+ */
+fun List<CatalogPlaylist>.withLocalFilesFirst(): List<CatalogPlaylist> {
+    val local = firstOrNull { LocalLibrary.isLocalContext(it.uri) } ?: return this
+    return listOf(local) + filterNot { it.uri == local.uri }
+}
+
 fun List<CatalogPlaylist>.sortedByRecentlyOpened(order: List<String>): List<CatalogPlaylist> {
     if (order.isEmpty()) return this
     val rank = order.withIndex().associate { (index, uri) -> uri to index }

@@ -54,6 +54,15 @@ import kotlinx.coroutines.sync.withLock
 class MediaBrowseTree(
     context: Context,
     private val scope: CoroutineScope,
+    /**
+     * Puts the right player behind the session for a queue about to be set.
+     *
+     * The service's own, passed in rather than reached for: this class is the
+     * one place every queue goes through, whoever set it — the app, the car,
+     * an assistant — and the music on the phone plays through a different
+     * player than either streaming service. See PlaybackService.ensurePlayerFor.
+     */
+    private val ensurePlayerFor: suspend (String?) -> Unit = {},
 ) : MediaLibrarySession.Callback {
 
     private val app = context.applicationContext as SquareApplication
@@ -388,6 +397,11 @@ class MediaBrowseTree(
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = scope.future {
+        ensurePlayerFor(
+            mediaItems.getOrNull(startIndex.coerceAtLeast(0))?.mediaId
+                ?: mediaItems.firstOrNull()?.mediaId,
+        )
+
         val single = mediaItems.singleOrNull()
         val parts = single?.mediaId?.let(::splitTrackId)
             ?: return@future MediaSession.MediaItemsWithStartPosition(

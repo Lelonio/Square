@@ -33,6 +33,26 @@ object LocalLibrary {
     const val PREFIX = "local:track:"
 
     /**
+     * The list itself, which is a context like any playlist.
+     *
+     * It is not one on any service, so it has no id to be addressed by: this is
+     * a name the app gives its own shelf, and everything that opens a track
+     * list recognises it the same way it recognises a playlist URI.
+     */
+    const val CONTEXT_URI = "local:files"
+
+    fun isLocalContext(uri: String?): Boolean = uri == CONTEXT_URI
+
+    /**
+     * What the shelf carries where a playlist carries a cover URL.
+     *
+     * Not a URL at all: there is no picture to fetch for a folder of files, and
+     * the tile is drawn by the app at whatever size it is asked for. See
+     * Artwork, which recognises this and hands over to its own drawing.
+     */
+    const val COVER = "square:local-files-cover"
+
+    /**
      * The permission needed to read any of this.
      *
      * Split at Android 13, where the single storage permission was broken up by
@@ -80,6 +100,7 @@ object LocalLibrary {
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.ALBUM_ID,
             MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.DATE_ADDED,
         )
 
         runCatching {
@@ -98,6 +119,7 @@ object LocalLibrary {
                 val album = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
                 val albumId = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
                 val duration = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                val added = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
 
                 buildList {
                     while (cursor.moveToNext()) {
@@ -113,6 +135,11 @@ object LocalLibrary {
                                 album = cursor.getString(album).orEmpty(),
                                 durationMs = cursor.getLong(duration),
                                 artworkUrl = artworkUri(cursor.getLong(albumId)),
+                                // The same field a playlist carries, so the
+                                // "recently added" order works here too. The
+                                // index counts in seconds; everything else in
+                                // this app reads an ISO-8601 stamp.
+                                addedAt = isoStamp(cursor.getLong(added)),
                             ),
                         )
                     }
@@ -131,6 +158,14 @@ object LocalLibrary {
      * former is one URI the loader can cache, and the latter would mean opening
      * and decoding every file to build a list.
      */
+    /** Seconds since the epoch, as the rest of the app spells a date. */
+    private fun isoStamp(seconds: Long): String? =
+        if (seconds <= 0) {
+            null
+        } else {
+            java.time.Instant.ofEpochSecond(seconds).toString()
+        }
+
     private fun artworkUri(albumId: Long): String? =
         if (albumId <= 0) null else "content://media/external/audio/albumart/$albumId"
 
