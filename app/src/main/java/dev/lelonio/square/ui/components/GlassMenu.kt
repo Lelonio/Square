@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import dev.lelonio.square.ui.glass.liquidGlass
 import dev.lelonio.square.ui.player.GlassSurface
 import dev.lelonio.square.ui.theme.softShadow
 import dev.lelonio.square.ui.glass.backdrop.Backdrop
@@ -94,11 +95,17 @@ fun GlassMenu(
                 fadeOut(tween(110)),
         ) {
             val shape = RoundedCornerShape(20.dp)
+            // Opaque, because a popup is its own window and cannot sample a
+            // layer belonging to another one — see the note on this function.
+            // What it can do is be the same colour as the menu that does have
+            // glass, so the two read as one thing rather than two designs: the
+            // settings' own tint, over a base dark enough to stand alone.
             Column(
                 Modifier
                     .width(MENU_WIDTH)
                     .clip(shape)
                     .background(MenuSurface)
+                    .background(menuFilm())
                     .border(1.dp, MenuEdge, shape)
                     .padding(vertical = 6.dp),
                 content = content,
@@ -277,23 +284,80 @@ fun BoxScope.GlassChoiceMenu(
             .offset { anchor },
     ) {
         val shape = RoundedCornerShape(20.dp)
-        GlassSurface(
-            backdrop = backdrop,
-            shape = shape,
-            // Dark, unlike the other glass in the app. This is the one pane
-            // that opens over a list of white titles, and a light film left
-            // them showing through its own labels — legibility beats keeping
-            // every surface the same film.
-            surfaceColor = ChoiceFilm,
-            blurScale = 15.0f,
-            modifier = Modifier
+        // The bottom bar's material, from the same recipe and the same
+        // settings: liquidGlass with the listener's configuration, which paints
+        // the surface tint at the opacity they chose and lights the same rim.
+        // No film of its own on top — that was a dark card wearing glass, and
+        // the one surface in the app that ignored what the settings said.
+        //
+        // The single thing it chooses for itself is how far it blurs, which is
+        // what a pane is allowed to differ in: this one covers a page of covers
+        // rather than sitting in a pill, and the depth is what lifts its rows
+        // off them.
+        val config = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
+        Box(
+            Modifier
                 .width(CHOICE_MENU_WIDTH)
-                .clip(shape)
-                .softShadow(shape, elevation = 18.dp, spot = 0.3f),
+                .softShadow(shape, elevation = 18.dp, spot = 0.3f)
+                .liquidGlass(
+                    config = config,
+                    shape = shape,
+                    blurRadiusDp = config.blurRadius * MENU_BLUR_SCALE,
+                    highlightAlpha = 0.3f,
+                    ownBackdrop = backdrop,
+                )
+                // Over the pane rather than under its rows: a background on the
+                // column only covers where the rows are, and the point of this
+                // is that the whole pane stops the page showing through.
+                .background(menuFilm(), shape)
+                .clip(shape),
         ) {
             Column(Modifier.padding(vertical = 4.dp), content = content)
         }
     }
+}
+
+/**
+ * What a menu adds to the material underneath it.
+ *
+ * The pane itself is the bar's glass, made of the listener's own settings, and
+ * for most surfaces that is the whole story. A menu is the one that writes its
+ * own words over somebody else's: at a thin setting — 0.13 surface opacity is
+ * a real one, taken off this phone — the track titles below go on being
+ * perfectly readable through the rows, and two sets of words in one place is a
+ * menu nobody can use.
+ *
+ * So this tops the settings' own tint up to the point where rows stay legible,
+ * in the settings' own colour, and gives back every bit of that as the material
+ * is thickened: at 0.55 and above it adds nothing at all and the menu is purely
+ * what the settings say.
+ */
+@Composable
+private fun menuFilm(): Color {
+    val config = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
+    val missing = (MENU_FLOOR_OPACITY - config.surfaceOpacity).coerceAtLeast(0f)
+    return config.surfaceTintColor.copy(alpha = missing)
+}
+
+/** The coverage a menu needs before its own rows stop competing with the page. */
+private const val MENU_FLOOR_OPACITY = 0.92f
+
+/**
+ * The hairline between two groups of choices in a menu.
+ *
+ * Faint on purpose: it separates the kinds of decision — how a list is shown,
+ * what it is sorted by, which way round — without reading as a border drawn
+ * across the pane.
+ */
+@Composable
+fun GlassMenuRule() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 5.dp)
+            .height(1.dp)
+            .background(Color.White.copy(alpha = 0.10f)),
+    )
 }
 
 @Composable
@@ -330,7 +394,13 @@ fun GlassChoiceItem(
 }
 
 /** Dark enough that a track title behind it never competes with a label. */
-private val ChoiceFilm = Color(0xFF121216).copy(alpha = 0.72f)
+/**
+ * How much deeper a menu blurs than the pill-sized surfaces.
+ *
+ * A multiplier rather than a number of pixels, so the setting still decides:
+ * turned down, this is a light frost; turned up, the page behind it goes.
+ */
+private const val MENU_BLUR_SCALE = 2f
 
 /** Narrow on purpose; the longest label still fits on one line. */
 val CHOICE_MENU_WIDTH = 196.dp
