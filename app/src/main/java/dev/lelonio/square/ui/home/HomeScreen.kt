@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -201,7 +202,12 @@ fun HomeScreen(
         }
 
         is MainViewModel.UiState.Ready -> {
-            var filter by remember { mutableStateOf(Feed.ALL) }
+            // Saved rather than remembered, like the scroll position below it:
+            // both are undone by leaving for a playlist and coming back, and a
+            // page that forgets which shelf you were reading is the same
+            // complaint as one that forgets where you were in it.
+            var filterName by rememberSaveable { mutableStateOf(Feed.ALL.name) }
+            val filter = Feed.entries.firstOrNull { it.name == filterName } ?: Feed.ALL
             // Read once here rather than inside the rows: the label travels
             // with the play so the player can say where the song came from,
             // and that is a plain string by the time it leaves this screen.
@@ -211,7 +217,12 @@ fun HomeScreen(
             // which for an old account is close to arbitrary — the playlist
             // opened every day can sit thirtieth.
             val playlists = remember(state.playlists, playlistOrder) {
-                state.playlists.sortedByRecentlyOpened(playlistOrder)
+                // The phone's own music belongs to the library rather than to
+                // this page: home is what the service put together for the
+                // listener, and a folder of files is not that.
+                state.playlists
+                    .filterNot { dev.lelonio.square.data.LocalLibrary.isLocalContext(it.uri) }
+                    .sortedByRecentlyOpened(playlistOrder)
             }
             val listState = rememberLazyListState()
 
@@ -234,7 +245,19 @@ fun HomeScreen(
             // Back to the top when the view changes. The lists have nothing in
             // common, so keeping the old offset drops the new one in the middle
             // of itself.
-            LaunchedEffect(filter) { listState.scrollToItem(0) }
+            //
+            // The first run is skipped, and that is the whole point: an effect
+            // keyed on the filter also runs when this screen is composed, which
+            // is every time the listener comes back from a playlist. The page
+            // they left halfway down was being scrolled to the top under them
+            // for a filter that had not changed at all.
+            var scrolledFor by rememberSaveable { mutableStateOf(filter.name) }
+            LaunchedEffect(filter) {
+                if (scrolledFor != filter.name) {
+                    scrolledFor = filter.name
+                    listState.scrollToItem(0)
+                }
+            }
 
             Column(Modifier.fillMaxSize()) {
                 Header(
@@ -251,7 +274,7 @@ fun HomeScreen(
                     highlighted = filter,
                     backdrop = backdrop,
                     topPadding = contentPadding.calculateTopPadding(),
-                    onFilter = { filter = it },
+                    onFilter = { filterName = it.name },
                     onOpenSettings = onOpenSettings,
                     friends = friends,
                     onOpenFriends = onOpenFriends,
