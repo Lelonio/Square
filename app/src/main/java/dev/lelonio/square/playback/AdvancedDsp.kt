@@ -18,11 +18,7 @@ import kotlinx.serialization.Serializable
 data class DspFormat(val sampleRate: Int, val channelCount: Int)
 
 @Serializable
-data class EqualizerBand(
-    val frequencyHz: Float,
-    val gainDb: Float,
-    val q: Float = 0.707f,
-) {
+data class EqualizerBand(val frequencyHz: Float, val gainDb: Float, val q: Float = 0.707f) {
     init {
         require(frequencyHz > 0f)
         require(gainDb in -12f..12f)
@@ -51,7 +47,6 @@ data class AdvancedDspConfig(
     }
 }
 
-/** A processing stage independent of UI, providers and persistence. */
 interface DspStage {
     fun configure(format: DspFormat)
     fun reset()
@@ -64,30 +59,44 @@ private class GainStage : DspStage {
     override fun reset() = Unit
     override fun process(samples: FloatArray, frames: Int, channels: Int) {
         if (gain == 1f) return
-        val count = frames * channels
-        for (i in 0 until count) samples[i] *= gain
+        for (i in 0 until frames * channels) samples[i] *= gain
     }
 }
 
+/** Fixed-size biquad bank: coefficient/state arrays are reused by the audio thread. */
 private class BiquadStage : DspStage {
-    private data class Coefficients(
-        val b0: Float,
-        val b1: Float,
-        val b2: Float,
-        val a1: Float,
-        val a2: Float,
-    )
-
     private var format = DspFormat(48_000, 2)
-    @Volatile private var coefficients: List<Coefficients> = emptyList()
+    private val b0 = FloatArray(MAX_BANDS)
+    private val b1 = FloatArray(MAX_BANDS)
+    private val b2 = FloatArray(MAX_BANDS)
+    private val a1 = FloatArray(MAX_BANDS)
+    private val a2 = FloatArray(MAX_BANDS)
+    private var count = 0
     private var z1 = FloatArray(0)
     private var z2 = FloatArray(0)
 
+    /** Called from the control path and allocation-free after construction. */
     fun setBands(bands: List<EqualizerBand>, bassBoostDb: Float) {
-        val all = if (bassBoostDb > 0f) {
-            listOf(EqualizerBand(90f, bassBoostDb, 0.7f)) + bands
-        } else bands
-        coefficients = all.take(MAX_BANDS).map { peakCoefficients(it, format.sampleRate) }
+        count = 0
+        if (bassBoostDb > 0f) addBand(EqualizerBand(90f, bassBoostDb, 0.7f))
+        for (band in bands) {
+            if (count == MAX_BANDS) break
+            addBand(band)
+        }
+    }
+
+    private fun addBand(band: EqualizerBand) {
+        val a = 10f.pow(band.gainDb / 40f)
+        val omega = (2.0 * Math.PI * band.frequencyHz / format.sampleRate).toFloat()
+        val alpha = sin(omega) / (2f * band.q)
+        val cosOmega = cos(omega)
+        val normalizer = 1f + alpha / a
+        b0[count] = (1f + alpha * a) / normalizer
+        b1[count] = (-2f * cosOmega) / normalizer
+        b2[count] = (1f - alpha * a) / normalizer
+        a1[count] = (-2f * cosOmega) / normalizer
+        a2[count] = (1f - alpha / a) / normalizer
+        count++
     }
 
     override fun configure(format: DspFormat) {
@@ -102,38 +111,24 @@ private class BiquadStage : DspStage {
     }
 
     override fun process(samples: FloatArray, frames: Int, channels: Int) {
-        val current = coefficients
-        if (current.isEmpty()) return
-        for (stageIndex in current.indices) {
-            val c = current[stageIndex]
+        if (count == 0) return
+        for (stageIndex in 0 until count) {
             val stateOffset = stageIndex * channels
             for (frame in 0 until frames) {
                 val base = frame * channels
                 for (channel in 0 until channels) {
                     val index = base + channel
                     val x = samples[index]
-                    val y = c.b0 * x + z1[stateOffset + channel]
-                    z1[stateOffset + channel] = c.b1 * x - c.a1 * y + z2[stateOffset + channel]
-                    z2[stateOffset + channel] = c.b2 * x - c.a2 * y
+                    val y = b0[stageIndex] * x + z1[stateOffset + channel]
+                    z1[stateOffset + channel] = b1[stageIndex] * x - a1[stageIndex] * y + z2[stateOffset + channel]
+                    z2[stateOffset + channel] = b2[stageIndex] * x - a2[stageIndex] * y
                     samples[index] = y
                 }
             }
         }
     }
 
-    private fun peakCoefficients(band: EqualizerBand, sampleRate: Int): Coefficients {
-        val a = 10f.pow(band.gainDb / 40f)
-        val omega = (2.0 * Math.PI * band.frequencyHz / sampleRate).toFloat()
-        val alpha = sin(omega) / (2f * band.q)
-        val cosOmega = cos(omega)
-        val b0 = 1f + alpha * a
-        val b1 = -2f * cosOmega
-        val b2 = 1f - alpha * a
-        val a0 = 1f + alpha / a
-        val a1 = -2f * cosOmega
-        val a2 = 1f - alpha / a
-        return Coefficients(b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0)
-    }
+    private companion object { const val MAX_BANDS = 16 }
 }
 
 private class VirtualizerStage : DspStage {
@@ -203,9 +198,7 @@ private class LimiterStage : DspStage {
         envelope = 0f
     }
 
-    override fun reset() {
-        envelope = 0f
-    }
+    override fun reset() { envelope = 0f }
 
     override fun process(samples: FloatArray, frames: Int, channels: Int) {
         if (!enabled) return
@@ -219,8 +212,8 @@ private class LimiterStage : DspStage {
 }
 
 /**
- * Media3 PCM processor used by local/ExoPlayer playback. Spotify's native sink
- * remains on its existing path; no provider-specific DSP contract is changed.
+ * Media3 PCM processor for local/ExoPlayer playback. Spotify's native sink keeps
+ * its established speed/pitch/reverb path; this processor does not alter that contract.
  */
 @OptIn(UnstableApi::class)
 class AdvancedDspAudioProcessor : BaseAudioProcessor() {
@@ -258,19 +251,16 @@ class AdvancedDspAudioProcessor : BaseAudioProcessor() {
     }
 
     override fun onFlush() {
-        gain.reset()
-        eq.reset()
-        virtualizer.reset()
-        reverb.reset()
-        limiter.reset()
+        gain.reset(); eq.reset(); virtualizer.reset(); reverb.reset(); limiter.reset()
     }
 
-    override fun onReset() {
-        onFlush()
-        workBuffer.fill(0f)
-    }
+    override fun onReset() = onFlush()
 
     override fun queueInput(inputBuffer: ByteBuffer) {
+        // StateFlow.value is an atomic control-plane read. setConfiguration is
+        // allocation-free, so a changed snapshot cannot introduce a real-time allocation.
+        val latest = AudioEffects.dsp.value
+        if (latest !== configuration) setConfiguration(latest)
         val config = configuration
         val size = inputBuffer.remaining()
         if (size == 0) return
@@ -285,6 +275,7 @@ class AdvancedDspAudioProcessor : BaseAudioProcessor() {
         val frames = size / (format.channelCount * 2)
         val sampleCount = frames * format.channelCount
         if (sampleCount > workBuffer.size) {
+            // Preserve audio rather than allocating or dropping a decoder packet.
             replaceOutputBuffer(size).put(inputBuffer).flip()
             return
         }
@@ -292,13 +283,11 @@ class AdvancedDspAudioProcessor : BaseAudioProcessor() {
         val input = inputBuffer.order(ByteOrder.LITTLE_ENDIAN)
         val output = replaceOutputBuffer(size)
         for (i in 0 until sampleCount) workBuffer[i] = input.short.toFloat() / 32768f
-
         gain.process(workBuffer, frames, format.channelCount)
         eq.process(workBuffer, frames, format.channelCount)
         virtualizer.process(workBuffer, frames, format.channelCount)
         reverb.process(workBuffer, frames, format.channelCount)
         limiter.process(workBuffer, frames, format.channelCount)
-
         output.order(ByteOrder.LITTLE_ENDIAN)
         for (i in 0 until sampleCount) {
             output.putShort((workBuffer[i].coerceIn(-1f, 1f) * 32767f).toInt().toShort())
@@ -307,9 +296,5 @@ class AdvancedDspAudioProcessor : BaseAudioProcessor() {
     }
 
     private fun dbToLinear(db: Float): Float = 10f.pow(db.coerceIn(-18f, 12f) / 20f)
-
-    private companion object {
-        const val MAX_WORK_FRAMES = 16_384
-        const val MAX_BANDS = 16
-    }
+    private companion object { const val MAX_WORK_FRAMES = 16_384 }
 }
