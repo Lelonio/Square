@@ -39,6 +39,22 @@ class PlaybackStateReducerTest {
     }
 
     @Test
+    fun bufferingCanReturnToPlayingOrPaused() {
+        val reducer = PlaybackStateReducer()
+        reducer.setTrack("track")
+
+        reducer.setBuffering(true)
+        assertEquals(PlaybackStatus.BUFFERING, reducer.state.status)
+
+        reducer.setBuffering(false, playingWhenReady = true)
+        assertEquals(PlaybackStatus.PLAYING, reducer.state.status)
+
+        reducer.setBuffering(true)
+        reducer.setBuffering(false, playingWhenReady = false)
+        assertEquals(PlaybackStatus.PAUSED, reducer.state.status)
+    }
+
+    @Test
     fun seekAndPositionDoNotChangeTrackIdentity() {
         val reducer = PlaybackStateReducer()
         reducer.setTrack("track", durationMs = 100_000)
@@ -66,7 +82,7 @@ class PlaybackStateReducerTest {
     }
 
     @Test
-    fun errorIsTypedAndCanBeCleared() {
+    fun errorIsTypedAndCanBeClearedToSafePausedState() {
         val reducer = PlaybackStateReducer()
         reducer.setTrack("track")
 
@@ -75,6 +91,7 @@ class PlaybackStateReducerTest {
         assertEquals(PlaybackError.TrackUnavailable, reducer.state.error)
 
         reducer.clearError()
+        assertEquals(PlaybackStatus.PAUSED, reducer.state.status)
         assertEquals(null, reducer.state.error)
     }
 
