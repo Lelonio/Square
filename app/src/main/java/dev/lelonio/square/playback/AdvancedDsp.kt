@@ -13,10 +13,11 @@ import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sin
+import kotlinx.serialization.Serializable
 
-/** Immutable control-plane description of the PCM stream consumed by a DSP stage. */
 data class DspFormat(val sampleRate: Int, val channelCount: Int)
 
+@Serializable
 data class EqualizerBand(
     val frequencyHz: Float,
     val gainDb: Float,
@@ -29,7 +30,7 @@ data class EqualizerBand(
     }
 }
 
-/** Immutable DSP snapshot published from the control plane to the audio processor. */
+@Serializable
 data class AdvancedDspConfig(
     val enabled: Boolean = false,
     val gainDb: Float = 0f,
@@ -284,7 +285,6 @@ class AdvancedDspAudioProcessor : BaseAudioProcessor() {
         val frames = size / (format.channelCount * 2)
         val sampleCount = frames * format.channelCount
         if (sampleCount > workBuffer.size) {
-            // Never allocate on the audio thread or drop a decoder packet.
             replaceOutputBuffer(size).put(inputBuffer).flip()
             return
         }
