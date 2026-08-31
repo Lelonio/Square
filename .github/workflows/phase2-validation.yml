@@ -1,0 +1,43 @@
+name: Phase 2 Playback Validation
+
+on:
+  push:
+    branches:
+      - feature/phase-1-architecture-state
+
+jobs:
+  android-and-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Android unit tests
+        run: ./gradlew test --no-daemon
+
+      - name: Android lint
+        run: ./gradlew lint --no-daemon
+
+      - name: Android debug assemble
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Rust format check
+        working-directory: native
+        run: cargo fmt --check
+
+      - name: Rust tests
+        working-directory: native
+        run: cargo test --locked
