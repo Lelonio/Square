@@ -1,6 +1,5 @@
 package dev.lelonio.square.playback
 
-import androidx.media3.common.Player
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -13,7 +12,7 @@ class PlaybackStateReducerTest {
         assertEquals(PlaybackStatus.IDLE, state.status)
         assertEquals(null, state.currentMediaId)
         assertTrue(state.queueMediaIds.isEmpty())
-        assertEquals(Player.REPEAT_MODE_OFF, state.repeatMode)
+        assertEquals(0, state.repeatMode)
     }
 
     @Test
@@ -58,11 +57,11 @@ class PlaybackStateReducerTest {
         val reducer = PlaybackStateReducer()
 
         reducer.setBackend("youtube")
-        reducer.setRepeatMode(Player.REPEAT_MODE_ALL)
+        reducer.setRepeatMode(2)
         reducer.setShuffleEnabled(true)
 
         assertEquals("youtube", reducer.state.backendId)
-        assertEquals(Player.REPEAT_MODE_ALL, reducer.state.repeatMode)
+        assertEquals(2, reducer.state.repeatMode)
         assertTrue(reducer.state.shuffleEnabled)
     }
 
