@@ -9,8 +9,6 @@
 -->
 <resources>
     <string name="app_name">Square</string>
-
-    <!-- Shared -->
     <string name="back">Back</string>
     <string name="close">Close</string>
     <string name="skip">Skip</string>
@@ -25,11 +23,6 @@
     <string name="karaoke_on">Karaoke %d%%</string>
     <string name="pip_listen">Listen only</string>
     <string name="remove_from_queue">Remove from queue</string>
-    <string name="credits_none">Nobody credited</string>
-    <string name="credits_source">Source</string>
-    <string name="credits_performers">Performers</string>
-    <string name="credits_writers">Writers</string>
-    <string name="credits_producers">Producers</string>
     <string name="search_history">From your searches</string>
     <string name="lyrics_match">Lyrics match</string>
     <string name="retry">Retry</string>
@@ -297,8 +290,6 @@
     <string name="crossfade_off">Off</string>
     <string name="crossfade_seconds">%1$d seconds</string>
     <string name="crossfade_note">One track dissolves into the next. Only where a track ends on its own, not when you skip.</string>
-    <string name="page_playback">Playback</string>
-    <string name="page_app">App</string>
     <string name="page_account_summary">Your account, the Web API application and signing out</string>
     <string name="page_playback_summary">Where music comes from, quality and crossfade</string>
     <string name="page_app_summary">Language, glass and the bottom bar</string>
@@ -343,7 +334,6 @@
     <string name="glass_where_mini_player">Glass on the playing bar</string>
     <string name="glass_where_player">Glass in the player</string>
     <string name="glass_reset">Back to the profile</string>
-
     <string name="bar_folds">Bar folds away</string>
     <string name="bar_folds_note">The bottom bar shrinks to a pill as you scroll. The app\'s most expensive animation: off is smoother on older phones.</string>
     <string name="delete_playlist_title">Delete this playlist?</string>
@@ -351,5 +341,27 @@
     <string name="glass_indicator">Active tab</string>
     <string name="quality_link">Connection</string>
     <string name="quality_link_value">%1$d kbps, so %2$d kbps audio</string>
-    <string name="quality_link_unknown">unknown, so %1$d kbps audio</string>
+    <string name="could_not_load">Could not load this right now</string>
+    <string name="downloads">Downloads</string>
+    <string name="downloads_empty">Nothing is downloaded yet</string>
+    <string name="downloads_empty_note">Download tracks from a supported provider to keep them available offline.</string>
+    <string name="download_storage">Storage</string>
+    <string name="download_wifi_only">Wi-Fi only</string>
+    <string name="download_wifi_only_note">Keep downloads queued while the device is on metered data.</string>
+    <string name="download_quality">Download quality</string>
+    <string name="download_status_queued">Queued</string>
+    <string name="download_status_preparing">Preparing</string>
+    <string name="download_status_downloading">Downloading</string>
+    <string name="download_status_paused">Paused</string>
+    <string name="download_status_completed">Downloaded</string>
+    <string name="download_status_failed">Failed</string>
+    <string name="download_status_cancelled">Cancelled</string>
+    <string name="download_status_unavailable">Unavailable</string>
+    <string name="download_pause">Pause</string>
+    <string name="download_resume">Resume</string>
+    <string name="download_cancel">Cancel download</string>
+    <string name="download_retry">Try again</string>
+    <string name="download_delete">Delete download</string>
+    <string name="download_size_unknown">Size unavailable</string>
+    <string name="download_error_generic">The download could not be completed.</string>
 </resources>
