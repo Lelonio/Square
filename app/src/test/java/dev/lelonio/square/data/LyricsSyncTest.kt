@@ -22,7 +22,7 @@ class LyricsSyncTest {
 
     @Test
     fun offset_moves_sync_without_mutating_playback_position() {
-        assertEquals(0, LyricsSync.lineIndex(lyrics, 900, 200))
+        assertEquals(0, LyricsSync.lineIndex(lyrics, 700, 200))
         assertEquals(1, LyricsSync.lineIndex(lyrics, 900, 200))
     }
 
