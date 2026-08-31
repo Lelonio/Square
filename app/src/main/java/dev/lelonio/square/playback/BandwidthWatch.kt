@@ -8,31 +8,15 @@ import dev.lelonio.square.data.Quality
  *
  * The system's own estimate answers a different question: it reports the speed
  * of the radio link, which stays high behind a router that is throttling, a
- * captive network that is shaping, or a plan that has run out of fast data. A
- * phone can sit on a 300 Mbps wi-fi and receive 200 kbps, and the setting that
- * exists precisely for that case never noticed.
+ * captive network that is shaping, or a plan that has run out of fast data.
  *
- * So this watches what happens to the music. Two facts, both free:
- *
- * A **stall** is the honest one. If the sound stops while the player still
- * means to be playing, the buffer ran dry: whatever anyone estimated, it was
- * too much. One stall steps down immediately.
- *
- * A **slow load** is the early warning. The time between asking for a track and
- * hearing it is mostly the time spent fetching the first seconds of it, so a
- * load that takes longer than a track's worth of patience says the link is
- * behind before the music has had to stop.
- *
- * Coming back up is deliberately reluctant: several tracks in a row have to
- * load quickly and play through before the quality rises, because a link that
- * has just failed to carry 320 will happily fail again, and a listener notices
- * oscillation far more than they notice one step of bitrate.
- *
- * Nothing here rebuilds anything. The engine reads its bitrate when a track
- * loads, so a decision costs a message and is heard on the next song.
+ * This watcher is deliberately small and stateful, and is owned by the active
+ * Spotify player. It is not a second playback state authority: it only decides
+ * which bitrate the next track should request and records connection evidence.
  */
 class BandwidthWatch(
     private val onStep: (Int) -> Unit,
+    private val onMeasurement: (Measurement) -> Unit = {},
 ) {
     /** The step in use, in kbps: one of [Quality]'s three fixed values. */
     var current: Int = Quality.High.kbps
@@ -40,14 +24,29 @@ class BandwidthWatch(
 
     private var loadStartedAt = 0L
     private var loadingUri: String? = null
-
-    /** Tracks that have loaded quickly and played through since the last fall. */
     private var goodRun = 0
+    private var loadSequence = 0L
+    private var stalls = 0
+
+    /** Immutable diagnostic evidence for playback telemetry/tests. */
+    data class Measurement(
+        val sequence: Long,
+        val uri: String?,
+        val loadLatencyMs: Long?,
+        val stallCount: Int,
+        val selectedBitrateKbps: Int,
+        val reason: Reason,
+    )
+
+    enum class Reason { LOAD_COMPLETED, SLOW_LOAD, STALL, BITRATE_CHANGED }
 
     /** Where the ladder starts, when playback begins with no history. */
     fun start(from: Int) {
         current = from
         goodRun = 0
+        loadStartedAt = 0L
+        loadingUri = null
+        stalls = 0
     }
 
     /** The engine has begun loading [uri]. */
@@ -55,6 +54,7 @@ class BandwidthWatch(
         if (loadingUri == uri) return
         loadingUri = uri
         loadStartedAt = now
+        loadSequence++
     }
 
     /** [uri] is now playing: whatever it took to get here is the measurement. */
@@ -62,12 +62,14 @@ class BandwidthWatch(
         val started = loadStartedAt
         if (loadingUri != uri || started == 0L) return
         loadingUri = null
-        val took = now - started
+        val took = (now - started).coerceAtLeast(0L)
         if (took >= SLOW_LOAD_MS) {
             Log.i(TAG, "load took ${took}ms, stepping down")
+            emit(Measurement(loadSequence, uri, took, stalls, current, Reason.SLOW_LOAD))
             stepDown()
         } else {
             goodRun++
+            emit(Measurement(loadSequence, uri, took, stalls, current, Reason.LOAD_COMPLETED))
             if (goodRun >= GOOD_TRACKS_BEFORE_RISING) stepUp()
         }
     }
@@ -75,12 +77,14 @@ class BandwidthWatch(
     /**
      * The music stopped while it meant to be playing.
      *
-     * Reported by whoever is watching the position rather than measured here:
-     * the player is the only thing that knows the difference between a buffer
-     * that ran dry and a listener who pressed pause.
+     * Reported by the player position watcher rather than measured here: the
+     * player is the only thing that knows the difference between a buffer that
+     * ran dry and a listener who pressed pause.
      */
     fun stalled() {
+        stalls++
         Log.i(TAG, "the buffer ran dry, stepping down")
+        emit(Measurement(loadSequence, loadingUri, null, stalls, current, Reason.STALL))
         stepDown()
     }
 
@@ -108,20 +112,19 @@ class BandwidthWatch(
         if (kbps == current) return
         current = kbps
         Log.i(TAG, "asking for $kbps kbps from the next track")
+        emit(Measurement(loadSequence, loadingUri, null, stalls, current, Reason.BITRATE_CHANGED))
         onStep(kbps)
+    }
+
+    private fun emit(measurement: Measurement) {
+        runCatching { onMeasurement(measurement) }
+            .onFailure { Log.w(TAG, "playback telemetry callback failed", it) }
     }
 
     private companion object {
         const val TAG = "SquareBandwidth"
 
-        /**
-         * A load slower than this is taken as a link that cannot keep up.
-         *
-         * Generous on purpose: it also covers the access point answering, the
-         * key exchange and the first seconds of audio, and none of that is
-         * instant even on a good connection. What it must not do is fire on a
-         * link that is merely ordinary.
-         */
+        /** A load slower than this is evidence that the current quality is too high. */
         const val SLOW_LOAD_MS = 6_000L
 
         /** How many quick, unbroken tracks it takes to try the step above. */
