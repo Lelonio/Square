@@ -50,9 +50,17 @@ class PlaybackStateReducer(initial: PlaybackStateSnapshot = PlaybackStateSnapsho
         )
     }
 
-    fun setBuffering(buffering: Boolean) {
+    fun setBuffering(buffering: Boolean, playingWhenReady: Boolean = true) {
         if (state.currentMediaId == null) return
-        state = state.copy(status = if (buffering) PlaybackStatus.BUFFERING else state.status)
+        state = state.copy(
+            status = if (buffering) {
+                PlaybackStatus.BUFFERING
+            } else if (playingWhenReady) {
+                PlaybackStatus.PLAYING
+            } else {
+                PlaybackStatus.PAUSED
+            },
+        )
     }
 
     fun setSeeking() {
@@ -92,7 +100,10 @@ class PlaybackStateReducer(initial: PlaybackStateSnapshot = PlaybackStateSnapsho
     }
 
     fun clearError() {
-        state = state.copy(error = null)
+        state = state.copy(
+            status = if (state.currentMediaId == null) PlaybackStatus.IDLE else PlaybackStatus.PAUSED,
+            error = null,
+        )
     }
 
     fun reset() {
