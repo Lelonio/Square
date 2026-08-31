@@ -1,7 +1,5 @@
 package dev.lelonio.square.playback
 
-import androidx.media3.common.Player
-
 /**
  * Pure state transitions used by the playback layer.
  *
@@ -9,6 +7,9 @@ import androidx.media3.common.Player
  * intentionally not a replacement for Media3/PlaybackService; it provides a
  * deterministic contract for state mutation and a small seam for concurrency
  * and lifecycle tests.
+ *
+ * The reducer is expected to be confined to the playback owner (the service's
+ * application looper) if used for live state. It is not a global singleton.
  */
 class PlaybackStateReducer(initial: PlaybackStateSnapshot = PlaybackStateSnapshot()) {
     var state: PlaybackStateSnapshot = initial
@@ -96,7 +97,7 @@ class PlaybackStateReducer(initial: PlaybackStateSnapshot = PlaybackStateSnapsho
 
     fun reset() {
         state = PlaybackStateSnapshot(
-            repeatMode = Player.REPEAT_MODE_OFF,
+            repeatMode = 0,
             backendId = state.backendId,
         )
     }
