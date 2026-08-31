@@ -17,7 +17,8 @@ class YouTubeDownloadSourceResolver : DownloadSourceResolver {
     override val backend: BackendId = BackendId.YOUTUBE_MUSIC
 
     override suspend fun resolve(track: CatalogTrack, quality: DownloadQuality): ResolvedDownloadSource {
-        throw UnsupportedDownloadException(
+        throw PermanentDownloadException(
+            DownloadErrorCode.UNSUPPORTED,
             "YouTube Music does not expose an authorized offline download source to this backend",
         )
     }
