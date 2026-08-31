@@ -5,8 +5,8 @@ package dev.lelonio.square.playback
  *
  * The reducer has no Android lifecycle, coroutine, or backend dependency. It is
  * intentionally not a replacement for Media3/PlaybackService; it provides a
- * deterministic contract for state mutation and a small seam for concurrency
- * and lifecycle tests.
+ * deterministic contract for state mutation and a seam for concurrency and
+ * lifecycle tests.
  *
  * The reducer is expected to be confined to the playback owner (the service's
  * application looper) if used for live state. It is not a global singleton.
@@ -61,6 +61,16 @@ class PlaybackStateReducer(initial: PlaybackStateSnapshot = PlaybackStateSnapsho
                 PlaybackStatus.PAUSED
             },
         )
+    }
+
+    fun setRecovering(error: PlaybackError? = null) {
+        if (state.currentMediaId == null) return
+        state = state.copy(status = PlaybackStatus.RECOVERING, error = error)
+    }
+
+    fun setEnded() {
+        if (state.currentMediaId == null) return
+        state = state.copy(status = PlaybackStatus.ENDED)
     }
 
     fun setSeeking() {
