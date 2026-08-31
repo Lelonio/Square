@@ -22,10 +22,13 @@ class LocalMediaStorage(context: Context) {
         if (!isInsideRoot(file) || !file.isFile || file.length() <= 0L) return false
         if (expectedBytes > 0L && file.length() != expectedBytes) return false
         return runCatching {
-            MediaMetadataRetriever().use { retriever ->
+            val retriever = MediaMetadataRetriever()
+            try {
                 retriever.setDataSource(file.absolutePath)
                 retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                     ?.toLongOrNull()?.let { it > 0L } ?: false
+            } finally {
+                retriever.release()
             }
         }.getOrDefault(false)
     }
