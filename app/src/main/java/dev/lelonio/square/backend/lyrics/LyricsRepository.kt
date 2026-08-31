@@ -5,6 +5,7 @@ import dev.lelonio.square.backend.SearchLabels
 import dev.lelonio.square.data.CatalogTrack
 import dev.lelonio.square.data.Lyrics
 import dev.lelonio.square.data.SearchItem
+import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -25,15 +26,9 @@ sealed interface LyricsResult {
 
 enum class LyricsFailure { NETWORK, BACKEND_UNAVAILABLE, AUTH_REQUIRED, MALFORMED_RESPONSE }
 
-data class LyricsSearchResult(
-    val track: SearchItem,
-    val source: String,
-)
+data class LyricsSearchResult(val track: SearchItem, val source: String)
 
-/**
- * Small bounded TTL cache. Lyrics are ordinary content, not authentication
- * material, and the cache key includes backend identity to avoid cross-provider collisions.
- */
+/** Small bounded TTL cache keyed by provider identity and track URI. */
 class DefaultLyricsRepository(
     private val backendProvider: () -> MusicBackend?,
     private val offsetStore: LyricsOffsetStore,
@@ -50,26 +45,29 @@ class DefaultLyricsRepository(
         val backend = backendProvider() ?: return LyricsResult.Failed(LyricsFailure.BACKEND_UNAVAILABLE)
         val key = key(backend.id.name, track.uri)
         synchronized(cache) {
-            cache[key]?.takeIf { it.expiresAtMs > clockMs() }?.let { return LyricsResult.Found(it.lyrics, cached = true) }
+            cache[key]?.takeIf { it.expiresAtMs > clockMs() }?.let { return LyricsResult.Found(it.lyrics, true) }
             cache.remove(key)
         }
 
-        val lyrics = withContext(Dispatchers.IO) {
-            runCatching { backend.lyrics(track.uri, track.name, track.artist, track.durationMs) }.getOrNull()
-        } ?: return LyricsResult.Failed(LyricsFailure.NETWORK)
-
+        val call = withContext(Dispatchers.IO) {
+            runCatching { backend.lyrics(track.uri, track.name, track.artist, track.durationMs) }
+        }
+        val lyrics = call.getOrNull()
+        if (call.isFailure) return LyricsResult.Failed(LyricsFailure.NETWORK)
         if (lyrics == null || lyrics.lines.isEmpty()) return LyricsResult.Unavailable
+
         synchronized(cache) { cache[key] = Cached(lyrics, clockMs() + CACHE_TTL_MS) }
-        return LyricsResult.Found(lyrics, cached = false)
+        return LyricsResult.Found(lyrics, false)
     }
 
     override suspend fun search(query: String, labels: SearchLabels): List<LyricsSearchResult> {
         val normalized = query.trim()
         if (normalized.isEmpty()) return emptyList()
         val backend = backendProvider() ?: return emptyList()
-        val results = withContext(Dispatchers.IO) {
-            runCatching { backend.search(normalized, labels) }.getOrNull()
-        } ?: return emptyList()
+        val call = withContext(Dispatchers.IO) {
+            runCatching { backend.search(normalized, labels) }
+        }
+        val results = call.getOrNull() ?: return emptyList()
         val matches = results.lyricMatches
         return results.tracks.asSequence()
             .filter { matches.isEmpty() || matches.contains(it.uri) }
@@ -96,7 +94,7 @@ class DefaultLyricsRepository(
     }
 }
 
-/** Only stores harmless user timing offsets; no credentials or provider headers. */
+/** Stores only timing offsets; provider credentials and request material are never persisted. */
 interface LyricsOffsetStore {
     fun get(trackUri: String, source: String): Long
     fun set(trackUri: String, source: String, offsetMs: Long)
@@ -105,12 +103,16 @@ interface LyricsOffsetStore {
 class SharedPreferencesLyricsOffsetStore(
     private val preferences: android.content.SharedPreferences,
 ) : LyricsOffsetStore {
-    override fun get(trackUri: String, source: String): Long =
-        preferences.getLong(key(trackUri, source), 0L)
+    override fun get(trackUri: String, source: String): Long = preferences.getLong(key(trackUri, source), 0L)
 
     override fun set(trackUri: String, source: String, offsetMs: Long) {
         preferences.edit().putLong(key(trackUri, source), offsetMs).apply()
     }
 
-    private fun key(trackUri: String, source: String) = "lyrics_offset:${source.hashCode()}:$trackUri"
+    private fun key(trackUri: String, source: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("$source|$trackUri".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return "lyrics_offset:$digest"
+    }
 }
