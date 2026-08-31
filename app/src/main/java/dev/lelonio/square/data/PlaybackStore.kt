@@ -1,6 +1,7 @@
 package dev.lelonio.square.data
 
 import android.content.Context
+import android.util.Log
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -34,15 +35,19 @@ data class SavedPlayback(
  * Deliberately never records that playback was *running*: an app that starts
  * playing music by itself when opened is worse than one that forgets. The
  * restored session is always paused, ready at the right position.
+ *
+ * This class is persistence only. PlaybackService remains responsible for
+ * deciding when a snapshot is authoritative and for applying a restored
+ * snapshot to the live player.
  */
-class PlaybackStore(context: Context) {
+class PlaybackStore(context: Context) : PlaybackPersistence {
 
     private val prefs = context.applicationContext
         .getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun save(state: SavedPlayback) {
+    override fun save(state: SavedPlayback) {
         if (state.tracks.isEmpty()) {
             clear()
             return
@@ -65,16 +70,25 @@ class PlaybackStore(context: Context) {
             .apply()
     }
 
-    fun load(): SavedPlayback? {
+    override fun load(): SavedPlayback? {
         val raw = prefs.getString(KEY_STATE, null) ?: return null
-        return runCatching { json.decodeFromString(SavedPlayback.serializer(), raw) }
-            .getOrNull()
-            ?.takeIf { it.tracks.isNotEmpty() }
+        return try {
+            json.decodeFromString(SavedPlayback.serializer(), raw)
+                .takeIf { it.tracks.isNotEmpty() }
+        } catch (error: Exception) {
+            // Corrupt persisted state must not crash service recreation, but it
+            // also must not disappear silently. Clear only the invalid snapshot
+            // so the next service instance starts from a known empty state.
+            Log.e(TAG, "Discarding invalid persisted playback state", error)
+            clear()
+            null
+        }
     }
 
-    fun clear() = prefs.edit().remove(KEY_STATE).apply()
+    override fun clear() = prefs.edit().remove(KEY_STATE).apply()
 
     private companion object {
+        const val TAG = "PlaybackStore"
         const val FILE_NAME = "square_playback"
         const val KEY_STATE = "state"
         const val MAX_TRACKS = 200
