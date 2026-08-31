@@ -42,7 +42,12 @@ class PlaybackRecoveryPolicy(
         }
 
         val exponent = (attempt - 1).coerceAtMost(30)
-        val delay = (initialDelayMs * (1L shl exponent)).coerceAtMost(maxDelayMs)
+        val multiplier = 1L shl exponent
+        val delay = if (initialDelayMs > maxDelayMs / multiplier) {
+            maxDelayMs
+        } else {
+            (initialDelayMs * multiplier).coerceAtMost(maxDelayMs)
+        }
         return PlaybackRetryDecision(retry = true, delayMs = delay, attempt = attempt)
     }
 
