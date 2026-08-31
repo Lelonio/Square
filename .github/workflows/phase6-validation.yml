@@ -1,0 +1,26 @@
+name: Phase 6 validation
+
+on:
+  pull_request:
+    branches:
+      - feature/phase-5-search-library-discovery
+  push:
+    branches:
+      - feature/phase-6-advanced-dsp-lyrics
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Unit tests
+        run: ./gradlew test --stacktrace
+      - name: Lint
+        run: ./gradlew lint --stacktrace
+      - name: Debug build
+        run: ./gradlew assembleDebug --stacktrace
