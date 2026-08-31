@@ -1,7 +1,5 @@
 package dev.lelonio.square.playback
 
-import androidx.media3.common.Player
-
 /**
  * Framework-neutral lifecycle classification for the playback layer.
  *
@@ -27,6 +25,10 @@ enum class PlaybackStatus {
  * The playback service/player is the authority that produces this state. UI
  * layers should only derive presentation state from it and never mutate or
  * independently persist a competing copy.
+ *
+ * `repeatMode` deliberately remains an integer at this boundary because the
+ * live Media3 player owns the framework-specific enum/constants. Mapping to
+ * that API belongs at the playback boundary, not in the domain model.
  */
 data class PlaybackStateSnapshot(
     val currentMediaId: String? = null,
@@ -35,7 +37,7 @@ data class PlaybackStateSnapshot(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val status: PlaybackStatus = PlaybackStatus.IDLE,
-    val repeatMode: Int = Player.REPEAT_MODE_OFF,
+    val repeatMode: Int = 0,
     val shuffleEnabled: Boolean = false,
     val backendId: String? = null,
     val error: PlaybackError? = null,
