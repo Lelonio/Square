@@ -145,13 +145,26 @@ Shuffle and repeat semantics remain implemented by the existing queue/player beh
 
 ## Validation record
 
-The repository is hosted remotely and this execution environment does not contain a checkout. A direct network checkout attempt was made with `git ls-remote` and failed at DNS resolution:
+The repository is hosted remotely and this execution environment does not contain a checkout. A direct network checkout attempt was made with `git ls-remote` and failed:
 
 ```text
 fatal: unable to access 'https://github.com/abdulrehman958280-max/SPOTLIGHT.git/':
 Could not resolve host: github.com
 ```
 
-Therefore `./gradlew test`, `./gradlew lint`, and `./gradlew assembleDebug` could not be executed locally in this run. No successful build/test result is claimed.
+The requested Gradle commands were also attempted in the only available local workspace (`/mnt/data`), which does not contain the repository checkout:
 
-The branch was created from the existing Phase 0 audit branch, and the implementation diff was cross-checked against that branch before documentation. The change set is limited to the new architecture/state contract, persistence boundary/logging correction, tests, and this documentation.
+```text
+$ ./gradlew test
+bash: line 1: ./gradlew: No such file or directory
+
+$ ./gradlew lint
+bash: line 1: ./gradlew: No such file or directory
+
+$ ./gradlew assembleDebug
+bash: line 1: ./gradlew: No such file or directory
+```
+
+Consequently, no successful Gradle build/test result is claimed. Rust checks could not be run for the same reason. Runtime Android lifecycle tests and backend playback regression tests likewise remain unverified in this environment.
+
+The implementation branch was created from the existing Phase 0 audit branch. A repository compare against that branch verified that the Phase 1 diff contains only the architecture/state contract, playback persistence boundary/logging correction, test coverage, one test dependency, and this documentation; no Spotify/librespot or YouTube implementation rewrite was introduced.
