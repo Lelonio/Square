@@ -9,10 +9,9 @@ import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Backend-independent lyrics boundary. Provider implementations stay behind MusicBackend. */
 interface LyricsRepository {
     suspend fun get(track: CatalogTrack): LyricsResult
-    suspend fun search(query: String, labels: SearchLabels): List<LyricsSearchResult>
+    suspend fun search(query: String, labels: SearchLabels): LyricsSearchResponse
     fun offsetMs(trackUri: String, source: String): Long
     fun setOffsetMs(trackUri: String, source: String, offsetMs: Long)
     fun clearCache()
@@ -28,7 +27,12 @@ enum class LyricsFailure { NETWORK, BACKEND_UNAVAILABLE, AUTH_REQUIRED, MALFORME
 
 data class LyricsSearchResult(val track: SearchItem, val source: String)
 
-/** Small bounded TTL cache keyed by provider identity and track URI. */
+sealed interface LyricsSearchResponse {
+    data class Found(val results: List<LyricsSearchResult>) : LyricsSearchResponse
+    data class Failed(val reason: LyricsFailure) : LyricsSearchResponse
+}
+
+/** Bounded in-memory TTL cache; key includes backend identity and track URI. */
 class DefaultLyricsRepository(
     private val backendProvider: () -> MusicBackend?,
     private val offsetStore: LyricsOffsetStore,
@@ -55,25 +59,25 @@ class DefaultLyricsRepository(
         val lyrics = call.getOrNull()
         if (call.isFailure) return LyricsResult.Failed(LyricsFailure.NETWORK)
         if (lyrics == null || lyrics.lines.isEmpty()) return LyricsResult.Unavailable
-
         synchronized(cache) { cache[key] = Cached(lyrics, clockMs() + CACHE_TTL_MS) }
         return LyricsResult.Found(lyrics, false)
     }
 
-    override suspend fun search(query: String, labels: SearchLabels): List<LyricsSearchResult> {
+    override suspend fun search(query: String, labels: SearchLabels): LyricsSearchResponse {
         val normalized = query.trim()
-        if (normalized.isEmpty()) return emptyList()
-        val backend = backendProvider() ?: return emptyList()
+        if (normalized.isEmpty()) return LyricsSearchResponse.Found(emptyList())
+        val backend = backendProvider() ?: return LyricsSearchResponse.Failed(LyricsFailure.BACKEND_UNAVAILABLE)
         val call = withContext(Dispatchers.IO) {
             runCatching { backend.search(normalized, labels) }
         }
-        val results = call.getOrNull() ?: return emptyList()
+        val results = call.getOrNull() ?: return LyricsSearchResponse.Failed(LyricsFailure.NETWORK)
         val matches = results.lyricMatches
-        return results.tracks.asSequence()
+        val mapped = results.tracks.asSequence()
             .filter { matches.isEmpty() || matches.contains(it.uri) }
             .take(MAX_SEARCH_RESULTS)
             .map { LyricsSearchResult(SearchItem(it.uri, it.name, it.artist, it.artworkUrl), backend.id.name) }
             .toList()
+        return LyricsSearchResponse.Found(mapped)
     }
 
     override fun offsetMs(trackUri: String, source: String): Long = offsetStore.get(trackUri, source)
@@ -94,7 +98,6 @@ class DefaultLyricsRepository(
     }
 }
 
-/** Stores only timing offsets; provider credentials and request material are never persisted. */
 interface LyricsOffsetStore {
     fun get(trackUri: String, source: String): Long
     fun set(trackUri: String, source: String, offsetMs: Long)
