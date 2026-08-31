@@ -34,7 +34,6 @@ data class AdvancedDspConfig(
     val equalizer: List<EqualizerBand> = emptyList(),
     val virtualizer: Float = 0f,
     val reverb: Float = 0f,
-    /** Only measured/metadata-derived gain is accepted; no loudness is guessed. */
     val normalizationGainDb: Float? = null,
     val limiterEnabled: Boolean = true,
 ) {
@@ -63,7 +62,7 @@ private class GainStage : DspStage {
     }
 }
 
-/** Fixed-size biquad bank: coefficient/state arrays are reused by the audio thread. */
+/** Fixed-size biquad bank with reusable coefficient/state arrays. */
 private class BiquadStage : DspStage {
     private var format = DspFormat(48_000, 2)
     private val b0 = FloatArray(MAX_BANDS)
@@ -75,20 +74,21 @@ private class BiquadStage : DspStage {
     private var z1 = FloatArray(0)
     private var z2 = FloatArray(0)
 
-    /** Called from the control path and allocation-free after construction. */
     fun setBands(bands: List<EqualizerBand>, bassBoostDb: Float) {
         count = 0
-        if (bassBoostDb > 0f) addBand(EqualizerBand(90f, bassBoostDb, 0.7f))
-        for (band in bands) {
-            if (count == MAX_BANDS) break
-            addBand(band)
+        if (bassBoostDb > 0f) addBand(90f, bassBoostDb, 0.7f)
+        var index = 0
+        while (index < bands.size && count < MAX_BANDS) {
+            val band = bands[index]
+            addBand(band.frequencyHz, band.gainDb, band.q)
+            index++
         }
     }
 
-    private fun addBand(band: EqualizerBand) {
-        val a = 10f.pow(band.gainDb / 40f)
-        val omega = (2.0 * Math.PI * band.frequencyHz / format.sampleRate).toFloat()
-        val alpha = sin(omega) / (2f * band.q)
+    private fun addBand(frequencyHz: Float, gainDb: Float, q: Float) {
+        val a = 10f.pow(gainDb / 40f)
+        val omega = (2.0 * Math.PI * frequencyHz / format.sampleRate).toFloat()
+        val alpha = sin(omega) / (2f * q)
         val cosOmega = cos(omega)
         val normalizer = 1f + alpha / a
         b0[count] = (1f + alpha * a) / normalizer
@@ -213,7 +213,7 @@ private class LimiterStage : DspStage {
 
 /**
  * Media3 PCM processor for local/ExoPlayer playback. Spotify's native sink keeps
- * its established speed/pitch/reverb path; this processor does not alter that contract.
+ * its established speed/pitch/reverb path; no provider-specific contract changes.
  */
 @OptIn(UnstableApi::class)
 class AdvancedDspAudioProcessor : BaseAudioProcessor() {
@@ -257,8 +257,6 @@ class AdvancedDspAudioProcessor : BaseAudioProcessor() {
     override fun onReset() = onFlush()
 
     override fun queueInput(inputBuffer: ByteBuffer) {
-        // StateFlow.value is an atomic control-plane read. setConfiguration is
-        // allocation-free, so a changed snapshot cannot introduce a real-time allocation.
         val latest = AudioEffects.dsp.value
         if (latest !== configuration) setConfiguration(latest)
         val config = configuration
@@ -275,7 +273,6 @@ class AdvancedDspAudioProcessor : BaseAudioProcessor() {
         val frames = size / (format.channelCount * 2)
         val sampleCount = frames * format.channelCount
         if (sampleCount > workBuffer.size) {
-            // Preserve audio rather than allocating or dropping a decoder packet.
             replaceOutputBuffer(size).put(inputBuffer).flip()
             return
         }
