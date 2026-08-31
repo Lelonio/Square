@@ -11,13 +11,22 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import java.nio.ByteBuffer
 
 /**
- * Speed and pitch for players that are not the Spotify engine.
+ * Speed and pitch for the players that are not the Spotify engine.
  *
- * Spotify's PCM path retains its existing native stretcher; local/ExoPlayer
- * playback uses this processor so music gets the same phase-vocoder treatment.
+ * Spotify's audio goes through the app's own sink, where a phase vocoder does
+ * this work; a file on the phone goes through ExoPlayer, which has its own
+ * stretcher built for speech. On music that one smears every attack and adds a
+ * metallic edge, which is exactly what the same track sounds like on the two
+ * paths at the same setting. This puts the same vocoder in ExoPlayer's chain,
+ * so a song is altered the same way whatever it was read from.
+ *
+ * Sixteen-bit PCM only. Everything the decoders here hand over is that, and a
+ * format this cannot take is passed through rather than refused: an untouched
+ * song is a much better answer than silence.
  */
 @OptIn(UnstableApi::class)
 class BungeeAudioProcessor : BaseAudioProcessor() {
+
     private var stretcher: Stretcher? = null
     private var speed = 1f
     private var pitch = 1f
@@ -30,14 +39,19 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
 
     val isAltering: Boolean get() = speed != 1f || pitch != 1f
 
-    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+    override fun onConfigure(
+        inputAudioFormat: AudioProcessor.AudioFormat,
+    ): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
         return inputAudioFormat
     }
 
-    override fun onFlush() = Unit
+    override fun onFlush() {
+        // Kept, deliberately. The stretcher retains its short analysis window
+        // across parameter changes so a slider update does not create a hole.
+    }
 
     override fun onReset() {
         stretcher?.release()
@@ -54,7 +68,8 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
         }
 
         val frames = size / (inputAudioFormat.channelCount * BYTES_PER_SAMPLE)
-        val produced = stretcher(frames)?.process(inputBuffer, size, speed, pitch)
+        val stretcher = stretcher(frames)
+        val produced = stretcher?.process(inputBuffer, size, speed, pitch)
         if (produced == null) {
             if (!failureReported) {
                 failureReported = true
@@ -71,7 +86,9 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
         val rate = inputAudioFormat.sampleRate
         val channels = inputAudioFormat.channelCount
         val existing = stretcher
-        if (existing != null && frames <= maxFrames && rate == builtForRate && channels == builtForChannels) {
+        if (existing != null && frames <= maxFrames && rate == builtForRate &&
+            channels == builtForChannels
+        ) {
             return existing
         }
         existing?.release()
@@ -92,7 +109,7 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
     }
 }
 
-/** Removes centre-panned vocals before time-stretching, where requested by the UI. */
+/** Vocal removal remains upstream of stretching because it relies on stereo centre extraction. */
 @OptIn(UnstableApi::class)
 class VocalAudioProcessor : BaseAudioProcessor() {
     private val vocals = CentreExtractor()
@@ -113,7 +130,13 @@ class VocalAudioProcessor : BaseAudioProcessor() {
         out.put(inputBuffer)
         out.position(start)
         if (amount > 0f) {
-            vocals.apply(out, size, inputAudioFormat.channelCount, inputAudioFormat.sampleRate, amount)
+            vocals.apply(
+                out,
+                size,
+                inputAudioFormat.channelCount,
+                inputAudioFormat.sampleRate,
+                amount,
+            )
         }
         out.position(start)
         out.limit(start + size)
@@ -126,12 +149,9 @@ class BungeeProcessorChain(
     private val advanced: AdvancedDspAudioProcessor = AdvancedDspAudioProcessor(),
 ) : DefaultAudioSink.AudioProcessorChain {
     private var parameters = PlaybackParameters.DEFAULT
+    private val vocals = VocalAudioProcessor()
 
-    override fun getAudioProcessors(): Array<AudioProcessor> = arrayOf(
-        VocalAudioProcessor(),
-        advanced,
-        bungee,
-    )
+    override fun getAudioProcessors(): Array<AudioProcessor> = arrayOf(vocals, advanced, bungee)
 
     override fun applyPlaybackParameters(playbackParameters: PlaybackParameters): PlaybackParameters {
         parameters = playbackParameters
