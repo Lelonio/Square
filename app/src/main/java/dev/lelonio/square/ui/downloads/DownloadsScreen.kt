@@ -41,7 +41,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** UI over the persistent Phase 3 download state; it owns no download truth. */
 @Composable
 fun DownloadsScreen(
     contentPadding: PaddingValues,
@@ -82,16 +81,15 @@ fun DownloadsScreen(
                 )
             }
         }
-
         item("preferences") {
             DownloadPreferencesCard(
+                backdrop = backdrop,
                 wifiOnly = wifiOnly,
                 quality = quality,
                 onWifiOnly = manager::setWifiOnly,
                 onQuality = manager::setQuality,
             )
         }
-
         if (records.isEmpty()) {
             item("empty") {
                 UiStateSurface(
@@ -120,6 +118,7 @@ fun DownloadsScreen(
 
 @Composable
 private fun DownloadPreferencesCard(
+    backdrop: Backdrop,
     wifiOnly: Boolean,
     quality: DownloadQuality,
     onWifiOnly: (Boolean) -> Unit,
@@ -141,10 +140,12 @@ private fun DownloadPreferencesCard(
         )
         Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             DownloadQuality.entries.forEach { option ->
-                LiquidButton(
-                    onClick = { onQuality(option) },
-                    backdrop = remember { error("Download preference backdrop is supplied by parent") },
-                ) { }
+                LiquidButton(onClick = { onQuality(option) }, backdrop = backdrop) {
+                    Text(
+                        option.name,
+                        color = if (option == quality) Ink else InkDim,
+                    )
+                }
             }
         }
     }
@@ -168,13 +169,7 @@ private fun DownloadRow(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Artwork(
-                url = record.track.artworkUrl,
-                title = title,
-                modifier = Modifier.size(60.dp),
-                corner = 14.dp,
-                decodeSize = 60.dp,
-            )
+            Artwork(url = record.track.artworkUrl, title = title, modifier = Modifier.size(60.dp), corner = 14.dp, decodeSize = 60.dp)
             Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                 Text(title, color = Ink, style = androidx.compose.material3.MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(record.track.artist, color = InkDim, style = androidx.compose.material3.MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -189,15 +184,8 @@ private fun DownloadRow(
             }
         }
         if (record.status == DownloadStatus.DOWNLOADING || record.status == DownloadStatus.PREPARING) {
-            LinearProgressIndicator(
-                progress = { record.progress.coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                formatProgress(record.downloadedBytes, record.totalBytes),
-                color = InkDim,
-                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-            )
+            LinearProgressIndicator(progress = { record.progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+            Text(formatProgress(record.downloadedBytes, record.totalBytes), color = InkDim, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
         }
         if (record.status == DownloadStatus.COMPLETED || record.status == DownloadStatus.FAILED || record.status == DownloadStatus.UNAVAILABLE) {
             LiquidButton(onClick = onDelete, backdrop = backdrop) { Text(stringResource(R.string.download_delete), color = Ink) }
