@@ -202,6 +202,7 @@ dependencies {
     implementation(libs.kyant.shapes)
     implementation(libs.phosphor)
 
+    testImplementation("org.jetbrains.kotlin:kotlin-test:2.3.21")
     coreLibraryDesugaring(libs.desugaring)
 }
 
