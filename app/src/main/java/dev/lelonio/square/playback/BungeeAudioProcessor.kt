@@ -30,16 +30,8 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
     private var stretcher: Stretcher? = null
     private var speed = 1f
     private var pitch = 1f
-
-    /** Logged once rather than per packet, which would be several a second. */
     private var failureReported = false
 
-    /**
-     * Set from the sink's chain when the listener moves either slider.
-     *
-     * The stretcher takes them per packet, so nothing has to be rebuilt: what
-     * is playing changes on the next few milliseconds of audio.
-     */
     fun setSpeedAndPitch(speed: Float, pitch: Float) {
         this.speed = speed
         this.pitch = pitch
@@ -57,19 +49,8 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
     }
 
     override fun onFlush() {
-        // Kept, deliberately.
-        //
-        // The sink flushes its processors whenever the parameters change, and
-        // throwing the vocoder away here meant the next packet arrived at a
-        // stretcher with an empty window: it has to fill one before it can
-        // resynthesise anything, and that silence is the hole heard when the
-        // speed slider moves. What it carries over instead is a few tens of
-        // milliseconds of the audio before the change, which after a seek is
-        // the only cost — and one nobody can hear.
-        //
-        // The format is a different matter: a stretcher is built for a sample
-        // rate and a channel count, and a track with either different needs a
-        // new one. That is what [stretcher] checks.
+        // Kept, deliberately. The stretcher retains its short analysis window
+        // across parameter changes so a slider update does not create a hole.
     }
 
     override fun onReset() {
@@ -81,9 +62,6 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
     override fun queueInput(inputBuffer: ByteBuffer) {
         val size = inputBuffer.remaining()
         if (size == 0) return
-
-        // Nothing to do at rest, and doing nothing is worth the check: this
-        // runs on the audio thread for every packet of every track.
         if (!isAltering) {
             replaceOutputBuffer(size).put(inputBuffer).flip()
             return
@@ -97,17 +75,13 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
                 failureReported = true
                 android.util.Log.w(TAG, "stretcher unavailable, playing untouched")
             }
-            // Position is already past what was read on the failed attempt for
-            // a partial read; take what is left rather than dropping the packet.
             val remaining = inputBuffer.remaining()
             if (remaining > 0) replaceOutputBuffer(remaining).put(inputBuffer).flip()
             return
         }
-
         replaceOutputBuffer(produced.remaining()).put(produced).flip()
     }
 
-    /** One stretcher per format, sized for the largest packet seen so far. */
     private fun stretcher(frames: Int): Stretcher? {
         val rate = inputAudioFormat.sampleRate
         val channels = inputAudioFormat.channelCount
@@ -117,7 +91,6 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
         ) {
             return existing
         }
-
         existing?.release()
         maxFrames = maxOf(frames, maxFrames, MIN_PACKET_FRAMES)
         builtForRate = rate
@@ -132,35 +105,16 @@ class BungeeAudioProcessor : BaseAudioProcessor() {
     private companion object {
         const val TAG = "SquareStretch"
         const val BYTES_PER_SAMPLE = 2
-
-        /** A decoder's packet, with room to spare, so the first one fits. */
         const val MIN_PACKET_FRAMES = 8192
     }
 }
 
-/**
- * The sink's chain, with the vocoder in it instead of the platform's stretcher.
- *
- * ExoPlayer asks the chain to apply speed and pitch, and asks it afterwards how
- * long the audio it has played was in media time. Both answers have to come
- * from whoever is doing the stretching, or the position on screen runs at a
- * different rate from the sound.
- */
-/**
- * The same vocal removal, for the players that are not the Spotify engine.
- *
- * In the chain before the stretcher, because the trick rests on what the two
- * channels have in common and a resynthesised pair no longer has the same two.
- * See [CentreExtractor].
- */
+/** Vocal removal remains upstream of stretching because it relies on stereo centre extraction. */
 @OptIn(UnstableApi::class)
 class VocalAudioProcessor : BaseAudioProcessor() {
-
     private val vocals = CentreExtractor()
 
-    override fun onConfigure(
-        inputAudioFormat: AudioProcessor.AudioFormat,
-    ): AudioProcessor.AudioFormat {
+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
@@ -170,7 +124,6 @@ class VocalAudioProcessor : BaseAudioProcessor() {
     override fun queueInput(inputBuffer: ByteBuffer) {
         val size = inputBuffer.remaining()
         if (size == 0) return
-
         val amount = AudioEffects.karaoke.value
         val out = replaceOutputBuffer(size)
         val start = out.position()
@@ -193,28 +146,24 @@ class VocalAudioProcessor : BaseAudioProcessor() {
 @OptIn(UnstableApi::class)
 class BungeeProcessorChain(
     private val bungee: BungeeAudioProcessor = BungeeAudioProcessor(),
+    private val advanced: AdvancedDspAudioProcessor = AdvancedDspAudioProcessor(),
 ) : DefaultAudioSink.AudioProcessorChain {
-
     private var parameters = PlaybackParameters.DEFAULT
-
     private val vocals = VocalAudioProcessor()
 
-    override fun getAudioProcessors(): Array<AudioProcessor> = arrayOf(vocals, bungee)
+    override fun getAudioProcessors(): Array<AudioProcessor> = arrayOf(vocals, advanced, bungee)
 
-    override fun applyPlaybackParameters(
-        playbackParameters: PlaybackParameters,
-    ): PlaybackParameters {
+    override fun applyPlaybackParameters(playbackParameters: PlaybackParameters): PlaybackParameters {
         parameters = playbackParameters
         bungee.setSpeedAndPitch(playbackParameters.speed, playbackParameters.pitch)
+        advanced.setConfiguration(AudioEffects.dsp.value)
         return playbackParameters
     }
 
     override fun applySkipSilenceEnabled(skipSilenceEnabled: Boolean): Boolean = false
 
-    /** How much media a stretch of playing covers, which is the speed itself. */
     override fun getMediaDuration(playoutDuration: Long): Long =
         Util.getMediaDurationForPlayoutDuration(playoutDuration, parameters.speed)
 
-    /** Nothing is dropped here; silence is skipped by nobody in this chain. */
     override fun getSkippedOutputFrameCount(): Long = 0
 }

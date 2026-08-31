@@ -9,108 +9,90 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
-/**
- * A named speed / pitch / reverb combination.
- *
- * @param id stable across renames and restarts; the name is not unique because
- *   nothing stops the user from saving "test" twice.
- */
+/** A persisted, provider-independent playback/DSP configuration preset. */
 @Serializable
 data class EffectPreset(
     val id: String,
     val name: String,
     val speed: Float,
     val pitch: Float,
-    /**
-     * Reverb amount, 0 to 1.
-     *
-     * Named differently from the enum this replaced, and given a default, so a
-     * preset saved by an older build still loads: the unknown key is ignored and
-     * the amount falls back to dry rather than the whole stored list failing to
-     * parse.
-     */
     val reverbAmount: Float = 0f,
-    /** Built-ins cannot be deleted, so the UI hides the control for them. */
+    val dsp: AdvancedDspConfig = AdvancedDspConfig(),
     val builtIn: Boolean = false,
 ) {
-    /** True when playback currently sounds like this preset. */
     fun matches(speed: Float, pitch: Float, reverb: Float): Boolean =
         kotlin.math.abs(this.speed - speed) < TOLERANCE &&
             kotlin.math.abs(this.pitch - pitch) < TOLERANCE &&
             kotlin.math.abs(this.reverbAmount - reverb) < TOLERANCE
 
-    companion object {
-        /**
-         * Sliders produce values like 0.8499999; comparing them exactly would
-         * leave a preset looking unselected right after it was applied.
-         */
-        private const val TOLERANCE = 0.005f
-    }
+    fun matches(speed: Float, pitch: Float, reverb: Float, dsp: AdvancedDspConfig): Boolean =
+        matches(speed, pitch, reverb) && this.dsp == dsp
+
+    companion object { private const val TOLERANCE = 0.005f }
 }
 
-/**
- * The presets everyone gets.
- *
- * Named the way these edits are actually labelled rather than translated. Both
- * move pitch and tempo together, which is the convention they follow: changing
- * only tempo is a different effect and sounds wrong to anyone expecting these.
- */
-val BuiltInPresets = listOf(
-    EffectPreset(
-        id = "original",
-        name = "Originale",
-        speed = 1f,
-        pitch = 1f,
-        reverbAmount = 0f,
-        builtIn = true,
-    ),
-    EffectPreset(
-        id = "slowed",
-        name = "Slowed + Reverb",
-        // A slowed edit is usually somewhere near 0.85; further down and vocals
-        // start to sound obviously dragged rather than dreamy.
-        speed = 0.85f,
-        pitch = 0.92f,
-        reverbAmount = 0.55f,
-        builtIn = true,
-    ),
-    EffectPreset(
-        id = "sped_up",
-        name = "Sped Up",
-        // 1.25 is where these edits sit: fast enough to be the point, short of
-        // the chipmunk register that starts around 1.4.
-        speed = 1.25f,
-        pitch = 1.25f,
-        reverbAmount = 0f,
-        builtIn = true,
-    ),
+private fun presetDsp(
+    gainDb: Float = 0f,
+    bassBoostDb: Float = 0f,
+    equalizer: List<EqualizerBand> = emptyList(),
+    virtualizer: Float = 0f,
+    reverb: Float = 0f,
+): AdvancedDspConfig = AdvancedDspConfig(
+    enabled = gainDb != 0f || bassBoostDb != 0f || equalizer.isNotEmpty() || virtualizer != 0f || reverb != 0f,
+    gainDb = gainDb,
+    bassBoostDb = bassBoostDb,
+    equalizer = equalizer,
+    virtualizer = virtualizer,
+    reverb = reverb,
+    limiterEnabled = true,
 )
 
-/**
- * Stores the user's own presets.
- *
- * Only the saved *library* is persisted, not which one is playing: an app that
- * reopened already pitched down would look broken, and the cause would not be
- * obvious. Applying a preset stays an explicit action.
- */
-class EffectPresetStore(context: Context) {
+/** Actual effect configurations, not UI-only labels. */
+val BuiltInPresets = listOf(
+    EffectPreset("normal", "Normal", 1f, 1f, 0f, presetDsp(), true),
+    EffectPreset("bass_boost", "Bass Boost", 1f, 1f, 0f, presetDsp(bassBoostDb = 4f), true),
+    EffectPreset("vocal", "Vocal", 1f, 1f, 0f, presetDsp(equalizer = listOf(
+        EqualizerBand(250f, -2f), EqualizerBand(2_500f, 3f), EqualizerBand(6_000f, 2f),
+    )), true),
+    EffectPreset("rock", "Rock", 1f, 1f, 0f, presetDsp(equalizer = listOf(
+        EqualizerBand(80f, 3f), EqualizerBand(400f, -1f), EqualizerBand(2_500f, 2f), EqualizerBand(8_000f, 3f),
+    )), true),
+    EffectPreset("classical", "Classical", 1f, 1f, 0f, presetDsp(equalizer = listOf(
+        EqualizerBand(100f, 2f), EqualizerBand(1_000f, -1f), EqualizerBand(6_000f, 2f),
+    )), true),
+    EffectPreset("night", "Night", 1f, 1f, 0f, presetDsp(equalizer = listOf(
+        EqualizerBand(100f, 2f), EqualizerBand(2_500f, -2f), EqualizerBand(8_000f, -4f),
+    ), gainDb = -3f), true),
+    EffectPreset("podcast", "Podcast", 1f, 1f, 0f, presetDsp(equalizer = listOf(
+        EqualizerBand(100f, -4f), EqualizerBand(1_500f, 3f), EqualizerBand(4_500f, 2f),
+    )), true),
+    EffectPreset("slowed", "Slowed + Reverb", 0.85f, 0.92f, 0.55f, presetDsp(reverb = 0.55f), true),
+    EffectPreset("sped_up", "Sped Up", 1.25f, 1.25f, 0f, presetDsp(), true),
+)
 
+/** Stores user presets while keeping built-ins immutable. */
+class EffectPresetStore(context: Context) {
     private val app = context.applicationContext
     private val prefs = context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
     private val json = Json { ignoreUnknownKeys = true }
-
     private val _custom = MutableStateFlow(load())
 
-    /** Built-ins first, then the user's own in the order they were saved. */
     val presets: StateFlow<List<EffectPreset>> = _custom.asStateFlow()
 
-    fun save(name: String, speed: Float, pitch: Float, reverb: Float): EffectPreset {
+    fun save(
+        name: String,
+        speed: Float,
+        pitch: Float,
+        reverb: Float,
+        dsp: AdvancedDspConfig = AdvancedDspConfig(),
+    ): EffectPreset {
         val preset = EffectPreset(
             id = java.util.UUID.randomUUID().toString(),
             name = name.trim().ifEmpty { app.getString(R.string.unnamed) },
-            speed = speed,
-            pitch = pitch,
-            reverbAmount = reverb,
+            speed = speed.coerceIn(0.5f, 2f),
+            pitch = pitch.coerceIn(0.5f, 2f),
+            reverbAmount = reverb.coerceIn(0f, 1f),
+            dsp = dsp,
         )
         _custom.value = _custom.value + preset
         persist()
@@ -123,15 +105,11 @@ class EffectPresetStore(context: Context) {
     }
 
     private fun persist() {
-        prefs.edit()
-            .putString(KEY_PRESETS, json.encodeToString(serializer, _custom.value))
-            .apply()
+        prefs.edit().putString(KEY_PRESETS, json.encodeToString(serializer, _custom.value)).apply()
     }
 
     private fun load(): List<EffectPreset> {
         val raw = prefs.getString(KEY_PRESETS, null) ?: return emptyList()
-        // A stored list that no longer parses is dropped rather than crashing
-        // the player: these are conveniences, not data worth failing over.
         return runCatching { json.decodeFromString(serializer, raw) }.getOrDefault(emptyList())
     }
 
