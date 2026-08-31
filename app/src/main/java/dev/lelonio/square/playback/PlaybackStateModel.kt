@@ -3,10 +3,8 @@ package dev.lelonio.square.playback
 /**
  * Framework-neutral lifecycle classification for the playback layer.
  *
- * This is deliberately smaller than Media3's event surface. Media3 remains the
- * actual playback engine; this model gives the application one vocabulary for
- * presenting durable playback state and for testing state transitions without
- * constructing a Player.
+ * Media3 remains the actual playback engine. This vocabulary is for durable
+ * application state and deterministic tests around asynchronous transitions.
  */
 enum class PlaybackStatus {
     IDLE,
@@ -15,6 +13,7 @@ enum class PlaybackStatus {
     PLAYING,
     PAUSED,
     SEEKING,
+    RECOVERING,
     ENDED,
     ERROR,
 }
@@ -22,13 +21,9 @@ enum class PlaybackStatus {
 /**
  * Immutable application playback state.
  *
- * The playback service/player is the authority that produces this state. UI
- * layers should only derive presentation state from it and never mutate or
+ * The playback service/player is the runtime authority that produces this
+ * state. UI layers derive presentation state from it and never mutate or
  * independently persist a competing copy.
- *
- * `repeatMode` deliberately remains an integer at this boundary because the
- * live Media3 player owns the framework-specific enum/constants. Mapping to
- * that API belongs at the playback boundary, not in the domain model.
  */
 data class PlaybackStateSnapshot(
     val currentMediaId: String? = null,
