@@ -10,8 +10,8 @@ flowchart TD
     DM --> Q[Persistent download queue]
     Q --> W[WorkManager DownloadWorker]
     W --> R[Provider DownloadSourceResolver]
-    R --> YT[YouTube / NewPipe stream resolver]
-    W --> D[Downloader / OkHttp]
+    R --> CAP[Provider-authorized offline capability]
+    CAP --> D[Downloader / OkHttp]
     D --> T[.partial temp file]
     T --> V[Media validation]
     V --> A[Atomic finalization]
@@ -21,24 +21,20 @@ flowchart TD
     P --> PB[Existing PlaybackService]
 ```
 
-## Provider boundary
+## Provider boundary and legal/contract limitation
 
-`MusicBackend` is intentionally unchanged. Download capability is a separate capability because a catalogue backend does not necessarily expose a stable, offline-safe media reference.
+`MusicBackend` is intentionally unchanged. Download capability is a separate capability because a catalogue/playback backend does not necessarily expose an authorized offline-media reference.
 
-- **YouTube Music:** supported through the existing NewPipe stream-resolution path. Stream URLs are resolved at download time and are never persisted because they are short-lived.
-- **Spotify/librespot:** explicitly unsupported in Phase 3. The inspected Spotify path exposes playback through the native librespot engine, not a legitimate downloadable media URL. The download layer therefore records `UNAVAILABLE` instead of attempting to capture or persist protected playback data.
+- **Spotify/librespot:** unsupported. The inspected Spotify path plays through the native librespot engine and does not expose an authorized downloadable media reference. Spotify's developer terms also prohibit stream ripping/capturing streamed content; this subsystem does not attempt to capture native playback.
+- **YouTube Music:** unsupported by the current repository backend. The existing player resolves short-lived stream URLs for online playback, but those URLs are not treated as an authorization to create permanent copies. YouTube's current Terms prohibit downloading Content except where expressly authorized by the Service or with permission. The public backend in this repository exposes no authorized offline-media reference, so `YouTubeDownloadSourceResolver` fails closed with `UNSUPPORTED` rather than turning NewPipe stream URLs into downloads.
 
-Provider-specific quality selection stays inside the resolver. The current YouTube implementation selects the highest available audio stream at or below the requested bitrate when possible.
+This means the download manager, persistence, storage, security, scheduling, reconciliation, and offline-resolution infrastructure is implemented and ready for a provider that supplies an explicitly authorized offline source. **Actual provider-backed downloads are not claimed as working in this phase because the inspected provider contracts do not support the required operation.**
 
 ## Persistent state
 
 State is stored in `filesDir/downloads/state.json` and written using a temporary file followed by an atomic move when supported. Records contain the logical track identity, provider, requested quality, status, progress, byte counters, timestamps, error classification, and collection membership. Raw stream URLs, cookies, access tokens, and authorization headers are not persisted.
 
-The download identity is:
-
-`backend + logical track URI + quality`
-
-This prevents duplicate downloads while allowing a different requested quality to coexist as a distinct artifact.
+The download identity is `backend + logical track URI + quality`, preventing duplicate downloads while allowing different quality artifacts to coexist.
 
 ## State machine
 
@@ -59,7 +55,7 @@ Partial downloads are never promoted to the final media root. Pause/cancel/resta
 
 WorkManager owns persistent execution. Each logical download uses unique work keyed by its stable job id, and constraints are applied at scheduling time. Wi-Fi-only uses `NetworkType.UNMETERED`; otherwise the work requires a connected network. Storage-not-low is also required.
 
-Long-running workers use WorkManager foreground execution with the Android `dataSync` foreground-service type. This matches the platform's guidance for user-visible file downloads. Android's current documentation notes that long-running WorkManager workers can run through a managed foreground service, while Android 15+ applies a six-hour daily timeout to `dataSync` foreground services. The app therefore does not assume a single unbounded download can run forever.
+Long-running workers use WorkManager foreground execution with the Android `dataSync` foreground-service type. The implementation does not assume an unbounded background coroutine or foreground-service lifetime.
 
 A process-local semaphore limits active downloader execution to two by default. WorkManager can persist more queued jobs, but only the configured number enters the network/file-transfer section at once.
 
@@ -76,24 +72,21 @@ filesDir/
     <sha256(logical-key)>.<validated-extension>
 ```
 
-Remote filenames are never used. Final names are generated from SHA-256 of the stable logical key. Extensions come from an allowlist derived from the provider/media format or HTTP content type. Stored paths are relative to the managed root and are canonicalized before access or deletion.
+Remote filenames are never used. Final names are generated from SHA-256 of the stable logical key. Extensions come from an allowlist derived from an authorized provider/media format or HTTP content type. Stored paths are relative to the managed root and are canonicalized before access or deletion.
 
-The final file is only considered available after:
+A final file is only considered available after the download completes, the byte count is valid when supplied, `MediaMetadataRetriever` can parse a positive duration, and the file is atomically moved out of `.partial`.
 
-1. the download stream completed,
-2. the byte count is valid when the server supplied a length,
-3. MediaMetadataRetriever can parse a positive duration,
-4. the file is atomically moved out of `.partial`.
-
-Startup reconciliation revalidates completed records against the actual file. Missing/corrupt files are downgraded to `FAILED` and are not used for offline playback.
+Startup reconciliation revalidates completed records against the actual file. Missing/corrupt files are downgraded to `FAILED` and are not used for offline playback. Orphaned final files are removed during reconciliation.
 
 The application already has `android:allowBackup="false"`, so local download state and media are not included in Android's normal application backup path.
 
 ## Offline playback resolution
 
-The logical media id does not change. For a supported YouTube track, Media3's existing `ResolvingDataSource` first checks the authoritative download records for a valid local file. If one exists, the `DataSpec` is resolved to that app-private file. If the file is missing or fails validation, the resolver falls through to the existing NewPipe online stream resolution.
+The logical media id does not change. For a future provider with an authorized source, Media3's existing `ResolvingDataSource` can first check authoritative download records for a valid local file. If one exists, the `DataSpec` is resolved to that app-private file. If the file is missing or fails validation, the resolver falls through to the existing online resolver.
 
 There is no separate offline queue and no second playback state. Shuffle, repeat, queue position, metadata, and MediaSession identity therefore continue to belong to the existing playback layer.
+
+The current repository cannot populate this local source for Spotify or YouTube because neither exposes an authorized offline download reference through the inspected backend contracts.
 
 ## Retry and recovery
 
@@ -103,7 +96,7 @@ A temporary network loss does not delete completed offline media. A running work
 
 ## Wi-Fi-only and quality
 
-`DownloadPreferences` persists both settings. Changing Wi-Fi-only triggers reconciliation/rescheduling. Quality is part of the download identity so changing quality does not overwrite a different completed artifact. Provider resolvers are responsible for mapping quality to the provider's actual available streams; unsupported quality levels are not invented.
+`DownloadPreferences` persists both settings. Changing Wi-Fi-only triggers reconciliation/rescheduling. Quality is part of the download identity so changing quality does not overwrite a different completed artifact. Provider resolvers are responsible for mapping quality to an authorized provider capability; unsupported quality levels are not invented.
 
 ## Deletion and playlist membership
 
@@ -115,15 +108,15 @@ WorkManager persists unique work and reconstructs it after process death/device 
 
 ## Testing strategy
 
-JVM tests cover retry classification, bounded retry count, controlled extension mapping, and stable download identity. Android/device verification is required for the full matrix of WorkManager execution, foreground notification behavior, network interruption, reboot, storage pressure, and actual YouTube stream downloads.
+JVM tests cover retry classification, bounded retry count, controlled extension mapping, and stable download identity. Android/device verification is required for the full matrix of WorkManager execution, foreground notification behavior, network interruption, reboot, storage pressure, and actual authorized-provider downloads.
 
-The repository environment used for this change does not provide an Android emulator/device or a Gradle checkout, so those device-level scenarios must be reported as unverified rather than inferred from compilation.
+The repository environment used for this change does not provide an Android emulator/device or a local Gradle checkout, so device-level and Gradle execution are reported as unverified rather than inferred.
 
 ## Known limitations
 
-- Spotify/librespot offline downloads are intentionally unavailable; the existing native playback path is preserved.
-- YouTube stream URLs are provider-generated and can expire; the URL is resolved immediately before each download and is not persisted.
-- Pause/resume currently means safe restart from byte zero; HTTP range resume is not claimed.
+- No Spotify or YouTube provider-backed download is enabled because the inspected provider contracts do not expose an authorized offline source for this application.
+- Provider-generated online stream URLs are not persisted or converted into offline copies.
+- Pause/resume currently means safe restart from byte zero for a future authorized source; HTTP range resume is not claimed.
 - Cross-provider download capability is intentionally not added to `MusicBackend`.
 - Long-running `dataSync` foreground work is subject to Android platform execution limits.
-- Full download/play/delete/re-download/reboot stress testing requires a real Android environment with network access.
+- Full download/play/delete/re-download/reboot stress testing requires a real Android environment and an authorized provider source.
