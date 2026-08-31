@@ -59,6 +59,21 @@ data class DownloadRecord(
     val collectionIds: Set<String> = emptySet(),
 )
 
+data class DownloadBatchProgress(
+    val totalTracks: Int,
+    val completedTracks: Int,
+    val failedTracks: Int,
+    val downloadedBytes: Long,
+    val totalBytes: Long,
+) {
+    val progress: Float
+        get() = when {
+            totalBytes > 0L -> (downloadedBytes.toDouble() / totalBytes).coerceIn(0.0, 1.0).toFloat()
+            totalTracks > 0 -> completedTracks.toFloat() / totalTracks
+            else -> 0f
+        }
+}
+
 data class ResolvedDownloadSource(
     val url: String,
     val contentTypeHint: String? = null,
@@ -72,5 +87,4 @@ data class OfflineMedia(
     val quality: DownloadQuality,
 )
 
-fun DownloadRecord.logicalKey(): String =
-    "${backend.name}|$remoteRef|${quality.name}"
+fun DownloadRecord.logicalKey(): String = "${backend.name}|$remoteRef|${quality.name}"
