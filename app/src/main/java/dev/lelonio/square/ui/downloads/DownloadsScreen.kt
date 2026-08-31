@@ -41,11 +41,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** UI over persistent Phase 3 state; playback/download truth remains outside Compose. */
 @Composable
 fun DownloadsScreen(
     contentPadding: PaddingValues,
     backdrop: Backdrop,
-    onPlayTrack: (DownloadRecord) -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = remember(context) { context.applicationContext as dev.lelonio.square.SquareApplication }
@@ -104,7 +104,6 @@ fun DownloadsScreen(
                 DownloadRow(
                     record = record,
                     backdrop = backdrop,
-                    onPlay = { onPlayTrack(record) },
                     onPause = { scope.launch(Dispatchers.IO) { manager.pause(record.jobId) } },
                     onResume = { scope.launch(Dispatchers.IO) { manager.resume(record.jobId) } },
                     onCancel = { scope.launch(Dispatchers.IO) { manager.cancel(record.jobId) } },
@@ -132,19 +131,11 @@ private fun DownloadPreferencesCard(
             }
             Switch(checked = wifiOnly, onCheckedChange = onWifiOnly)
         }
-        Text(
-            stringResource(R.string.download_quality),
-            color = InkDim,
-            style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 18.dp),
-        )
+        Text(stringResource(R.string.download_quality), color = InkDim, style = androidx.compose.material3.MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 18.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             DownloadQuality.entries.forEach { option ->
                 LiquidButton(onClick = { onQuality(option) }, backdrop = backdrop) {
-                    Text(
-                        option.name,
-                        color = if (option == quality) Ink else InkDim,
-                    )
+                    Text(option.name, color = if (option == quality) Ink else InkDim)
                 }
             }
         }
@@ -155,7 +146,6 @@ private fun DownloadPreferencesCard(
 private fun DownloadRow(
     record: DownloadRecord,
     backdrop: Backdrop,
-    onPlay: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
@@ -164,10 +154,7 @@ private fun DownloadRow(
 ) {
     val title = record.track.name.ifBlank { record.track.uri }
     val status = statusText(record.status)
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Artwork(url = record.track.artworkUrl, title = title, modifier = Modifier.size(60.dp), corner = 14.dp, decodeSize = 60.dp)
             Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
@@ -176,11 +163,11 @@ private fun DownloadRow(
                 Text(status, color = InkDim, style = androidx.compose.material3.MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 2.dp))
             }
             when (record.status) {
-                DownloadStatus.COMPLETED -> LiquidButton(onClick = onPlay, backdrop = backdrop) { Text(stringResource(R.string.play), color = Ink) }
                 DownloadStatus.DOWNLOADING, DownloadStatus.PREPARING -> LiquidButton(onClick = onPause, backdrop = backdrop) { Text(stringResource(R.string.download_pause), color = Ink) }
                 DownloadStatus.PAUSED, DownloadStatus.CANCELLED -> LiquidButton(onClick = onResume, backdrop = backdrop) { Text(stringResource(R.string.download_resume), color = Ink) }
                 DownloadStatus.FAILED, DownloadStatus.UNAVAILABLE -> LiquidButton(onClick = onRetry, backdrop = backdrop) { Text(stringResource(R.string.download_retry), color = Ink) }
                 DownloadStatus.QUEUED -> LiquidButton(onClick = onCancel, backdrop = backdrop) { Text(stringResource(R.string.download_cancel), color = Ink) }
+                DownloadStatus.COMPLETED -> Unit
             }
         }
         if (record.status == DownloadStatus.DOWNLOADING || record.status == DownloadStatus.PREPARING) {
@@ -207,8 +194,7 @@ private fun statusText(status: DownloadStatus): String = stringResource(
     },
 )
 
-private fun formatProgress(downloaded: Long, total: Long): String =
-    if (total > 0L) "${formatBytes(downloaded)} / ${formatBytes(total)}" else formatBytes(downloaded)
+private fun formatProgress(downloaded: Long, total: Long): String = if (total > 0L) "${formatBytes(downloaded)} / ${formatBytes(total)}" else formatBytes(downloaded)
 
 private fun formatBytes(value: Long): String = when {
     value < 1_000L -> "$value B"
