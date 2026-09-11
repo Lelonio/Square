@@ -1955,6 +1955,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 artworkUrl = LocalLibrary.COVER,
             ),
         ) + playlists.filterNot { it.uri == LocalLibrary.CONTEXT_URI }
+            .distinctBy { it.uri }
 
     /** Covers already looked up, so a second visit to the home page is free. */
     private val coverCache = mutableMapOf<String, String>()
@@ -4010,7 +4011,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (page.items.size < ALBUM_PAGE) break
                 offset += ALBUM_PAGE
             }
-            gathered
+            gathered.distinctBy { it.uri }
         }
             .onSuccess { _savedAlbums.value = it }
             .onFailure { android.util.Log.w(TAG, "saved albums unavailable: ${describe(it)}") }
@@ -4023,7 +4024,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadFollowedArtists() = viewModelScope.launch {
         if (container.activeBackend.id != BackendId.SPOTIFY) {
-            _followedArtists.value = runCatching { container.activeBackend.followedArtists() }
+            _followedArtists.value = runCatching { container.activeBackend.followedArtists().distinctBy { it.uri } }
                 .getOrDefault(emptyList())
             return@launch
         }
@@ -4048,7 +4049,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 after = page.cursors?.after?.takeIf { page.items.isNotEmpty() } ?: break
             }
-            gathered.sortedBy { it.title.lowercase() }
+            gathered.distinctBy { it.uri }.sortedBy { it.title.lowercase() }
         }
             .onSuccess { _followedArtists.value = it }
             .onFailure {
