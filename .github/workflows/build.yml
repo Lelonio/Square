@@ -1,0 +1,37 @@
+name: Build
+
+# Every push to master and every pull request gets an APK, so a change can be
+# tried on a phone without building it by hand. No signing secrets here: with
+# no keystore the build signs with the debug key, and GitHub does not hand
+# secrets to pull requests from forks anyway.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup
+
+      - name: Build
+        run: ./gradlew :app:assembleDev --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: square-dev-${{ github.sha }}
+          path: app/build/outputs/apk/dev/app-dev.apk
+          retention-days: 14
+          if-no-files-found: error

@@ -1,0 +1,99 @@
+name: Release
+
+# A tag like v2.2.4 builds the signed APK and leaves it on a draft release.
+# The notes are still written by hand, and publishing the draft is still a
+# person's decision. Run by hand, it builds and signs the same way but only
+# keeps the APK as an artifact, which is how the setup can be tried without
+# a release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        run: |
+          version=$(sed -n 's/^ *versionName = "\(.*\)"$/\1/p' app/build.gradle.kts)
+          echo "name=$version" >> "$GITHUB_OUTPUT"
+          # A tag that says one version over a build that says another would
+          # publish an update the app then offers again forever.
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match versionName $version"
+            exit 1
+          fi
+
+      - uses: ./.github/actions/setup
+
+      # The keystore goes to the runner's temporary directory, outside the
+      # checkout, and the runner is thrown away when the job ends.
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::the signing secrets are not set"
+            exit 1
+          fi
+          echo "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/square-release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/square-release.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      # Without the right key an update does not install over the app people
+      # already have, and the build would not say so: a missing keystore falls
+      # back to the debug key. So the certificate is checked against the one
+      # every release so far has carried.
+      - name: Check the signature
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          digest=$("$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk \
+            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          if [ "$digest" != "9f3469d5049fa93e6b63effd1ad10a1913c9a65b0f7c9a5f2f770cd8ea27cf0c" ]; then
+            echo "::error::signed with ${digest:-nothing}, not the release key"
+            exit 1
+          fi
+          cp app/build/outputs/apk/release/app-release.apk "square-${{ steps.version.outputs.name }}.apk"
+
+      - name: Draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apk="square-${{ steps.version.outputs.name }}.apk"
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$apk" --draft \
+              --title "${{ steps.version.outputs.name }}" --notes ""
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref_type != 'tag'
+        with:
+          name: square-${{ steps.version.outputs.name }}-signed
+          path: square-${{ steps.version.outputs.name }}.apk
+          retention-days: 7
+          if-no-files-found: error

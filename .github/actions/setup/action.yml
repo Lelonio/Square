@@ -1,0 +1,55 @@
+name: Square toolchain
+description: >
+  Everything a build of Square needs besides the repository: the JDK, the
+  Android SDK pieces the Gradle files name, and the Rust toolchain that
+  cross-compiles the librespot core. Kept in one place so the build and the
+  release cannot drift apart.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 21
+
+    # The versions app/build.gradle.kts asks for. The NDK is also what
+    # cargo-ndk links against, and the build refuses to start without it.
+    # Licences are already accepted on GitHub's runners; `yes` is only there
+    # in case a new one appears, and is kept from failing the step when
+    # sdkmanager stops reading.
+    - name: Android SDK packages
+      shell: bash
+      run: |
+        (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+          "platforms;android-37.0" \
+          "build-tools;36.0.0" \
+          "ndk;28.2.13676358" \
+          "cmake;3.22.1" > /dev/null
+
+    # rustup is preinstalled at ~/.cargo/bin, which is the cargo the Gradle
+    # task looks for first.
+    - name: Rust
+      shell: bash
+      run: |
+        rustup toolchain install stable --profile minimal --target aarch64-linux-android
+        rustup default stable
+
+    # The Rust core is most of a cold build. Keyed on the lock file and the
+    # patched librespot crates, which are the inputs the Gradle task watches.
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          ~/.cargo/bin/cargo-ndk
+          native/target
+        key: cargo-${{ runner.os }}-${{ hashFiles('native/Cargo.lock', 'native/vendor/**', 'native/src/**') }}
+        restore-keys: cargo-${{ runner.os }}-
+
+    - name: cargo-ndk
+      shell: bash
+      run: command -v cargo-ndk > /dev/null || cargo install cargo-ndk --version 4.1.2 --locked
+
+    - uses: gradle/actions/setup-gradle@v4
