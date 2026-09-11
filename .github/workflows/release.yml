@@ -66,16 +66,23 @@ jobs:
       # already have, and the build would not say so: a missing keystore falls
       # back to the debug key. So the certificate is checked against the one
       # every release so far has carried.
+      #
+      # The apksigner is the one from the build-tools the setup installs, not
+      # whichever is newest on the runner, and what it prints is shown: a
+      # certificate is public, anyone can read it off the APK, and the first
+      # run failed here with nothing to go on.
       - name: Check the signature
         run: |
-          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
-          digest=$("$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk \
-            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          set -o pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          certs=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk")
+          echo "$certs"
+          digest=$(echo "$certs" | sed -n 's/^Signer.*certificate SHA-256 digest: //p' | head -n 1)
           if [ "$digest" != "9f3469d5049fa93e6b63effd1ad10a1913c9a65b0f7c9a5f2f770cd8ea27cf0c" ]; then
             echo "::error::signed with ${digest:-nothing}, not the release key"
             exit 1
           fi
-          cp app/build/outputs/apk/release/app-release.apk "square-${{ steps.version.outputs.name }}.apk"
+          cp "$apk" "square-${{ steps.version.outputs.name }}.apk"
 
       - name: Draft release
         if: github.ref_type == 'tag'
