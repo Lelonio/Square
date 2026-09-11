@@ -8,7 +8,7 @@ description: >
 runs:
   using: composite
   steps:
-    - uses: actions/setup-java@v4
+    - uses: actions/setup-java@v6
       with:
         distribution: temurin
         java-version: 21
@@ -37,7 +37,7 @@ runs:
 
     # The Rust core is most of a cold build. Keyed on the lock file and the
     # patched librespot crates, which are the inputs the Gradle task watches.
-    - uses: actions/cache@v4
+    - uses: actions/cache@v6
       with:
         path: |
           ~/.cargo/registry/index
@@ -52,4 +52,4 @@ runs:
       shell: bash
       run: command -v cargo-ndk > /dev/null || cargo install cargo-ndk --version 4.1.2 --locked
 
-    - uses: gradle/actions/setup-gradle@v4
+    - uses: gradle/actions/setup-gradle@v6
