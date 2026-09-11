@@ -55,3 +55,7 @@
 # the fully qualified class name.
 -keepclasseswithmembernames class dev.lelonio.square.playback.Stretcher { native <methods>; }
 -keep class dev.lelonio.square.playback.Stretcher { *; }
+
+# Preserve readable line numbers and stack traces in release builds
+-renamesourcefileattribute SourceFile
+-keepattributes SourceFile,LineNumberTable

@@ -1,5 +1,7 @@
 package dev.lelonio.square.ui.components
 
+import android.content.Context
+import android.os.PowerManager
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -153,6 +155,11 @@ fun AmbientArtworkBackground(
     columns: List<Color> = emptyList(),
 ) {
     val context = LocalContext.current
+    val powerManager = remember(context) {
+        context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    }
+    val isPowerSave = powerManager?.isPowerSaveMode == true
+    val effectiveMotion = motion && !isPowerSave
 
     // Which picture is showing, and which one is on its way out.
     //
@@ -235,7 +242,7 @@ fun AmbientArtworkBackground(
 
     // One clock for the drift, shared by both copies so they cannot beat
     // against each other.
-    val drift: State<Float> = if (motion && enabled) {
+    val drift: State<Float> = if (effectiveMotion && enabled) {
         rememberInfiniteTransition(label = "ambientDrift").animateFloat(
             initialValue = 0f,
             targetValue = 1f,

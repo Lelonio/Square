@@ -39,15 +39,21 @@ object ApiFactory {
      */
     fun create(
         tokens: TokenStore,
+        fallbackTokens: TokenStore? = null,
+        nativeToken: (() -> String?)? = null,
         baseClient: OkHttpClient? = null,
+        countryProvider: (() -> String)? = null,
         debug: Boolean = false,
     ): SpotifyApi {
-        val client = (baseClient?.newBuilder() ?: OkHttpClient.Builder())
-            .addInterceptor(AuthInterceptor(tokens))
+        val clientBuilder = (baseClient?.newBuilder() ?: OkHttpClient.Builder())
+            .addInterceptor(AuthInterceptor(tokens, fallbackTokens, nativeToken))
             .addInterceptor(RateLimitInterceptor())
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .apply {
+                if (countryProvider != null) {
+                    addInterceptor(MarketInterceptor(countryProvider))
+                }
                 if (debug) {
                     addInterceptor(
                         okhttp3.logging.HttpLoggingInterceptor().setLevel(
@@ -56,15 +62,54 @@ object ApiFactory {
                     )
                 }
             }
-            .build()
 
         return Retrofit.Builder()
             .baseUrl(BASE_URL)
-            .client(client)
+            .client(clientBuilder.build())
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(SpotifyApi::class.java)
     }
+
+    /**
+     * Injects the listener's account market into Spotify catalog endpoints when
+     * no explicit market parameter is present.
+     *
+     * Without a market parameter on endpoints like playlist tracks or album tracks,
+     * Spotify returns the raw catalog item without regional track relinking, which
+     * causes tracks to appear unplayable or missing for users outside the US.
+     */
+    private class MarketInterceptor(
+        private val countryProvider: () -> String,
+    ) : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val request = chain.request()
+            val url = request.url
+            val path = url.encodedPath
+
+            if (url.queryParameter("market") == null && shouldAddMarket(path)) {
+                val raw = countryProvider()
+                val country = raw.takeIf { it.length == 2 && it.all(Char::isLetter) && it != "from_token" }
+                    ?: java.util.Locale.getDefault().country.takeIf { it.length == 2 && it.all(Char::isLetter) }
+                    ?: "US"
+                val newUrl = url.newBuilder()
+                    .addQueryParameter("market", country.uppercase())
+                    .build()
+                return chain.proceed(request.newBuilder().url(newUrl).build())
+            }
+            return chain.proceed(request)
+        }
+
+        private fun shouldAddMarket(path: String): Boolean {
+            return (path.startsWith("/v1/playlists/") && path.endsWith("/tracks")) ||
+                (path.startsWith("/v1/artists/") && path.endsWith("/top-tracks")) ||
+                (path.startsWith("/v1/artists/") && path.endsWith("/albums")) ||
+                path.startsWith("/v1/albums/") ||
+                path.startsWith("/v1/tracks/") ||
+                path == "/v1/search"
+        }
+    }
+
 
     /**
      * Waits out a single 429 when Spotify says how long to wait.
@@ -119,7 +164,11 @@ object ApiFactory {
         }
     }
 
-    private class AuthInterceptor(private val tokens: TokenStore) : Interceptor {
+    private class AuthInterceptor(
+        private val tokens: TokenStore,
+        private val fallbackTokens: TokenStore? = null,
+        private val nativeToken: (() -> String?)? = null,
+    ) : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
             // OkHttp interceptors are blocking by contract and always run on a
             // background thread, so bridging into the suspending token store
@@ -129,8 +178,30 @@ object ApiFactory {
             // only routes IOException to onFailure and rethrows anything else on
             // its own thread, which takes the whole process down instead of
             // failing the one call.
+            var usedFallback = false
+            var usedNative = false
             val token = try {
-                runBlocking { tokens.validAccessToken() }
+                runBlocking {
+                    if (tokens.isLoggedIn) {
+                        try {
+                            tokens.validAccessToken()
+                        } catch (e: Exception) {
+                            if (fallbackTokens?.isLoggedIn == true) {
+                                usedFallback = true
+                                fallbackTokens.validAccessToken()
+                            } else {
+                                usedNative = true
+                                nativeToken?.invoke() ?: throw e
+                            }
+                        }
+                    } else if (fallbackTokens?.isLoggedIn == true) {
+                        usedFallback = true
+                        fallbackTokens.validAccessToken()
+                    } else {
+                        usedNative = true
+                        nativeToken?.invoke() ?: tokens.validAccessToken()
+                    }
+                }
             } catch (e: IOException) {
                 throw e
             } catch (e: Exception) {
@@ -140,7 +211,34 @@ object ApiFactory {
             val request = chain.request().newBuilder()
                 .header("Authorization", "Bearer $token")
                 .build()
-            return chain.proceed(request)
+            val response = chain.proceed(request)
+
+            // If the current token is refused (401 or 403), retry with the next available token
+            if ((response.code == 401 || response.code == 403) && (!usedFallback || !usedNative)) {
+                android.util.Log.w("SquareApi", "HTTP ${response.code} with current token; retrying with backup token")
+                response.close()
+                val nextToken = try {
+                    runBlocking {
+                        if (!usedFallback && fallbackTokens?.isLoggedIn == true) {
+                            usedFallback = true
+                            fallbackTokens.validAccessToken()
+                        } else if (!usedNative) {
+                            usedNative = true
+                            nativeToken?.invoke() ?: throw IOException("no backup token available")
+                        } else {
+                            throw IOException("no backup token available")
+                        }
+                    }
+                } catch (e: Exception) {
+                    throw IOException("could not obtain fallback access token", e)
+                }
+                val retryRequest = chain.request().newBuilder()
+                    .header("Authorization", "Bearer $nextToken")
+                    .build()
+                return chain.proceed(retryRequest)
+            }
+
+            return response
         }
     }
 }

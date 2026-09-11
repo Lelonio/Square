@@ -41,6 +41,8 @@
     <string name="title">Title</string>
     <string name="artist">Artist</string>
     <string name="album">Album</string>
+    <string name="single">Single</string>
+    <string name="compilation">Compilation</string>
     <string name="playlist">Playlist</string>
     <string name="duration">Length</string>
     <string name="tracks">Songs</string>
@@ -120,6 +122,7 @@
     <!-- Track menu -->
     <string name="add_to_queue">Add to queue</string>
     <string name="add_to_playlist">Add to a playlist</string>
+    <string name="go_to_artist">Go to artist</string>
     <string name="copy_link">Copy link</string>
     <string name="remove_from_playlist">Remove from playlist</string>
     <string name="queued">Queued</string>
@@ -408,6 +411,10 @@
         <item quantity="one">%1$d song</item>
         <item quantity="other">%1$d songs</item>
     </plurals>
+    <plurals name="monthly_listeners">
+        <item quantity="one">%s monthly listener</item>
+        <item quantity="other">%s monthly listeners</item>
+    </plurals>
     <string name="songs_and_length">%1$d songs, %2$s</string>
     <string name="more_notes">MORE</string>
     <string name="updated_ago">Updated: %1$s</string>
@@ -422,4 +429,10 @@
     <string name="show_all">Show all</string>
     <string name="show_less">Show less</string>
     <string name="search_library">Search your library</string>
+    <string name="autoplay">Autoplay</string>
+    <string name="autoplay_infinite_title">Infinite Autoplay</string>
+    <string name="autoplay_infinite_summary">Keep playing similar tracks when queue ends</string>
+    <string name="trim_silence">Trim silence</string>
+    <string name="trim_silence_summary">Skip trailing silence at track ends during crossfade</string>
+    <string name="mood_mixes">Mood Mixes</string>
 </resources>

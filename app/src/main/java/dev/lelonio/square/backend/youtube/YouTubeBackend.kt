@@ -9,10 +9,15 @@ import dev.lelonio.square.backend.PlaybackHost
 import dev.lelonio.square.backend.SearchLabels
 import dev.lelonio.square.backend.lyrics.LrcLib
 import dev.lelonio.square.backend.lyrics.Lossless
+import dev.lelonio.square.backend.lyrics.LyricsOvh
 import dev.lelonio.square.data.CatalogPlaylist
 import dev.lelonio.square.data.CatalogTrack
+import dev.lelonio.square.data.Lyrics
 import dev.lelonio.square.data.SearchItem
 import dev.lelonio.square.data.SearchResults
+import dev.lelonio.square.download.DownloadExtras
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -334,13 +339,27 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
      * smaller of the two, so it is asked first and LrcLib carries the rest of
      * the catalogue as it did before.
      */
+    private val lyricsJson = Json { ignoreUnknownKeys = true }
+
     override suspend fun lyrics(
         uri: String,
         title: String,
         artist: String,
         durationMs: Long,
-    ) = Lossless.lyrics(title, artist, durationMs)
-        ?: LrcLib.lyrics(title, artist, durationMs)
+    ): Lyrics? {
+        DownloadExtras.lyrics(uri)?.let { raw ->
+            runCatching { lyricsJson.decodeFromString<Lyrics>(raw) }.getOrNull()?.let { return it }
+        }
+
+        val found = Lossless.lyrics(title, artist, durationMs)
+            ?: LrcLib.lyrics(title, artist, durationMs)
+            ?: LyricsOvh.lyrics(title, artist, durationMs)
+
+        if (found != null) {
+            runCatching { DownloadExtras.rememberLyrics(uri, lyricsJson.encodeToString(found)) }
+        }
+        return found
+    }
 
     override val canEditPlaylists: Boolean
         get() = account.isSignedIn

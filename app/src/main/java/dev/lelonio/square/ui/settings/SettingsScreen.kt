@@ -267,9 +267,14 @@ fun SettingsScreen(
             QualitySection()
         }
 
-        // Also librespot's: the crossfade is mixed by the engine's own player.
-        if (open == SettingsPage.Playback && showSpotify) item("crossfade") {
-            CrossfadeSection()
+        // Crossfade: mixed by the engine on Spotify, volume-shaped on YouTube Music.
+        if (open == SettingsPage.Playback) item("crossfade") {
+            CrossfadeSection(backdrop)
+        }
+
+        // Autoplay: automatically append similar tracks when queue reaches the end.
+        if (open == SettingsPage.Playback) item("autoplay") {
+            AutoplaySection(backdrop)
         }
 
         // Spotify's own, served by its access point: on another source there is
@@ -641,6 +646,24 @@ private fun CanvasSection(backdrop: Backdrop) {
 }
 
 @Composable
+private fun AutoplaySection(backdrop: Backdrop) {
+    val context = LocalContext.current
+    val store = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+    }
+    val enabled by store.autoplayInfinite.collectAsStateWithLifecycle()
+
+    Section(stringResource(R.string.autoplay)) {
+        DownloadSwitch(
+            label = stringResource(R.string.autoplay_infinite_title),
+            checked = enabled,
+            backdrop = backdrop,
+            onChange = store::setAutoplayInfinite,
+        )
+    }
+}
+
+@Composable
 private fun EffectQualitySection() {
     val context = LocalContext.current
     val store = remember(context) {
@@ -660,12 +683,16 @@ private fun EffectQualitySection() {
 }
 
 @Composable
-private fun CrossfadeSection() {
+private fun CrossfadeSection(backdrop: Backdrop) {
     val context = LocalContext.current
     val store = remember(context) {
         (context.applicationContext as dev.lelonio.square.SquareApplication).crossfade
     }
+    val preferences = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+    }
     val chosen by store.seconds.collectAsStateWithLifecycle()
+    val trimSilence by preferences.trimSilence.collectAsStateWithLifecycle()
 
     Section(stringResource(R.string.crossfade)) {
         CrossfadeSteps.forEachIndexed { index, seconds ->
@@ -679,6 +706,13 @@ private fun CrossfadeSection() {
                 selected = seconds == chosen,
             ) { store.set(seconds) }
         }
+        RowDivider()
+        DownloadSwitch(
+            label = stringResource(R.string.trim_silence),
+            checked = trimSilence,
+            backdrop = backdrop,
+            onChange = preferences::setTrimSilence,
+        )
         RowDivider()
         Text(
             stringResource(R.string.quality_restarts),
@@ -864,6 +898,7 @@ private fun DownloadsSection(backdrop: Backdrop) {
     val failures by store.failures.collectAsStateWithLifecycle()
     val quality by settings.quality.collectAsStateWithLifecycle()
     val wifiOnly by settings.wifiOnly.collectAsStateWithLifecycle()
+    val likedSongs by settings.downloadLikedSongs.collectAsStateWithLifecycle()
     val offline by settings.offlineMode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -914,6 +949,40 @@ private fun DownloadsSection(backdrop: Backdrop) {
             checked = wifiOnly,
             backdrop = backdrop,
             onChange = settings::setWifiOnly,
+        )
+
+        RowDivider()
+        DownloadSwitch(
+            label = stringResource(R.string.download_liked_songs),
+            checked = likedSongs,
+            backdrop = backdrop,
+            onChange = { enable ->
+                settings.setDownloadLikedSongs(enable)
+                if (enable) {
+                    scope.launch {
+                        val tracks = app.likedStore.likedTracks.value
+                        if (tracks.isNotEmpty()) {
+                            val likedTracksList = tracks.map { uri ->
+                                store.trackOf(uri) ?: dev.lelonio.square.data.CatalogTrack(
+                                    uri = uri,
+                                    name = "",
+                                    artist = "",
+                                )
+                            }
+                            store.setOwner(dev.lelonio.square.data.DownloadStore.LIKED, likedTracksList, label = null)
+                            dev.lelonio.square.download.DownloadService.start(app)
+                        }
+                    }
+                } else {
+                    scope.launch {
+                        store.removeOwner(dev.lelonio.square.data.DownloadStore.LIKED)
+                        store.pruneOrphans().forEach { orphanUri ->
+                            runCatching { dev.lelonio.square.nativecore.NativeBridge.removeDownload(orphanUri) }
+                            dev.lelonio.square.download.DownloadExtras.forget(orphanUri)
+                        }
+                    }
+                }
+            },
         )
 
         RowDivider()

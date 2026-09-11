@@ -73,6 +73,23 @@ const MAX_SHORT_END_RELOADS: u8 = 2;
 /// Full scale is asymmetric: -32768 exists, +32768 does not, so a mix that
 /// reaches 1.0 on the way up wraps around to the bottom and is heard as a click.
 const MAX_SAMPLE: f64 = 32767.0 / 32768.0;
+
+/// LOCAL PATCH: smooth soft-knee saturation limiter to prevent digital clipping (0 dBFS overflow)
+/// while maintaining bit-perfect audio transparency below 0.85 (~ -1.4 dBFS).
+#[inline]
+fn soft_limit(x: f64) -> f64 {
+    const THRESHOLD: f64 = 0.85;
+    let abs_x = x.abs();
+    if abs_x <= THRESHOLD {
+        x
+    } else {
+        let sign = x.signum();
+        let excess = abs_x - THRESHOLD;
+        let margin = 1.0 - THRESHOLD;
+        let limited = THRESHOLD + margin * (excess / margin).tanh();
+        (sign * limited).clamp(-1.0, MAX_SAMPLE)
+    }
+}
 pub const DB_VOLTAGE_RATIO: f64 = 20.0;
 pub const PCM_AT_0DBFS: f64 = 1.0;
 
@@ -133,6 +150,8 @@ struct PlayerInternal {
     /// LOCAL PATCH: the play request that has been heard playing before its own
     /// fade window, and so may have its end announced early. See the use of it.
     fade_armed: Option<u64>,
+    /// LOCAL PATCH: consecutive silent samples observed near end of track for silence trimming.
+    consecutive_silent_samples: usize,
     /// LOCAL PATCH: how many times a play request has had its stream run out
     /// before the end of the track, so a stream that never completes gives up
     /// instead of putting the same song back on for ever.
@@ -193,6 +212,8 @@ enum PlayerCommand {
     SetAutoNormaliseAsAlbum(bool),
     /// LOCAL PATCH: the quality to ask for from the next load onwards.
     SetBitrate(Bitrate),
+    /// LOCAL PATCH: whether trailing silence triggers early crossfade.
+    SetTrimSilence(bool),
     EmitSessionDisconnectedEvent {
         connection_id: String,
         user_name: String,
@@ -577,6 +598,7 @@ impl Player {
                 fade_out: None,
                 early_end: None,
                 fade_armed: None,
+                consecutive_silent_samples: 0,
                 short_end: None,
                 ended: None,
                 load_attempt: 0,
@@ -697,6 +719,11 @@ impl Player {
     /// playing keeps the file it started with; the next track gets this.
     pub fn set_bitrate(&self, bitrate: Bitrate) {
         self.command(PlayerCommand::SetBitrate(bitrate));
+    }
+
+    /// LOCAL PATCH: whether trailing silence triggers early crossfade.
+    pub fn set_trim_silence(&self, enabled: bool) {
+        self.command(PlayerCommand::SetTrimSilence(enabled));
     }
 
     pub fn emit_filter_explicit_content_changed_event(&self, filter: bool) {
@@ -2103,7 +2130,12 @@ impl Future for PlayerInternal {
                 let position = stream_position_ms as i64;
                 let duration = duration_ms as i64;
                 if crossfade_ms > 0 && duration > crossfade_ms {
-                    if position < duration - crossfade_ms {
+                    let silence_threshold_samples = (SAMPLE_RATE as usize * NUM_CHANNELS as usize * 350) / 1000;
+                    let trailing_silence = self.config.trim_silence
+                        && self.consecutive_silent_samples >= silence_threshold_samples
+                        && position >= duration - crossfade_ms - 2000;
+
+                    if position < duration - crossfade_ms && !trailing_silence {
                         // LOCAL PATCH: the track has been heard playing outside
                         // its own ending, so its ending means something.
                         //
@@ -2123,9 +2155,15 @@ impl Future for PlayerInternal {
                         && self.fade_armed == Some(play_request_id)
                         && self.state.is_playing()
                     {
-                        info!(
-                            "crossfade: {position} ms of {duration} ms played,                              announcing the end of <{track_id:?}>"
-                        );
+                        if trailing_silence {
+                            info!(
+                                "silence trimming: {position} ms of {duration} ms played, trailing silence detected, triggering crossfade early for <{track_id:?}>"
+                            );
+                        } else {
+                            info!(
+                                "crossfade: {position} ms of {duration} ms played, announcing the end of <{track_id:?}>"
+                            );
+                        }
                         self.early_end = Some(play_request_id);
                         self.announce_end(track_id, play_request_id);
                     }
@@ -2281,21 +2319,26 @@ impl PlayerInternal {
             }
 
             let x = fade.done as f64 / fade.total as f64;
-            let gain_in = (x * std::f64::consts::FRAC_PI_2).sin();
+            // If the outgoing track has finished draining early, bring the incoming track to full scale
+            let gain_in = if fade.drained && fade.spare.is_empty() {
+                1.0
+            } else {
+                (x * std::f64::consts::FRAC_PI_2).sin()
+            };
             let gain_out = (x * std::f64::consts::FRAC_PI_2).cos();
 
             for sample in data.iter_mut().skip(offset).take(channels) {
                 let tail = fade.spare.pop_front().unwrap_or(0.0);
                 let mixed = *sample * gain_in
                     + tail * gain_out * fade.normalisation_factor * volume;
-                *sample = mixed.clamp(-1.0, MAX_SAMPLE);
+                *sample = soft_limit(mixed);
             }
 
             fade.done += channels;
             offset += channels;
         }
 
-        if fade.done >= fade.total {
+        if fade.done >= fade.total || (fade.drained && fade.spare.is_empty()) {
             // Dropping it closes the outgoing stream.
             self.fade_out = None;
         }
@@ -2334,7 +2377,7 @@ impl PlayerInternal {
                 * fade.normalisation_factor
                 * volume;
             for sample in samples.iter_mut() {
-                *sample = (*sample * gain).clamp(-1.0, MAX_SAMPLE);
+                *sample = soft_limit(*sample * gain);
             }
 
             // Counted here as well, or the curve would stand still through the
@@ -2596,6 +2639,19 @@ impl PlayerInternal {
                     if let AudioPacket::Samples(ref mut data) = packet {
                         self.apply_fade(data);
                     }
+                } else if let AudioPacket::Samples(ref data) = packet {
+                    // LOCAL PATCH: track trailing silence near the end of a track for silence trimming
+                    let crossfade_ms = self.config.crossfade_duration_ms as i64;
+                    if self.config.trim_silence && crossfade_ms > 0 && self.fade_armed.is_some() && self.early_end.is_none() {
+                        const SILENCE_THRESHOLD: f64 = 0.00316; // -50 dBFS
+                        if data.iter().all(|s| s.abs() < SILENCE_THRESHOLD) {
+                            self.consecutive_silent_samples += data.len();
+                        } else {
+                            self.consecutive_silent_samples = 0;
+                        }
+                    } else {
+                        self.consecutive_silent_samples = 0;
+                    }
                 }
 
                     if let Err(e) = self.sink.write(packet, &mut self.converter) {
@@ -2765,6 +2821,7 @@ impl PlayerInternal {
         if let Some(previous) = self.state.play_request_id() {
             if previous != play_request_id {
                 self.ended = Some(previous);
+                self.consecutive_silent_samples = 0;
             }
         }
 
@@ -3176,6 +3233,12 @@ impl PlayerInternal {
                 }
             }
 
+            // LOCAL PATCH: see Player::set_trim_silence.
+            PlayerCommand::SetTrimSilence(enabled) => {
+                info!("trim_silence is now {enabled}");
+                self.config.trim_silence = enabled;
+            }
+
             PlayerCommand::EmitFilterExplicitContentChangedEvent(filter) => {
                 self.send_event(PlayerEvent::FilterExplicitContentChanged { filter });
 
@@ -3384,6 +3447,9 @@ impl fmt::Debug for PlayerCommand {
                 .finish(),
             PlayerCommand::SetBitrate(bitrate) => {
                 f.debug_tuple("SetBitrate").field(bitrate).finish()
+            }
+            PlayerCommand::SetTrimSilence(enabled) => {
+                f.debug_tuple("SetTrimSilence").field(enabled).finish()
             }
             PlayerCommand::SetAutoNormaliseAsAlbum(setting) => f
                 .debug_tuple("SetAutoNormaliseAsAlbum")

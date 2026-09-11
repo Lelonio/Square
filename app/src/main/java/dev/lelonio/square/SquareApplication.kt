@@ -141,6 +141,11 @@ class SquareApplication : Application(), ImageLoaderFactory {
     /** Which playlists were opened most recently, for ordering the home page. */
     val playlistOrder: PlaylistOrderStore by lazy { PlaylistOrderStore(this) }
 
+    /** Tracks the listener has liked ("Tus me gusta"). */
+    val likedStore: dev.lelonio.square.data.LikedStore by lazy {
+        dev.lelonio.square.data.LikedStore(this)
+    }
+
     /** Playlists the listener keeps at the top of the library; this device's own. */
     val pinnedPlaylists: dev.lelonio.square.data.PinnedPlaylistStore by lazy {
         dev.lelonio.square.data.PinnedPlaylistStore(this)
@@ -229,10 +234,23 @@ class SquareApplication : Application(), ImageLoaderFactory {
             .build()
     }
 
+    /**
+     * The account's country code (e.g. "ES", "MX", "US"), drawn from the authenticated
+     * account profile and cached in preferences. If the profile hasn't been fetched yet,
+     * falls back to the device's locale country, or "from_token".
+     */
+    val userCountry: String
+        get() = preferences.userCountry?.takeIf { it.length == 2 }?.uppercase()
+            ?: java.util.Locale.getDefault().country.takeIf { it.length == 2 }?.uppercase()
+            ?: "US"
+
     val api: SpotifyApi by lazy {
         ApiFactory.create(
             tokens = webApi.tokens,
+            fallbackTokens = tokenStore,
+            nativeToken = { dev.lelonio.square.nativecore.NativeBridge.accessToken() },
             baseClient = sharedHttpClient,
+            countryProvider = { userCountry },
             debug = BuildConfig.DEBUG,
         )
     }

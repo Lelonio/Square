@@ -45,6 +45,109 @@ class PlaybackService : MediaLibraryService() {
     private var engineStarted = false
 
     private lateinit var container: dev.lelonio.square.SquareApplication
+    private lateinit var browseTree: MediaBrowseTree
+
+    private fun redrawButtons() {
+        val live = session ?: return
+        live.connectedControllers.forEach { controller ->
+            live.setCustomLayout(
+                controller,
+                browseTree.layoutFor(
+                    player,
+                    radioInsteadOfRepeat = live.isMediaNotificationController(controller),
+                ),
+            )
+        }
+    }
+
+    private var autoplayInFlight = false
+    private var lastAutoplayTrackUri: String? = null
+
+    private val buttonsListener = object : androidx.media3.common.Player.Listener {
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = redrawButtons()
+
+        override fun onRepeatModeChanged(repeatMode: Int) = redrawButtons()
+
+        override fun onMediaItemTransition(
+            mediaItem: androidx.media3.common.MediaItem?,
+            reason: Int,
+        ) {
+            redrawButtons()
+            maybeTriggerAutoplay(mediaItem)
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == androidx.media3.common.Player.STATE_READY) {
+                maybeTriggerAutoplay(player.currentMediaItem)
+            }
+        }
+    }
+
+    private fun maybeTriggerAutoplay(mediaItem: androidx.media3.common.MediaItem?) {
+        if (!::container.isInitialized) return
+        if (!container.preferences.autoplayInfinite.value) return
+        if (player.repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF) return
+
+        val current = mediaItem ?: player.currentMediaItem ?: return
+        val currentUri = current.mediaId
+        if (!currentUri.startsWith("spotify:track:")) return
+
+        val currentIdx = player.currentMediaItemIndex
+        val totalCount = player.mediaItemCount
+        val remaining = totalCount - currentIdx - 1
+        if (remaining > 2) return
+
+        val toAdd = (AUTOPLAY_QUEUE_CAP - remaining).coerceAtLeast(0)
+        if (toAdd <= 0) return
+
+        if (autoplayInFlight || currentUri == lastAutoplayTrackUri) return
+        autoplayInFlight = true
+        lastAutoplayTrackUri = currentUri
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                val id = currentUri.substringAfterLast(':')
+                val stationUri = "spotify:station:track:$id"
+                val stationTrackUris = dev.lelonio.square.data.Catalog.contextTrackUris(stationUri)
+                val catalogTracks = dev.lelonio.square.data.Catalog.tracks(stationTrackUris)
+                withContext(Dispatchers.Main) {
+                    val currentUris = (0 until player.mediaItemCount)
+                        .mapNotNull { player.getMediaItemAt(it).mediaId }
+                        .toSet()
+                    val newTracks = catalogTracks.filter { it.uri !in currentUris }.take(toAdd)
+                    if (newTracks.isNotEmpty()) {
+                        val items = newTracks.map { track ->
+                            androidx.media3.common.MediaItem.Builder()
+                                .setMediaId(track.uri)
+                                .setUri(track.uri)
+                                .setMediaMetadata(
+                                    androidx.media3.common.MediaMetadata.Builder()
+                                        .setTitle(track.name)
+                                        .setArtist(track.artist)
+                                        .setAlbumTitle(track.album)
+                                        .setDurationMs(track.durationMs.takeIf { it > 0 })
+                                        .setArtworkUri(
+                                            track.artworkUrl?.let { url ->
+                                                dev.lelonio.square.download.DownloadExtras.fileOf(url, "art")
+                                                    ?.let(android.net.Uri::fromFile)
+                                                    ?: android.net.Uri.parse(url)
+                                            }
+                                        )
+                                        .build()
+                                )
+                                .build()
+                        }
+                        android.util.Log.i(TAG, "Autoplay: appending ${items.size} tracks for $currentUri (queue cap: $AUTOPLAY_QUEUE_CAP)")
+                        player.addMediaItems(items)
+                    }
+                }
+            } catch (t: Throwable) {
+                android.util.Log.w(TAG, "Autoplay: failed to fetch tracks for $currentUri", t)
+            } finally {
+                autoplayInFlight = false
+            }
+        }
+    }
 
     /** Whatever the active backend plays through. */
     private lateinit var player: androidx.media3.common.Player
@@ -96,7 +199,7 @@ class PlaybackService : MediaLibraryService() {
         crossfade = container.crossfade
 
         player = buildPlayer(container.preferences.backend.value)
-        val browseTree = MediaBrowseTree(this, scope, ::ensurePlayerFor)
+        browseTree = MediaBrowseTree(this, scope, ::ensurePlayerFor)
         session = MediaLibrarySession.Builder(this, player, browseTree)
             // Without this the notification is inert to a tap: Media3 has no way
             // to know which activity owns the session. `SINGLE_TOP` so an app
@@ -130,32 +233,15 @@ class PlaybackService : MediaLibraryService() {
                 .apply { setSmallIcon(dev.lelonio.square.R.drawable.ic_notification) },
         )
 
-        // The car's shuffle and repeat buttons carry their own state, so they
-        // are redrawn whenever the mode changes here — from the app, from a
-        // headset, or from another Connect device.
-        player.addListener(object : androidx.media3.common.Player.Listener {
-            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = redrawButtons()
+        // The notification and car buttons carry their own state (shuffle, repeat,
+        // and heart/like), so they are redrawn whenever the mode or track changes.
+        player.addListener(buttonsListener)
 
-            override fun onRepeatModeChanged(repeatMode: Int) = redrawButtons()
-
-            /**
-             * Per controller, because the two layouts differ: the shade shows
-             * radio where the car shows repeat, and one blanket update would
-             * hand every controller the same pair.
-             */
-            private fun redrawButtons() {
-                val live = session ?: return
-                live.connectedControllers.forEach { controller ->
-                    live.setCustomLayout(
-                        controller,
-                        browseTree.layoutFor(
-                            player,
-                            radioInsteadOfRepeat = live.isMediaNotificationController(controller),
-                        ),
-                    )
-                }
+        scope.launch {
+            container.likedStore.likedTracks.collect {
+                redrawButtons()
             }
-        })
+        }
 
         // Already read by the application object, and harmless twice: `load`
         // returns at once once the file is open.
@@ -604,7 +690,9 @@ class PlaybackService : MediaLibraryService() {
             librespot = null
             playerKind = kind
             player = buildPlayer(kind)
+            player.addListener(buttonsListener)
             session?.player = player
+            redrawButtons()
             // The queue on disk belongs to this player when it is the one being
             // restored into — leaving it out is what made a local song paused
             // at closing time impossible to start again: the screen had it, the
@@ -627,7 +715,9 @@ class PlaybackService : MediaLibraryService() {
             librespot = parked
             playerKind = kind
             player = parked
+            player.addListener(buttonsListener)
             session?.player = player
+            redrawButtons()
             if (restore) restoreQueue()
             observeForSaving()
             return
@@ -655,7 +745,9 @@ class PlaybackService : MediaLibraryService() {
         dev.lelonio.square.backend.youtube.YouTubeVideoMode.reset()
 
         player = buildPlayer(kind)
+        player.addListener(buttonsListener)
         session?.player = player
+        redrawButtons()
         followReverb()
         // The engine is what the Spotify player plays through, so it is started
         // whatever brought us here — without this, coming back from a local file
@@ -1195,6 +1287,8 @@ class PlaybackService : MediaLibraryService() {
                 artworkUrl = metadata.artworkUri?.toString(),
             )
         }
+        val currentTrack = tracks.getOrNull(player.currentMediaItemIndex)
+        if (currentTrack != null && currentTrack.name.isBlank()) return
         val extras = player.currentMediaItem?.mediaMetadata?.extras
         playbackStore.save(
             SavedPlayback(
@@ -1391,6 +1485,9 @@ class PlaybackService : MediaLibraryService() {
 
     companion object {
         private const val TAG = "PlaybackService"
+
+        /** Maximum upcoming tracks to buffer in queue for autoplay. */
+        private const val AUTOPLAY_QUEUE_CAP = 10
 
         /** How often the position is written back while playing. */
         private const val SAVE_INTERVAL_MS = 10_000L

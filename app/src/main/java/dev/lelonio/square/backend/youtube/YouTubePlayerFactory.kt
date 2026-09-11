@@ -23,29 +23,47 @@ import org.schabi.newpipe.extractor.stream.StreamInfo
 @UnstableApi
 object YouTubePlayerFactory {
 
-    fun create(host: PlaybackHost): Player = ExoPlayer.Builder(host.context, renderers(host))
-        .setMediaSourceFactory(
-            DefaultMediaSourceFactory(
-                ResolvingDataSource.Factory(
-                    DefaultHttpDataSource.Factory(),
-                    YouTubeStreamResolver(),
+    fun create(host: PlaybackHost): Player {
+        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 30_000,
+                /* maxBufferMs = */ 60_000,
+                /* bufferForPlaybackMs = */ 500,
+                /* bufferForPlaybackAfterRebufferMs = */ 1_500,
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
+        val crossfadeStore = (host.context.applicationContext as? dev.lelonio.square.SquareApplication)?.crossfade
+
+        return ExoPlayer.Builder(host.context, renderers(host))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(
+                    ResolvingDataSource.Factory(
+                        DefaultHttpDataSource.Factory(),
+                        YouTubeStreamResolver(),
+                    ),
                 ),
-            ),
-        )
-        .setHandleAudioBecomingNoisy(true)
-        // Ducks and pauses for whatever else wants the speaker. The Spotify
-        // path gets this from its own output; ExoPlayer will not ask for focus
-        // at all unless it is told to handle it.
-        .setAudioAttributes(
-            androidx.media3.common.AudioAttributes.Builder()
-                .setUsage(androidx.media3.common.C.USAGE_MEDIA)
-                .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MUSIC)
-                .build(),
-            /* handleAudioFocus = */ true,
-        )
-        .setLooper(host.looper)
-        .build()
-        .apply { addAnalyticsListener(Diagnostics) }
+            )
+            .setLoadControl(loadControl)
+            .setHandleAudioBecomingNoisy(true)
+            // Ducks and pauses for whatever else wants the speaker. The Spotify
+            // path gets this from its own output; ExoPlayer will not ask for focus
+            // at all unless it is told to handle it.
+            .setAudioAttributes(
+                androidx.media3.common.AudioAttributes.Builder()
+                    .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                    .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            .setLooper(host.looper)
+            .build()
+            .apply {
+                addAnalyticsListener(Diagnostics)
+                YouTubeFadeController(this, crossfadeStore)
+            }
+    }
 
     /** Temporary: chasing a stall where the position stops with the sink idle. */
     private object Diagnostics : androidx.media3.exoplayer.analytics.AnalyticsListener {

@@ -85,6 +85,7 @@ class MainActivity : ComponentActivity() {
                 player = controller,
                 onPlay = ::play,
                 onEnqueue = ::enqueue,
+                onEnqueueAll = ::enqueueAll,
                 openPlayer = openPlayer,
                 link = link,
             )
@@ -335,6 +336,21 @@ class MainActivity : ComponentActivity() {
         // the service picks the place, because only it knows where the run of
         // already-queued tracks ends.
         player.addMediaItem(toMediaItem(track, playNext = true))
+        if (wasEmpty) {
+            player.prepare()
+            player.play()
+        }
+    }
+
+    /**
+     * Appends multiple tracks to the end of the queue (used for continuous Autoplay).
+     */
+    private fun enqueueAll(tracks: List<CatalogTrack>) {
+        val player = controller ?: return
+        if (tracks.isEmpty()) return
+        val wasEmpty = player.mediaItemCount == 0
+        val items = tracks.map { toMediaItem(it, playNext = false) }
+        player.addMediaItems(items)
         if (wasEmpty) {
             player.prepare()
             player.play()

@@ -141,6 +141,7 @@ import com.adamglin.phosphoricons.regular.SpotifyLogo
 import com.adamglin.phosphoricons.regular.YoutubeLogo
 import com.adamglin.phosphoricons.regular.Export
 import com.adamglin.phosphoricons.regular.Trash
+import com.adamglin.phosphoricons.regular.User
 import dev.lelonio.square.data.RemoteConnect
 import dev.lelonio.square.ui.player.asPlaybackState
 import dev.lelonio.square.ui.player.rememberRemotePositionMs
@@ -372,6 +373,8 @@ fun SquareApp(
     onPlay: (List<CatalogTrack>, Int, String?, Boolean, String, Long) -> Unit,
     /** Appends one track to the end of the queue; see the swipe gesture on rows. */
     onEnqueue: (CatalogTrack) -> Unit,
+    /** Appends multiple tracks to the end of the queue; used by Autoplay. */
+    onEnqueueAll: (List<CatalogTrack>) -> Unit = {},
     /**
      * Incremented when something outside the app asks for the player — the
      * notification, for now. A counter, so a second request while the player is
@@ -649,6 +652,7 @@ fun SquareApp(
         awaitAudible(localState)
         viewModel.lookUpVideo(playback.mediaId)
     }
+
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val addToPlaylist by viewModel.addToPlaylist.collectAsStateWithLifecycle()
     val trackSort by viewModel.trackSort.collectAsStateWithLifecycle()
@@ -685,7 +689,12 @@ fun SquareApp(
     // Once, on the first composition that has a usable Web API session. The
     // ViewModel keeps what it fetched, so navigating away and back does not
     // spend the quota again.
-    LaunchedEffect(webApi.connected) { viewModel.loadFeed() }
+    LaunchedEffect(webApi.connected) {
+        if (webApi.connected) {
+            viewModel.loadFeed()
+            viewModel.loadProfile()
+        }
+    }
     // Two layers, and the split is not optional.
     //
     // `pageBackdrop` records the artwork *and* the screen on top of it, and is
@@ -915,8 +924,10 @@ fun SquareApp(
         ) {
             // After the song, not beside it: a Canvas is a video, and fetching
             // one while the track is still arriving takes the connection the
-            // track needs. See awaitAudible.
-            awaitAudible(localState)
+            // track needs. See awaitAudible. Only wait when playing locally.
+            if (remote == null) {
+                awaitAudible(localState)
+            }
             // The copy kept beside a download first, and not only offline: it
             // is the same clip, it is already here, and playing it costs
             // nothing. Offline it is the only one there is — the answer names a
@@ -959,38 +970,42 @@ fun SquareApp(
             lyricsFor = null
             return@LaunchedEffect
         }
-        // Behind the song as well; see awaitAudible. The panel shows its own
-        // spinner meanwhile, so the wait is visible rather than blank.
-        awaitAudible(localState)
+        val isRemote = remote != null
+        if (!isRemote) {
+            // Behind the song as well; see awaitAudible. The panel shows its own
+            // spinner meanwhile, so the wait is visible rather than blank.
+            awaitAudible(localState)
+        }
 
-        // Read again here, rather than used as they were when this started.
-        //
-        // The id and the metadata do not arrive together: the player reports
-        // the new item as soon as it has one, and the title and artist land a
-        // moment later. Asking with what was in hand at launch meant asking for
-        // the *previous* song's words and then filing them under this song's
-        // id, which is why the panel kept showing the last track's lyrics until
-        // it was opened again.
-        //
-        // The two providers this ends up in — the TTML archive keyed by id, and
-        // LrcLib keyed by title and artist — disagree about which is authority,
-        // so both halves have to describe the same song.
-        val now = localState.value
-        if (now.mediaId != uri) return@LaunchedEffect
+        // Read metadata from active playback state (supporting both Spotify Connect
+        // remote playback and local player playback).
+        val currentTitle = if (isRemote) playback.title else localState.value.title.ifBlank { playback.title }
+        val currentArtist = if (isRemote) playback.artist else localState.value.artist.ifBlank { playback.artist }
+        val currentDuration = if (isRemote && playback.durationMs > 0) {
+            playback.durationMs
+        } else {
+            localState.value.durationMs.takeIf { it > 0 } ?: playback.durationMs
+        }
+
+        if (playback.mediaId != uri && localState.value.mediaId != uri) return@LaunchedEffect
+
         lyrics = runCatching {
             (context.applicationContext as dev.lelonio.square.SquareApplication)
                 .activeBackend
                 .lyrics(
                     uri = uri,
-                    title = now.title,
-                    artist = now.artist,
-                    durationMs = now.durationMs,
+                    title = currentTitle,
+                    artist = currentArtist,
+                    durationMs = currentDuration,
                 )
         }.getOrNull()
-        // Only if this is still the song being played. A slow answer for a
-        // track the listener has already skipped past would otherwise replace
-        // the words of the one they are on now.
-        if (localState.value.mediaId == uri) lyricsFor = uri else lyrics = null
+
+        // Only if this is still the song being played. Dismiss the spinner by assigning lyricsFor.
+        if (playback.mediaId == uri || localState.value.mediaId == uri) {
+            lyricsFor = uri
+        } else {
+            lyrics = null
+        }
     }
 
     // The language the app is read in. Changing it re-creates the activity,
@@ -1234,7 +1249,9 @@ fun SquareApp(
                         sharedTrack = viewModel.resolveTrack(uri)
                     } else {
                         viewModel.openLink(uri)
-                        navController.navigate(Routes.PLAYLIST)
+                        if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                            navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                        }
                     }
                 }
 
@@ -1416,6 +1433,9 @@ fun SquareApp(
                         },
                     ) {
                         composable(Routes.HOME) {
+                            LaunchedEffect(Unit) {
+                                viewModel.loadBrowse()
+                            }
                             HomeScreen(
                                 state = state,
                                 contentPadding = listPadding,
@@ -1434,7 +1454,9 @@ fun SquareApp(
                                 feed = feed,
                                 onOpenItem = { item ->
                                     viewModel.openContext(item.uri, item.title, item.artworkUrl)
-                                    navController.navigate(Routes.PLAYLIST)
+                                    if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                                        navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                    }
                                 },
                                 backdrop = artBackdrop,
                                 youtubeMode =
@@ -1442,6 +1464,7 @@ fun SquareApp(
                                 onRetryOnline = viewModel::retryOnline,
                                 youtubeHome = youtubeHome,
                                 shelves = homeShelves,
+                                mixShelves = radioShelves,
                                 onPlayTrending = { tracks, index ->
                                     onPlay(tracks, index, null, false, trendingLabel, 0L)
                                 },
@@ -1481,7 +1504,9 @@ fun SquareApp(
                                         item.title,
                                         item.artworkUrl,
                                     )
-                                    navController.navigate(Routes.PLAYLIST)
+                                    if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                                        navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                    }
                                 },
                             )
                         }
@@ -1496,7 +1521,9 @@ fun SquareApp(
                                 contentPadding = listPadding,
                                 onOpenMix = { mix ->
                                     viewModel.openContext(mix.uri, mix.name, mix.artworkUrl)
-                                    navController.navigate(Routes.PLAYLIST)
+                                    if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                                        navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                    }
                                 },
                                 onOpen = { seed ->
                                     scope.launch {
@@ -1523,7 +1550,9 @@ fun SquareApp(
                                             artworkUrl = seed.artworkUrl,
                                             tracks = tracks,
                                         )
-                                        navController.navigate(Routes.PLAYLIST)
+                                        if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                                            navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                        }
                                         onPlay(tracks, 0, station, true, name, 0L)
                                         }.onFailure {
                                             android.util.Log.w(
@@ -1568,7 +1597,9 @@ fun SquareApp(
                                     // having back as much as a song is.
                                     viewModel.recordSearchOpen(item)
                                     viewModel.openContext(item.uri, item.title, item.artworkUrl)
-                                    navController.navigate(Routes.PLAYLIST)
+                                    if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                                        navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                    }
                                 },
                                 onLoadMore = viewModel::loadMoreSearch,
                                 backdrop = artBackdrop,
@@ -1597,7 +1628,9 @@ fun SquareApp(
                                         artist.title,
                                         artist.artworkUrl,
                                     )
-                                    navController.navigate(Routes.PLAYLIST)
+                                    if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                                        navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                    }
                                 },
                                 backdrop = artBackdrop,
                             )
@@ -1716,7 +1749,7 @@ fun SquareApp(
                                         onPlay(
                                             tracks,
                                             index,
-                                            playlist.uri,
+                                            page.uri,
                                             asContext,
                                             source,
                                             0L,
@@ -1734,7 +1767,7 @@ fun SquareApp(
                                         onPlay(
                                             tracks,
                                             0,
-                                            playlist.uri,
+                                            page.uri,
                                             false,
                                             source,
                                             0L,
@@ -1751,7 +1784,7 @@ fun SquareApp(
                                             // Taking a track out goes through
                                             // the Spotify Web API, so only a
                                             // Spotify playlist can offer it.
-                                            removable = playlist.kind ==
+                                            removable = page.kind ==
                                                 MainViewModel.DetailKind.PLAYLIST &&
                                                 backend ==
                                                 dev.lelonio.square.backend.BackendId.SPOTIFY,
@@ -1768,31 +1801,31 @@ fun SquareApp(
                                             item.artworkUrl,
                                         )
                                     },
-                                    downloadState = playlist.uri
+                                    downloadState = page.uri
                                         ?.let { downloadOwners[it] }
                                         ?: dev.lelonio.square.data.OwnerState.None,
-                                    onToggleDownload = { viewModel.toggleDownload(playlist) },
+                                    onToggleDownload = { viewModel.toggleDownload(page) },
                                     // The store belongs to the librespot engine,
                                     // so only Spotify pages can be kept — and
                                     // with no network the button would only ever
                                     // queue work that cannot start.
                                     canDownload = backend ==
                                         dev.lelonio.square.backend.BackendId.SPOTIFY &&
-                                        playlist.uri?.startsWith("spotify:") == true &&
+                                        page.uri?.startsWith("spotify:") == true &&
                                         !offlineNow,
                                     onToggleFollow = viewModel::toggleFollowArtist,
                                     onToggleLatestSaved = viewModel::toggleLatestSaved,
                                     onToggleSaved = viewModel::toggleSaved,
                                     onMenu = {
-                                        val uri = playlist.uri ?: return@PlaylistScreen
+                                        val uri = page.uri ?: return@PlaylistScreen
                                         // What the menu is allowed to offer, from
                                         // the page that knows: whose list this is,
                                         // and whether it is in the library at all.
-                                        playlistMenuMine = playlist.mine != false
-                                        playlistMenuSaved = playlist.saved != false
+                                        playlistMenuMine = page.mine != false
+                                        playlistMenuSaved = page.saved != false
                                         playlistMenu = CatalogPlaylist(
                                             uri = uri,
-                                            name = playlist.name,
+                                            name = page.name,
                                             artworkUrl = playlist.artworkUrl,
                                         )
                                     },
@@ -2786,40 +2819,34 @@ fun SquareApp(
                                     ?.let { uri ->
                                         {
                                             scope.launch {
-                                                val tracks = viewModel.radioFor(uri)
-                                                if (tracks.isEmpty()) return@launch
-                                                // The station as a page, not
-                                                // just as a queue. A radio the
-                                                // listener cannot look at is a
-                                                // shuffle with a different
-                                                // name: the point of it is
-                                                // seeing what it built.
-                                                val station =
-                                                    "spotify:station:track:" +
-                                                        uri.substringAfterLast(':')
-                                                // Named after the song it grew
-                                                // from: two stations are told
-                                                // apart by nothing else, and
-                                                // "Radio" alone says which
-                                                // feature it is rather than
-                                                // which station this is.
-                                                val name = radioOf(playback.title)
-                                                viewModel.showStation(
-                                                    uri = station,
-                                                    name = name,
-                                                    artworkUrl = playback.artworkUrl,
-                                                    tracks = tracks,
-                                                )
-                                                expand.animateTo(0f, expandSpec)
-                                                navController.navigate(Routes.PLAYLIST)
-                                                onPlay(
-                                                    tracks,
-                                                    0,
-                                                    station,
-                                                    true,
-                                                    name,
-                                                    0L,
-                                                )
+                                                runCatching {
+                                                    val tracks = viewModel.radioFor(uri)
+                                                    if (tracks.isEmpty()) return@launch
+                                                    val station =
+                                                        "spotify:station:track:" +
+                                                            uri.substringAfterLast(':')
+                                                    val name = radioOf(playback.title)
+                                                    viewModel.showStation(
+                                                        uri = station,
+                                                        name = name,
+                                                        artworkUrl = playback.artworkUrl,
+                                                        tracks = tracks,
+                                                    )
+                                                    expand.animateTo(0f, expandSpec)
+                                                    if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                                                        navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                                    }
+                                                    onPlay(
+                                                        tracks,
+                                                        0,
+                                                        station,
+                                                        true,
+                                                        name,
+                                                        0L,
+                                                    )
+                                                }.onFailure {
+                                                    android.util.Log.e("SquareApp", "Failed to start radio: ${it.message}")
+                                                }
                                             }
                                             Unit
                                         }
@@ -2841,13 +2868,11 @@ fun SquareApp(
                                 onSelectDevice = {
                                     viewModel.transferPlayback(it, positionMs.value)
                                 },
-                                // The artist line and the line naming what is
-                                // playing both open the page they name. The
-                                // player has already folded itself away by the
-                                // time this runs, so the page arrives in front.
                                 onOpenUri = { uri, name ->
                                     viewModel.openContext(uri, name)
-                                    navController.navigate(Routes.PLAYLIST)
+                                    if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                                        navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                    }
                                 },
                                 onAddToPlaylist = {
                                     viewModel.openAddToPlaylist(
@@ -2855,6 +2880,16 @@ fun SquareApp(
                                         playback.title,
                                         asSheet = false,
                                     )
+                                },
+                                onToggleLike = playback.mediaId?.let { uri ->
+                                    {
+                                        viewModel.toggleLike(
+                                            uri,
+                                            playback.title,
+                                            playback.artist,
+                                            playback.artworkUrl,
+                                        )
+                                    }
                                 },
                                 addToPlaylist = addToPlaylist,
                                 onPickPlaylist = viewModel::addToPlaylist,
@@ -2872,6 +2907,19 @@ fun SquareApp(
                                 videoOn = videoOn || spotifyVideoOn,
                                 videoPlayer = player,
                                 videoAttachKey = spotifyVideoGeneration,
+                                onMore = playback.mediaId?.let { uri ->
+                                    {
+                                        trackMenu = TrackMenuRequest(
+                                            track = CatalogTrack(
+                                                uri = uri,
+                                                name = playback.title,
+                                                artist = playback.artist,
+                                                artworkUrl = playback.artworkUrl,
+                                            ),
+                                            removable = false,
+                                        )
+                                    }
+                                },
                             )
                           }
                         },
@@ -2965,8 +3013,7 @@ fun SquareApp(
                             !offlineNow
                         if (keepable) {
                             val kept = downloadOwners[shownPlaylist.uri]
-                            val isKept = kept is dev.lelonio.square.data.OwnerState.Complete ||
-                                kept is dev.lelonio.square.data.OwnerState.Partial
+                            val isKept = kept != null && kept !is dev.lelonio.square.data.OwnerState.None
                             TrackSheetAction(
                                 stringResource(
                                     if (isKept) R.string.remove_download else R.string.download,
@@ -3102,6 +3149,22 @@ fun SquareApp(
                             TrackSheetAction(stringResource(R.string.add_to_playlist), PhosphorIcons.Regular.Plus) {
                                 trackMenu = null
                                 viewModel.openAddToPlaylist(menu.track.uri, menu.track.name)
+                            }
+                        }
+                        TrackSheetAction(stringResource(R.string.go_to_artist), PhosphorIcons.Regular.User) {
+                            val track = menu.track
+                            trackMenu = null
+                            scope.launch {
+                                if (expand.value > 0f) {
+                                    expand.animateTo(0f, expandSpec)
+                                }
+                                val artist = viewModel.artistOf(track)
+                                if (artist != null) {
+                                    viewModel.openContext(artist.uri, artist.title, artist.artworkUrl)
+                                    if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                                        navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                    }
+                                }
                             }
                         }
                         // Keeping one song, as opposed to keeping the list it
@@ -3532,7 +3595,9 @@ private fun RowScope.BottomItem(
 /** Loads the playlist and shows it, from whichever tab asked. */
 private fun NavHostController.openPlaylist(viewModel: MainViewModel, playlist: CatalogPlaylist) {
     viewModel.openPlaylist(playlist)
-    navigate(Routes.PLAYLIST)
+    if (currentDestination?.route != Routes.PLAYLIST) {
+        navigate(Routes.PLAYLIST) { launchSingleTop = true }
+    }
 }
 
 /**
@@ -3692,7 +3757,7 @@ private const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
 private fun savedPlaybackSeed(context: android.content.Context): PlaybackState? {
     val saved = dev.lelonio.square.data.PlaybackStore(context).load() ?: return null
     val position = saved.shuffleOrder?.getOrNull(saved.index) ?: saved.index
-    val track = saved.tracks.getOrNull(position) ?: return null
+    val track = saved.tracks.getOrNull(position)?.takeIf { it.name.isNotBlank() } ?: return null
     return PlaybackState(
         hasItem = true,
         mediaId = track.uri,

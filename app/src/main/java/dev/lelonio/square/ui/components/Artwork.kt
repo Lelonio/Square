@@ -88,51 +88,65 @@ fun Artwork(
             DownloadsCover()
         } else if (url == dev.lelonio.square.data.LocalLibrary.COVER) {
             LocalFilesCover()
-        } else if (url != null && (!offlineOnly() || isOnThisPhone(url))) {
-            // Offline the url is not something that can be fetched, so what is
-            // handed to the loader is the copy on the disk. Online the url
-            // stays: covers are kept keyed on the picture rather than its size,
-            // so the file behind a url may be a smaller print of it, and a page
-            // that can fetch the large one should.
-            val source = remember(url) { artSource(url) }
+        } else if (url != null) {
+            // Offline the url is not something that can be fetched over network,
+            // so network cache is disabled but disk and memory cache remain enabled,
+            // allowing already cached covers to be shown offline.
+            val densityVal = density
+            val source = remember(url, decodeSize) {
+                val base = artSource(url)
+                if (base is String && decodeSize > 0.dp) {
+                    val targetPx = with(densityVal) { decodeSize.toPx() }.roundToInt()
+                    spotifyResizedUrl(base, targetPx)
+                } else base
+            }
             val request = remember(source, decodeSize, crossfadeMs) {
                 ImageRequest.Builder(context)
                     .data(source)
                     .scale(Scale.FILL)
+                    .networkCachePolicy(
+                        if (offlineOnly() && !isOnThisPhone(url)) coil.request.CachePolicy.DISABLED
+                        else coil.request.CachePolicy.ENABLED,
+                    )
+                    .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                    .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
                     .apply {
                         if (decodeSize > 0.dp) {
                             val px = with(density) { decodeSize.toPx() }.roundToInt()
                             size(px, px)
                         }
                     }
-                    // The fade is done here rather than by the loader; see
-                    // below.
                     .crossfade(false)
                     .build()
             }
 
-            // Faded in by hand, and deliberately.
-            //
-            // The loader's own crossfade is skipped whenever the picture comes
-            // out of memory — which, since the next song's cover is fetched
-            // while the current one plays, is exactly the case that matters:
-            // the artwork appeared with a cut while everything around it was
-            // still animating, and arrived before the colour it is supposed to
-            // bring with it. An animation of our own does not care where the
-            // bytes came from.
             var arrived by remember(source) { mutableStateOf(false) }
+            var failed by remember(source) { mutableStateOf(false) }
             val appear by animateFloatAsState(
                 targetValue = if (arrived || crossfadeMs <= 0) 1f else 0f,
                 animationSpec = tween(crossfadeMs),
                 label = "artwork",
             )
 
+            if (fallback && failed) {
+                GeneratedCover(title, corner)
+            }
+
             AsyncImage(
                 model = request,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 onState = { state ->
-                    if (state is coil.compose.AsyncImagePainter.State.Success) arrived = true
+                    when (state) {
+                        is coil.compose.AsyncImagePainter.State.Success -> {
+                            arrived = true
+                            failed = false
+                        }
+                        is coil.compose.AsyncImagePainter.State.Error -> {
+                            failed = true
+                        }
+                        else -> {}
+                    }
                 },
                 modifier = Modifier
                     .fillMaxSize()
@@ -223,6 +237,72 @@ private fun isOnThisPhone(url: String): Boolean =
         url.startsWith("/") ||
         url.startsWith("content:") ||
         dev.lelonio.square.download.DownloadExtras.fileOf(url, "art") != null
+
+/**
+ * Requests a smaller print of a Spotify CDN image when a small decode target
+ * is given, rather than fetching 640 px and throwing most of it away.
+ *
+ * Spotify image IDs are forty lowercase hex characters. The first sixteen
+ * encode the resolution; the last twenty-four identify the picture. Swapping
+ * the prefix is enough to request any print the CDN publishes.
+ *
+ * Known prefixes (from the Spotify web player / CDN):
+ *  - Albums / tracks / covers (`ab67616d`):
+ *      - `ab67616d0000b273` → 640 × 640 px
+ *      - `ab67616d00001e02` → 300 × 300 px
+ *      - `ab67616d00004851` → 64 × 64 px
+ *  - Artist avatars (`ab676161`):
+ *      - `ab6761610000e5eb` → 640 × 640 px
+ *      - `ab67616100005174` → 320 × 320 px
+ *      - `ab6761610000f178` → 160 × 160 px
+ *
+ * Only fires for URLs whose last path component looks like a Spotify image ID
+ * (40 hex chars). Everything else is returned unchanged.
+ */
+fun spotifyResizedUrl(url: String, targetPx: Int): String {
+    if (targetPx <= 0) return url
+    val id = url.substringAfterLast('/')
+    if (id.length != SPOTIFY_ID_LEN || !id.all { it.isDigit() || it in 'a'..'f' }) return url
+    val family = id.take(8)
+    val rendition = when (family) {
+        "ab67616d" -> when {
+            targetPx <= 64  -> "00004851"
+            targetPx <= 300 -> "00001e02"
+            else            -> return url  // 640 px — keep the original URL
+        }
+        "ab676161" -> when {
+            targetPx <= 160 -> "0000f178"
+            targetPx <= 320 -> "00005174"
+            else            -> return url  // 640 px — keep the original URL
+        }
+        else -> return url // Unrecognized Spotify image family: leave unmodified
+    }
+    val tail = id.drop(SPOTIFY_SIZE_PREFIX_LEN)
+    return url.dropLast(SPOTIFY_ID_LEN) + family + rendition + tail
+}
+
+/**
+ * Resolves a canonical cache key for an image URL.
+ *
+ * Spotify image IDs are 40 hex chars: 16 prefix chars encoding size/rendition,
+ * followed by 24 chars identifying the image. Keying on the last 24 characters
+ * ensures that any size variant (e.g. 64px row thumbnail, 300px list print,
+ * 640px cover) shares the exact same palette and tint in cache.
+ */
+fun canonicalArtworkKey(url: String): String {
+    val id = url.substringAfterLast('/')
+    return if (id.length == SPOTIFY_ID_LEN && id.all { it.isDigit() || it in 'a'..'f' }) {
+        id.takeLast(SPOTIFY_ID_LEN - SPOTIFY_SIZE_PREFIX_LEN)
+    } else {
+        url
+    }
+}
+
+/** Length of a Spotify image ID, in hex characters. */
+const val SPOTIFY_ID_LEN = 40
+
+/** How many of those characters encode the image size. */
+const val SPOTIFY_SIZE_PREFIX_LEN = 16
 
 /** The shelf of songs downloaded on their own; see DownloadStore.SINGLES. */
 const val DOWNLOADS_COVER = "square:downloads-cover"

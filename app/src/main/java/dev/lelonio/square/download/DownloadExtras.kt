@@ -148,7 +148,7 @@ object DownloadExtras {
     fun note(kind: String, uri: String) = remember(kind, uri, "")
 
     /** Whether this song has been asked about at all, answer or not. */
-    fun asked(kind: String, uri: String): Boolean = fileFor(kind, uri)?.exists() == true
+    fun asked(kind: String, uri: String): Boolean = look(kind, uri)?.exists() == true
 
     /**
      * Artist descriptions are kept for anyone with a downloaded track, so the
@@ -170,7 +170,7 @@ object DownloadExtras {
     }
 
     private fun recall(kind: String, uri: String): String? {
-        val file = fileFor(kind, uri) ?: return null
+        val file = look(kind, uri) ?: return null
         return runCatching { file.takeIf(File::exists)?.readText() }
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
@@ -189,8 +189,18 @@ object DownloadExtras {
         if (kind == "art") artCache.computeIfAbsent(url) { Kept(look(kind, it)) }.value
         else look(kind, url)
 
-    private fun look(kind: String, key: String): File? =
-        fileFor(kind, key)?.takeIf(File::exists)
+    private fun look(kind: String, key: String): File? {
+        val file = fileFor(kind, key) ?: return null
+        if (file.exists()) return file
+        val old = oldFileFor(kind, key)
+        if (old != null && old.exists()) {
+            if (old.renameTo(file)) {
+                return file
+            }
+            return old
+        }
+        return null
+    }
 
     /**
      * Answers about covers, remembered.
@@ -386,6 +396,7 @@ object DownloadExtras {
     fun forget(trackUri: String) {
         listOf("lyrics", "canvas", ART).forEach { kind ->
             fileFor(kind, trackUri)?.let { runCatching { it.delete() } }
+            oldFileFor(kind, trackUri)?.let { runCatching { it.delete() } }
         }
     }
 
@@ -420,28 +431,47 @@ object DownloadExtras {
     fun sweep(trackUris: Collection<String>, coverUrls: Collection<String>) {
         if (root == null) return
 
-        val keepLyrics = trackUris.mapNotNullTo(mutableSetOf()) { fileFor("lyrics", it)?.name }
-        val keepCanvas = trackUris.mapNotNullTo(mutableSetOf()) { fileFor("canvas", it)?.name }
-        val keepApple = trackUris.mapNotNullTo(mutableSetOf()) { fileFor(ART, it)?.name }
-        val keepArt = coverUrls.mapNotNullTo(mutableSetOf()) { fileFor("art", it)?.name }
+        val keepLyrics = trackUris.flatMapTo(mutableSetOf()) { uri ->
+            look("lyrics", uri)
+            listOfNotNull(fileFor("lyrics", uri)?.name, oldFileFor("lyrics", uri)?.name)
+        }
+        val keepCanvas = trackUris.flatMapTo(mutableSetOf()) { uri ->
+            look("canvas", uri)
+            listOfNotNull(fileFor("canvas", uri)?.name, oldFileFor("canvas", uri)?.name)
+        }
+        val keepApple = trackUris.flatMapTo(mutableSetOf()) { uri ->
+            look(ART, uri)
+            listOfNotNull(fileFor(ART, uri)?.name, oldFileFor(ART, uri)?.name)
+        }
+        val keepArt = coverUrls.flatMapTo(mutableSetOf()) { url ->
+            look("art", url)
+            listOfNotNull(fileFor("art", url)?.name, oldFileFor("art", url)?.name)
+        }
 
         // The tall pictures are named by the answers that point at them, the
         // same way the Canvas videos are: read while those answers are still
         // here to be read.
         trackUris.forEach { uri ->
             art(uri)?.toList()?.filterNotNull()?.forEach { url ->
+                look("art", url)
                 fileFor("art", url)?.let { keepArt += it.name }
+                oldFileFor("art", url)?.let { keepArt += it.name }
             }
         }
 
         // Read before the Canvas answers are pruned: a video is named after the
         // URL inside the answer that points at it, so the answers are the only
         // way to know which videos are still wanted.
-        val keepVideo = trackUris.mapNotNullTo(mutableSetOf()) { uri ->
-            recall("canvas", uri)
+        val keepVideo = trackUris.flatMapTo(mutableSetOf()) { uri ->
+            val url = recall("canvas", uri)
                 ?.let { raw -> runCatching { JSONObject(raw).optString("url") }.getOrNull() }
                 ?.takeIf { it.isNotBlank() }
-                ?.let { fileFor("video", it)?.name }
+            if (url != null) {
+                look("video", url)
+                listOfNotNull(fileFor("video", url)?.name, oldFileFor("video", url)?.name)
+            } else {
+                emptyList()
+            }
         }
 
         forgetArtAnswers()
@@ -469,12 +499,51 @@ object DownloadExtras {
         val root = root ?: return null
         // Hashed rather than sanitised: a URI is not a legal file name, and any
         // escaping scheme would have to survive the characters it escapes.
-        val name = (if (kind == "art") coverKey(key) else key).hashCode().toUInt().toString(16)
+        //
+        // A 64-bit FNV-1a hash rather than String.hashCode() (32-bit): the 32-bit
+        // space has ~4 billion values, and the birthday-paradox collision probability
+        // for a 10,000-item library is already ~1 %. At 64 bits the probability is
+        // negligible across any library size the app will encounter in practice.
+        val name = fnv1a64((if (kind == "art") coverKey(key) else key)).toString(16)
         val extension = when (kind) {
-            "art" -> "jpg"
+            "art"   -> "jpg"
             "video" -> "mp4"
-            else -> "json"
+            else    -> "json"
         }
         return File(File(root, kind), "$name.$extension")
     }
+
+    private fun oldFileFor(kind: String, key: String): File? {
+        val root = root ?: return null
+        val name = (if (kind == "art") coverKey(key) else key).hashCode().toUInt().toString(16)
+        val extension = when (kind) {
+            "art"   -> "jpg"
+            "video" -> "mp4"
+            else    -> "json"
+        }
+        return File(File(root, kind), "$name.$extension")
+    }
+
+    /**
+     * 64-bit FNV-1a hash of a string, encoded as its UTF-8 bytes.
+     *
+     * Non-cryptographic, fast, and well-distributed for short keys like URIs and
+     * image URLs. Returns an unsigned Long so the hex representation is always
+     * positive and always 16 characters wide.
+     */
+    private fun fnv1a64(input: String): ULong {
+        var hash = FNV_OFFSET_BASIS
+        for (byte in input.encodeToByteArray()) {
+            hash = hash xor byte.toULong()
+            hash *= FNV_PRIME
+        }
+        return hash
+    }
+
 }
+
+/** FNV-1a 64-bit offset basis. */
+private val FNV_OFFSET_BASIS = 14695981039346656037UL
+
+/** FNV-1a 64-bit prime. */
+private const val FNV_PRIME = 1099511628211UL

@@ -74,6 +74,7 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
         pending?.cancel()
         if (connected) {
             OfflineMode.setNoSession(false)
+            OfflineMode.setSlow(false)
             return
         }
         pending = scope.launch {
@@ -84,20 +85,12 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
     }
 
     /**
-     * Whether there is a link that actually reaches the internet.
+     * Whether there is an active link that can carry traffic.
      *
-     * `NET_CAPABILITY_VALIDATED` rather than merely connected: a Wi-Fi that has
-     * not passed its own check — a captive portal, a router with no line behind
-     * it — is a network to the system and nothing at all to this app.
-     */
-    /**
-     * What the system says is carrying the traffic, for the log.
-     *
-     * Which transport it is matters: reporting "up" with everything switched
-     * off means this is reading something that is not the listener's
-     * connection — a tunnel, a tether, a link the system has not torn down yet
-     * — and the name of it is the difference between a wrong answer and a
-     * wrong question.
+     * Wi-Fi, Ethernet, Cellular and VPNs are treated as connected without strictly
+     * requiring NET_CAPABILITY_VALIDATED, because Android's captive portal check
+     * (Google 204 probe) frequently fails or is blocked on local/regional networks
+     * despite having working internet.
      */
     private fun describe(): String {
         val network = connectivity?.activeNetwork ?: return "no active network"
@@ -119,8 +112,13 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
     private fun connected(): Boolean {
         val network = connectivity?.activeNetwork ?: return false
         val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        val isWifi = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        val isEthernet = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        val isCellular = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+        val isVpn = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+
+        return hasInternet && (isWifi || isEthernet || isCellular || isVpn)
     }
 
     private companion object {

@@ -31,6 +31,9 @@ object DownloadEvents {
 
     val progress: SharedFlow<Progress> = _progress.asSharedFlow()
 
+    private val lastEmitMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val lastFraction = java.util.concurrent.ConcurrentHashMap<String, Float>()
+
     /**
      * Takes a download event off the engine's event channel.
      *
@@ -41,7 +44,16 @@ object DownloadEvents {
         PROGRESS -> {
             // Per mille on the wire: the event carries one number, and a
             // fraction would not have survived the trip as a long.
-            _progress.tryEmit(Progress(uri, (value / 1000f).coerceIn(0f, 1f)))
+            // Throttled to prevent flooding Compose with dozens of recompositions/sec.
+            val fraction = (value / 1000f).coerceIn(0f, 1f)
+            val now = System.currentTimeMillis()
+            val last = lastEmitMs[uri] ?: 0L
+            val prev = lastFraction[uri] ?: 0f
+            if (now - last >= 150L || (fraction - prev) >= 0.02f || fraction >= 0.99f) {
+                lastEmitMs[uri] = now
+                lastFraction[uri] = fraction
+                _progress.tryEmit(Progress(uri, fraction))
+            }
             true
         }
 
@@ -49,6 +61,8 @@ object DownloadEvents {
         // it — but the ring should reach the end before the row changes shape,
         // and the last progress tick lands a chunk short of the whole.
         DONE -> {
+            lastEmitMs.remove(uri)
+            lastFraction.remove(uri)
             _progress.tryEmit(Progress(uri, 1f))
             true
         }

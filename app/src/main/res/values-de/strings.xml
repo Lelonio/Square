@@ -30,6 +30,8 @@
     <string name="title">Titel</string>
     <string name="artist">Künstler</string>
     <string name="album">Album</string>
+    <string name="single">Single</string>
+    <string name="compilation">Kompilation</string>
     <string name="playlist">Playlist</string>
     <string name="duration">Länge</string>
     <string name="tracks">Titel</string>
@@ -105,6 +107,7 @@
 
     <string name="add_to_queue">Zur Warteschlange</string>
     <string name="add_to_playlist">Zu einer Playlist hinzufügen</string>
+    <string name="go_to_artist">Zum Künstler</string>
     <string name="copy_link">Link kopieren</string>
     <string name="remove_from_playlist">Aus der Playlist entfernen</string>
     <string name="queued">In der Warteschlange</string>
@@ -386,6 +389,10 @@
     <plurals name="song_count">
         <item quantity="one">%1$d Titel</item>
         <item quantity="other">%1$d Titel</item>
+    </plurals>
+    <plurals name="monthly_listeners">
+        <item quantity="one">%s monatlicher Hörer</item>
+        <item quantity="other">%s monatliche Hörer</item>
     </plurals>
     <string name="songs_and_length">%1$d Titel, %2$s</string>
     <string name="more_notes">MEHR</string>

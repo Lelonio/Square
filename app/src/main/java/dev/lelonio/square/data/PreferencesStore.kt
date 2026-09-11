@@ -84,6 +84,29 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_CANVAS, value).apply()
     }
 
+    private val _autoplayInfinite = MutableStateFlow(prefs.getBoolean(KEY_AUTOPLAY_INFINITE, false))
+
+    /** Whether playback automatically appends similar tracks when reaching queue end. */
+    val autoplayInfinite: StateFlow<Boolean> = _autoplayInfinite.asStateFlow()
+
+    fun setAutoplayInfinite(value: Boolean) {
+        _autoplayInfinite.value = value
+        prefs.edit().putBoolean(KEY_AUTOPLAY_INFINITE, value).apply()
+    }
+
+    private val _trimSilence = MutableStateFlow(prefs.getBoolean(KEY_TRIM_SILENCE, true))
+
+    /** Whether trailing silence triggers early crossfade. */
+    val trimSilence: StateFlow<Boolean> = _trimSilence.asStateFlow()
+
+    fun setTrimSilence(value: Boolean) {
+        _trimSilence.value = value
+        prefs.edit().putBoolean(KEY_TRIM_SILENCE, value).apply()
+        runCatching {
+            dev.lelonio.square.nativecore.NativeBridge.setTrimSilence(value)
+        }
+    }
+
     /**
      * Whether the player was open when the app was last left.
      *
@@ -162,6 +185,18 @@ class PreferencesStore(context: Context) {
         prefs.edit().putString(KEY_SKIPPED_UPDATE, value).apply()
     }
 
+    /** The account's country code, saved from the Spotify profile. */
+    val userCountry: String?
+        get() = prefs.getString(KEY_USER_COUNTRY, null)
+
+    fun setUserCountry(value: String?) {
+        if (value.isNullOrBlank()) {
+            prefs.edit().remove(KEY_USER_COUNTRY).apply()
+        } else {
+            prefs.edit().putString(KEY_USER_COUNTRY, value).apply()
+        }
+    }
+
     private companion object {
         const val FILE_NAME = "square_preferences"
         const val KEY_TRACK_SORT = "track_sort"
@@ -169,11 +204,14 @@ class PreferencesStore(context: Context) {
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_CANVAS = "canvas_enabled"
+        const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"
+        const val KEY_TRIM_SILENCE = "trim_silence"
         const val KEY_PLAYER_OPEN = "player_open"
         const val KEY_BACKEND = "backend"
         const val KEY_PROFILE_NAME = "profile_name"
         const val KEY_PROFILE_ART = "profile_art"
         const val KEY_LAST_UPDATE_CHECK = "last_update_check"
         const val KEY_SKIPPED_UPDATE = "skipped_update"
+        const val KEY_USER_COUNTRY = "user_country"
     }
 }

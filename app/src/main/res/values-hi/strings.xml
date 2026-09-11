@@ -35,6 +35,8 @@
     <string name="title">शीर्षक</string>
     <string name="artist">कलाकार</string>
     <string name="album">एल्बम</string>
+    <string name="single">सिंगल</string>
+    <string name="compilation">संकलन</string>
     <string name="playlist">प्लेलिस्ट</string>
     <string name="duration">अवधि</string>
     <string name="tracks">गाने</string>
@@ -114,6 +116,7 @@
     <!-- Track menu -->
     <string name="add_to_queue">कतार में जोड़ें</string>
     <string name="add_to_playlist">प्लेलिस्ट में जोड़ें</string>
+    <string name="go_to_artist">कलाकार पर जाएँ</string>
     <string name="copy_link">लिंक कॉपी करें</string>
     <string name="remove_from_playlist">प्लेलिस्ट से हटाएँ</string>
     <string name="queued">कतार में</string>
@@ -401,6 +404,10 @@
     <plurals name="song_count">
         <item quantity="one">%1$d गाना</item>
         <item quantity="other">%1$d गाने</item>
+    </plurals>
+    <plurals name="monthly_listeners">
+        <item quantity="one">%s मासिक श्रोता</item>
+        <item quantity="other">%s मासिक श्रोता</item>
     </plurals>
     <string name="songs_and_length">%1$d गाने, %2$s</string>
     <string name="more_notes">और</string>

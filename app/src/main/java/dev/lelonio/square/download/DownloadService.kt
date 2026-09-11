@@ -125,6 +125,12 @@ class DownloadService : android.app.Service() {
     }
 
     private fun build(status: DownloadQueue.Status): Notification {
+        val percent = if (status.total > 0) {
+            ((status.done.toFloat() / status.total) * 100).toInt().coerceIn(0, 100)
+        } else 0
+        val countText = getString(R.string.download_progress_count, status.done, status.total)
+        val progressText = "$countText ($percent%)"
+
         val text = when {
             status.waiting == DownloadQueue.Waiting.WIFI ->
                 getString(R.string.download_waiting_wifi)
@@ -134,7 +140,8 @@ class DownloadService : android.app.Service() {
                 getString(R.string.download_waiting_engine)
             // The music is all here; what is left is what goes beside it.
             status.extras -> getString(R.string.download_extras)
-            else -> getString(R.string.download_progress_count, status.done, status.total)
+            !status.currentTitle.isNullOrBlank() -> "${status.currentTitle} · $progressText"
+            else -> progressText
         }
 
         val stop = PendingIntent.getService(

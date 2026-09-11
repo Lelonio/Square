@@ -10,8 +10,10 @@
 
 package dev.lelonio.square.ui.glass
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -38,11 +40,13 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.tanh
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LiquidButton(
     onClick: () -> Unit,
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
     isInteractive: Boolean = true,
     tint: Color = Color.Unspecified,
     /**
@@ -190,11 +194,23 @@ fun LiquidButton(
                     null
                 },
             )
-            .clickable(
-                interactionSource = null,
-                indication = if (isInteractive) null else LocalIndication.current,
-                role = Role.Button,
-                onClick = onClick
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        interactionSource = null,
+                        indication = if (isInteractive) null else LocalIndication.current,
+                        role = Role.Button,
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                } else {
+                    Modifier.clickable(
+                        interactionSource = null,
+                        indication = if (isInteractive) null else LocalIndication.current,
+                        role = Role.Button,
+                        onClick = onClick,
+                    )
+                }
             )
             .then(
                 if (isInteractive) {

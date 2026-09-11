@@ -162,6 +162,7 @@ fun HomeScreen(
      * cannot be reconstructed from the account's playlists.
      */
     shelves: List<dev.lelonio.square.data.HomeShelf> = emptyList(),
+    mixShelves: List<dev.lelonio.square.data.HomeShelf> = emptyList(),
 ) {
     if (youtubeMode) {
         YouTubeHome(
@@ -329,13 +330,15 @@ fun HomeScreen(
                         .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
                         .drawWithContent {
                             drawContent()
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    FADE_FRACTION to Color.Black,
-                                ),
-                                blendMode = BlendMode.DstIn,
-                            )
+                            if (collapse > 0.01f) {
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        0f to Color.Transparent,
+                                        (FADE_FRACTION * collapse) to Color.Black,
+                                    ),
+                                    blendMode = BlendMode.DstIn,
+                                )
+                            }
                         },
                     state = listState,
                     // The header already covers the status bar, so only the
@@ -370,7 +373,8 @@ fun HomeScreen(
                 // placeholder the page arrived in two halves and shifted under
                 // whatever was being read.
                 if (filter == Feed.ALL) {
-                    shelves.forEach { shelf ->
+                    val allShelves = if (mixShelves.isEmpty()) shelves else (shelves + mixShelves).distinctBy { it.title }
+                    allShelves.forEach { shelf ->
                         item(contentType = "shelf") { Heading(shelf.title) }
                         item(contentType = "shelf") {
                             Carousel(shelf.items, key = { it.uri }) { entry ->

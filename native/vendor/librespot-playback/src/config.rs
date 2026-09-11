@@ -193,6 +193,9 @@ pub struct PlayerConfig {
 
     /// LOCAL PATCH: asked before falling back to the network; see [`DownloadsOnly`].
     pub downloads_only: Option<DownloadsOnly>,
+
+    /// LOCAL PATCH: whether trailing silence near the end of a track triggers early crossfade.
+    pub trim_silence: bool,
 }
 
 impl Default for PlayerConfig {
@@ -215,6 +218,7 @@ impl Default for PlayerConfig {
             crossfade_duration_ms: 0,
             download_lookup: None,
             downloads_only: None,
+            trim_silence: true,
         }
     }
 }

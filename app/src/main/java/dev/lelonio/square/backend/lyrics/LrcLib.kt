@@ -22,7 +22,11 @@ import org.json.JSONObject
  */
 object LrcLib {
 
-    private val http = OkHttpClient()
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
 
     /**
      * @param durationMs used to tell versions apart — a single, an album cut and
@@ -32,28 +36,76 @@ object LrcLib {
     suspend fun lyrics(title: String, artist: String, durationMs: Long): Lyrics? =
         withContext(Dispatchers.IO) {
             val cleaned = title.songTitle()
-            val body = get(url(cleaned, artist, durationMs))
-            // Retry without the duration before giving up: YouTube's own
-            // duration includes any silence at the end of the upload, so an
-            // exact-length match misses tracks LrcLib really does have.
-                ?: get(url(cleaned, artist, durationMs = null))
-                ?: return@withContext null
+            val primary = artist.primaryArtist()
 
-            val json = runCatching { JSONObject(body) }.getOrNull() ?: return@withContext null
+            // 1. Exact match with cleaned title, full artist and duration
+            var body = get(url(cleaned, artist, durationMs))
 
-            json.optString("syncedLyrics").takeIf { it.isNotBlank() }?.let { synced ->
-                return@withContext parseLrc(synced)
+            // 2. Exact match with primary artist and duration
+            if (body == null && primary != artist) {
+                body = get(url(cleaned, primary, durationMs))
             }
-            json.optString("plainLyrics").takeIf { it.isNotBlank() }?.let { plain ->
-                return@withContext Lyrics(
-                    lines = plain.lines()
-                        .filter { it.isNotBlank() }
-                        .map { LyricLine(startTimeMs = null, text = it.trim()) },
-                    synced = false,
-                )
+
+            // 3. Exact match with primary artist without duration
+            if (body == null) {
+                body = get(url(cleaned, primary, durationMs = null))
             }
-            null
+
+            if (body != null) {
+                parseJson(body, durationMs)?.let { return@withContext it }
+            }
+
+            // 4. Fallback search via /api/search when exact lookup misses
+            search(cleaned, primary, durationMs)
         }
+
+    private fun parseJson(body: String, durationMs: Long): Lyrics? {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+
+        json.optString("syncedLyrics").takeIf { it.isNotBlank() }?.let { synced ->
+            return parseLrc(synced)
+        }
+        json.optString("plainLyrics").takeIf { it.isNotBlank() }?.let { plain ->
+            return LyricsEstimator.estimate(plain, durationMs)
+        }
+        return null
+    }
+
+    private fun search(title: String, artist: String, durationMs: Long): Lyrics? {
+        val query = "$title $artist".trim()
+        val searchUrl = "https://lrclib.net/api/search?q=" + java.net.URLEncoder.encode(query, "UTF-8")
+        val raw = get(searchUrl) ?: return null
+        val array = runCatching { org.json.JSONArray(raw) }.getOrNull() ?: return null
+        if (array.length() == 0) return null
+
+        val targetSec = durationMs / 1000.0
+        var bestSynced: Lyrics? = null
+        var bestPlain: Lyrics? = null
+        var minDiff = Double.MAX_VALUE
+
+        for (i in 0 until array.length().coerceAtMost(10)) {
+            val item = array.optJSONObject(i) ?: continue
+            val synced = item.optString("syncedLyrics").takeIf { it.isNotBlank() }
+            val plain = item.optString("plainLyrics").takeIf { it.isNotBlank() }
+            if (synced == null && plain == null) continue
+
+            val itemDuration = item.optDouble("duration", 0.0)
+            val diff = if (targetSec > 0 && itemDuration > 0) kotlin.math.abs(itemDuration - targetSec) else 0.0
+
+            if (synced != null) {
+                if (diff <= 4.0 && diff < minDiff) {
+                    minDiff = diff
+                    bestSynced = parseLrc(synced)
+                } else if (bestSynced == null) {
+                    bestSynced = parseLrc(synced)
+                }
+            } else if (plain != null && bestPlain == null && diff <= 5.0) {
+                bestPlain = LyricsEstimator.estimate(plain, durationMs)
+            }
+        }
+
+        return bestSynced ?: bestPlain
+    }
 
     private fun url(title: String, artist: String, durationMs: Long?): String = buildString {
         append("https://lrclib.net/api/get?track_name=")
@@ -73,7 +125,7 @@ object LrcLib {
             .header("User-Agent", USER_AGENT)
             .build()
         http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) null else response.body?.string()
+            if (!response.isSuccessful) null else response.body.string()
         }
     }.getOrNull()
 

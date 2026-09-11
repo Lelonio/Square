@@ -525,6 +525,18 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
     guard(&mut env, "SetBitrate", || engine::set_bitrate(bitrate_kbps));
 }
 
+/// Changes whether silence trimming is enabled, with no rebuild.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetTrimSilence(
+    mut env: JNIEnv,
+    _class: JClass,
+    enabled: jboolean,
+) {
+    guard(&mut env, "SetTrimSilence", || {
+        engine::set_trim_silence(enabled != 0)
+    });
+}
+
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeReconnect(
     mut env: JNIEnv,

@@ -146,7 +146,7 @@ fun HeroBackdrop(
             // between two versions of the same artwork is the most visible
             // change this screen ever makes; a fade makes it a refinement.
             crossfadeMs = SWAP_MS,
-            fallback = !pending,
+            fallback = false,
         )
 
         // The moving cover over the still one, which stays underneath as what is

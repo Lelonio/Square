@@ -30,6 +30,8 @@
     <string name="title">Título</string>
     <string name="artist">Artista</string>
     <string name="album">Álbum</string>
+    <string name="single">Sencillo</string>
+    <string name="compilation">Recopilación</string>
     <string name="playlist">Playlist</string>
     <string name="duration">Duración</string>
     <string name="tracks">Canciones</string>
@@ -105,6 +107,7 @@
 
     <string name="add_to_queue">Añadir a la cola</string>
     <string name="add_to_playlist">Añadir a una playlist</string>
+    <string name="go_to_artist">Ir al artista</string>
     <string name="copy_link">Copiar enlace</string>
     <string name="remove_from_playlist">Quitar de la playlist</string>
     <string name="queued">En cola</string>
@@ -359,7 +362,7 @@
     <string name="download_artist_confirm">¿Descargar %1$d canciones de %2$s? Son unos %3$s.</string>
     <string name="download_failed_count">%1$d no se pudieron descargar</string>
     <string name="download_retry_failed">Reintentar</string>
-    <string name="downloaded_tracks">Canciones descargadas</string>
+    <string name="downloaded_tracks">Música descargada</string>
     <string name="offline_mode">Modo sin conexión</string>
     <string name="offline_mode_note">Reproduce solo lo descargado, sin pedirle nada a Spotify.</string>
     <string name="offline_banner_manual">Sin conexión — lo activaste tú</string>
@@ -387,6 +390,10 @@
         <item quantity="one">%1$d canción</item>
         <item quantity="other">%1$d canciones</item>
     </plurals>
+    <plurals name="monthly_listeners">
+        <item quantity="one">%s oyente mensual</item>
+        <item quantity="other">%s oyentes mensuales</item>
+    </plurals>
     <string name="songs_and_length">%1$d canciones, %2$s</string>
     <string name="more_notes">MÁS</string>
     <string name="updated_ago">Actualizada: %1$s</string>
@@ -401,4 +408,10 @@
     <string name="show_all">Mostrar todo</string>
     <string name="show_less">Mostrar menos</string>
     <string name="search_library">Buscar en tu biblioteca</string>
+    <string name="autoplay">Reproducción continua</string>
+    <string name="autoplay_infinite_title">Autoplay infinito</string>
+    <string name="autoplay_infinite_summary">Sigue reproduciendo música similar al terminar la cola</string>
+    <string name="trim_silence">Recortar silencio</string>
+    <string name="trim_silence_summary">Evita el silencio al final de las canciones durante el fundido</string>
+    <string name="mood_mixes">Mixes por estado de ánimo</string>
 </resources>

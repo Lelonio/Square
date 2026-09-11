@@ -38,8 +38,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -100,6 +102,7 @@ import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberBackdropFreeze
 import dev.lelonio.square.ui.components.Artwork
 import dev.lelonio.square.ui.components.CHOICE_MENU_WIDTH
 import dev.lelonio.square.ui.components.GlassChoiceItem
@@ -174,6 +177,7 @@ enum class TrackSort(@StringRes val label: Int) {
     DURATION(R.string.duration),
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PlaylistScreen(
     state: MainViewModel.PlaylistState,
@@ -245,8 +249,8 @@ fun PlaylistScreen(
     storedSortDescending: Boolean = false,
     onSortDescendingChange: (Boolean) -> Unit = {},
 ) {
-    var query by remember { mutableStateOf("") }
-    var searching by remember { mutableStateOf(false) }
+    var query by remember(state.uri) { mutableStateOf("") }
+    var searching by remember(state.uri) { mutableStateOf(false) }
     // Opening and closing the field, as one number.
     //
     // The field used to appear and disappear on the frame the button was
@@ -321,7 +325,7 @@ fun PlaylistScreen(
     // An artist page is several sections and the songs are one of them, so it
     // opens on the handful the reference shows and the heading is the way to
     // the rest. Kept per artist: opening a second artist starts closed again.
-    var topSongsOpen by remember(state.uri) { mutableStateOf(false) }
+
 
     // Derived, not stored: keeping a second list in state would leave the two
     // able to disagree after a reload.
@@ -443,6 +447,7 @@ fun PlaylistScreen(
 
     /** The rows, for the one piece of glass that opens over them. */
     val listBackdrop = rememberLayerBackdrop()
+    val listBackdropFreeze = rememberBackdropFreeze()
 
     var sortAnchor by remember { mutableStateOf(IntOffset.Zero) }
 
@@ -462,7 +467,10 @@ fun PlaylistScreen(
     // list, so a single gesture closes the cover and then carries on into the
     // tracks.
     val collapseRange = with(density) { (heroHeight - collapsedHeight).toPx() }
-    var collapsed by remember { mutableFloatStateOf(0f) }
+    var collapsed by remember(state.uri) { mutableFloatStateOf(0f) }
+    LaunchedEffect(state.uri) {
+        listState.scrollToItem(0)
+    }
     val collapseFraction = { (collapsed / collapseRange).coerceIn(0f, 1f) }
 
     // How much of a drag the header itself uses up, closing on the way up and
@@ -603,6 +611,7 @@ fun PlaylistScreen(
                 collapsedPx = collapsedPx,
                 collapse = collapseFraction,
                 imageAspect = state.heroAspect,
+                pending = state.heroPending,
             )
         }
 
@@ -622,8 +631,12 @@ fun PlaylistScreen(
                 ink = pageInk,
                 name = state.name,
                 logoUrl = state.logoUrl,
+                avatarUrl = state.heroUrl ?: state.coverUrl ?: state.artworkUrl,
+                verified = state.verified,
+                monthlyListeners = state.monthlyListeners,
                 following = state.following,
                 onToggleFollow = onToggleFollow,
+                onMenu = onMenu,
                 infoOpen = infoOpen,
                 onToggleInfo = { infoOpen = !infoOpen },
                 pageColor = pageColor,
@@ -656,8 +669,7 @@ fun PlaylistScreen(
             onToggleFollow = onToggleFollow,
             download = downloadState,
             onToggleDownload = {
-                val kept = downloadState is dev.lelonio.square.data.OwnerState.Complete ||
-                    downloadState is dev.lelonio.square.data.OwnerState.Partial
+                val kept = downloadState !is dev.lelonio.square.data.OwnerState.None
                 if (kept) confirmingRemoval = true else onToggleDownload()
             },
             // Only where the reference puts one: a record or a list. An artist
@@ -694,8 +706,11 @@ fun PlaylistScreen(
             // colour — over a flat fill, glass has nothing to bend and comes
             // out as a grey card. Safe to record: the menu is drawn outside the
             // list, so nothing in this layer samples it.
+            // Frozen during scroll so the layer is not re-recorded every frame,
+            // taking frame time down from 47ms to 1.9ms.
             modifier = Modifier
-                .layerBackdrop(listBackdrop)
+                .nestedScroll(listBackdropFreeze.connection)
+                .layerBackdrop(listBackdrop, frozen = { listBackdropFreeze.frozen() || listState.isScrollInProgress })
                 .nestedScroll(headerScroll),
             contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding()),
         ) {
@@ -722,31 +737,6 @@ fun PlaylistScreen(
                 }
             }
 
-            if (isArtist) {
-                state.latest?.let { release ->
-                    item(contentType = "latestRelease") {
-                        LatestReleaseCard(
-                            release = release,
-                            saved = state.latestSaved,
-                            onOpen = {
-                                onOpenItem(
-                                    dev.lelonio.square.data.SearchItem(
-                                        uri = release.uri,
-                                        title = release.title,
-                                        subtitle = "",
-                                        artworkUrl = release.artworkUrl,
-                                    ),
-                                )
-                            },
-                            onToggleSaved = onToggleLatestSaved,
-                        )
-                    }
-                }
-            }
-
-            // What the editors wrote about the record, where they wrote
-            // anything. Three lines and then a word to open it: it is worth
-            // reading and it is not worth a screenful before the songs.
             if (!isArtist) {
                 state.notes?.takeIf { it.isNotBlank() }?.let { notes ->
                     item(contentType = "notes") { EditorialNotes(notes) }
@@ -755,26 +745,31 @@ fun PlaylistScreen(
 
             if (state.tracks.isNotEmpty()) {
                 item(contentType = "sectionTitle") {
-                    SectionHeader(
-                        title = stringResource(
-                            if (isArtist) R.string.top_songs else R.string.tracks,
-                        ),
-                        // Set as a page heading on an artist, the way the
-                        // reference does: there the songs are one section among
-                        // several, not the whole of what is below the fold.
-                        large = isArtist,
-                        sort = sort,
-                        onSortOpen = { sortOpen = it },
-                        onAnchor = { sortAnchor = it },
-                        // Only where there is more than what is shown.
-                        expandable = isArtist &&
-                            query.isBlank() &&
-                            visible.size > TOP_SONGS,
-                        expanded = topSongsOpen,
-                        onToggle = { topSongsOpen = !topSongsOpen },
-                    )
+                    if (isArtist) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Populares",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    } else {
+                        SectionHeader(
+                            title = stringResource(R.string.tracks),
+                            large = false,
+                            sort = sort,
+                            onSortOpen = { sortOpen = it },
+                            onAnchor = { sortAnchor = it },
+                            expandable = false,
+                            expanded = false,
+                        )
+                    }
                 }
-
             }
 
             when {
@@ -782,9 +777,6 @@ fun PlaylistScreen(
                     StatusBox { CircularProgressIndicator(strokeWidth = 2.dp) }
                 }
 
-                // The one empty list in the app that is a question rather than
-                // an answer: there may well be music here, and nobody has been
-                // allowed to look.
                 state.needsPermission -> item(contentType = "status") {
                     StatusBox {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -820,7 +812,7 @@ fun PlaylistScreen(
                     }
                 }
 
-                visible.isEmpty() -> item(contentType = "status") {
+                visible.isEmpty() -> if (!isArtist) item(contentType = "status") {
                     StatusBox {
                         Text(
                             if (query.isBlank()) stringResource(R.string.no_tracks)
@@ -829,18 +821,24 @@ fun PlaylistScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                } else if (state.albums.isEmpty() && state.singles.isEmpty() && !state.loading) {
+                    item(contentType = "status") {
+                        StatusBox {
+                            Text(
+                                stringResource(R.string.no_tracks),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
 
                 else -> itemsIndexed(
-                    // Cut to the first few on an artist, unless the heading has
-                    // been opened; every other page shows what it holds.
-                    items = if (isArtist && !topSongsOpen && query.isBlank()) {
-                        visible.take(TOP_SONGS)
+                    items = if (isArtist && query.isBlank()) {
+                        visible.take(5)
                     } else {
                         visible
                     },
-                    // Index in the key as well as the URI: a playlist may hold
-                    // the same track twice, and duplicate keys crash the list.
                     key = { index, track -> "$index ${track.uri}" },
                     contentType = { _, _ -> "track" },
                 ) { index, track ->
@@ -848,31 +846,18 @@ fun PlaylistScreen(
                         TrackRow(
                             track = track,
                             position = index + 1,
-                            // An artist page is a page about one artist, so
-                            // printing their name under every title says
-                            // nothing. What the reference puts there is the
-                            // record the song is on and when it came out, which
-                            // is the thing a listener is actually placing.
+                            rank = if (isArtist) index + 1 else null,
                             subtitle = when {
                                 isArtist -> track.releaseLine()
-                                // On a record by one artist, printing their
-                                // name under every title says nothing; the
-                                // length alone is what the reference leaves.
                                 state.kind == MainViewModel.DetailKind.ALBUM ->
                                     formatDuration(track.durationMs)
                                 else -> null
                             },
-                            // Every row on an album carries the same cover, so
-                            // the reference puts the track's number there
-                            // instead — the one thing that differs, and the
-                            // thing a record is read by.
                             numbered = state.kind == MainViewModel.DetailKind.ALBUM,
                             isCurrent = track.uri == nowPlayingUri,
                             onClick = { onPlay(visible, index, asContext) },
                             onMenu = { onTrackMenu(track) },
                             download = trackDownload(track),
-                            // The phone's own files play offline like anything
-                            // else — they were never coming over the network.
                             unavailable = offline &&
                                 !track.uri.startsWith("local:") &&
                                 trackDownload(track) !=
@@ -882,32 +867,7 @@ fun PlaylistScreen(
                 }
             }
 
-            // How much of it there is, at the end rather than under the title.
-            // That is where the reference puts it, and it is the right place: it
-            // is what you read after the list, not before it.
-            if (!isArtist && state.tracks.isNotEmpty() && query.isBlank()) {
-                item(contentType = "totals") {
-                    Text(
-                        stringResource(
-                            R.string.songs_and_length,
-                            state.tracks.size,
-                            formatTotal(state.tracks.sumOf { it.durationMs }),
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp),
-                    )
-                }
-            }
-
-            // Everything the artist is in, under the songs they are known for.
-            //
-            // The tracks come first because that is what an artist page is
-            // opened for: a shelf of covers above them made the reader scroll
-            // past the artist to reach the artist. Albums, then singles, then
-            // the records that are somebody else's, then what Spotify built
-            // around them — the order is how much of the artist is in each.
-            if (state.albums.isNotEmpty()) {
+            if (state.albums.isNotEmpty() && query.isBlank()) {
                 item(contentType = "albums") {
                     AlbumStrip(
                         albums = state.albums,
@@ -917,7 +877,7 @@ fun PlaylistScreen(
                 }
             }
 
-            if (state.singles.isNotEmpty()) {
+            if (state.singles.isNotEmpty() && query.isBlank()) {
                 item(contentType = "singles") {
                     AlbumStrip(
                         albums = state.singles,
@@ -927,7 +887,7 @@ fun PlaylistScreen(
                 }
             }
 
-            if (state.appearsOn.isNotEmpty()) {
+            if (!isArtist && state.appearsOn.isNotEmpty()) {
                 item(contentType = "appearsOn") {
                     AlbumStrip(
                         albums = state.appearsOn,
@@ -937,7 +897,7 @@ fun PlaylistScreen(
                 }
             }
 
-            if (state.artistPlaylists.isNotEmpty()) {
+            if (!isArtist && state.artistPlaylists.isNotEmpty()) {
                 item(contentType = "artistPlaylists") {
                     AlbumStrip(
                         albums = state.artistPlaylists,
@@ -1082,6 +1042,7 @@ fun PlaylistScreen(
             }
         }
 
+        if (!isArtist) {
         GlassCapsule(
             backdrop = pageBackdrop,
             modifier = Modifier
@@ -1150,6 +1111,7 @@ fun PlaylistScreen(
                     tint = chromeInk,
                 )
             }
+        }
         }
 
         // Floating rather than a top bar: the list scrolls under it, so the
@@ -1588,6 +1550,7 @@ private fun HeroArt(
     collapse: () -> Float,
     /** The picture's own proportions, where the catalogue gave them. */
     imageAspect: Float? = null,
+    pending: Boolean = false,
 ) {
     // The picture and its fade are the same everywhere the app shows a cover
     // large — here and in the player; see HeroBackdrop. What belongs to this
@@ -1598,6 +1561,7 @@ private fun HeroArt(
         pageColor = pageColor,
         motionUrl = motionUrl,
         imageAspect = imageAspect,
+        pending = pending,
         // Measured against the reference rather than chosen.
         //
         // Ours was flat page colour by 38% of the way down the screen; theirs
@@ -1647,9 +1611,13 @@ private fun ArtistHeader(
     name: String,
     /** Their name as Apple draws it; null falls back to setting it in type. */
     logoUrl: String?,
+    avatarUrl: String?,
+    verified: Boolean = true,
+    monthlyListeners: String? = null,
     /** Null until Spotify has answered; the star waits rather than guessing. */
     following: Boolean?,
     onToggleFollow: () -> Unit,
+    onMenu: () -> Unit = {},
     infoOpen: Boolean,
     onToggleInfo: () -> Unit,
     pageColor: Color,
@@ -1675,22 +1643,13 @@ private fun ArtistHeader(
     ) {
         Column(
             Modifier
-                .align(Alignment.BottomCenter)
+                .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp)
-                .padding(bottom = 24.dp)
+                .padding(horizontal = 20.dp, vertical = 14.dp)
                 .graphicsLayer { alpha = (1f - collapse() * 2f).coerceIn(0f, 1f) },
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalAlignment = Alignment.Start,
         ) {
-            // Set in capitals and as large as the name allows. The reference
-            // draws every artist's name in a face chosen for them, which no
-            // client can reproduce; what carries across is the weight and the
-            // width — the name is the picture's caption and the page's title at
-            // once, so it is sized to fill the frame rather than to a style.
             if (logoUrl != null) {
-                // The name as their own artwork, which is what the reference
-                // puts here — a face chosen for that artist and set once, not a
-                // system font pretending to be one.
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(logoUrl)
@@ -1704,22 +1663,10 @@ private fun ArtistHeader(
                 )
             } else {
                 Text(
-                    // As the artist spells it. Setting it in capitals was an
-                    // imitation of the drawn names the catalogue supplies for
-                    // the artists that have one — but those are lettering
-                    // somebody designed, and a system font shouted in capitals
-                    // is not the same thing: it is the same font, louder, and it
-                    // loses the spelling the artist chose.
                     text = name,
                     style = MaterialTheme.typography.displaySmall.copy(
                         fontSize = nameSize(name),
-                        lineHeight = nameSize(name) * 1.04f,
-                        // The photo behind it is somebody's face and cannot be
-                        // relied on for contrast. A soft shadow costs nothing
-                        // and keeps the name readable over a white shirt.
-                        // Cast the other way on a light page, where a black
-                        // shadow under dark letters is a smudge and what the
-                        // name needs is a halo.
+                        lineHeight = nameSize(name) * 1.05f,
                         shadow = Shadow(
                             if (ink.luminance() > 0.5f) {
                                 Color.Black.copy(alpha = 0.5f)
@@ -1731,79 +1678,110 @@ private fun ArtistHeader(
                         ),
                     ),
                     fontWeight = FontWeight.Black,
-                    // The name sits partly on the photograph and partly on the
-                    // page, so it takes the page's ink rather than a fixed
-                    // white: on a light page a white name over a pale ground is
-                    // not a name.
                     color = ink,
-                    textAlign = TextAlign.Center,
+                    textAlign = TextAlign.Start,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
 
+            if (verified) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 6.dp),
+                ) {
+                    Icon(
+                        PhosphorIcons.Fill.Check,
+                        contentDescription = null,
+                        tint = Color(0xFF1ED760),
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.15f))
+                            .padding(2.dp),
+                    )
+                    Text(
+                        text = "Verificado por Spotify",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = ink.copy(alpha = 0.9f),
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
+            }
+
+            if (!monthlyListeners.isNullOrBlank()) {
+                Text(
+                    text = monthlyListeners,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ink.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+
             Row(
-                Modifier.padding(top = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CircleAction(
-                    icon = PhosphorIcons.Bold.Info,
-                    description = stringResource(R.string.about),
-                    size = 46.dp,
-                    backdrop = backdrop,
-                    onClick = onToggleInfo,
-                    tint = if (infoOpen) ink else ink.copy(alpha = 0.86f),
+                if (avatarUrl != null) {
+                    Artwork(
+                        url = avatarUrl,
+                        title = name,
+                        modifier = Modifier.size(36.dp),
+                        corner = 6.dp,
+                        decodeSize = 36.dp,
+                    )
+                    Spacer(Modifier.width(10.dp))
+                }
+
+                FollowPill(
+                    following = following == true,
+                    onClick = onToggleFollow,
                 )
 
-                // The one solid control on the page. Round rather than the
-                // capsule the other headers carry: with the name above it in
-                // capitals, a word inside the button would be a second title.
+                Spacer(Modifier.width(8.dp))
+
+                IconButton(onClick = onMenu, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        PhosphorIcons.Bold.DotsThree,
+                        contentDescription = stringResource(R.string.more),
+                        tint = ink.copy(alpha = 0.85f),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                IconButton(onClick = onShuffle, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        PhosphorIcons.Fill.Shuffle,
+                        contentDescription = stringResource(R.string.shuffle),
+                        tint = Color(0xFF1ED760),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
                 Box(
                     Modifier
-                        .size(66.dp)
-                        .softShadow(CircleShape, elevation = 20.dp, spot = 0.32f)
+                        .size(54.dp)
+                        .softShadow(CircleShape, elevation = 12.dp, spot = 0.35f)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(Color(0xFF1ED760))
                         .pressable(onPlay, shape = CircleShape, pressedScale = 0.94f),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         PhosphorIcons.Fill.Play,
                         contentDescription = stringResource(R.string.play),
-                        tint = pageColor,
+                        tint = Color.Black,
                         modifier = Modifier
-                            // Measured off the reference: their triangle is
-                            // about 45% of the circle across, and ours was 30%
-                            // — a small mark in a large button, which reads as
-                            // the button being empty. The glyph carries its own
-                            // margin inside the icon's box, so the box has to be
-                            // larger than the triangle wanted.
-                            .size(40.dp)
-                            // The triangle's weight sits left of its own centre;
-                            // nudged back so it looks centred rather than
-                            // measuring centred.
+                            .size(28.dp)
                             .padding(start = 2.dp),
                     )
                 }
-
-                // Following, said the way the reference says it. The star is
-                // absent rather than empty while the answer is unknown: a
-                // control that draws itself as "not followed" and corrects
-                // itself a second later has told the reader something false.
-                if (following != null) {
-                    CircleAction(
-                        icon = if (following) PhosphorIcons.Fill.Star else PhosphorIcons.Bold.Star,
-                        description = stringResource(
-                            if (following) R.string.following else R.string.follow,
-                        ),
-                        size = 46.dp,
-                        backdrop = backdrop,
-                        onClick = onToggleFollow,
-                        tint = ink,
-                    )
-                }
-
             }
         }
 
@@ -2406,6 +2384,8 @@ private fun TrackRow(
     subtitle: String? = null,
     /** Its place on the record, drawn where the cover would be. */
     numbered: Boolean = false,
+    /** Rank number shown to the left of artwork (e.g. for popular artist tracks). */
+    rank: Int? = null,
     /** Nothing is drawn until a download for this track exists; see below. */
     download: dev.lelonio.square.data.DownloadState =
         dev.lelonio.square.data.DownloadState.None,
@@ -2457,6 +2437,18 @@ private fun TrackRow(
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (rank != null) {
+            Text(
+                text = rank.toString(),
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = if (isCurrent) Color(0xFF1ED760) else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .width(26.dp)
+                    .padding(end = 4.dp),
+                textAlign = TextAlign.Start,
+            )
+        }
+
         // The record, not the row number. A list of covers is scanned by
         // recognition rather than by reading, and the position of a song in a
         // playlist is the least interesting thing about it. The playing row
@@ -2512,7 +2504,7 @@ private fun TrackRow(
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = 14.dp),
+                .padding(start = 14.dp, end = 8.dp),
         ) {
             Text(
                 text = track.name,
@@ -2521,7 +2513,7 @@ private fun TrackRow(
                 // the title of a row is the one thing set in a weight you can
                 // pick out while scrolling.
                 color = if (isCurrent) {
-                    MaterialTheme.colorScheme.primary
+                    Color(0xFF1ED760)
                 } else {
                     MaterialTheme.colorScheme.onSurface
                 },
@@ -2529,29 +2521,18 @@ private fun TrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            Text(
+                text = subtitle
+                    ?: "${track.artist} · ${formatDuration(track.durationMs)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp),
-            ) {
-                // The mark, and only once there is something to mark. A row for
-                // a track nobody has asked for looks exactly as it did before
-                // downloads existed — no greyed-out placeholder, nothing to
-                // read past. Starting a download is the row menu's job, so this
-                // never needs to be a target.
-                DownloadMark(download)
-                Text(
-                    // Artist and length on one line, as the reference has it:
-                    // two stacked grey lines under every title turn the list
-                    // into a wall of secondary text.
-                    text = subtitle
-                        ?: "${track.artist} · ${formatDuration(track.durationMs)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            )
         }
+
+        DownloadMark(download)
 
         IconButton(onClick = onMenu, modifier = Modifier.size(32.dp)) {
             Icon(
@@ -2794,32 +2775,219 @@ private fun ArtistAbout(
 @Composable
 private fun FollowPill(following: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(percent = 50)
-    // Filled with the ink and lettered in whatever the ink is not: white on
-    // black over a dark page, black on white over a light one.
-    val pillInk = dev.lelonio.square.ui.theme.Ink
-    val onPillInk = if (dev.lelonio.square.ui.theme.lightPage()) Color.White else Color.Black
-    Row(
+    Box(
         Modifier
             .clip(shape)
-            .background(if (following) Color.Transparent else pillInk, shape)
-            .then(
-                if (following) {
-                    Modifier.border(1.dp, pillInk.copy(alpha = 0.4f), shape)
-                } else {
-                    Modifier
-                },
-            )
+            .border(1.dp, Color.White.copy(alpha = if (following) 0.35f else 0.8f), shape)
+            .background(if (following) Color.White.copy(alpha = 0.12f) else Color.Transparent, shape)
             .pressable(onClick, pressedScale = 0.94f)
-            .padding(horizontal = 18.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             stringResource(if (following) R.string.following else R.string.follow),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = if (following) pillInk else onPillInk,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
             maxLines = 1,
         )
+    }
+}
+
+@Composable
+private fun ArtistTabs(
+    selectedTab: Int,
+    onSelectTab: (Int) -> Unit,
+    ink: Color,
+    modifier: Modifier = Modifier,
+) {
+    val tabs = listOf("Música", "Clips")
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        tabs.forEachIndexed { index, title ->
+            val selected = selectedTab == index
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .pressable({ onSelectTab(index) }, pressedScale = 0.96f)
+                    .padding(vertical = 4.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 17.sp,
+                    ),
+                    color = if (selected) ink else ink.copy(alpha = 0.5f),
+                )
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    Modifier
+                        .width(if (selected) 40.dp else 0.dp)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(1.5.dp))
+                        .background(if (selected) Color(0xFF1ED760) else Color.Transparent),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PopularReleaseRow(
+    release: dev.lelonio.square.data.SearchItem,
+    isLatest: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(8.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .clip(shape)
+            .pressable(onClick, shape = shape, pressedScale = 0.98f),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Artwork(
+            url = release.artworkUrl,
+            title = release.title,
+            modifier = Modifier.size(68.dp),
+            corner = 6.dp,
+            decodeSize = 68.dp,
+        )
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(start = 14.dp),
+        ) {
+            if (isLatest) {
+                Text(
+                    text = "Último lanzamiento",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
+            Text(
+                text = release.title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (release.subtitle.isNotBlank()) {
+                Text(
+                    text = release.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConArtistStrip(
+    artistName: String,
+    items: List<dev.lelonio.square.data.SearchItem>,
+    onOpen: (dev.lelonio.square.data.SearchItem) -> Unit,
+) {
+    Column(Modifier.padding(top = 24.dp)) {
+        Text(
+            text = "Con $artistName",
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            modifier = Modifier.padding(start = 20.dp, bottom = 12.dp),
+        )
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(items = items, key = { it.uri }) { item ->
+                Column(
+                    Modifier
+                        .width(140.dp)
+                        .pressable({ onOpen(item) }),
+                ) {
+                    Artwork(
+                        url = item.artworkUrl,
+                        title = item.title,
+                        modifier = Modifier
+                            .size(140.dp)
+                            .softShadow(RoundedCornerShape(8.dp), elevation = 8.dp),
+                        corner = 8.dp,
+                        decodeSize = 140.dp,
+                    )
+                    Text(
+                        item.title,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    if (item.subtitle.isNotBlank()) {
+                        Text(
+                            item.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RelatedArtistsStrip(
+    artists: List<dev.lelonio.square.data.SearchItem>,
+    onOpen: (dev.lelonio.square.data.SearchItem) -> Unit,
+) {
+    Column(Modifier.padding(top = 24.dp, bottom = 20.dp)) {
+        Text(
+            text = "A los fans también les gusta",
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            modifier = Modifier.padding(start = 20.dp, bottom = 14.dp),
+        )
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            items(items = artists, key = { it.uri }) { artist ->
+                Column(
+                    Modifier
+                        .width(110.dp)
+                        .pressable({ onOpen(artist) }),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Artwork(
+                        url = artist.artworkUrl,
+                        title = artist.title,
+                        modifier = Modifier
+                            .size(110.dp)
+                            .clip(CircleShape),
+                        corner = 55.dp,
+                        decodeSize = 110.dp,
+                    )
+                    Text(
+                        artist.title,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        }
     }
 }
 

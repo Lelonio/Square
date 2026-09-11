@@ -188,6 +188,7 @@ object NativeBridge {
      * called — no gap, no restart.
      */
     fun setBitrate(bitrateKbps: Int) = nativeSetBitrate(bitrateKbps)
+    fun setTrimSilence(enabled: Boolean) = nativeSetTrimSilence(enabled)
 
     /**
      * Builds a new session, player and Connect device, keeping everything else.
@@ -450,6 +451,7 @@ object NativeBridge {
     private external fun nativeSetQuality(bitrateKbps: Int, crossfadeMs: Int)
 
     private external fun nativeSetBitrate(bitrateKbps: Int)
+    private external fun nativeSetTrimSilence(enabled: Boolean)
     private external fun nativeReconnect()
     private external fun nativePlaybackElsewhere(): Boolean
     private external fun nativePublishContext(positionMs: Int): Boolean

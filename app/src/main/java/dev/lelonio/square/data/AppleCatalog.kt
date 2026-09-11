@@ -84,7 +84,13 @@ object AppleCatalog {
             "apple-catalog-v7",
             android.content.Context.MODE_PRIVATE,
         )
+        // Stored weakly: this object lives for the process lifetime and must not
+        // hold a strong reference to anything from a Context chain.
+        connectivityRef = java.lang.ref.WeakReference(
+            context.applicationContext.getSystemService(android.net.ConnectivityManager::class.java),
+        )
     }
+
 
     private fun remembered(key: String): String? {
         val prefs = store ?: return null
@@ -108,9 +114,34 @@ object AppleCatalog {
      * remembered as one: the answer offline is "not here yet", not "there is
      * none", and caching the first would keep the picture away for the rest of
      * the run.
+     *
+     * Also gated on the connection being unmetered (Wi-Fi or ethernet). Apple's
+     * catalogue exists to enrich the visual experience — the app works correctly
+     * without it — and reaching out for large editorial photos over mobile data
+     * is not a trade the listener has agreed to. A cached answer is always used
+     * regardless of connection type; only a live lookup is skipped.
      */
-    private fun mayAsk(): Boolean =
-        !dev.lelonio.square.playback.OfflineMode.active.value
+    private fun mayAsk(): Boolean {
+        if (dev.lelonio.square.playback.OfflineMode.active.value) return false
+        // Check metered status via the connectivity service.
+        val connectivity = connectivityRef?.get()
+        if (connectivity != null) {
+            val caps = connectivity.activeNetwork
+                ?.let(connectivity::getNetworkCapabilities)
+            // If we cannot determine the connection type, err on the side of
+            // caution and allow the request (same behaviour as before this check).
+            if (caps != null &&
+                !caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            ) {
+                return false
+            }
+        }
+        return true
+    }
+
+    /** Held weakly so AppleCatalog (an object) does not leak a Context. */
+    private var connectivityRef: java.lang.ref.WeakReference<android.net.ConnectivityManager>? = null
+
 
     private fun remember(key: String, value: String) {
         store?.edit()?.putString(key, System.currentTimeMillis().toString() + "\n" + value)?.apply()

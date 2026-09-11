@@ -136,6 +136,7 @@ fn tune_fetching() {
         // a second of waiting on every track; half of one is still several
         // blocks at this size.
         read_ahead_before_playback: Duration::from_millis(500),
+        // Keep 5 seconds of audio decoded and cached ahead during playback.
         read_ahead_during_playback: Duration::from_secs(5),
         prefetch_threshold_factor: 4.0,
         // A block that has not arrived in fifteen seconds is not going to.
@@ -981,6 +982,17 @@ pub fn set_bitrate(bitrate_kbps: i32) -> EngineResult<()> {
     engine.recipe.player_config.bitrate = bitrate;
     if let Some(bundle) = engine.bundle.as_ref() {
         bundle.player.set_bitrate(bitrate);
+    }
+    Ok(())
+}
+
+/// Changes whether trailing silence near the end of a track triggers early crossfade.
+pub fn set_trim_silence(enabled: bool) -> EngineResult<()> {
+    let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+    let engine = guard.as_mut().ok_or("engine not started")?;
+    engine.recipe.player_config.trim_silence = enabled;
+    if let Some(bundle) = engine.bundle.as_ref() {
+        bundle.player.set_trim_silence(enabled);
     }
     Ok(())
 }

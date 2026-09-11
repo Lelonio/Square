@@ -33,8 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -55,8 +53,6 @@ import dev.lelonio.square.ui.theme.Ink
 import dev.lelonio.square.ui.theme.InkDim
 import androidx.compose.foundation.clickable
 import com.adamglin.PhosphorIcons
-import com.adamglin.phosphoricons.Bold
-import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.bold.MagnifyingGlass
 import com.adamglin.phosphoricons.bold.X
@@ -526,6 +522,8 @@ private val SelectedFilm = androidx.compose.ui.graphics.Color.White.copy(alpha =
  * strength a whole page of them reads as a page of buttons.
  */
 private val BadgeFilm = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.16f)
+
+
 
 /**
  * How many of each kind the combined page shows before the chips take over.

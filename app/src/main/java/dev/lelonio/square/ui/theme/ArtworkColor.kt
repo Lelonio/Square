@@ -18,6 +18,7 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import dev.lelonio.square.ui.components.canonicalArtworkKey
 
 /**
  * Where a page ends up once the artwork's colour has faded out of it.
@@ -171,11 +172,12 @@ fun rememberArtworkColor(artworkUrl: String?): State<Color?> {
             state.value = null
             return@LaunchedEffect
         }
-        cached[artworkUrl]?.let {
+        val key = canonicalArtworkKey(artworkUrl)
+        cached[key]?.let {
             state.value = it
             return@LaunchedEffect
         }
-        state.value = extractDominant(context, artworkUrl)?.also { cached[artworkUrl] = it }
+        state.value = extractDominant(context, artworkUrl)?.also { cached[key] = it }
     }
     return state
 }
@@ -195,14 +197,15 @@ private val cached = object : LinkedHashMap<String, Color>(16, 0.75f, true) {
  * will look for it, at the same time as the picture.
  */
 suspend fun warmArtworkColor(context: Context, url: String) {
-    if (!cached.containsKey(url)) {
-        extractDominant(context, url)?.let { cached[url] = it }
+    val key = canonicalArtworkKey(url)
+    if (!cached.containsKey(key)) {
+        extractDominant(context, url)?.let { cached[key] = it }
     }
     // And the foot of it, for the same reason and off the same decode: the
     // player's whole background is that colour, so arriving without it is the
     // screen changing twice.
-    if (!cachedFeet.containsKey(url)) {
-        extractFoot(context, url)?.let { cachedFeet[url] = it }
+    if (!cachedFeet.containsKey(key)) {
+        extractFoot(context, url)?.let { cachedFeet[key] = it }
     }
 }
 
@@ -224,12 +227,13 @@ fun rememberArtworkPalette(artworkUrl: String?): State<List<Color>> {
             state.value = emptyList()
             return@LaunchedEffect
         }
-        cachedPalettes[artworkUrl]?.let {
+        val key = canonicalArtworkKey(artworkUrl)
+        cachedPalettes[key]?.let {
             state.value = it
             return@LaunchedEffect
         }
         val swatches = extractPalette(context, artworkUrl)
-        if (swatches.isNotEmpty()) cachedPalettes[artworkUrl] = swatches
+        if (swatches.isNotEmpty()) cachedPalettes[key] = swatches
         state.value = swatches
     }
     return state
@@ -328,11 +332,12 @@ fun rememberArtworkFootColor(artworkUrl: String?): State<Color?> {
             state.value = null
             return@LaunchedEffect
         }
-        cachedFeet[artworkUrl]?.let {
+        val key = canonicalArtworkKey(artworkUrl)
+        cachedFeet[key]?.let {
             state.value = it
             return@LaunchedEffect
         }
-        state.value = extractFoot(context, artworkUrl)?.also { cachedFeet[artworkUrl] = it }
+        state.value = extractFoot(context, artworkUrl)?.also { cachedFeet[key] = it }
     }
     return state
 }

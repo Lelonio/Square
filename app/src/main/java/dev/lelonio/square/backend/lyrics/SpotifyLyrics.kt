@@ -27,6 +27,11 @@ object SpotifyLyrics {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    private class Cached(val lyrics: Lyrics?)
+
+    /** Fast session cache so repeat views or replay during playback cost 0ms and 0 network. */
+    private val sessionCache = object : android.util.LruCache<String, Cached>(64) {}
+
     /**
      * @param allowNetwork false offline, where the only lyrics are the kept ones.
      */
@@ -39,9 +44,21 @@ object SpotifyLyrics {
     ): Lyrics? {
         if (!allowNetwork) return kept(uri)
 
+        sessionCache.get(uri)?.let { return it.lyrics }
+
+        kept(uri)?.let {
+            sessionCache.put(uri, Cached(it))
+            return it
+        }
+
         val found = Amll.lyrics(uri)
             ?: Lossless.lyrics(title, artist, durationMs)
             ?: Catalog.lyrics(uri)
+            ?: LrcLib.lyrics(title, artist, durationMs)
+            ?: NetEase.lyrics(title, artist, durationMs)
+            ?: LyricsOvh.lyrics(title, artist, durationMs)
+
+        sessionCache.put(uri, Cached(found))
 
         return withContext(Dispatchers.IO) {
             // Nothing found is an answer worth keeping too, so a downloaded
@@ -49,7 +66,7 @@ object SpotifyLyrics {
             // queue; see DownloadExtras.note.
             if (found == null) {
                 DownloadExtras.note("lyrics", uri)
-                return@withContext kept(uri)
+                return@withContext null
             }
             runCatching { DownloadExtras.rememberLyrics(uri, json.encodeToString(found)) }
             found

@@ -41,7 +41,7 @@ object LocalLibrary {
      */
     const val CONTEXT_URI = "local:files"
 
-    fun isLocalContext(uri: String?): Boolean = uri == CONTEXT_URI
+    fun isLocalContext(uri: String?): Boolean = uri == CONTEXT_URI || uri == DownloadStore.SINGLES
 
     /**
      * What the shelf carries where a playlist carries a cover URL.

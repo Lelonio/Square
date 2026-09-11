@@ -36,7 +36,9 @@ class RecentStore(context: Context) {
      * which is what makes the section useless in practice.
      */
     suspend fun record(track: CatalogTrack) = withContext(Dispatchers.IO) {
+        if (track.name.isBlank()) return@withContext
         val updated = (listOf(track) + _tracks.value.filterNot { it.uri == track.uri })
+            .filter { it.name.isNotBlank() }
             .take(LIMIT)
         _tracks.value = updated
         prefs.edit()
@@ -51,7 +53,9 @@ class RecentStore(context: Context) {
 
     private fun load(): List<CatalogTrack> {
         val raw = prefs.getString(KEY_TRACKS, null) ?: return emptyList()
-        return runCatching { json.decodeFromString(serializer, raw) }.getOrDefault(emptyList())
+        return runCatching { json.decodeFromString(serializer, raw) }
+            .getOrDefault(emptyList())
+            .filter { it.name.isNotBlank() }
     }
 
     private companion object {

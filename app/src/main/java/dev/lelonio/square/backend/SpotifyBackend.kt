@@ -130,7 +130,9 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
     override suspend fun playlists(): List<CatalogPlaylist> =
         likedSongs().let { liked ->
             listOfNotNull(liked) +
-                rootlist().filterNot { it.uri == liked?.uri || it.uri == Catalog.DJ_URI }
+                rootlist().filterNot {
+                    it.uri == liked?.uri || it.uri == Catalog.DJ_URI || it.uri.startsWith("spotify:station:")
+                }
         }
 
     private suspend fun rootlist(): List<CatalogPlaylist> =
@@ -155,9 +157,23 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
      */
     override suspend fun tracksOf(uri: String): List<CatalogTrack> = when {
         uri.startsWith("spotify:artist:") -> {
-            check(container.webApi.isReady) { "un artista richiede la tua applicazione Spotify" }
-            container.api.artistTopTracks(uri.substringAfterLast(':')).tracks
-                .map { it.toCatalogTrack() }
+            val id = uri.substringAfterLast(':')
+            val apiTracks = if (container.webApi.isReady) {
+                runCatching {
+                    container.api.artistTopTracks(id, market = container.userCountry).tracks
+                        .map { it.toCatalogTrack() }
+                }.getOrNull()?.takeIf { it.isNotEmpty() }
+            } else null
+
+            if (apiTracks != null) {
+                apiTracks
+            } else {
+                val webTracks = runCatching {
+                    dev.lelonio.square.data.SpotifyWebArtist.fetch(id, container.sharedHttpClient, container.resources)?.tracks
+                }.getOrNull()?.takeIf { it.isNotEmpty() }
+
+                webTracks ?: Catalog.tracks(Catalog.contextTrackUris(uri).take(10))
+            }
         }
 
         // Spotify's own gateway first, for both of the lists it answers for:
@@ -207,7 +223,7 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
         val loaded = mutableListOf<CatalogTrack>()
         var offset = 0
         while (true) {
-            val page = container.api.playlistTracks(id, limit = WEB_API_PAGE, offset = offset)
+            val page = container.api.playlistTracks(id, limit = WEB_API_PAGE, offset = offset, market = container.userCountry)
             // Episodes and delisted tracks arrive as a null track, and an
             // unplayable one is something the engine could only skip.
             loaded += page.items.mapNotNull { item ->

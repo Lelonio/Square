@@ -73,6 +73,17 @@ class BandwidthWatch(
     }
 
     /**
+     * A track load failed over the network (e.g. timeout or unavailable).
+     */
+    fun loadFailed(uri: String? = null) {
+        if (uri != null && loadingUri != null && loadingUri != uri) return
+        Log.i(TAG, "track load failed for ${uri ?: loadingUri}, stepping down")
+        loadingUri = null
+        loadStartedAt = 0L
+        stepDown()
+    }
+
+    /**
      * The music stopped while it meant to be playing.
      *
      * Reported by whoever is watching the position rather than measured here:
@@ -116,11 +127,6 @@ class BandwidthWatch(
 
         /**
          * A load slower than this is taken as a link that cannot keep up.
-         *
-         * Generous on purpose: it also covers the access point answering, the
-         * key exchange and the first seconds of audio, and none of that is
-         * instant even on a good connection. What it must not do is fire on a
-         * link that is merely ordinary.
          */
         const val SLOW_LOAD_MS = 6_000L
 
