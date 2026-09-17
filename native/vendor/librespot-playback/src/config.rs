@@ -196,6 +196,14 @@ pub struct PlayerConfig {
 
     /// LOCAL PATCH: whether trailing silence near the end of a track triggers early crossfade.
     pub trim_silence: bool,
+
+    /// LOCAL PATCH: let the playing track run to its own end instead of asking
+    /// for the next one a crossfade early.
+    ///
+    /// Set while the app's sleep timer is waiting for the end of the track: a
+    /// crossfade would start the next song under the one being stopped, and
+    /// the app fades this one out itself.
+    pub hold_end: bool,
 }
 
 impl Default for PlayerConfig {
@@ -219,6 +227,7 @@ impl Default for PlayerConfig {
             download_lookup: None,
             downloads_only: None,
             trim_silence: true,
+            hold_end: false,
         }
     }
 }

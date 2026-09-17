@@ -191,6 +191,12 @@ object NativeBridge {
     fun setTrimSilence(enabled: Boolean) = nativeSetTrimSilence(enabled)
 
     /**
+     * Lets the playing track run to its own end instead of crossfading into the
+     * next one. Set by the sleep timer while it waits for the end of a track.
+     */
+    fun setHoldEnd(enabled: Boolean) = nativeSetHoldEnd(enabled)
+
+    /**
      * Builds a new session, player and Connect device, keeping everything else.
      *
      * The answer to [spircLost]. A dead Connect device cannot be revived on the
@@ -452,6 +458,7 @@ object NativeBridge {
 
     private external fun nativeSetBitrate(bitrateKbps: Int)
     private external fun nativeSetTrimSilence(enabled: Boolean)
+    private external fun nativeSetHoldEnd(enabled: Boolean)
     private external fun nativeReconnect()
     private external fun nativePlaybackElsewhere(): Boolean
     private external fun nativePublishContext(positionMs: Int): Boolean

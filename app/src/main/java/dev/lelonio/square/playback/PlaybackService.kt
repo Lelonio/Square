@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
 
 /**
@@ -74,6 +75,12 @@ class PlaybackService : MediaLibraryService() {
      * not silent.
      */
     private suspend fun fadeOutAndPause() {
+        if (player is LibrespotPlayer) {
+            // A song that changed or stopped during the fade still ends here:
+            // the timer is about the time, not about the song.
+            if (!fadeEngineOutAndPause(SLEEP_FADE_MS, player.currentMediaItem?.mediaId)) player.pause()
+            return
+        }
         if (!player.isCommandAvailable(androidx.media3.common.Player.COMMAND_SET_VOLUME)) {
             player.pause()
             return
@@ -85,6 +92,47 @@ class PlaybackService : MediaLibraryService() {
         }
         player.pause()
         player.volume = was
+    }
+
+    /**
+     * Spotify's engine down to silence over [durationMs], then paused, then
+     * put back to the level it was at.
+     *
+     * Through the engine's own volume, which is the one this player has: the
+     * same the ducking for a notification uses. Given up, with the level put
+     * back, if the song changes or stops playing on the way down, since the
+     * fade was for a song that is no longer the one being heard.
+     *
+     * @return true when it got to the end and paused.
+     */
+    private suspend fun fadeEngineOutAndPause(durationMs: Long, mediaId: String?): Boolean {
+        val level = withContext(Dispatchers.IO) { runCatching { NativeBridge.volume }.getOrNull() }
+        if (level == null || durationMs <= 0) {
+            player.pause()
+            return true
+        }
+        val steps = (durationMs / ENGINE_FADE_STEP_MS).coerceIn(1, 400).toInt()
+        try {
+            for (step in 1..steps) {
+                if (!player.isPlaying || player.currentMediaItem?.mediaId != mediaId) return false
+                val gain = 1f - step.toFloat() / steps
+                withContext(Dispatchers.IO) {
+                    runCatching { NativeBridge.volume = (level * gain).toInt() }
+                }
+                kotlinx.coroutines.delay(durationMs / steps)
+            }
+            player.pause()
+            return true
+        } finally {
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                runCatching { NativeBridge.volume = level }
+            }
+        }
+    }
+
+    /** Tells Spotify's engine whether to hold the end of the track; see SleepTimer. */
+    private suspend fun holdEngineEnd(hold: Boolean) {
+        withContext(Dispatchers.IO) { runCatching { NativeBridge.setHoldEnd(hold) } }
     }
 
     private var autoplayInFlight = false
@@ -278,6 +326,71 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             container.likedStore.likedTracks.collect {
                 redrawButtons()
+            }
+        }
+
+        // The end-of-track timer, watched by position.
+        //
+        // It used to wait for the player to report moving on by itself, and
+        // Spotify's player never says so: it is a SimpleBasePlayer, whose
+        // reason for a change of track is worked out from where the position
+        // was, and the engine moves on before the estimated position reaches
+        // the end. So the change arrived as something else and the music went
+        // on (#22). Watching the clock works the same for every player.
+        //
+        // With a crossfade the engine also asks for the next track a fade
+        // early, and from then on the song ending is no longer the one it
+        // reports: stopping there cut the last seconds off. While this is armed
+        // the engine is told to hold the end instead, the song is faded to
+        // silence over those seconds, and it pauses on the last of them. A song
+        // the listener skipped away from early is not the end of anything, and
+        // the timer moves on with them.
+        scope.launch {
+            SleepTimer.atTrackEnd.collectLatest { armed ->
+                if (!armed) return@collectLatest
+                holdEngineEnd(true)
+                try {
+                    var watched = player.currentMediaItem?.mediaId
+                    var lastLeft = Long.MAX_VALUE
+                    while (true) {
+                        kotlinx.coroutines.delay(END_WATCH_MS)
+                        val id = player.currentMediaItem?.mediaId
+                        if (id != watched) {
+                            if (lastLeft <= END_NEAR_MS) {
+                                player.pause()
+                                SleepTimer.cancel()
+                                return@collectLatest
+                            }
+                            watched = id
+                            lastLeft = Long.MAX_VALUE
+                            continue
+                        }
+                        val duration = player.duration
+                        if (duration <= 0 || duration == androidx.media3.common.C.TIME_UNSET) continue
+                        val left = duration - player.currentPosition
+                        lastLeft = left
+                        if (!player.isPlaying) continue
+
+                        // Spotify's engine: faded here, over what the crossfade
+                        // would have taken. YouTube Music's player fades its own
+                        // ending already, so it only needs stopping at the end.
+                        val fade = container.crossfade.durationMs().toLong()
+                        if (player is LibrespotPlayer && fade > 0 && left <= fade + END_STOP_MS) {
+                            if (fadeEngineOutAndPause(left - END_STOP_MS, watched)) {
+                                SleepTimer.cancel()
+                                return@collectLatest
+                            }
+                            continue
+                        }
+                        if (left <= END_STOP_MS) {
+                            player.pause()
+                            SleepTimer.cancel()
+                            return@collectLatest
+                        }
+                    }
+                } finally {
+                    holdEngineEnd(false)
+                }
             }
         }
 
@@ -1542,6 +1655,18 @@ class PlaybackService : MediaLibraryService() {
         /** How long the music takes to go quiet at the end of a sleep timer. */
         private const val SLEEP_FADE_MS = 6_000L
         private const val SLEEP_FADE_STEPS = 60
+
+        /** How often the end-of-track timer looks at the clock. */
+        private const val END_WATCH_MS = 200L
+
+        /** How close to its end a song is stopped, before any crossfade. */
+        private const val END_STOP_MS = 400L
+
+        /** How close a song has to have been for a change of track to be its end. */
+        private const val END_NEAR_MS = 2_500L
+
+        /** One step of a fade through the engine's volume. */
+        private const val ENGINE_FADE_STEP_MS = 50L
 
         /** Maximum upcoming tracks to buffer in queue for autoplay. */
         private const val AUTOPLAY_QUEUE_CAP = 10

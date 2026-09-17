@@ -214,6 +214,8 @@ enum PlayerCommand {
     SetBitrate(Bitrate),
     /// LOCAL PATCH: whether trailing silence triggers early crossfade.
     SetTrimSilence(bool),
+    /// LOCAL PATCH: see PlayerConfig::hold_end.
+    SetHoldEnd(bool),
     EmitSessionDisconnectedEvent {
         connection_id: String,
         user_name: String,
@@ -724,6 +726,11 @@ impl Player {
     /// LOCAL PATCH: whether trailing silence triggers early crossfade.
     pub fn set_trim_silence(&self, enabled: bool) {
         self.command(PlayerCommand::SetTrimSilence(enabled));
+    }
+
+    /// LOCAL PATCH: see PlayerConfig::hold_end.
+    pub fn set_hold_end(&self, enabled: bool) {
+        self.command(PlayerCommand::SetHoldEnd(enabled));
     }
 
     pub fn emit_filter_explicit_content_changed_event(&self, filter: bool) {
@@ -2129,7 +2136,7 @@ impl Future for PlayerInternal {
                 let crossfade_ms = self.config.crossfade_duration_ms as i64;
                 let position = stream_position_ms as i64;
                 let duration = duration_ms as i64;
-                if crossfade_ms > 0 && duration > crossfade_ms {
+                if crossfade_ms > 0 && duration > crossfade_ms && !self.config.hold_end {
                     let silence_threshold_samples = (SAMPLE_RATE as usize * NUM_CHANNELS as usize * 350) / 1000;
                     let trailing_silence = self.config.trim_silence
                         && self.consecutive_silent_samples >= silence_threshold_samples
@@ -3239,6 +3246,12 @@ impl PlayerInternal {
                 self.config.trim_silence = enabled;
             }
 
+            // LOCAL PATCH: see PlayerConfig::hold_end.
+            PlayerCommand::SetHoldEnd(enabled) => {
+                info!("hold_end is now {enabled}");
+                self.config.hold_end = enabled;
+            }
+
             PlayerCommand::EmitFilterExplicitContentChangedEvent(filter) => {
                 self.send_event(PlayerEvent::FilterExplicitContentChanged { filter });
 
@@ -3449,6 +3462,9 @@ impl fmt::Debug for PlayerCommand {
             }
             PlayerCommand::SetTrimSilence(enabled) => {
                 f.debug_tuple("SetTrimSilence").field(enabled).finish()
+            }
+            PlayerCommand::SetHoldEnd(enabled) => {
+                f.debug_tuple("SetHoldEnd").field(enabled).finish()
             }
             PlayerCommand::SetAutoNormaliseAsAlbum(setting) => f
                 .debug_tuple("SetAutoNormaliseAsAlbum")

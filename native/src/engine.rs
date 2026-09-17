@@ -997,6 +997,19 @@ pub fn set_trim_silence(enabled: bool) -> EngineResult<()> {
     Ok(())
 }
 
+/// Lets the playing track run to its own end rather than crossfading into the
+/// next; see `PlayerConfig::hold_end`. Kept in the recipe, so a rebuilt player
+/// still holds.
+pub fn set_hold_end(enabled: bool) -> EngineResult<()> {
+    let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+    let engine = guard.as_mut().ok_or("engine not started")?;
+    engine.recipe.player_config.hold_end = enabled;
+    if let Some(bundle) = engine.bundle.as_ref() {
+        bundle.player.set_hold_end(enabled);
+    }
+    Ok(())
+}
+
 /// Throws away a bundle and builds another one, leaving the runtime and the
 /// audio output alone.
 ///
