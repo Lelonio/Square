@@ -17,7 +17,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +27,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,6 +40,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import dev.lelonio.square.ui.glass.backdrop.BackdropEffectScope
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.platform.LocalDensity
@@ -114,19 +115,36 @@ fun LiquidBottomTabs(
 
     val tabsBackdrop = rememberLayerBackdrop()
 
-    BoxWithConstraints(
-        modifier,
+    // LOCAL CHANGE: the width is read where it is used, not in composition.
+    //
+    // Upstream measures itself with BoxWithConstraints, which composes its
+    // content again for every width it is given. That is free for a bar that
+    // stands still and ruinous for one that changes shape: as the bottom bar
+    // folds, this group loses a little width on every frame, and every frame
+    // recomposed all five tabs twice over (the row and its tinted copy), with
+    // the page scrolling underneath. Nothing here needs the width before
+    // layout: the drag, the lit slot and the highlight all ask for it when
+    // they run.
+    val widthPx = remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier.onSizeChanged { widthPx.floatValue = it.width.toFloat() },
         contentAlignment = Alignment.CenterStart
     ) {
         val density = LocalDensity.current
-        val tabWidth = with(density) {
-            (constraints.maxWidth.toFloat() - 8f.dp.toPx()) / tabsCount
+        val tabWidth: () -> Float = remember(density, tabsCount) {
+            { with(density) { (widthPx.floatValue - 8f.dp.toPx()) / tabsCount } }
         }
 
         val offsetAnimation = remember { Animatable(0f) }
         val panelOffset by remember(density) {
             derivedStateOf {
-                val fraction = (offsetAnimation.value / constraints.maxWidth).fastCoerceIn(-1f, 1f)
+                val width = widthPx.floatValue
+                val fraction = if (width > 0f) {
+                    (offsetAnimation.value / width).fastCoerceIn(-1f, 1f)
+                } else {
+                    0f
+                }
                 with(density) {
                     4f.dp.toPx() * fraction.sign * EaseOut.transform(abs(fraction))
                 }
@@ -170,7 +188,7 @@ fun LiquidBottomTabs(
                 },
                 onDrag = { _, dragAmount ->
                     updateValue(
-                        (targetValue + dragAmount.x / tabWidth * if (isLtr) 1f else -1f)
+                        (targetValue + dragAmount.x / tabWidth() * if (isLtr) 1f else -1f)
                             .fastCoerceIn(0f, (tabsCount - 1).toFloat())
                     )
                     animationScope.launch {
@@ -199,8 +217,8 @@ fun LiquidBottomTabs(
                 animationScope = animationScope,
                 position = { size, offset ->
                     Offset(
-                        if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidth + panelOffset
-                        else size.width - (dampedDragAnimation.value + 0.5f) * tabWidth + panelOffset,
+                        if (isLtr) (dampedDragAnimation.value + 0.5f) * tabWidth() + panelOffset
+                        else size.width - (dampedDragAnimation.value + 0.5f) * tabWidth() + panelOffset,
                         size.height / 2f
                     )
                 }
@@ -283,8 +301,8 @@ fun LiquidBottomTabs(
             .graphicsLayer {
                 alpha = indicatorAlpha
                 translationX =
-                    if (isLtr) dampedDragAnimation.value * tabWidth + panelOffset
-                    else size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset
+                    if (isLtr) dampedDragAnimation.value * tabWidth() + panelOffset
+                    else size.width - (dampedDragAnimation.value + 1f) * tabWidth() + panelOffset
             }
         val slotLayer: GraphicsLayerScope.() -> Unit = {
             scaleX = dampedDragAnimation.scaleX

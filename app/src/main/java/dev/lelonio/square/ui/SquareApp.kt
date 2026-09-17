@@ -175,6 +175,7 @@ import androidx.compose.animation.togetherWith
 import dev.lelonio.square.ui.theme.SquareTheme
 import dev.lelonio.square.ui.theme.rememberArtworkColor
 import dev.lelonio.square.ui.theme.rememberArtworkFootColor
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.adamglin.PhosphorIcons
@@ -226,6 +227,9 @@ private val expandSpec = spring<Float>(
 )
 
 private val BottomBarHeight = 62.dp
+
+/** How long the bar's height has to hold still before the lists follow it. */
+private const val BAR_SETTLE_MS = 120L
 
 /**
  * White, carrying a colour's hue.
@@ -908,7 +912,22 @@ fun SquareApp(
     // Measured rather than assumed. The constant this replaced was 62dp while
     // the bar is a 64dp capsule with padding around it and the navigation inset
     // under that, so the sheet sat about twenty over it.
+    //
+    // The open bar's height, taken once it has settled. The lists read this as
+    // their bottom padding, and a height that followed the fold recomposed the
+    // page under the bar and laid it out again on each frame of the animation,
+    // while that page was being scrolled: on a mid-range phone that was most of
+    // the frame, and the fold stuttered. Nor does the folded height count: a
+    // page that reached its end while the bar was folding would have dropped by
+    // the difference once it settled. Lists end above the open bar either way.
     var barHeight by remember { mutableStateOf(BottomBarHeight) }
+    val measuredBarHeight = remember { kotlinx.coroutines.flow.MutableStateFlow(BottomBarHeight) }
+    LaunchedEffect(measuredBarHeight) {
+        measuredBarHeight.collectLatest { height ->
+            kotlinx.coroutines.delay(BAR_SETTLE_MS)
+            barHeight = height
+        }
+    }
     val density = LocalDensity.current
 
     // Recorded here rather than at the tap: this fires for auto-advance and for
@@ -1965,7 +1984,11 @@ fun SquareApp(
                         .graphicsLayer {
                             alpha = (1f - expand.value * 3f).coerceIn(0f, 1f) * chrome
                         }
-                        .onSizeChanged { barHeight = with(density) { it.height.toDp() } },
+                        .onSizeChanged {
+                            if (!tabBarScroll.isInline) {
+                                measuredBarHeight.value = with(density) { it.height.toDp() }
+                            }
+                        },
                 ) {
                     // The material comes from the settings now, provided once at
                     // the top of the app; what is still local here is which

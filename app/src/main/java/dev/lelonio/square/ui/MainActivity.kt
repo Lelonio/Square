@@ -61,6 +61,14 @@ class MainActivity : ComponentActivity() {
      */
     private var link by mutableStateOf<LinkRequest?>(null)
 
+    /** The screen's fastest mode while a finger is on the app; see the class. */
+    private val touchRefreshRate = TouchRefreshRate(this)
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        touchRefreshRate.onTouch(event)
+        return super.dispatchTouchEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Transparent bars; SquareTheme sets the icon colour, because it is the
@@ -266,6 +274,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        touchRefreshRate.reset()
         runCatching { unregisterReceiver(listenRequest) }
         controller?.release()
         controller = null
