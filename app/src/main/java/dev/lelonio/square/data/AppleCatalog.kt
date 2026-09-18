@@ -244,9 +244,7 @@ object AppleCatalog {
 
         if (!mayAsk()) return null
 
-        val found = runCatching { lookUpArtist(name, storefront) }
-            .onFailure { android.util.Log.w(TAG, "no artwork for $name: ${it.message}") }
-            .getOrNull()
+        val found = ask(name) { lookUpArtist(name, storefront) }
 
         found?.let { runCatching { remember(key, json.encodeToString(it)) } }
         synchronized(cache) { cache[key] = found }
@@ -267,7 +265,9 @@ object AppleCatalog {
         storefront: String = storefront(),
     ): Album? {
         if (name.isBlank()) return null
-        val key = "album $storefront/${artist.lowercase()}/${name.lowercase()}"
+        // "album2": answers filed before a moving cover counted as a picture
+        // chose the edition without one and kept it for a month.
+        val key = "album2 $storefront/${artist.lowercase()}/${name.lowercase()}"
         synchronized(cache) { if (cache.containsKey(key)) return cache[key] as Album? }
 
         remembered(key)?.let { row ->
@@ -278,9 +278,7 @@ object AppleCatalog {
 
         if (!mayAsk()) return null
 
-        val found = runCatching { lookUpAlbum(name, artist, storefront) }
-            .onFailure { android.util.Log.w(TAG, "no artwork for $name: ${it.message}") }
-            .getOrNull()
+        val found = ask(name) { lookUpAlbum(name, artist, storefront) }
 
         found?.let { runCatching { remember(key, json.encodeToString(it)) } }
         synchronized(cache) { cache[key] = found }
@@ -323,14 +321,32 @@ object AppleCatalog {
 
         if (!mayAsk()) return null
 
-        val found = runCatching { lookUpSong(name, artist, album, storefront) }
-            .onFailure { android.util.Log.w(TAG, "no artwork for $name: ${it.message}") }
-            .getOrNull()
+        val found = ask(name) { lookUpSong(name, artist, album, storefront) }
 
         found?.let { runCatching { remember(key, it) } }
         synchronized(cache) { cache[key] = found }
         return found
     }
+
+    /**
+     * A lookup's answer, or null when it failed; never null because it was
+     * called off.
+     *
+     * `runCatching` catches a cancellation like any other failure. A lookup
+     * cancelled because the song changed, or because the record's name had
+     * just arrived, then counted as "Apple has nothing", and that was cached
+     * for the rest of the session, over the answer another lookup of the same
+     * record had just filed: the player fell back to Spotify's square sleeve
+     * for a record Apple has a portrait of.
+     */
+    private suspend fun <T> ask(name: String, lookUp: suspend () -> T?): T? =
+        try {
+            lookUp()
+        } catch (failure: Throwable) {
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            android.util.Log.w(TAG, "no artwork for $name: ${failure.message}")
+            null
+        }
 
     private suspend fun lookUpSong(
         name: String,
@@ -566,8 +582,11 @@ object AppleCatalog {
                 .trim()
                 .equals(name.substringBefore(" - ").trim(), ignoreCase = true)
 
+        // A moving cover counts as a picture: some records have a portrait
+        // only as a video, and ranking by the still one alone chose an
+        // edition without either, so the player showed the square sleeve.
         val match = candidates.maxByOrNull { row ->
-            (if (row.tall() != null) 4 else 0) +
+            (if (row.tall() != null || row.motion() != null) 4 else 0) +
                 (if (exact(row)) 2 else 0) +
                 (if (single(row)) 0 else 1)
         }
@@ -575,12 +594,7 @@ object AppleCatalog {
         val tall = attributes.tall()
         val cover = attributes["artwork"]?.jsonObject?.template()
 
-        // The tall one first and the square one after it, which is the same
-        // order the still pictures are chosen in: the header is a portrait.
-        val motion = listOf("motionDetailTall", "motionTallVideo3x4", "motionDetailSquare")
-            .firstNotNullOfOrNull {
-                attributes["editorialVideo"]?.jsonObject?.get(it)?.jsonObject
-            }
+        val motion = attributes.motion()
         val motionUrl = motion?.get("video")?.jsonPrimitive?.content
         // A record with a moving cover has a still frame from it filed beside
         // the video. It is the right picture to hold while the video loads —
@@ -618,6 +632,15 @@ object AppleCatalog {
     private fun inkPaletteOf(art: JsonObject?): List<String> =
         listOf("textColor1", "textColor2", "textColor3", "textColor4")
             .mapNotNull { art?.get(it)?.jsonPrimitive?.content }
+
+    /**
+     * A record's moving cover, the tall one first and the square one after it,
+     * which is the same order the still pictures are chosen in: the header is
+     * a portrait.
+     */
+    private fun kotlinx.serialization.json.JsonObject.motion(): kotlinx.serialization.json.JsonObject? =
+        listOf("motionDetailTall", "motionTallVideo3x4", "motionDetailSquare")
+            .firstNotNullOfOrNull { get("editorialVideo")?.jsonObject?.get(it)?.jsonObject }
 
     /**
      * The full-height picture a record's page opens with, where it has one.
