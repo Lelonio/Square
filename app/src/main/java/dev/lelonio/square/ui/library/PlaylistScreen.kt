@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -2443,6 +2444,10 @@ private fun DownloadMark(state: dev.lelonio.square.data.DownloadState) {
     }
 }
 
+/** The playing row's film and rim, in the page's ink. */
+private const val PLAYING_FILM = 0.08f
+private const val PLAYING_RIM = 0.10f
+
 @Composable
 private fun TrackRow(
     track: CatalogTrack,
@@ -2478,6 +2483,7 @@ private fun TrackRow(
         animationSpec = tween(260),
         label = "row",
     )
+    val rowInk = MaterialTheme.colorScheme.onSurface
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2485,15 +2491,24 @@ private fun TrackRow(
             // The playing row lifts onto its own card. With covers gone from the
             // list, a tint alone was too quiet to find while scrolling.
             .clip(shape)
-            // `surface` is already a 10%-alpha white film. Passing the animation
-            // value to `copy(alpha = …)` *replaced* that alpha instead of
-            // scaling it, so the playing row finished the animation as solid
-            // white — a paper card in the middle of a glass UI.
-            .background(
-                MaterialTheme.colorScheme.surface.copy(
-                    alpha = MaterialTheme.colorScheme.surface.alpha * highlight,
-                ),
-            )
+            // Made of the page's own ink, as the app's flat panes are: a film
+            // and a hairline rim. It was the theme's surface, which follows the
+            // phone rather than the record, so a dark record in the light
+            // setting got the light setting's half-white film and the playing
+            // row turned into a milky slab over the page.
+            .drawBehind {
+                if (highlight <= 0f) return@drawBehind
+                val radius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx())
+                drawRoundRect(rowInk.copy(alpha = PLAYING_FILM * highlight), cornerRadius = radius)
+                val rim = 0.8.dp.toPx()
+                drawRoundRect(
+                    rowInk.copy(alpha = PLAYING_RIM * highlight),
+                    topLeft = androidx.compose.ui.geometry.Offset(rim / 2, rim / 2),
+                    size = androidx.compose.ui.geometry.Size(size.width - rim, size.height - rim),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius.x - rim / 2),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(rim),
+                )
+            }
             .then(
                 if (unavailable) {
                     Modifier
@@ -2519,7 +2534,7 @@ private fun TrackRow(
                         Icon(
                             PhosphorIcons.Fill.Waveform,
                             contentDescription = stringResource(R.string.now_playing),
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(18.dp),
                         )
                     } else {
@@ -2568,11 +2583,10 @@ private fun TrackRow(
                 // A notch heavier than the app's own default: on the reference
                 // the title of a row is the one thing set in a weight you can
                 // pick out while scrolling.
-                color = if (isCurrent) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
+                // The page's ink, bolder, rather than the accent: the accent is
+                // taken from whatever is playing, and on a record's own page it
+                // was the record's colour written on the record's colour.
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
