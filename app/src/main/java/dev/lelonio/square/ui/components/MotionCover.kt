@@ -2,6 +2,9 @@ package dev.lelonio.square.ui.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -15,6 +18,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 
 /**
  * A cover that moves.
@@ -30,8 +35,20 @@ import androidx.media3.ui.PlayerView
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-fun MotionCover(url: String, modifier: Modifier = Modifier) {
+fun MotionCover(
+    url: String,
+    modifier: Modifier = Modifier,
+    /**
+     * Small copies of the frames as they play, for what is drawn out of the
+     * cover around it: see HeroBackdrop, whose blur and extension were made
+     * from the still and stayed on the first frame while the cover moved
+     * above them. Null reads nothing.
+     */
+    onFrame: ((android.graphics.Bitmap) -> Unit)? = null,
+) {
     val context = LocalContext.current
+    // The surface the frames are read from, once the view exists.
+    val surface = remember { arrayOfNulls<android.view.TextureView>(1) }
 
     val player = remember(url) {
         ExoPlayer.Builder(context).build().apply {
@@ -63,6 +80,39 @@ fun MotionCover(url: String, modifier: Modifier = Modifier) {
         }
     }
 
+    if (onFrame != null) {
+        val latest by rememberUpdatedState(onFrame)
+        LaunchedEffect(player) {
+            // Nothing is read before the first frame: until then the surface
+            // holds nothing, and a blank copy would put the blur back to black.
+            val rendered = CompletableDeferred<Unit>()
+            val listener = object : Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    rendered.complete(Unit)
+                }
+            }
+            player.addListener(listener)
+            try {
+                rendered.await()
+                while (true) {
+                    val view = surface[0]
+                    // Only while it moves: a paused loop is a still, and the
+                    // last copy read is already that still.
+                    if (view != null && view.isAvailable && player.isPlaying &&
+                        view.width > 0 && view.height > 0
+                    ) {
+                        val height = (FRAME_PX.toLong() * view.height / view.width).toInt()
+                            .coerceAtLeast(1)
+                        view.getBitmap(FRAME_PX, height)?.let { latest(it) }
+                    }
+                    delay(FRAME_EVERY_MS)
+                }
+            } finally {
+                player.removeListener(listener)
+            }
+        }
+    }
+
     AndroidView(
         factory = { ctx ->
             // Inflated, for the surface type; see the layout's own note. Built
@@ -81,12 +131,26 @@ fun MotionCover(url: String, modifier: Modifier = Modifier) {
                 setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 this.player = player
+                surface[0] = videoSurfaceView as? android.view.TextureView
             }
         },
         update = { it.player = player },
         // Released with the composition rather than left to the view pool: the
         // surface has to go when the page does.
-        onRelease = { it.player = null },
+        onRelease = {
+            it.player = null
+            surface[0] = null
+        },
         modifier = modifier,
     )
 }
+
+/**
+ * How wide the copies of the frames are read, and how often.
+ *
+ * Small, because what is made of them is a blur and a band of colour, and a
+ * read of a frame is a copy off the GPU. Often enough that the blur under a
+ * cover in motion follows it rather than stepping after it.
+ */
+private const val FRAME_PX = 48
+private const val FRAME_EVERY_MS = 66L

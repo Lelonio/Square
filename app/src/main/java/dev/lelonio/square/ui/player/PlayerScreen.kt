@@ -77,6 +77,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -177,15 +181,52 @@ private const val DETAIL_ASPECT = 3f / 4f
  * share but the numbers. Eased rather than straight: a linear ramp has a corner
  * at each end, and a corner across a moving picture is a band.
  */
-private val CLIP_FADE: Array<Pair<Float, Color>> = run {
-    val from = 0.82f
-    val to = 0.97f
+private val CLIP_FADE: Array<Pair<Float, Color>> = clipFade(0.82f, 0.97f)
+
+private fun clipFade(from: Float, to: Float): Array<Pair<Float, Color>> {
     val steps = 8
-    Array(steps + 1) { index ->
+    return Array(steps + 1) { index ->
         val t = index.toFloat() / steps
         val eased = t * t * (3f - 2f * t)
         (from + (to - from) * t) to Color.Black.copy(alpha = 1f - eased)
     }
+}
+
+/**
+ * How much of its slot a Canvas fades over once the ending is measured.
+ *
+ * Longer than the cover's: a clip has no blurred copy of itself to dissolve
+ * into first, so the fade is the whole of the handover.
+ */
+private const val CLIP_MEASURED_FADE = 0.14f
+
+/**
+ * How far under the top of the first control the picture may run.
+ *
+ * The controls are glass, so the last, nearly clear stretch of the fade can go
+ * behind them. Stopping above them instead left the picture visibly finished a
+ * little before the button, which is the gap this is closing.
+ */
+private val PICTURE_UNDER_CONTROLS = 16.dp
+
+/**
+ * Where the picture behind the player has to have faded out by, measured.
+ *
+ * Just under the top of the first control, the video button or the title,
+ * which is wherever the phone's shape and the song put it. The picture used to
+ * end at a fixed three by four from the top, which on a tall phone left an
+ * empty band of blur above the button. Plain fields and a float state read
+ * only while drawing, so following the controls, as the video button arrives
+ * or leaves, costs a redraw of the masks and nothing else.
+ */
+private class PictureEnd {
+    /** The backdrop's layout, which the ending is measured against. */
+    var backdrop: LayoutCoordinates? = null
+
+    /** Pixels from the top of the backdrop; zero until the controls are placed. */
+    val y = mutableFloatStateOf(0f)
+
+    val read: () -> Float = { y.floatValue }
 }
 
 /** How long each half of a change between the cover and a panel takes. */
@@ -459,7 +500,10 @@ fun PlayerScreen(
     val coverAccent by dev.lelonio.square.ui.theme.rememberArtworkColor(state.artworkUrl)
     val coverTone = dev.lelonio.square.ui.theme.pageColorFor(coverAccent)
 
-    Box(Modifier.fillMaxSize()) {
+    val pictureEnd = remember { PictureEnd() }
+    val pictureUnderControls = with(LocalDensity.current) { PICTURE_UNDER_CONTROLS.toPx() }
+
+    Box(Modifier.fillMaxSize().onPlaced { pictureEnd.backdrop = it }) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -556,6 +600,14 @@ fun PlayerScreen(
                     // point it starts giving way. See softening.
                     softenFrom = 0.82f,
                     softenTo = 0.97f,
+                    // And, once the controls are laid out, where they begin
+                    // instead: the three by four only lands on the button on
+                    // some phones, and the blur ahead of the fade put the
+                    // picture's visible end well above it even there.
+                    pictureEnd = pictureEnd.read,
+                    // And carried on below that, in its own colours, rather
+                    // than giving way to the app's darkened field.
+                    extendPicture = true,
                     // Three by four, whichever picture it is — the shape the
                     // extended covers are drawn in, and the shape that reaches
                     // down to the title with nothing empty in between.
@@ -648,8 +700,14 @@ fun PlayerScreen(
                     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                     .drawWithContent {
                         drawContent()
+                        // Ending where the controls begin, like the cover.
+                        val end = pictureEnd.read()
+                            .takeIf { it > 0f && size.height > 0f }
+                            ?.let { (it / size.height).coerceIn(CLIP_MEASURED_FADE, 1f) }
                         drawRect(
-                            brush = Brush.verticalGradient(*CLIP_FADE),
+                            brush = Brush.verticalGradient(
+                                *end?.let { clipFade(it - CLIP_MEASURED_FADE, it) } ?: CLIP_FADE,
+                            ),
                             blendMode = BlendMode.DstIn,
                         )
                     },
@@ -1071,7 +1129,23 @@ fun PlayerScreen(
                         }
                         }
 
-                        Spacer(Modifier.height(20.dp))
+                        // Its bottom is where the controls begin, which is
+                        // where the picture behind has to have gone by; see
+                        // PictureEnd.
+                        Spacer(
+                            Modifier
+                                .height(20.dp)
+                                .onGloballyPositioned { gap ->
+                                    val area = pictureEnd.backdrop
+                                        ?.takeIf { it.isAttached }
+                                        ?: return@onGloballyPositioned
+                                    val controlsTop = area.localPositionOf(
+                                        gap,
+                                        Offset(0f, gap.size.height.toFloat()),
+                                    ).y
+                                    pictureEnd.y.floatValue = controlsTop + pictureUnderControls
+                                },
+                        )
 
                         // Only for the few tracks that have a video, and above
                         // the title because that is where the official client
