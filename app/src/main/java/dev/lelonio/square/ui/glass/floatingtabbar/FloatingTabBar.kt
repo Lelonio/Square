@@ -1317,10 +1317,20 @@ private fun Modifier.animateEnterExitTab(
 
         graphicsLayer {
             alpha = animatedAlpha
-            renderEffect = BlurEffect(
-                radiusX = animatedBlur,
-                radiusY = animatedBlur
-            )
+            // LOCAL CHANGE: no effect at all while there is nothing to blur.
+            //
+            // Upstream builds one whatever the radius is, and a tab that is
+            // not animating asks for zero. Most phones treat that as a blur
+            // that does nothing; some answer with no effect at all, and the
+            // platform turns that into "nativePtr is null" the moment the bar
+            // is drawn, which killed the app on a moto g24 power every time
+            // (#24). The two other blurs in this app already ask this
+            // question; see Blur.kt and InnerShadowModifier.
+            renderEffect = if (animatedBlur > 0f) {
+                BlurEffect(radiusX = animatedBlur, radiusY = animatedBlur)
+            } else {
+                null
+            }
         }
     }
 }
