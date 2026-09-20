@@ -102,11 +102,11 @@ keyPassword=…
 ## Notes for anyone reading the code
 
 **`librespot-core` is patched.** A local copy under `native/vendor/`, wired in
-with `[patch.crates-io]`. Four changes: the advertised OS is pinned to
+with `[patch.crates-io]`. Five changes: the advertised OS is pinned to
 `"linux"` so it agrees with the desktop client id, Mercury gained POST and
 header fields so listening events can be posted, the session carries a language
-so artwork comes back in it, and a non-premium account no longer exits the
-process. All four are explained in
+so artwork comes back in it, a non-premium account no longer exits the process,
+and audio keys are retried and remembered. All five are explained in
 [native/vendor/README.md](../native/vendor/README.md).
 
 **OAuth uses the keymaster client id on a fixed port.** The redirect has to be

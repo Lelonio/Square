@@ -93,6 +93,22 @@ and returns `premium account required`, which the service turns into a message
 and a return to the login screen. The refusal is unchanged; what changed is that
 it is an error the caller can handle rather than a process exit.
 
+#### 5. `src/audio_key.rs`: keys are remembered, and a refusal waits
+
+Every file needs a decryption key, and the account is allowed only so many
+requests in a stretch. Past that the server stops answering, and upstream has
+nothing between the request and the caller: a burst of changes turns into a
+queue of loads that each wait for a key that never comes.
+
+Two changes. A refused key is tried again after a pause that doubles, three
+seconds, then six, then twelve, rather than being handed straight back as a
+failure. And the keys already answered for are kept in the component, the last
+sixty-four of them, so a track heard earlier in the session costs no request at
+all: going back and forth between two songs asks once for each.
+
+The memory is per session and never written to disk. It holds keys, so it goes
+when the session does.
+
 ### Maintenance
 
 Re-apply this patch when bumping `librespot-core`. If the whole file is replaced,
@@ -190,6 +206,26 @@ the rest, and says so if it still cannot be played. Any other key failure keeps
 upstream's behaviour, since a genuinely unencrypted file has to go on playing.
 See also the retry in `librespot-core`'s `audio_key.rs`, which is what tries a
 refused key again before it gets this far.
+
+### The patch: a change of song is dissolved as well
+
+Upstream's crossfade, above, is the end of a track running under the start of
+the next: one clock, both halves on it, and it can only happen where the player
+knows the next track already. A listener changing song themselves has neither.
+The track being left is dropped the moment the load is taken, and if the new one
+has to be fetched, which is every song picked from a list, there is nothing left
+to fade by the time it arrives.
+
+`PlayerConfig` gained `skip_fade_ms` and the player a `SetSkipFade` command, so
+the app can set it from its own setting. When a load arrives with a track
+playing, that track moves into the fade before the state becomes `Loading`,
+which is what keeps its decoder alive, and its tail is written on its own by
+`pump_fade_out` for as long as the load takes. `FadeOut` gained `rising`, a
+second clock: the arriving track comes up from nothing when it starts making a
+sound, whether the wait was half a second or ten, where the crossfade's two
+halves go on sharing one clock as before.
+
+Zero, the default, leaves every one of these paths as upstream has it.
 
 ### Maintenance
 
