@@ -17,6 +17,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.core.graphics.drawable.toBitmap
 import coil.imageLoader
 import coil.request.SuccessResult
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -155,7 +157,7 @@ fun HeroBackdrop(
                 .fillMaxWidth()
                 .then(
                     if (imageAspect != null) {
-                        Modifier.aspectRatio(imageAspect)
+                        Modifier.pictureSlot(imageAspect, pictureEnd)
                     } else {
                         Modifier.fillMaxSize()
                     },
@@ -181,6 +183,11 @@ fun HeroBackdrop(
                             .drawWithContent {
                                 drawContent()
                                 val end = measuredEnd(pictureEnd, size.height)
+                                // Nothing to erase where the ending is below
+                                // the picture's own bottom: it is sharp the
+                                // whole way down and the extension carries it
+                                // on from there to the fade.
+                                if (end != null && end >= 1f) return@drawWithContent
                                 drawRect(
                                     brush = Brush.verticalGradient(
                                         *if (end != null) {
@@ -245,6 +252,9 @@ fun HeroBackdrop(
                             drawContent()
                         }
                         val end = measuredEnd(pictureEnd, size.height)
+                        // As above: a picture that ends below its own bottom
+                        // edge never has the blurred copy brought over it.
+                        if (end != null && end >= 1f) return@drawWithContent
                         drawRect(
                             // Eased rather than straight, and started well
                             // before the colour does.
@@ -465,22 +475,42 @@ private fun PictureExtension(
                 .drawBehind {
                     // The slot, in this box's terms: across the top, as wide as
                     // the screen, at the picture's proportions.
-                    val slotHeight = if (imageAspect != null) size.width / imageAspect else size.height
+                    val slotHeight = if (imageAspect != null) {
+                        maxOf(size.width / imageAspect, pictureEnd?.invoke() ?: 0f)
+                            .coerceAtMost(size.height)
+                    } else {
+                        size.height
+                    }
                     val end = measuredEnd(pictureEnd, slotHeight)
                     val fadeFrom = if (end != null) end - MEASURED_FADE else softenFrom
                     val fadeTo = end ?: softenTo
                     // Where the picture is last wholly itself: the top of its
-                    // fade, and a little into it.
-                    val rowFraction = fadeFrom + (fadeTo - fadeFrom) * 0.2f
-                    val top = (fadeFrom * slotHeight).coerceIn(0f, size.height)
+                    // fade, and a little into it. Its own last row where the
+                    // fade is below it, since there is no picture down there
+                    // to read.
+                    val rowFraction = (fadeFrom + (fadeTo - fadeFrom) * 0.2f).coerceAtMost(0.995f)
+                    // From the fade, or from the picture's bottom edge where
+                    // the fade is further down than that: the stretch between
+                    // the two is the picture carrying on, and it has to be
+                    // drawn or the screen's own blurred background shows
+                    // through the gap.
+                    val top = (minOf(fadeFrom, 1f) * slotHeight).coerceIn(0f, size.height)
                     if (top >= size.height) return@drawBehind
+                    // How much of what is drawn is that carrying on: held at
+                    // the picture's own colours, so the softening begins where
+                    // the controls do and not where the picture stopped.
+                    val hold = if (size.height > top) {
+                        ((fadeFrom * slotHeight - top) / (size.height - top)).coerceIn(0f, 0.9f)
+                    } else {
+                        0f
+                    }
 
                     // The slot crops the picture to fill it, centred; so does this.
                     // The moving cover's frame while it plays; see MotionFrames.
                     val source = motion.latest.value?.sharp ?: image
                     val w = source.width
                     val h = source.height
-                    val slotRatio = imageAspect ?: (size.width / size.height)
+                    val slotRatio = if (slotHeight > 0f) size.width / slotHeight else 1f
                     val shown = if (w.toFloat() / h > slotRatio) {
                         val visible = (h * slotRatio).roundToInt().coerceIn(1, w)
                         IntRect(IntOffset((w - visible) / 2, 0), IntSize(visible, h))
@@ -491,7 +521,8 @@ private fun PictureExtension(
                     val row = (shown.top + rowFraction * shown.height).roundToInt()
                         .coerceIn(shown.top, shown.bottom - 1)
 
-                    val picture = extension.at(source, row, shown.left, shown.width, shown.top, shown.bottom)
+                    val picture =
+                        extension.at(source, row, shown.left, shown.width, shown.top, shown.bottom, hold)
                     drawImage(
                         image = picture,
                         dstOffset = IntOffset(0, top.roundToInt()),
@@ -525,8 +556,24 @@ private class ExtensionPicture {
     private var from: ImageBitmap? = null
     private var built: ImageBitmap? = null
 
-    fun at(source: ImageBitmap, row: Int, left: Int, width: Int, top: Int, bottom: Int): ImageBitmap {
-        val wanted = (row.toLong() shl 32) or (left.toLong() shl 16) or width.toLong()
+    fun at(
+        source: ImageBitmap,
+        row: Int,
+        left: Int,
+        width: Int,
+        top: Int,
+        bottom: Int,
+        /**
+         * The share of the picture, from its top, that is the cover carrying
+         * on rather than the fade: held at the row's own colours, sharp
+         * across and undarkened, so that what the eye finds is the controls
+         * and not the edge of the cover.
+         */
+        hold: Float,
+    ): ImageBitmap {
+        val held = (hold * 100f).roundToInt().toLong()
+        val wanted =
+            (held shl 48) or (row.toLong() shl 32) or (left.toLong() shl 16) or width.toLong()
         built?.takeIf { key == wanted && from === source }?.let { return it }
 
         // Three rows around the one asked for, averaged: a single row of a
@@ -554,7 +601,11 @@ private class ExtensionPicture {
         val hsv = FloatArray(3)
         val out = IntArray(width * EXTENSION_ROWS)
         for (r in 0 until EXTENSION_ROWS) {
-            val t = r.toFloat() / (EXTENSION_ROWS - 1)
+            // Counted from the end of the held stretch: above it the picture
+            // is still itself, below it the fade runs its whole course as it
+            // would have if it had started at the picture's edge.
+            val down = r.toFloat() / (EXTENSION_ROWS - 1)
+            val t = if (hold < 1f) ((down - hold) / (1f - hold)).coerceIn(0f, 1f) else 0f
             val sigma = (EXTENSION_NEAR + (EXTENSION_FAR - EXTENSION_NEAR) * t) * width
             blurAcross(sampled, width, sigma, blurred)
             // Into the dominant colour only once the extension is well clear
@@ -795,14 +846,42 @@ private const val EXTENSION_DEEPEN = 0.40f
 private const val EXTENSION_RICHER = 0.25f
 
 /**
+ * The slot the cover is drawn in: as tall as the picture's own proportions
+ * make it, and never shorter than the ending the player measured.
+ *
+ * A picture taller than it is wide, which is what Apple's portrait covers are,
+ * reaches past the controls on its own and is cut at the ending. A square one
+ * runs out well above them, and the fade then happened where the picture
+ * stopped rather than where the controls begin, which is not the same place
+ * twice. The slot is stretched down to the ending instead and the cover fills
+ * it, cropped at the sides, centred: a small enlargement, since the two are
+ * close together, and the fade lands where it does for every other cover.
+ */
+private fun Modifier.pictureSlot(aspect: Float, pictureEnd: (() -> Float)?): Modifier =
+    layout { measurable, constraints ->
+        val width = constraints.maxWidth
+        val natural = (width / aspect).roundToInt()
+        val wanted = pictureEnd?.invoke()?.roundToInt() ?: 0
+        val height = maxOf(natural, wanted).coerceIn(0, constraints.maxHeight)
+        val placeable = measurable.measure(Constraints.fixed(width, height))
+        layout(width, height) { placeable.place(0, 0) }
+    }
+
+/**
  * [HeroBackdrop]'s `pictureEnd` as a fraction of the slot, or null when there
  * is none yet. Before the controls are laid out it reads zero, and a picture
  * ending at the top of the screen for a frame would be a flash.
+ *
+ * Above one where the controls are below the picture's own bottom edge, which
+ * is every square cover: the slot is as tall as the picture is, and a square
+ * one runs out well above the controls. What answers for the rest is the
+ * extension, so the number is left as it is and the fade happens down there
+ * instead of being pulled up to where the picture stops.
  */
 private fun measuredEnd(pictureEnd: (() -> Float)?, height: Float): Float? {
     val end = pictureEnd?.invoke() ?: return null
     if (end <= 0f || height <= 0f) return null
-    return (end / height).coerceIn(MEASURED_FADE + MEASURED_BLUR_LEAD, 1f)
+    return (end / height).coerceAtLeast(MEASURED_FADE + MEASURED_BLUR_LEAD)
 }
 
 /**
