@@ -256,14 +256,17 @@ fun LibraryScreen(
                     // reversing "recently opened" is "least recently", and a
                     // separate control for that would be a second sort.
                     .let { if (descending) it.reversed() else it }
-                    // Pinning outranks the sort: it is the one instruction the
-                    // listener gave about this list themselves.
-                    .withPinnedFirst(pinned)
-                    // And the phone's own music outranks that, because it is
-                    // not a playlist competing for a place: it is a fixed shelf
-                    // of the library, and one nobody has opened yet would
-                    // otherwise sit sixtieth among lists they have.
+                    // The phone's own music and what is kept on it outrank
+                    // the sort: they are not playlists competing for a place
+                    // but fixed shelves of the library, and one nobody has
+                    // opened yet would otherwise sit sixtieth among lists.
                     .withLocalFilesFirst()
+                    // And pinning outranks even those: it is the one
+                    // instruction the listener gave about this list
+                    // themselves, and a shelf they never asked for standing
+                    // above the lists they chose to keep at the top is the app
+                    // overruling them (#25).
+                    .withPinnedFirst(pinned)
                     // Once more at the end, because every row below is keyed
                     // on its address and a list that holds one twice does not
                     // draw, it crashes. Spotify can hand the same playlist back

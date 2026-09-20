@@ -1790,8 +1790,18 @@ fun SquareApp(
                             // this screen rather than under it.
                             val hasPreviousPage by viewModel.hasPreviousPage
                                 .collectAsStateWithLifecycle()
+                            // Not while the player is over the page. A page
+                            // opened from the player, an artist from the song
+                            // playing, registers its own answer to back after
+                            // the player has registered the one that closes
+                            // it, and the last one registered is the one the
+                            // system asks: back closed the page underneath and
+                            // left the player standing over nothing (#25).
+                            val playerCovering by remember {
+                                derivedStateOf { expand.value > 0.5f }
+                            }
                             androidx.activity.compose.BackHandler(
-                                enabled = hasPreviousPage,
+                                enabled = hasPreviousPage && !playerCovering,
                             ) { viewModel.popPage() }
 
                             // One destination holds every detail page, so a
