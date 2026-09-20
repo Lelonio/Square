@@ -38,6 +38,8 @@ import dev.lelonio.square.backend.HomeRow
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * YouTube Music, over two clients rather than one.
@@ -231,7 +233,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
      */
     override suspend fun homeFeed(cursor: String?, params: String?): HomeFeed =
         withContext(Dispatchers.IO) {
-            val page = YouTube.home(continuation = cursor, params = params).getOrThrow()
+            val page = wherever({ it.sections.isEmpty() }) {
+                YouTube.home(continuation = cursor, params = params).getOrThrow()
+            }
             HomeFeed(
                 rows = page.sections.map(::toHomeRow).filterNot { it.isEmpty },
                 cursor = page.continuation,
@@ -275,6 +279,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
      * language: renaming them would be this app pretending it chose them.
      */
     override suspend fun newRows(): List<HomeRow> = withContext(Dispatchers.IO) {
+        wherever({ it.isEmpty() }) {
         coroutineScope {
             val releases = async {
                 runCatching { YouTube.browse(NEW_RELEASES_BROWSE_ID, null).getOrThrow() }
@@ -295,6 +300,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                 // The charts page repeats the new albums under the same name.
                 .distinctBy { it.title }
         }
+        }
     }
 
     /**
@@ -306,6 +312,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
      * tab should arrive in one breath rather than trickle in over twenty.
      */
     override suspend fun radioRows(): List<HomeRow> = withContext(Dispatchers.IO) {
+        wherever({ it.isEmpty() }) {
         val groups = runCatching { YouTube.moodAndGenres().getOrThrow() }
             .onFailure { android.util.Log.w(LOG_TAG, "moods unavailable: $it") }
             .getOrNull()
@@ -326,6 +333,49 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                 }
             }.awaitAll().filterNotNull().filterNot { it.isEmpty }
         }
+        }
+    }
+
+    /**
+     * Asks, and asks again from somewhere the service is open to everyone when
+     * the answer comes back with nothing in it.
+     *
+     * What is browsed carries the country the phone is set to. Where YouTube
+     * Music has no free tier, South Korea among them, the pages this app's
+     * home, New and Radio are made of answer empty to an account that is not
+     * paying for it, while search and playback, which are asked for another
+     * way, go on working. So the tabs were blank on a phone where the music
+     * played (#23).
+     *
+     * Only the country changes, not the language: the rows come back under
+     * YouTube's own titles in the language the phone reads. And only when the
+     * phone's own country has nothing to say, since what is worth listening to
+     * is a local question first.
+     *
+     * Remembered for the session once it has worked, so a country that answers
+     * with nothing is asked once rather than before every page.
+     */
+    private suspend fun <T> wherever(empty: (T) -> Boolean, ask: suspend () -> T): T {
+        if (!openRegion) {
+            val here = ask()
+            if (!empty(here)) return here
+        }
+        val answer = regionLock.withLock {
+            val kept = YouTube.locale
+            YouTube.locale = kept.copy(gl = OPEN_REGION)
+            try {
+                ask()
+            } finally {
+                YouTube.locale = kept
+            }
+        }
+        if (!empty(answer)) {
+            if (!openRegion) {
+                android.util.Log.i(LOG_TAG, "browsing as $OPEN_REGION: nothing is served here")
+            }
+            openRegion = true
+        }
+        return answer
     }
 
     private fun toCatalogPlaylist(item: YTItem): CatalogPlaylist? {
@@ -589,6 +639,19 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
         /** How many moods, and how many genres, the Radio tab reads. */
         private const val RADIO_PER_GROUP = 5
+
+        /**
+         * The country asked instead, when the phone's own has nothing to
+         * serve: the largest catalogue, open without an account.
+         */
+        private const val OPEN_REGION = "US"
+
+        /** One swap of the country at a time; the field it changes is shared. */
+        private val regionLock = Mutex()
+
+        /** Whether the phone's own country has already answered with nothing. */
+        @Volatile
+        private var openRegion = false
 
         /** The `list=` id of a playlist URL. */
         private fun playlistIdOf(url: String?): String? =
