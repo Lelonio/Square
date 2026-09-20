@@ -58,6 +58,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -210,6 +211,12 @@ private const val CLIP_MEASURED_FADE = 0.14f
 private val PICTURE_UNDER_CONTROLS = 16.dp
 
 /**
+ * The row the "watch the video" button sits in, kept whether there is one or
+ * not: its height is the button's own plus the gap to the title under it.
+ */
+private val VIDEO_ROW_HEIGHT = 54.dp
+
+/**
  * Where the picture behind the player has to have faded out by, measured.
  *
  * Just under the top of the first control, the video button or the title,
@@ -223,10 +230,44 @@ private class PictureEnd {
     /** The backdrop's layout, which the ending is measured against. */
     var backdrop: LayoutCoordinates? = null
 
-    /** Pixels from the top of the backdrop; zero until the controls are placed. */
-    val y = mutableFloatStateOf(0f)
+    /** The gap above the first control, whose foot is the ending. */
+    var controls: LayoutCoordinates? = null
 
-    val read: () -> Float = { y.floatValue }
+    /** How far under the controls the picture may run, in pixels. */
+    var under: Float = 0f
+
+    /**
+     * Bumped whenever either of those is laid out again.
+     *
+     * Read where the ending is, which is inside a draw: the two are measured
+     * against each other when they are asked for rather than when they were
+     * placed, since on the first pass the backdrop has not been placed yet and
+     * an ending worked out then would be thrown away. It was: a song with no
+     * video button is never laid out a second time, so its picture kept the
+     * ending the fixed fractions gave it, a long way above the controls, while
+     * a song that had the button got a second pass when it arrived and came
+     * out right.
+     */
+    private val version = mutableIntStateOf(0)
+
+    fun mark() {
+        version.intValue++
+    }
+
+    val read: () -> Float = {
+        // Read so that a redraw follows a move; the answer comes from the
+        // layouts themselves, which are current.
+        version.intValue
+        val area = backdrop?.takeIf { it.isAttached }
+        val gap = controls?.takeIf { it.isAttached }
+        if (area == null || gap == null) {
+            0f
+        } else {
+            runCatching {
+                area.localPositionOf(gap, Offset(0f, gap.size.height.toFloat())).y + under
+            }.getOrDefault(0f)
+        }
+    }
 }
 
 /** How long each half of a change between the cover and a panel takes. */
@@ -501,9 +542,16 @@ fun PlayerScreen(
     val coverTone = dev.lelonio.square.ui.theme.pageColorFor(coverAccent)
 
     val pictureEnd = remember { PictureEnd() }
-    val pictureUnderControls = with(LocalDensity.current) { PICTURE_UNDER_CONTROLS.toPx() }
+    pictureEnd.under = with(LocalDensity.current) { PICTURE_UNDER_CONTROLS.toPx() }
 
-    Box(Modifier.fillMaxSize().onPlaced { pictureEnd.backdrop = it }) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onPlaced {
+                pictureEnd.backdrop = it
+                pictureEnd.mark()
+            },
+    ) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -1136,14 +1184,8 @@ fun PlayerScreen(
                             Modifier
                                 .height(20.dp)
                                 .onGloballyPositioned { gap ->
-                                    val area = pictureEnd.backdrop
-                                        ?.takeIf { it.isAttached }
-                                        ?: return@onGloballyPositioned
-                                    val controlsTop = area.localPositionOf(
-                                        gap,
-                                        Offset(0f, gap.size.height.toFloat()),
-                                    ).y
-                                    pictureEnd.y.floatValue = controlsTop + pictureUnderControls
+                                    pictureEnd.controls = gap
+                                    pictureEnd.mark()
                                 },
                         )
 
@@ -1158,13 +1200,24 @@ fun PlayerScreen(
                         // listener is already looking at the screen. Appearing
                         // in one frame reads as a glitch; arriving reads as an
                         // answer.
+                        // Its place is kept whether the song has a video or
+                        // not. The button used to push everything below it
+                        // down as it arrived, which moved the controls, and
+                        // with them the line the picture above ends on: two
+                        // songs in a row, one with a video and one without,
+                        // ended their covers at two different heights. Now the
+                        // row is there either way and only the button inside
+                        // it comes and goes.
+                        Box(
+                            Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .height(VIDEO_ROW_HEIGHT),
+                            contentAlignment = Alignment.Center,
+                        ) {
                         androidx.compose.animation.AnimatedVisibility(
                             visible = videoFileId != null,
-                            enter = fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.9f) +
-                                expandVertically(tween(260)),
-                            exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.92f) +
-                                shrinkVertically(tween(180)),
-                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                            enter = fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.9f),
+                            exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.92f),
                         ) {
                             GlassSurface(
                                 backdrop = glassBackdrop,
@@ -1175,9 +1228,7 @@ fun PlayerScreen(
                                 // block holds is stacked in a box, so a spacer
                                 // next to the button sat *on* it and the button
                                 // ended up against the title.
-                                modifier = Modifier
-                                    .padding(bottom = 14.dp)
-                                    .pressable(onClick = onToggleVideo),
+                                modifier = Modifier.pressable(onClick = onToggleVideo),
                             ) {
                                 Row(
                                     Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -1203,6 +1254,7 @@ fun PlayerScreen(
                                     )
                                 }
                             }
+                        }
                         }
 
                         // Title and artist on their own capsule, with the two
