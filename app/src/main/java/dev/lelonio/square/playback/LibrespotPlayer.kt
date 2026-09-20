@@ -51,6 +51,16 @@ class LibrespotPlayer(
     private val fadeOutThen: (() -> Unit) -> Unit,
     private val fadeIn: () -> Unit,
     /**
+     * Whether the engine dissolves a change of track itself.
+     *
+     * When it does, the output must not be touched: the fade above ramps this
+     * app's own audio track down and *throws away* what the engine produces
+     * until it is brought back up, which is precisely the second of music the
+     * dissolve is made of. What was heard was the silence of this fade, then
+     * the tail of the old song arriving late, then the new one.
+     */
+    private val dissolves: () -> Boolean,
+    /**
      * Told when playback starts and stops.
      *
      * The output needs this because the reverb sits on the global mix; see
@@ -103,7 +113,15 @@ class LibrespotPlayer(
         // and what is gained is that the queue plays what it shows.
         val asContext = false
 
-        fadeOutThen {
+        // A track picked from a list is not one the engine could see coming,
+        // and this used to fade the output down over its own half of the
+        // dissolve while the engine went looking for the context. Two fades
+        // over one change: the output came back up the moment the load was
+        // sent, and the engine's tail, which had only just started going down,
+        // was heard again underneath the new song rising. The engine fades the
+        // song it is leaving whether or not it has anywhere to go yet, so this
+        // one leaves the output alone; see handle_command_load in player.rs.
+        changing {
             // Back on the player's looper before anything is read or called.
             // The fade runs on its own thread, and everything here — the queue,
             // playWhenReady, the engine's own idea of what is loaded — belongs
@@ -133,9 +151,19 @@ class LibrespotPlayer(
                 }
                     .onFailure { android.util.Log.e("SquarePlayer", "load failed: ${it.message}") }
                     .onSuccess { engineQueueStale = false }
-                if (wanted) fadeIn()
+                if (wanted && !dissolves()) fadeIn()
             }
         }
+    }
+
+    /**
+     * Runs a change of track, through the output fade or straight through.
+     *
+     * Straight through while the engine dissolves: what it mixes has to reach
+     * the speaker to be heard at all. See [dissolves].
+     */
+    private fun changing(action: () -> Unit) {
+        if (dissolves()) action() else fadeOutThen(action)
     }
 
     /**
@@ -631,7 +659,14 @@ class LibrespotPlayer(
         // it wait. Waiting for the first was a fifth of a second between the
         // tap and anything happening at all — the delay this settle exists to
         // avoid, spent on the one skip that never needed it.
-        val delay = if (skipInFlight) SKIP_SETTLE_MS else 0L
+        //
+        // Unless the change is dissolved, where nothing is waiting: the song
+        // being left goes on playing through it, and the fade starts when the
+        // engine takes the load. What the wait buys is one load instead of two
+        // for a double tap, and a load is an audio key: Spotify meters those
+        // per session and answers a burst by refusing everything for up to
+        // half a minute; see audio_key.rs.
+        val delay = if (skipInFlight || dissolves()) SKIP_SETTLE_MS else 0L
         skipInFlight = true
         handler.removeCallbacks(settleSkip)
         handler.postDelayed(settleSkip, delay)
@@ -690,19 +725,19 @@ class LibrespotPlayer(
             // A step either way is a skip, and Spirc has to be the one making
             // it: reloading the queue for a skip would restart the context and
             // show up on other devices as a new session rather than a next.
-            !engineQueueStale && from >= 0 && target == from + 1 -> fadeOutThen {
+            !engineQueueStale && from >= 0 && target == from + 1 -> changing {
                 handler.post {
                     if (released) return@post
                     runCatching { NativeBridge.next() }
-                    fadeIn()
+                    if (!dissolves()) fadeIn()
                 }
             }
 
-            !engineQueueStale && from >= 0 && target == from - 1 -> fadeOutThen {
+            !engineQueueStale && from >= 0 && target == from - 1 -> changing {
                 handler.post {
                     if (released) return@post
                     runCatching { NativeBridge.previous() }
-                    fadeIn()
+                    if (!dissolves()) fadeIn()
                 }
             }
 

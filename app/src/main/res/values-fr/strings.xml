@@ -426,4 +426,6 @@
     <string name="show_all">Tout afficher</string>
     <string name="show_less">Afficher moins</string>
     <string name="search_library">Rechercher dans la bibliothèque</string>
+    <string name="skip_fade">Fondu au changement de morceau</string>
+    <string name="skip_fade_note">Le morceau que vous passez ou remplacez s\'efface pendant que celui choisi monte. Avec Spotify les deux se superposent, sur YouTube Music l\'un suit l\'autre.</string>
 </resources>

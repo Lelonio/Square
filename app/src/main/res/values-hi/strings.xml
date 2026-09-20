@@ -441,4 +441,6 @@
     <string name="show_all">सभी दिखाएँ</string>
     <string name="show_less">कम दिखाएँ</string>
     <string name="search_library">लाइब्रेरी में खोजें</string>
+    <string name="skip_fade">गाना बदलते समय फ़ेड</string>
+    <string name="skip_fade_note">जिस गाने को आप छोड़ते या बदलते हैं वह धीरे-धीरे शांत होता है और चुना हुआ गाना उभरता है. Spotify पर दोनों एक साथ चलते हैं, YouTube Music पर एक के बाद एक.</string>
 </resources>

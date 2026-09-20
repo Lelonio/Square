@@ -94,6 +94,28 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_AUTOPLAY_INFINITE, value).apply()
     }
 
+    private val _skipFade = MutableStateFlow(prefs.getBoolean(KEY_SKIP_FADE, true))
+
+    /**
+     * Whether a track the listener changes away from is dissolved into the one
+     * they asked for, rather than cut off.
+     *
+     * On by default, and short: see SKIP_FADE_MS. Apart from the crossfade,
+     * which is what the end of a track sounds like when it runs out on its own.
+     */
+    val skipFade: StateFlow<Boolean> = _skipFade.asStateFlow()
+
+    fun setSkipFade(value: Boolean) {
+        _skipFade.value = value
+        prefs.edit().putBoolean(KEY_SKIP_FADE, value).apply()
+        runCatching {
+            dev.lelonio.square.nativecore.NativeBridge.setSkipFade(skipFadeMs())
+        }
+    }
+
+    /** What the engine and the other source are told, in milliseconds. */
+    fun skipFadeMs(): Int = if (_skipFade.value) SKIP_FADE_MS else 0
+
     private val _trimSilence = MutableStateFlow(prefs.getBoolean(KEY_TRIM_SILENCE, true))
 
     /** Whether trailing silence triggers early crossfade. */
@@ -206,6 +228,7 @@ class PreferencesStore(context: Context) {
         const val KEY_CANVAS = "canvas_enabled"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"
         const val KEY_TRIM_SILENCE = "trim_silence"
+        const val KEY_SKIP_FADE = "skip_fade"
         const val KEY_PLAYER_OPEN = "player_open"
         const val KEY_BACKEND = "backend"
         const val KEY_PROFILE_NAME = "profile_name"
@@ -215,3 +238,12 @@ class PreferencesStore(context: Context) {
         const val KEY_USER_COUNTRY = "user_country"
     }
 }
+
+/**
+ * How long a track the listener changes away from takes to go, and the one
+ * they asked for to arrive, in milliseconds.
+ *
+ * A second: long enough to be a dissolve rather than a cut, short enough that
+ * the song somebody just chose is not kept waiting for it.
+ */
+const val SKIP_FADE_MS = 1_000

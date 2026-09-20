@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 
 /**
@@ -27,7 +28,18 @@ class YouTubeFadeController(
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private var tickerJob: Job? = null
     private var rampJob: Job? = null
+    private var skipJob: Job? = null
     private var isFadingOut = false
+
+    /**
+     * Whether a change the listener asked for is being dissolved right now.
+     *
+     * While it is, this controller's own rules about the volume are off: the
+     * ticker would put it back to full between the two halves of the fade, and
+     * the transition and the seek that the change itself causes would each
+     * bring the incoming song in at once.
+     */
+    private var skipping = false
 
     init {
         player.addListener(this)
@@ -52,6 +64,7 @@ class YouTubeFadeController(
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         isFadingOut = false
+        if (skipping) return
         val fadeMs = crossfadeStore?.durationMs() ?: 0
         if (fadeMs > 0) {
             rampUp(minOf(fadeMs / 2, 1500))
@@ -67,6 +80,7 @@ class YouTubeFadeController(
     ) {
         if (reason == Player.DISCONTINUITY_REASON_SEEK) {
             isFadingOut = false
+            if (skipping) return
             resetVolume()
         }
     }
@@ -87,6 +101,7 @@ class YouTubeFadeController(
     }
 
     private fun checkFade() {
+        if (skipping) return
         val fadeMs = crossfadeStore?.durationMs() ?: 0
         if (fadeMs <= 0) {
             if (player.volume != 1f) player.volume = 1f
@@ -133,8 +148,59 @@ class YouTubeFadeController(
         }
     }
 
+    /**
+     * Takes the song out, makes the listener's change, and brings in what it
+     * lands on.
+     *
+     * One after the other rather than over each other: this player holds one
+     * song at a time, so there is no moment where both are audible. What the
+     * listener asked for is late by the length of the first half, which is why
+     * that half is the shorter thing a dissolve can be and still be one.
+     *
+     * Nothing to fade out of, or the fade turned off, and the change happens
+     * where it was asked for, on the caller's own thread.
+     */
+    fun changeWith(fadeMs: Int, change: () -> Unit) {
+        if (fadeMs <= 0 || !player.isPlaying || player.volume <= 0f) {
+            change()
+            return
+        }
+        skipJob?.cancel()
+        skipping = true
+        skipJob = scope.launch {
+            try {
+                val half = (fadeMs / 2).coerceAtLeast(MIN_HALF_MS)
+                val from = player.volume
+                step(half) { x -> from * cos(x * (PI.toFloat() / 2f)) }
+                player.volume = 0f
+                change()
+                step(half) { x -> sin(x * (PI.toFloat() / 2f)) }
+                player.volume = 1f
+            } finally {
+                skipping = false
+            }
+        }
+    }
+
+    /** One half of a dissolve, as a curve read from nothing to everything. */
+    private suspend fun step(durationMs: Int, curve: (Float) -> Float) {
+        val steps = SKIP_STEPS
+        val wait = (durationMs / steps).toLong().coerceAtLeast(8L)
+        for (i in 1..steps) {
+            val x = i.toFloat() / steps.toFloat()
+            player.volume = curve(x).coerceIn(0f, 1f)
+            delay(wait)
+        }
+    }
+
     private fun resetVolume() {
         rampJob?.cancel()
         player.volume = 1f
     }
 }
+
+/** How many volume steps each half of a listener's dissolve is made of. */
+private const val SKIP_STEPS = 16
+
+/** Shorter than this and a fade is a click with a delay in front of it. */
+private const val MIN_HALF_MS = 120

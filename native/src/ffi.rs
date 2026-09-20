@@ -539,6 +539,17 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
 
 /// Holds the end of the playing track for the sleep timer, with no rebuild.
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetSkipFade(
+    mut env: JNIEnv,
+    _class: JClass,
+    ms: jint,
+) {
+    guard(&mut env, "SetSkipFade", || {
+        engine::set_skip_fade(ms.max(0) as u32)
+    });
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetHoldEnd(
     mut env: JNIEnv,
     _class: JClass,

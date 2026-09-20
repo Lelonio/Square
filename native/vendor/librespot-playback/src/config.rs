@@ -204,6 +204,15 @@ pub struct PlayerConfig {
     /// crossfade would start the next song under the one being stopped, and
     /// the app fades this one out itself.
     pub hold_end: bool,
+
+    /// LOCAL PATCH: how long a playing track dissolves into one the listener
+    /// chose, a skip or a pick from a list, in milliseconds. Zero cuts, as
+    /// upstream does.
+    ///
+    /// Apart from `crossfade_duration_ms`, which is the end of a track running
+    /// into the next: when the listener changes songs they are waiting for the
+    /// one they asked for, so this is short.
+    pub skip_fade_ms: u32,
 }
 
 impl Default for PlayerConfig {
@@ -228,6 +237,7 @@ impl Default for PlayerConfig {
             downloads_only: None,
             trim_silence: true,
             hold_end: false,
+            skip_fade_ms: 0,
         }
     }
 }

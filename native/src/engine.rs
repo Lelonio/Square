@@ -1010,6 +1010,19 @@ pub fn set_hold_end(enabled: bool) -> EngineResult<()> {
     Ok(())
 }
 
+/// How long a track the listener changes away from dissolves into the one they
+/// asked for; see `PlayerConfig::skip_fade_ms`. Kept in the recipe, so a
+/// rebuilt player still fades.
+pub fn set_skip_fade(ms: u32) -> EngineResult<()> {
+    let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+    let engine = guard.as_mut().ok_or("engine not started")?;
+    engine.recipe.player_config.skip_fade_ms = ms;
+    if let Some(bundle) = engine.bundle.as_ref() {
+        bundle.player.set_skip_fade(ms);
+    }
+    Ok(())
+}
+
 /// Throws away a bundle and builds another one, leaving the runtime and the
 /// audio output alone.
 ///
@@ -1986,10 +1999,27 @@ pub fn previous() -> EngineResult<()> {
 /// fade the app wraps a skip in is long over by then. That was the previous song
 /// coming back at full volume before the new one cut in.
 fn leaving() {
+    // Not while a skip is dissolved: the gate is there to keep the track being
+    // left from being heard, and that is exactly what a dissolve is made of.
+    // The player fades it out itself, and what is heard under the new track is
+    // a second of the old one going, not the wrong song carrying on.
+    if dissolves() {
+        return;
+    }
     let current = current_uri();
     if !current.is_empty() {
         shut(Gate::Leave(current));
     }
+}
+
+/// Whether a change of track the listener asked for is dissolved rather than
+/// cut; see `PlayerConfig::skip_fade_ms`.
+fn dissolves() -> bool {
+    ENGINE
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|e| e.recipe.player_config.skip_fade_ms > 0))
+        .unwrap_or(false)
 }
 
 /// Republishes what is playing as the context it came from.

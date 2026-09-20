@@ -1285,6 +1285,13 @@ class PlaybackService : MediaLibraryService() {
                     listener = engine,
                 )
             }
+            // The engine starts on librespot's own defaults, which cut a track
+            // off the moment another is asked for; see PlayerConfig.
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    NativeBridge.setSkipFade(container.preferences.skipFadeMs())
+                }
+            }
         }.onFailure { error ->
             engineStarted = false
             android.util.Log.e(TAG, "engine start failed: $error", error)

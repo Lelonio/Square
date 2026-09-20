@@ -453,4 +453,6 @@
     <string name="trim_silence">Обрезать тишину</string>
     <string name="trim_silence_summary">Пропускать тишину в конце треков во время кроссфейда</string>
     <string name="mood_mixes">Миксы по настроению</string>
+    <string name="skip_fade">Плавная смена трека</string>
+    <string name="skip_fade_note">Трек, который вы переключаете или заменяете, затихает, пока поднимается выбранный. В источнике Spotify они накладываются, в YouTube Music идут друг за другом.</string>
 </resources>

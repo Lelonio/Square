@@ -64,9 +64,14 @@ object YouTubePlayerFactory {
             )
             .setLooper(host.looper)
             .build()
-            .apply {
-                addAnalyticsListener(Diagnostics)
-                YouTubeFadeController(this, crossfadeStore)
+            .let { exo ->
+                exo.addAnalyticsListener(Diagnostics)
+                val fades = YouTubeFadeController(exo, crossfadeStore)
+                val preferences = (host.context.applicationContext as? dev.lelonio.square.SquareApplication)
+                    ?.preferences
+                // Every change of song the listener asks for goes through the
+                // fade; see SkipFadePlayer.
+                SkipFadePlayer(exo, fades) { preferences?.skipFadeMs() ?: 0 }
             }
     }
 

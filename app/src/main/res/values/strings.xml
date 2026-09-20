@@ -453,4 +453,6 @@
     <string name="trim_silence">Trim silence</string>
     <string name="trim_silence_summary">Skip trailing silence at track ends during crossfade</string>
     <string name="mood_mixes">Mood Mixes</string>
+    <string name="skip_fade">Fade when changing song</string>
+    <string name="skip_fade_note">A song you skip or replace fades out while the one you chose comes up. On the Spotify source the two overlap; on YouTube Music one follows the other.</string>
 </resources>

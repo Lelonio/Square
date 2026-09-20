@@ -315,6 +315,10 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
             audioOutput::setSpeedAndPitch,
             audioOutput::fadeOutThen,
             audioOutput::fadeIn,
+            dissolves = {
+                (host.context.applicationContext as? dev.lelonio.square.SquareApplication)
+                    ?.preferences?.skipFadeMs()?.let { it > 0 } ?: false
+            },
             audioOutput::setPlaybackActive,
             audioOutput::duckReverb,
         )

@@ -197,6 +197,15 @@ object NativeBridge {
     fun setHoldEnd(enabled: Boolean) = nativeSetHoldEnd(enabled)
 
     /**
+     * How long a track the listener changes away from dissolves into the one
+     * they asked for, in milliseconds. Zero cuts, as it always did.
+     *
+     * Apart from the crossfade, which is the end of a track running into the
+     * next one on its own.
+     */
+    fun setSkipFade(ms: Int) = nativeSetSkipFade(ms)
+
+    /**
      * Builds a new session, player and Connect device, keeping everything else.
      *
      * The answer to [spircLost]. A dead Connect device cannot be revived on the
@@ -459,6 +468,8 @@ object NativeBridge {
     private external fun nativeSetBitrate(bitrateKbps: Int)
     private external fun nativeSetTrimSilence(enabled: Boolean)
     private external fun nativeSetHoldEnd(enabled: Boolean)
+
+    private external fun nativeSetSkipFade(ms: Int)
     private external fun nativeReconnect()
     private external fun nativePlaybackElsewhere(): Boolean
     private external fun nativePublishContext(positionMs: Int): Boolean

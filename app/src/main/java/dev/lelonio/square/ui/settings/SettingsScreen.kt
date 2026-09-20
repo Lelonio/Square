@@ -696,6 +696,7 @@ private fun CrossfadeSection(backdrop: Backdrop) {
     }
     val chosen by store.seconds.collectAsStateWithLifecycle()
     val trimSilence by preferences.trimSilence.collectAsStateWithLifecycle()
+    val skipFade by preferences.skipFade.collectAsStateWithLifecycle()
 
     Section(stringResource(R.string.crossfade)) {
         CrossfadeSteps.forEachIndexed { index, seconds ->
@@ -715,6 +716,24 @@ private fun CrossfadeSection(backdrop: Backdrop) {
             checked = trimSilence,
             backdrop = backdrop,
             onChange = preferences::setTrimSilence,
+        )
+        RowDivider()
+        // Beside the crossfade, which is the same movement at the end of a
+        // track rather than at the listener's hand, and separate from it: one
+        // is about how records end, the other about what happens when somebody
+        // has heard enough.
+        DownloadSwitch(
+            label = stringResource(R.string.skip_fade),
+            checked = skipFade,
+            backdrop = backdrop,
+            onChange = preferences::setSkipFade,
+        )
+        RowDivider()
+        Text(
+            stringResource(R.string.skip_fade_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
         )
         RowDivider()
         Text(

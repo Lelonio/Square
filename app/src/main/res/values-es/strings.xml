@@ -432,4 +432,6 @@
     <string name="trim_silence">Recortar silencio</string>
     <string name="trim_silence_summary">Evita el silencio al final de las canciones durante el fundido</string>
     <string name="mood_mixes">Mixes por estado de ánimo</string>
+    <string name="skip_fade">Fundido al cambiar de canción</string>
+    <string name="skip_fade_note">La canción que saltas o sustituyes se desvanece mientras sube la que has elegido. Con Spotify las dos se superponen; en YouTube Music una sigue a la otra.</string>
 </resources>

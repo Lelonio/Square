@@ -188,6 +188,15 @@ struct FadeOut {
     spare: std::collections::VecDeque<f64>,
     /// Set when the outgoing track runs out before the fade does.
     drained: bool,
+    /// LOCAL PATCH: for a fade the listener started, how far the incoming
+    /// track has risen, counted from when it started making a sound. `None`
+    /// at the end of a track, where both halves move on the one clock.
+    ///
+    /// A song picked from a list is not loaded yet when the one playing starts
+    /// to go, and the outgoing half runs on through the load. On one clock the
+    /// incoming song then came in most of the way up already, which is a cut
+    /// with a fade in front of it.
+    rising: Option<usize>,
 }
 
 static PLAYER_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -216,6 +225,8 @@ enum PlayerCommand {
     SetTrimSilence(bool),
     /// LOCAL PATCH: see PlayerConfig::hold_end.
     SetHoldEnd(bool),
+    /// LOCAL PATCH: see PlayerConfig::skip_fade_ms.
+    SetSkipFade(u32),
     EmitSessionDisconnectedEvent {
         connection_id: String,
         user_name: String,
@@ -731,6 +742,11 @@ impl Player {
     /// LOCAL PATCH: see PlayerConfig::hold_end.
     pub fn set_hold_end(&self, enabled: bool) {
         self.command(PlayerCommand::SetHoldEnd(enabled));
+    }
+
+    /// LOCAL PATCH: see PlayerConfig::skip_fade_ms.
+    pub fn set_skip_fade(&self, ms: u32) {
+        self.command(PlayerCommand::SetSkipFade(ms));
     }
 
     pub fn emit_filter_explicit_content_changed_event(&self, filter: bool) {
@@ -2236,7 +2252,12 @@ impl PlayerInternal {
 
     /// LOCAL PATCH: how long a crossfade lasts, in interleaved samples.
     fn crossfade_samples(&self) -> usize {
-        let ms = self.config.crossfade_duration_ms as usize;
+        Self::fade_samples(self.config.crossfade_duration_ms)
+    }
+
+    /// LOCAL PATCH: a length in milliseconds as interleaved samples.
+    fn fade_samples(ms: u32) -> usize {
+        let ms = ms as usize;
         if ms == 0 {
             return 0;
         }
@@ -2249,28 +2270,43 @@ impl PlayerInternal {
     /// LOCAL PATCH: moves the track being replaced into the outgoing half of a
     /// crossfade, if there is one and crossfading is on.
     fn begin_fade_out(&mut self) {
-        let total = self.crossfade_samples();
-        if total == 0 {
-            self.fade_out = None;
-            return;
-        }
-
-        // Only the track that announced its own end fades out.
+        // The track that announced its own end fades out over the crossfade.
         //
         // A fade is what the end of a track sounds like, and a skip is not the
         // end of a track: it is a listener saying they have heard enough. Every
         // load arrives here the same way, whoever asked for it, so the two are
         // told apart by `early_end`, which names the one play request that was
         // reported as finishing before it had.
+        //
+        // Any other track that is playing goes over the shorter fade the
+        // listener chose for changing songs themselves, and the incoming one
+        // rises on its own clock; see PlayerConfig::skip_fade_ms and
+        // FadeOut::rising. A track that is paused is not heard, and nothing
+        // fades out of it.
         let expected = self.early_end.take();
+        let (total, rising) = match &self.state {
+            PlayerState::Playing { play_request_id, .. } if expected == Some(*play_request_id) => {
+                (self.crossfade_samples(), None)
+            }
+            PlayerState::Playing { .. } => (Self::fade_samples(self.config.skip_fade_ms), Some(0)),
+            // Nothing playing to fade out of. Whatever is already fading, if
+            // anything, is the tail this load is arriving under: it was handed
+            // over when the load began and the track it belongs to is gone
+            // from the state already, so it is left to finish.
+            _ => return,
+        };
+        if total == 0 {
+            self.fade_out = None;
+            return;
+        }
+
         let previous = mem::replace(&mut self.state, PlayerState::Invalid);
         match previous {
             PlayerState::Playing {
                 decoder,
                 normalisation_factor,
-                play_request_id,
                 ..
-            } if expected == Some(play_request_id) => {
+            } => {
                 self.fade_out = Some(FadeOut {
                     decoder,
                     normalisation_factor,
@@ -2278,6 +2314,7 @@ impl PlayerInternal {
                     done: 0,
                     spare: std::collections::VecDeque::new(),
                     drained: false,
+                    rising,
                 });
             }
             // Nothing was playing: put the state back and leave the caller to
@@ -2307,9 +2344,15 @@ impl PlayerInternal {
         };
 
         let mut offset = 0;
-        while offset + channels <= data.len() && fade.done < fade.total {
+        while offset + channels <= data.len() {
+            let going = fade.done < fade.total;
+            let arriving = fade.rising.map_or(going, |risen| risen < fade.total);
+            if !arriving {
+                break;
+            }
+
             // Enough of the outgoing track for this frame, decoded on demand.
-            while fade.spare.len() < channels && !fade.drained {
+            while going && fade.spare.len() < channels && !fade.drained {
                 match fade.decoder.next_packet() {
                     Ok(Some((_, packet))) => match packet.samples() {
                         Ok(samples) => fade.spare.extend(samples.iter().copied()),
@@ -2325,27 +2368,47 @@ impl PlayerInternal {
                 }
             }
 
-            let x = fade.done as f64 / fade.total as f64;
-            // If the outgoing track has finished draining early, bring the incoming track to full scale
-            let gain_in = if fade.drained && fade.spare.is_empty() {
-                1.0
-            } else {
-                (x * std::f64::consts::FRAC_PI_2).sin()
+            let x = fade.done.min(fade.total) as f64 / fade.total as f64;
+            let gain_in = match fade.rising {
+                // A fade the listener started rises from nothing whatever the
+                // outgoing half has done in the meantime.
+                Some(risen) => (risen as f64 / fade.total as f64 * std::f64::consts::FRAC_PI_2).sin(),
+                // If the outgoing track has finished draining early, bring the
+                // incoming track to full scale.
+                None if fade.drained && fade.spare.is_empty() => 1.0,
+                None => (x * std::f64::consts::FRAC_PI_2).sin(),
             };
-            let gain_out = (x * std::f64::consts::FRAC_PI_2).cos();
+            let gain_out = if going {
+                (x * std::f64::consts::FRAC_PI_2).cos()
+            } else {
+                0.0
+            };
 
             for sample in data.iter_mut().skip(offset).take(channels) {
-                let tail = fade.spare.pop_front().unwrap_or(0.0);
+                let tail = if going {
+                    fade.spare.pop_front().unwrap_or(0.0)
+                } else {
+                    0.0
+                };
                 let mixed = *sample * gain_in
                     + tail * gain_out * fade.normalisation_factor * volume;
                 *sample = soft_limit(mixed);
             }
 
-            fade.done += channels;
+            if going {
+                fade.done += channels;
+            }
+            if let Some(risen) = fade.rising.as_mut() {
+                *risen += channels;
+            }
             offset += channels;
         }
 
-        if fade.done >= fade.total || (fade.drained && fade.spare.is_empty()) {
+        let finished = match fade.rising {
+            Some(risen) => risen >= fade.total,
+            None => fade.done >= fade.total || (fade.drained && fade.spare.is_empty()),
+        };
+        if finished {
             // Dropping it closes the outgoing stream.
             self.fade_out = None;
         }
@@ -2359,10 +2422,16 @@ impl PlayerInternal {
     fn pump_fade_out(&mut self) -> bool {
         let volume = self.volume_getter.attenuation_factor();
 
-        let (samples, drained) = {
+        let (samples, drained, rising) = {
             let Some(fade) = self.fade_out.as_mut() else {
                 return false;
             };
+            // A listener's fade whose outgoing half is already over: nothing
+            // is left to play through the load, and the incoming half still
+            // has its rise to come.
+            if fade.rising.is_some() && fade.done >= fade.total {
+                return false;
+            }
 
             let mut samples: Vec<f64> = fade.spare.drain(..).collect();
             if !fade.drained {
@@ -2392,12 +2461,13 @@ impl PlayerInternal {
             // track arrived.
             fade.done = (fade.done + samples.len()).min(fade.total);
 
-            (samples, fade.drained)
+            (samples, fade.drained, fade.rising.is_some())
         };
 
         if samples.is_empty() {
-            if drained {
-                // Dropping it closes the outgoing stream.
+            // Dropping it closes the outgoing stream; a listener's fade is kept
+            // for the incoming song's rise, and closes when that is over.
+            if drained && !rising {
                 self.fade_out = None;
             }
             return false;
@@ -3027,6 +3097,20 @@ impl PlayerInternal {
         let loader =
             loader.unwrap_or_else(|| Box::pin(self.load_track(track_id.clone(), position_ms)));
 
+        // LOCAL PATCH: the track being left goes into the fade here, not when
+        // the new one starts.
+        //
+        // A track that was already preloaded reaches `start_playback` in the
+        // same breath and fades out there. One that has to be fetched does not:
+        // the state below replaces the track that is playing, and with it went
+        // its decoder and any chance of fading it, so a skip onto a track the
+        // engine had not seen coming was a cut. The tail is played under the
+        // wait by `pump_fade_out`, and the track arriving rises from nothing on
+        // its own clock; see FadeOut::rising.
+        if play {
+            self.begin_fade_out();
+        }
+
         // Set ourselves to a loading state.
         self.state = PlayerState::Loading {
             track_id,
@@ -3247,6 +3331,12 @@ impl PlayerInternal {
             }
 
             // LOCAL PATCH: see PlayerConfig::hold_end.
+            // LOCAL PATCH: see PlayerConfig::skip_fade_ms.
+            PlayerCommand::SetSkipFade(ms) => {
+                info!("skip_fade_ms is now {ms}");
+                self.config.skip_fade_ms = ms;
+            }
+
             PlayerCommand::SetHoldEnd(enabled) => {
                 info!("hold_end is now {enabled}");
                 self.config.hold_end = enabled;
@@ -3463,6 +3553,7 @@ impl fmt::Debug for PlayerCommand {
             PlayerCommand::SetTrimSilence(enabled) => {
                 f.debug_tuple("SetTrimSilence").field(enabled).finish()
             }
+            PlayerCommand::SetSkipFade(ms) => f.debug_tuple("SetSkipFade").field(ms).finish(),
             PlayerCommand::SetHoldEnd(enabled) => {
                 f.debug_tuple("SetHoldEnd").field(enabled).finish()
             }

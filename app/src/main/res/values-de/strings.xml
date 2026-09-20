@@ -426,4 +426,6 @@
     <string name="show_all">Alle anzeigen</string>
     <string name="show_less">Weniger anzeigen</string>
     <string name="search_library">Bibliothek durchsuchen</string>
+    <string name="skip_fade">Überblenden beim Wechseln</string>
+    <string name="skip_fade_note">Der übersprungene oder ersetzte Titel blendet aus, während der gewählte aufkommt. Bei Spotify überlappen sich beide, bei YouTube Music folgt einer auf den anderen.</string>
 </resources>
