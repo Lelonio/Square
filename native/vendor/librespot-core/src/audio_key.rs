@@ -51,8 +51,20 @@ component! {
         pending: HashMap<u32, oneshot::Sender<Result<AudioKey, Error>>> = HashMap::new(),
         cool_off_until: Option<Instant> = None,
         cool_off: Duration = FIRST_COOL_OFF,
+        known: Vec<((SpotifyId, FileId), AudioKey)> = Vec::new(),
     }
 }
+
+/// LOCAL PATCH: how many keys are remembered for the life of the session.
+///
+/// A key belongs to a file of a track and does not change, so a track played
+/// again asks for nothing. Worth remembering because the thing that runs into
+/// Spotify's limit is a listener going back and forth over the same handful of
+/// songs: without this, every pass spent another request, and the refusals
+/// that followed held up the song they actually stopped on.
+///
+/// Sixty-four of them is a few kilobytes and further back than anybody skips.
+const KEYS_REMEMBERED: usize = 64;
 
 /// LOCAL PATCH: how long to leave the key service alone after it refuses one.
 ///
@@ -143,6 +155,17 @@ impl AudioKeyManager {
     /// a broken channel or an unexpected packet is structural and repeating it
     /// would just add latency to an error that is not going to change.
     pub async fn request(&self, track: SpotifyId, file: FileId) -> Result<AudioKey, Error> {
+        // LOCAL PATCH: asked for before, and the answer does not change.
+        if let Some(key) = self.lock(|inner| {
+            inner
+                .known
+                .iter()
+                .find(|((id, of), _)| *id == track && *of == file)
+                .map(|(_, key)| *key)
+        }) {
+            return Ok(key);
+        }
+
         const ATTEMPTS: usize = 3;
 
         let mut last = None;
@@ -162,6 +185,13 @@ impl AudioKeyManager {
             match self.request_once(track, file).await {
                 Ok(key) => {
                     self.lock(|inner| {
+                        // LOCAL PATCH: remembered, so the next pass over this
+                        // track costs nothing; see KEYS_REMEMBERED.
+                        inner.known.retain(|((id, of), _)| !(*id == track && *of == file));
+                        inner.known.push(((track, file), key));
+                        if inner.known.len() > KEYS_REMEMBERED {
+                            inner.known.remove(0);
+                        }
                         inner.cool_off_until = None;
                         inner.cool_off = FIRST_COOL_OFF;
                     });
