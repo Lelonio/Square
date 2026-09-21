@@ -614,6 +614,12 @@ async fn fetch(session: Session, uri_text: String, kbps: i32) -> Result<String, 
             });
         }
     };
+    // Timed here rather than at the end of the download, which is what it used
+    // to be: the number reported was the key wait plus the whole transfer, so
+    // every track looked to the app like a track the key limiter had held up.
+    // The queue reads it to pace itself and backed off on all of them, out to
+    // its longest gap, where it stayed. See DownloadQueue.noteKeyWait.
+    let key_wait_ms = key_began.elapsed().as_millis() as u64;
 
     let part = audio.with_extension("part");
     if let Some(parent) = part.parent() {
@@ -753,7 +759,6 @@ async fn fetch(session: Session, uri_text: String, kbps: i32) -> Result<String, 
         .map(|cover| cover.url.clone())
         .unwrap_or_default();
 
-    let key_wait_ms = key_began.elapsed().as_millis() as u64;
     let sidecar = json!({
         "v": 1,
         "keyWaitMs": key_wait_ms,

@@ -111,13 +111,27 @@ class DownloadQueue(
     /** Clean fetches in a row, which is what earns the gap back down. */
     private var clean = 0
 
+    /** The tracks this run is fetching, which is what its progress is of. */
+    private val run = mutableSetOf<String>()
+
+    /**
+     * How long the queue stands still after Spotify refuses a key, which
+     * rises while the refusals keep coming.
+     *
+     * Asking again straight away is what keeps the refusal alive: the
+     * allowance is the account's, not this session's, so a new session is
+     * refused by the same counter within a quarter of a second. What gives it
+     * back is not asking for a while.
+     */
+    private var coolOff = COOL_OFF_MS
+
     private fun noteKeyWait(waitMs: Long) {
         if (waitMs >= KEY_WAIT_SLOW_MS) {
             clean = 0
-            gap = (gap * 2).coerceAtMost(MAX_GAP_MS)
+            gap = (gap * 3 / 2).coerceAtMost(MAX_GAP_MS)
         } else if (++clean >= CLEAN_RUN) {
             clean = 0
-            gap = (gap / 2).coerceAtLeast(TRACK_GAP_MS)
+            gap = (gap * 9 / 10).coerceAtLeast(TRACK_GAP_MS)
         }
     }
 
@@ -165,6 +179,7 @@ class DownloadQueue(
 
     private suspend fun drain() = coroutineScope {
         holdWatch()
+        run.clear()
         // Progress ticks come off the engine's event channel; see DownloadEvents.
         val ticks = launch {
             DownloadEvents.progress.collect { store.onProgress(it.uri, it.fraction) }
@@ -213,9 +228,20 @@ class DownloadQueue(
                 // immediately and spin at full speed against whatever said no.
                 if (outcomes.all { it == Outcome.NOT_NOW }) {
                     publish(waiting = Waiting.ENGINE)
-                    delay(if (throttled) THROTTLED_WAIT_MS else ENGINE_POLL_MS)
-                    throttled = false
+                    if (throttled) {
+                        delay(coolOff)
+                        coolOff = (coolOff * 2).coerceAtMost(MAX_COOL_OFF_MS)
+                        // And a wider pace to come back at, or the next few
+                        // tracks spend the allowance the wait just earned.
+                        gap = (gap * 3 / 2).coerceAtMost(MAX_GAP_MS)
+                        throttled = false
+                    } else {
+                        delay(ENGINE_POLL_MS)
+                    }
                 } else {
+                    // A track came through, so the refusals are over and the
+                    // next one is met with the short wait again.
+                    if (outcomes.any { it == Outcome.DONE }) coolOff = COOL_OFF_MS
                     // A breath between songs, as long as this queue has learnt
                     // it needs to be; see [gap].
                     delay(gap)
@@ -686,13 +712,22 @@ class DownloadQueue(
     }
 
     private fun publish(waiting: Waiting?, currentTrackUri: String? = null) {
-        val wanted = store.owners.value.values.flatten().toSet()
+        // What this run set out to fetch, not everything the phone holds.
+        //
+        // The count used to be every track claimed by every playlist kept
+        // offline, downloaded or not, so someone with five hundred songs on
+        // the phone who added one playlist watched "500 of 530": a bar that
+        // begins nearly full and a number that says nothing about the wait
+        // they are actually in. What is added while the run is going is added
+        // to it, so a second playlist asked for halfway through lengthens the
+        // same count rather than starting another one.
+        run.addAll(store.pending())
         val files = store.files.value
         val trackTitle = currentTrackUri?.let { store.trackOf(it)?.name }?.takeIf { it.isNotBlank() }
         _status.value = Status(
             running = true,
-            done = wanted.count(files::containsKey),
-            total = wanted.size,
+            done = run.count(files::containsKey),
+            total = run.size,
             currentTitle = trackTitle,
             waiting = waiting,
         )
@@ -726,10 +761,10 @@ class DownloadQueue(
          * seconds of patience beats twenty-one seconds of holds and a queue
          * that also stops the music from starting.
          */
-        const val MAX_GAP_MS = 20_000L
+        const val MAX_GAP_MS = 8_000L
 
         /** Clean fetches before the gap is allowed to halve again. */
-        const val CLEAN_RUN = 3
+        const val CLEAN_RUN = 6
 
         /** How many songs' extras are caught up on in one turn of the loop. */
         const val EXTRAS_BATCH = 5
@@ -738,14 +773,9 @@ class DownloadQueue(
         const val COVER_BATCH = 12
         const val COVER_GAP_MS = 80L
 
-        /**
-         * How long to sit out a refusal that has already arrived.
-         *
-         * Longer than the gap because by this point Spotify has said no, and
-         * librespot's own hold-off is already counting; asking again inside it
-         * only confirms the pace it objected to.
-         */
-        const val THROTTLED_WAIT_MS = 20_000L
+        /** The first wait after a refusal, and the longest it grows to. */
+        const val COOL_OFF_MS = 60_000L
+        const val MAX_COOL_OFF_MS = 180_000L
 
 
 
