@@ -20,6 +20,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.text.font.FontWeight
@@ -1872,7 +1873,17 @@ private fun TitleBlock(
                     Modifier
                 },
             )
-            ArtistLine(state, artist, onOpenArtist)
+            // The rating beside the names rather than on its own line: it is
+            // about the song, and a line of its own would read as a warning.
+            if (state.explicit) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    dev.lelonio.square.ui.components.ExplicitMark(color = GlassInk)
+                    Spacer(Modifier.width(6.dp))
+                    ArtistLine(state, artist, onOpenArtist)
+                }
+            } else {
+                ArtistLine(state, artist, onOpenArtist)
+            }
         }
     }
 }

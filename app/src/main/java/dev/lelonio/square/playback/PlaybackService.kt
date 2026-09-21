@@ -1521,6 +1521,9 @@ class PlaybackService : MediaLibraryService() {
                                     track.albumUri?.let {
                                         putString(dev.lelonio.square.ui.EXTRA_ALBUM_URI, it)
                                     }
+                                    if (track.explicit) {
+                                        putBoolean(dev.lelonio.square.ui.EXTRA_EXPLICIT, true)
+                                    }
                                     val credited = track.artists.filter { it.uri != null }
                                     if (credited.isNotEmpty()) {
                                         putStringArrayList(
@@ -1577,6 +1580,7 @@ class PlaybackService : MediaLibraryService() {
         albumUri = track.albumUri,
         durationMs = track.durationMs,
         artworkUri = track.artworkUrl?.let(android.net.Uri::parse),
+        explicit = track.explicit,
     )
 
     /** The two parallel lists put back together; see EXTRA_ARTIST_NAMES. */

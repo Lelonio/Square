@@ -3939,6 +3939,7 @@ private fun savedPlaybackSeed(context: android.content.Context): PlaybackState? 
         album = track.album,
         albumUri = track.albumUri,
         artworkUrl = track.artworkUrl,
+        explicit = track.explicit,
         durationMs = track.durationMs,
         // Not "paused": what it is doing is unknown until the controller
         // answers, and a play button that flips to pause a moment later reads

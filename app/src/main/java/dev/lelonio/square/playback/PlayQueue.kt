@@ -54,6 +54,13 @@ class PlayQueue {
          * between "queued" and "in the playlist" does not.
          */
         val queued: Boolean = false,
+        /**
+         * Whether the source rates the track as explicit.
+         *
+         * Carried for the same reason the album is: the queue rebuilds every
+         * item it holds, and what it does not carry never reaches the player.
+         */
+        val explicit: Boolean = false,
     )
 
     private val _items = mutableListOf<Track>()
@@ -397,6 +404,7 @@ class PlayQueue {
             durationMs = metadata.durationMs ?: 0L,
             artworkUri = metadata.artworkUri,
             queued = metadata.extras?.getBoolean(EXTRA_PLAY_NEXT) == true,
+            explicit = metadata.extras?.getBoolean(dev.lelonio.square.ui.EXTRA_EXPLICIT) == true,
         )
     }
 }

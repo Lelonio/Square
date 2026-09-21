@@ -36,6 +36,8 @@ data class PlaybackState(
     /** And its address, where the queue knows it; see EXTRA_ALBUM_URI. */
     val albumUri: String? = null,
     val artworkUrl: String? = null,
+    /** Whether the source rates this track as explicit; see EXTRA_EXPLICIT. */
+    val explicit: Boolean = false,
     val isPlaying: Boolean = false,
     /**
      * What the listener asked for, which is not always what is happening.
@@ -201,6 +203,8 @@ fun rememberPlaybackState(
                 artist = metadata.artist?.toString().orEmpty(),
                 album = metadata.albumTitle?.toString().orEmpty(),
                 artworkUrl = metadata.artworkUri?.toString(),
+                explicit = metadata.extras
+                    ?.getBoolean(dev.lelonio.square.ui.EXTRA_EXPLICIT) == true,
                 isPlaying = player.isPlaying,
                 wantsPlay = player.playWhenReady,
                 isBuffering = player.playbackState == Player.STATE_BUFFERING,

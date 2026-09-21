@@ -421,6 +421,9 @@ class MainActivity : ComponentActivity() {
                             // And the record, so its name under the title is a
                             // way in as well.
                             track.albumUri?.let { putString(EXTRA_ALBUM_URI, it) }
+                            // Marked in the player the way every other client
+                            // marks it, and only when it is true.
+                            if (track.explicit) putBoolean(EXTRA_EXPLICIT, true)
                             // And each credited artist separately, so a track
                             // by two people opens the one that was pressed.
                             val credited = track.artists.filter { it.uri != null }
@@ -465,6 +468,9 @@ const val EXTRA_ARTIST_URI = "dev.lelonio.square.ARTIST_URI"
 
 /** The record the playing track is from; see [EXTRA_ARTIST_URI]. */
 const val EXTRA_ALBUM_URI = "dev.lelonio.square.ALBUM_URI"
+
+/** Whether the track carries Spotify's explicit-content rating. */
+const val EXTRA_EXPLICIT = "dev.lelonio.square.EXPLICIT"
 
 /** Every credited artist, in order, as two lists that line up. */
 const val EXTRA_ARTIST_NAMES = "dev.lelonio.square.ARTIST_NAMES"

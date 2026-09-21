@@ -2601,6 +2601,14 @@ private fun TrackRow(
                 // read past. Starting a download is the row menu's job, so this
                 // never needs to be a target.
                 DownloadMark(download)
+                // The rating before the names, where every other client puts
+                // it, and only on the rows that carry one.
+                if (track.explicit) {
+                    dev.lelonio.square.ui.components.ExplicitMark(
+                        modifier = Modifier.padding(end = 6.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     text = subtitle
                         ?: "${track.artist} · ${formatDuration(track.durationMs)}",

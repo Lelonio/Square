@@ -1634,6 +1634,9 @@ class LibrespotPlayer(
                                     track.albumUri?.let {
                                         putString(dev.lelonio.square.ui.EXTRA_ALBUM_URI, it)
                                     }
+                                    if (track.explicit) {
+                                        putBoolean(dev.lelonio.square.ui.EXTRA_EXPLICIT, true)
+                                    }
                                     val credited = track.artists.filter { it.uri != null }
                                     if (credited.isNotEmpty()) {
                                         putStringArrayList(
