@@ -32,6 +32,8 @@ class SquareApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // First, so a crash anywhere below is written down; see Report.
+        dev.lelonio.square.diagnostics.Report.install(this)
         // The vendored InnerTube module logs through Timber, and with nothing
         // planted every one of those lines went nowhere — which is why a
         // YouTube page that came back in an unexpected shape could only be

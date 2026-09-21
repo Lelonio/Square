@@ -163,6 +163,12 @@
     <string name="about">Informazioni</string>
     <string name="version">Versione</string>
     <string name="licences">Licenze</string>
+    <string name="save_report">Salva un report</string>
+    <string name="report_saved">Report salvato</string>
+    <string name="send_report">Invia un report</string>
+    <string name="report_preparing">Preparo il report…</string>
+    <string name="report_failed">Non è stato possibile preparare il report.</string>
+    <string name="send_report_note">Quello che l\'app ha registrato sugli ultimi crash e sulle attività recenti, senza i dati del tuo account, da allegare a un issue su GitHub. Non viene inviato niente se non lo invii tu.</string>
     <string name="scope_top_artists">Artisti che ascolti</string>
     <string name="scope_history">Cronologia dell\'account</string>
     <string name="scope_devices">Elenco dispositivi</string>

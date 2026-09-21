@@ -176,6 +176,12 @@
     <string name="about">О приложении</string>
     <string name="version">Версия</string>
     <string name="licences">Лицензии</string>
+    <string name="save_report">Сохранить отчёт</string>
+    <string name="report_saved">Отчёт сохранён</string>
+    <string name="send_report">Отправить отчёт</string>
+    <string name="report_preparing">Готовлю отчёт…</string>
+    <string name="report_failed">Не удалось подготовить отчёт.</string>
+    <string name="send_report_note">То, что приложение записало о последних сбоях и недавней работе, без данных вашего аккаунта, чтобы приложить к issue на GitHub. Ничего не отправляется, пока вы сами не отправите.</string>
     <string name="scope_top_artists">Исполнители, которых вы слушаете</string>
     <string name="scope_history">История аккаунта</string>
     <string name="scope_devices">Список устройств</string>

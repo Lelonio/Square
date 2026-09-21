@@ -180,6 +180,12 @@
     <string name="about">About</string>
     <string name="version">Version</string>
     <string name="licences">Licences</string>
+    <string name="save_report">Save a report</string>
+    <string name="report_saved">Report saved</string>
+    <string name="send_report">Send a report</string>
+    <string name="report_preparing">Preparing the report…</string>
+    <string name="report_failed">The report could not be prepared.</string>
+    <string name="send_report_note">What the app recorded about its last crashes and recent activity, with your account taken out, to attach to an issue on GitHub. Nothing is sent unless you send it.</string>
     <string name="scope_top_artists">Artists you listen to</string>
     <string name="scope_history">Account history</string>
     <string name="scope_devices">Device list</string>

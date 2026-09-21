@@ -162,6 +162,12 @@
     <string name="about">Info</string>
     <string name="version">Version</string>
     <string name="licences">Lizenzen</string>
+    <string name="save_report">Bericht speichern</string>
+    <string name="report_saved">Bericht gespeichert</string>
+    <string name="send_report">Bericht senden</string>
+    <string name="report_preparing">Bericht wird erstellt…</string>
+    <string name="report_failed">Der Bericht konnte nicht erstellt werden.</string>
+    <string name="send_report_note">Was die App über ihre letzten Abstürze und die letzten Vorgänge aufgezeichnet hat, ohne deine Kontodaten, zum Anhängen an ein Issue auf GitHub. Es wird nichts gesendet, außer du sendest es.</string>
     <string name="scope_top_artists">Künstler, die du hörst</string>
     <string name="scope_history">Verlauf des Kontos</string>
     <string name="scope_devices">Geräteliste</string>

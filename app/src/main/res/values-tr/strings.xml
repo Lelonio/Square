@@ -174,6 +174,12 @@
     <string name="about">Hakkında</string>
     <string name="version">Sürüm</string>
     <string name="licences">Lisanslar</string>
+    <string name="save_report">Rapor kaydet</string>
+    <string name="report_saved">Rapor kaydedildi</string>
+    <string name="send_report">Rapor gönder</string>
+    <string name="report_preparing">Rapor hazırlanıyor…</string>
+    <string name="report_failed">Rapor hazırlanamadı.</string>
+    <string name="send_report_note">Uygulamanın son çökmeleri ve son etkinliği hakkında kaydettikleri, hesap bilgilerin çıkarılmış olarak, GitHub\'daki bir issue\'ya eklemek için. Sen göndermedikçe hiçbir şey gönderilmez.</string>
     <string name="scope_top_artists">Dinlediğin sanatçılar</string>
     <string name="scope_history">Hesap geçmişi</string>
     <string name="scope_devices">Cihaz listesi</string>

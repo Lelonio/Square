@@ -404,6 +404,8 @@ fun SettingsScreen(
                 UpdateRow()
                 RowDivider()
                 Licences()
+                RowDivider()
+                ReportRows(name = ready?.displayName)
             }
         }
 
@@ -1117,6 +1119,82 @@ private fun InfoRow(label: String, value: String) {
             color = InkDim,
             textAlign = androidx.compose.ui.text.style.TextAlign.End,
             modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/**
+ * Puts together a report of the app's last crashes and recent log, with the
+ * account taken out, and saves it to a folder or opens the share sheet on it;
+ * see Report.
+ *
+ * Saving is the first of the two because the share sheet on many phones has no
+ * way to put a file in a folder, and a report that can only be sent to an app
+ * cannot be attached to an issue from the browser.
+ */
+@Composable
+private fun ReportRows(name: String?) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    // The report waiting for the folder picker to say where it goes.
+    var pending by remember { mutableStateOf<java.io.File?>(null) }
+
+    fun failed(error: Throwable) {
+        android.util.Log.w("SquareReport", "report failed: $error")
+        android.widget.Toast.makeText(context, context.getString(R.string.report_failed), android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        val file = pending
+        pending = null
+        if (uri == null || file == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        file.inputStream().use { it.copyTo(out) }
+                    } ?: error("no stream for $uri")
+                }
+                android.widget.Toast.makeText(context, context.getString(R.string.report_saved), android.widget.Toast.LENGTH_SHORT).show()
+            }.onFailure(::failed)
+        }
+    }
+
+    fun prepare(then: (java.io.File) -> Unit) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            runCatching { dev.lelonio.square.diagnostics.Report.build(context, listOfNotNull(name)) }
+                .onSuccess(then)
+                .onFailure(::failed)
+            busy = false
+        }
+    }
+
+    Column {
+        ActionRow(
+            stringResource(if (busy) R.string.report_preparing else R.string.save_report),
+            destructive = false,
+        ) {
+            prepare { file ->
+                pending = file
+                save.launch(file.name)
+            }
+        }
+        RowDivider()
+        ActionRow(stringResource(R.string.send_report), destructive = false) {
+            prepare { file ->
+                runCatching { dev.lelonio.square.diagnostics.Report.share(context, file) }.onFailure(::failed)
+            }
+        }
+        Text(
+            stringResource(R.string.send_report_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 14.dp),
         )
     }
 }

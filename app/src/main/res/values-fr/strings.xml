@@ -162,6 +162,12 @@
     <string name="about">À propos</string>
     <string name="version">Version</string>
     <string name="licences">Licences</string>
+    <string name="save_report">Enregistrer un rapport</string>
+    <string name="report_saved">Rapport enregistré</string>
+    <string name="send_report">Envoyer un rapport</string>
+    <string name="report_preparing">Préparation du rapport…</string>
+    <string name="report_failed">Le rapport n\'a pas pu être préparé.</string>
+    <string name="send_report_note">Ce que l\'appli a enregistré sur ses derniers plantages et son activité récente, sans les données de ton compte, à joindre à un ticket sur GitHub. Rien n\'est envoyé si tu ne l\'envoies pas.</string>
     <string name="scope_top_artists">Artistes que vous écoutez</string>
     <string name="scope_history">Historique du compte</string>
     <string name="scope_devices">Liste des appareils</string>

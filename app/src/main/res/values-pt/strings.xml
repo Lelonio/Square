@@ -162,6 +162,12 @@
     <string name="about">Sobre</string>
     <string name="version">Versão</string>
     <string name="licences">Licenças</string>
+    <string name="save_report">Salvar um relatório</string>
+    <string name="report_saved">Relatório salvo</string>
+    <string name="send_report">Enviar um relatório</string>
+    <string name="report_preparing">Preparando o relatório…</string>
+    <string name="report_failed">Não foi possível preparar o relatório.</string>
+    <string name="send_report_note">O que o app registrou sobre os últimos travamentos e a atividade recente, sem os dados da sua conta, para anexar a um issue no GitHub. Nada é enviado a menos que você envie.</string>
     <string name="scope_top_artists">Artistas que você ouve</string>
     <string name="scope_history">Histórico da conta</string>
     <string name="scope_devices">Lista de dispositivos</string>
