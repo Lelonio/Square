@@ -145,6 +145,11 @@ const MAX_COOL_OFF: Duration = Duration::from_secs(30);
 
 impl AudioKeyManager {
     pub(crate) fn dispatch(&self, cmd: PacketType, mut data: Bytes) -> Result<(), Error> {
+        // LOCAL PATCH: `split_to` and `read_u32` panic under four bytes; see
+        // the key below.
+        if data.len() < 4 {
+            return Err(AudioKeyError::Packet(cmd as u8).into());
+        }
         let seq = BigEndian::read_u32(data.split_to(4).as_ref());
 
         let sender = self
@@ -153,18 +158,25 @@ impl AudioKeyManager {
 
         match cmd {
             PacketType::AesKey => {
-                let mut key = [0u8; 16];
-                key.copy_from_slice(data.as_ref());
+                // LOCAL PATCH: a key of the wrong length is refused rather than
+                // copied. `copy_from_slice` panics on a short packet, and the
+                // panic is on the task that reads every packet of the session,
+                // so one bad answer took the whole connection down with it.
+                // After go-librespot 287a478, which found the same packet
+                // being taken as a zero-padded, wrong key.
+                let Ok(key) = <[u8; 16]>::try_from(data.as_ref()) else {
+                    error!("audio key of {} bytes, expected 16", data.len());
+                    let _ = sender.send(Err(AudioKeyError::AesKey.into()));
+                    return Ok(());
+                };
                 sender
                     .send(Ok(AudioKey(key)))
                     .map_err(|_| AudioKeyError::Channel)?
             }
             PacketType::AesKeyError => {
-                error!(
-                    "error audio key {:x} {:x}",
-                    data.as_ref()[0],
-                    data.as_ref()[1]
-                );
+                // LOCAL PATCH: read with get(), for the same reason as above.
+                let code = |at: usize| data.get(at).copied().unwrap_or_default();
+                error!("error audio key {:x} {:x}", code(0), code(1));
                 sender
                     .send(Err(AudioKeyError::AesKey.into()))
                     .map_err(|_| AudioKeyError::Channel)?

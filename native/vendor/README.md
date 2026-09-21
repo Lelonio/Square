@@ -115,6 +115,10 @@ it. Only refusals that land within a minute of the player asking for a key are
 reported, once for a run of them, and the next key that comes back is reported
 as the end of it. Downloads refused while nothing is playing say nothing.
 
+And a reply of the wrong size is refused rather than trusted. Upstream copies
+the key with `copy_from_slice` and reads the error code by index, both of which
+panic on a short packet, on the task that reads every packet of the session.
+
 ### Maintenance
 
 Re-apply this patch when bumping `librespot-core`. If the whole file is replaced,
