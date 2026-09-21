@@ -1028,6 +1028,29 @@ pub fn set_skip_fade(ms: u32) -> EngineResult<()> {
     Ok(())
 }
 
+/// The language Spotify answers in, changed on a session that is already up.
+///
+/// The language rides on every request the session makes, and it is read once,
+/// when the session is built. Someone who changes the app's language then goes
+/// on being answered in the old one for as long as the process lives: names
+/// that the catalogue holds in more than one script, an artist written in
+/// Cyrillic and in Latin, keep arriving in whichever was in force at sign-in.
+///
+/// The recipe is always updated, so the next session has it whatever happens
+/// here. Rebuilding now is the caller's choice, since it takes the player with
+/// it and nobody changing a language expects the music to stop.
+pub fn set_language(language: &str, rebuild: bool) -> EngineResult<()> {
+    {
+        let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        let engine = guard.as_mut().ok_or("engine not started")?;
+        if engine.recipe.session_config.language == language {
+            return Ok(());
+        }
+        engine.recipe.session_config.language = language.to_string();
+    }
+    if rebuild { reconnect() } else { Ok(()) }
+}
+
 /// Throws away a bundle and builds another one, leaving the runtime and the
 /// audio output alone.
 ///

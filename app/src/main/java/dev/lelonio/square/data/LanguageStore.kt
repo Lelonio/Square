@@ -48,12 +48,35 @@ class LanguageStore(context: Context) {
     fun set(tag: String) {
         _tag.value = tag
         prefs.edit().putString(KEY_LANGUAGE, tag).apply()
+        tellEngine()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val manager = app.getSystemService(android.app.LocaleManager::class.java)
             manager?.applicationLocales =
                 if (tag.isEmpty()) LocaleList.getEmptyLocaleList()
                 else LocaleList.forLanguageTags(tag)
         }
+    }
+
+    /**
+     * The engine's session speaks the language it was built with, so a change
+     * here has to be handed over.
+     *
+     * Spotify answers in the language the session asks for, and that covers
+     * more than the shelf titles: an artist the catalogue holds in two scripts
+     * comes back in the one the session named. The session is replaced when
+     * nothing is playing, which is what makes the change take hold at once;
+     * while music is on, the recipe is updated and the next session picks it
+     * up, since stopping the music to relabel it is not a trade anybody asked
+     * for.
+     */
+    private fun tellEngine() {
+        val language = language()
+        val audio = app.getSystemService(android.media.AudioManager::class.java)
+        val quiet = audio?.isMusicActive != true
+        Thread {
+            runCatching { dev.lelonio.square.nativecore.NativeBridge.setLanguage(language, quiet) }
+                .onFailure { android.util.Log.w("SquareLanguage", "language not passed on: ${it.message}") }
+        }.start()
     }
 
     /**

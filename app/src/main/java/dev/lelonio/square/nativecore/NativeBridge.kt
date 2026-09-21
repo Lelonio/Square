@@ -206,6 +206,24 @@ object NativeBridge {
     fun setSkipFade(ms: Int) = nativeSetSkipFade(ms)
 
     /**
+     * The language Spotify should answer in, on a session already running.
+     *
+     * It is read when the session is built, so without this a listener who
+     * changes the app's language goes on being answered in the old one until
+     * the process is restarted: an artist the catalogue holds in Cyrillic and
+     * in Latin keeps arriving in whichever was in force at sign-in.
+     *
+     * [rebuild] replaces the session there and then, which is the only way the
+     * language reaches requests already in flight. It stops the music, so the
+     * caller does it when nothing is playing and lets the next session pick it
+     * up otherwise.
+     *
+     * Blocks while rebuilding. Never call it from the main thread.
+     */
+    fun setLanguage(language: String, rebuild: Boolean) =
+        nativeSetLanguage(language, if (rebuild) 1 else 0)
+
+    /**
      * Builds a new session, player and Connect device, keeping everything else.
      *
      * The answer to [spircLost]. A dead Connect device cannot be revived on the
@@ -470,6 +488,7 @@ object NativeBridge {
     private external fun nativeSetHoldEnd(enabled: Boolean)
 
     private external fun nativeSetSkipFade(ms: Int)
+    private external fun nativeSetLanguage(language: String, rebuild: Int)
     private external fun nativeReconnect()
     private external fun nativePlaybackElsewhere(): Boolean
     private external fun nativePublishContext(positionMs: Int): Boolean

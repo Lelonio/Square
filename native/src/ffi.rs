@@ -537,6 +537,23 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
     });
 }
 
+/// The language Spotify answers in; see engine::set_language.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetLanguage(
+    mut env: JNIEnv,
+    _class: JClass,
+    language: JString,
+    rebuild: jint,
+) {
+    let language = match env.get_string(&language) {
+        Ok(value) => String::from(value),
+        Err(_) => return,
+    };
+    guard(&mut env, "SetLanguage", || {
+        engine::set_language(&language, rebuild != 0)
+    });
+}
+
 /// Holds the end of the playing track for the sleep timer, with no rebuild.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetSkipFade(
