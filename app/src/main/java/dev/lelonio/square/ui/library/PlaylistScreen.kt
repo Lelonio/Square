@@ -1,5 +1,6 @@
 package dev.lelonio.square.ui.library
 
+import androidx.compose.ui.text.withLink
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -676,6 +677,14 @@ fun PlaylistScreen(
             // page keeps it in the menu, beside the rest of what a page can do.
             canDownload = canDownload && !isArtist,
             byline = byline,
+            bylineArtists = if (state.kind == MainViewModel.DetailKind.ALBUM) {
+                state.tracks.firstOrNull()?.artists.orEmpty()
+            } else {
+                emptyList()
+            },
+            onOpenArtist = { artist ->
+                artist.uri?.let { onOpenItem(dev.lelonio.square.data.SearchItem(it, artist.name, "", null)) }
+            },
             year = state.tracks.firstOrNull()?.year.orEmpty()
                 .takeIf { state.kind == MainViewModel.DetailKind.ALBUM }
                 .orEmpty(),
@@ -1286,6 +1295,12 @@ private fun DetailHeader(
     onToggleFollow: () -> Unit,
     /** Whose record it is: the artist, or the account that made the list. */
     byline: String,
+    /**
+     * The artists the byline names, each a way to their page; empty where the
+     * byline is not theirs, as under a playlist.
+     */
+    bylineArtists: List<dev.lelonio.square.data.CatalogArtist> = emptyList(),
+    onOpenArtist: (dev.lelonio.square.data.CatalogArtist) -> Unit = {},
     /** When it came out, where the source says. */
     year: String,
     /** When a playlist last changed, ISO-8601; null on everything else. */
@@ -1315,7 +1330,7 @@ private fun DetailHeader(
     Box(
         Modifier
             .fillMaxWidth()
-            .heroCollapse(heroPx, collapsedPx, collapse),
+            .heroCollapse(heroPx, collapsedPx, collapse, overflowBelow = PLAY_SHADOW_ROOM),
     ) {
         // No cover here: it is drawn below, inside the layer these controls
         // refract. See the note where that layer is recorded.
@@ -1350,8 +1365,39 @@ private fun DetailHeader(
             // Whose record it is, in the page's own accent — the one line the
             // reference colours, because it is the one that is also a link.
             if (byline.isNotEmpty()) {
+                // Each name its own link where the source says whose it is:
+                // the reference opens the artist from here, and on a record
+                // with two of them a single link could only pick one.
+                val linked = bylineArtists.any { it.uri != null }
+                val text = if (!linked) {
+                    androidx.compose.ui.text.AnnotatedString(byline)
+                } else {
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        bylineArtists.forEachIndexed { index, artist ->
+                            if (index > 0) append(", ")
+                            val uri = artist.uri
+                            if (uri == null) {
+                                append(artist.name)
+                            } else {
+                                withLink(
+                                    androidx.compose.ui.text.LinkAnnotation.Clickable(
+                                        tag = uri,
+                                        // As the line looked before it was a
+                                        // link: no underline, no colour of
+                                        // its own.
+                                        styles = androidx.compose.ui.text.TextLinkStyles(
+                                            style = androidx.compose.ui.text.SpanStyle(
+                                                textDecoration = androidx.compose.ui.text.style.TextDecoration.None,
+                                            ),
+                                        ),
+                                    ) { onOpenArtist(artist) },
+                                ) { append(artist.name) }
+                            }
+                        }
+                    }
+                }
                 Text(
-                    text = byline,
+                    text = text,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = ink.copy(alpha = 0.92f),
@@ -1410,11 +1456,19 @@ private fun DetailHeader(
 
                 // The one solid control on the page, and the only one that says
                 // what it does in words.
+                //
+                // Black on a light page: there a white slab barely stands off the
+                // background, and its label, in the page's own pale colour, all
+                // but disappears into it. Past the threshold the button is the
+                // one dark shape on the page, with a white label.
+                val lightPage = pageColor.luminance() > LIGHT_PAGE_LUMINANCE
+                val playFill = if (lightPage) Color.Black else Color.White
+                val playInk = if (lightPage) Color.White else pageColor
                 Row(
                     Modifier
                         .softShadow(ContinuousCapsule, elevation = 20.dp, spot = 0.32f)
                         .clip(ContinuousCapsule)
-                        .background(Color.White)
+                        .background(playFill)
                         .pressable(onPlay, shape = ContinuousCapsule, pressedScale = 0.96f)
                         .padding(horizontal = 30.dp, vertical = 15.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1423,14 +1477,14 @@ private fun DetailHeader(
                     Icon(
                         PhosphorIcons.Fill.Play,
                         contentDescription = null,
-                        tint = pageColor,
+                        tint = playInk,
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
                         stringResource(R.string.play),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = pageColor,
+                        color = playInk,
                     )
                 }
 
@@ -2007,6 +2061,14 @@ private fun Modifier.heroCollapse(
     heroPx: Int,
     collapsedPx: Int,
     collapse: () -> Float,
+    /**
+     * How far below its foot what is inside may still be seen.
+     *
+     * For the title block, whose Play button casts a shadow past the bottom
+     * of the header: clipped at the edge, the shadow ended in a straight line
+     * across the page, which read as the picture's fade stopping short.
+     */
+    overflowBelow: androidx.compose.ui.unit.Dp = 0.dp,
 ): Modifier = layout { measurable, constraints ->
     val height = androidx.compose.ui.util.lerp(heroPx, collapsedPx, collapse())
     val placeable = measurable.measure(
@@ -2017,7 +2079,28 @@ private fun Modifier.heroCollapse(
         // closes is the part the title sits on.
         placeable.place(0, height - heroPx)
     }
-}.clipToBounds()
+}.then(
+    if (overflowBelow == 0.dp) {
+        Modifier.clipToBounds()
+    } else {
+        Modifier.clip(
+            object : androidx.compose.ui.graphics.Shape {
+                override fun createOutline(
+                    size: androidx.compose.ui.geometry.Size,
+                    layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+                    density: androidx.compose.ui.unit.Density,
+                ) = androidx.compose.ui.graphics.Outline.Rectangle(
+                    androidx.compose.ui.geometry.Rect(
+                        0f,
+                        0f,
+                        size.width,
+                        size.height + with(density) { overflowBelow.toPx() },
+                    ),
+                )
+            },
+        )
+    },
+)
 
 /**
  * A pane of glass shaped like a capsule, for actions that belong together.
@@ -2909,3 +2992,12 @@ private fun compact(count: Int): String = when {
     count >= 1_000 -> "${count / 1_000}K"
     else -> count.toString()
 }
+
+/**
+ * How light a page's colour has to be, as relative luminance, for its Play
+ * button to turn black; see the header.
+ */
+private const val LIGHT_PAGE_LUMINANCE = 0.45f
+
+/** Room below the header for the Play button's shadow; see heroCollapse. */
+private val PLAY_SHADOW_ROOM = 48.dp
