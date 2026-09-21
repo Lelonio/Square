@@ -64,7 +64,10 @@ interface SpotifyApi {
      * market Spotify relinks each track to the copy licensed for this account,
      * and `is_playable` becomes meaningful.
      */
-    @GET("v1/playlists/{id}/tracks")
+    // `/items` since Spotify's migration of March 2026, which took `/tracks`
+    // away from Development Mode apps; see PlaylistTrackDto for the field that
+    // moved with it.
+    @GET("v1/playlists/{id}/items")
     suspend fun playlistTracks(
         @Path("id") playlistId: String,
         @Query("limit") limit: Int = 100,
@@ -225,7 +228,7 @@ interface SpotifyApi {
      * public ones — which one applies is the playlist's visibility, not the
      * caller's, so both are asked for.
      */
-    @POST("v1/playlists/{id}/tracks")
+    @POST("v1/playlists/{id}/items")
     suspend fun addToPlaylist(
         @Path("id") playlistId: String,
         @Body request: AddTracksRequestDto,
@@ -240,8 +243,12 @@ interface SpotifyApi {
      *
      * `@HTTP` rather than `@DELETE` because this one carries a body, which
      * Retrofit's `@DELETE` does not allow.
+     *
+     * `/items`, and `items` in the body, since the migration of March 2026. The
+     * old address still answers 200 to a Development Mode app and takes nothing
+     * out, which is how a song ticked off in the player stayed in the list.
      */
-    @HTTP(method = "DELETE", path = "v1/playlists/{id}/tracks", hasBody = true)
+    @HTTP(method = "DELETE", path = "v1/playlists/{id}/items", hasBody = true)
     suspend fun removeFromPlaylist(
         @Path("id") playlistId: String,
         @Body request: RemoveTracksRequestDto,
@@ -417,7 +424,7 @@ data class PlaylistDetailsDto(
 )
 
 @Serializable
-data class RemoveTracksRequestDto(val tracks: List<TrackUriDto>)
+data class RemoveTracksRequestDto(@SerialName("items") val tracks: List<TrackUriDto>)
 
 @Serializable
 data class TrackUriDto(val uri: String)
@@ -456,8 +463,13 @@ data class TotalDto(val total: Int = 0)
 
 @Serializable
 data class PlaylistTrackDto(
-    /** Null for episodes and for tracks removed from the catalogue. */
-    val track: TrackDto? = null,
+    /**
+     * Null for episodes and for tracks removed from the catalogue.
+     *
+     * `item` on the wire since the migration of March 2026, where `track` was
+     * left behind as a boolean saying whether the item is one.
+     */
+    @SerialName("item") val track: TrackDto? = null,
     /** ISO-8601, and absent on playlists old enough to predate the field. */
     @SerialName("added_at") val addedAt: String? = null,
 )
