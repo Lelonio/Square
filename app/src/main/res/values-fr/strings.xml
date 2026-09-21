@@ -351,6 +351,8 @@
     <string name="quality_link_unknown">inconnue, donc audio à %1$d kbps</string>
     <string name="download">Télécharger</string>
     <string name="remove_download">Retirer le téléchargement</string>
+    <string name="cancel_download">Annuler le téléchargement</string>
+    <string name="playback_refused">Spotify ne permet pas de lire des titres pour le moment. Réessaie dans quelques minutes. Si ça continue, déconnecte-toi puis reconnecte-toi.</string>
     <string name="downloaded">Téléchargé</string>
     <string name="downloading">Téléchargement</string>
     <string name="downloads">Téléchargements</string>

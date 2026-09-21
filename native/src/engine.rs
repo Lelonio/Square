@@ -498,6 +498,11 @@ pub fn start(
     // attached to the JVM. Tying it to a player would mean dropping it whenever
     // a reconnection replaced one.
     let (events_tx, events_rx) = std::sync::mpsc::channel();
+    // Spotify refusing the keys a song needs, told to the app so it can say so
+    // rather than sit on a song that never starts. See the patch in audio_key.
+    librespot_core::audio_key::on_playback_refusal(|refused| {
+        emit_app("key_refused", "", refused as i64)
+    });
     spawn_event_pump(
         events_rx,
         listener,

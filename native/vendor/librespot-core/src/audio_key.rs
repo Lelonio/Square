@@ -1,7 +1,10 @@
 use std::{
     collections::HashMap,
     io::Write,
-    sync::Mutex,
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -103,6 +106,40 @@ pub fn since_playback_request() -> Option<Duration> {
         .map(|at| Instant::now().saturating_duration_since(at))
 }
 
+/// LOCAL PATCH: told when a key playback asked for is refused, with `true`,
+/// and with `false` when a key comes back after that.
+///
+/// So the app can say why nothing is starting. Without it a refused song sits
+/// at the start with no time on it and nothing else happens, which to the
+/// listener is the app broken rather than Spotify saying no. Downloads refused
+/// on their own, with playback quiet, are not reported: nobody is waiting on a
+/// song then, and the download queue shows its own wait.
+static ON_PLAYBACK_REFUSAL: OnceLock<fn(bool)> = OnceLock::new();
+static PLAYBACK_REFUSED: AtomicBool = AtomicBool::new(false);
+
+/// How recent a playback request has to be for a refusal to be its.
+const PLAYBACK_WAITING: Duration = Duration::from_secs(60);
+
+/// Sets where refusals are reported; see [ON_PLAYBACK_REFUSAL]. Only the first
+/// call counts.
+pub fn on_playback_refusal(hook: fn(bool)) {
+    let _ = ON_PLAYBACK_REFUSAL.set(hook);
+}
+
+fn report_refusal(refused: bool) {
+    if refused {
+        let waiting = since_playback_request().is_some_and(|ago| ago < PLAYBACK_WAITING);
+        if !waiting || PLAYBACK_REFUSED.swap(true, Ordering::SeqCst) {
+            return;
+        }
+    } else if !PLAYBACK_REFUSED.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    if let Some(hook) = ON_PLAYBACK_REFUSAL.get() {
+        hook(refused);
+    }
+}
+
 const FIRST_COOL_OFF: Duration = Duration::from_secs(3);
 const MAX_COOL_OFF: Duration = Duration::from_secs(30);
 
@@ -195,6 +232,7 @@ impl AudioKeyManager {
                         inner.cool_off_until = None;
                         inner.cool_off = FIRST_COOL_OFF;
                     });
+                    report_refusal(false);
                     return Ok(key);
                 }
                 Err(e) => {
@@ -215,6 +253,7 @@ impl AudioKeyManager {
                             inner.cool_off = (wait * 2).min(MAX_COOL_OFF);
                             warn!("audio key refused, holding off for {wait:?}");
                         });
+                        report_refusal(true);
                     }
                     if !transient || attempt + 1 == ATTEMPTS {
                         return Err(e);

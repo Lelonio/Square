@@ -471,6 +471,9 @@ class LibrespotPlayer(
     /** How long a track dissolves into the next; the listener's own setting. */
     private val crossfade = dev.lelonio.square.data.CrossfadeStore(context)
 
+    /** For the notices this says to the listener; see onKeyRefused. */
+    private val appContext = context.applicationContext
+
     /** Watches the one thing outside this class that changes what it must do. */
     private val watch = kotlinx.coroutines.CoroutineScope(
         kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
@@ -1308,7 +1311,35 @@ class LibrespotPlayer(
         // handler, where a progress tick several times a second would queue
         // behind whatever the player is in the middle of.
         if (dev.lelonio.square.download.DownloadEvents.accept(type, uri, positionMs)) return
+        if (type == "key_refused") {
+            handler.post { onKeyRefused(positionMs == 1L) }
+            return
+        }
         handler.post { applyEvent(type, uri, positionMs) }
+    }
+
+    /** Whether the listener has been told Spotify is refusing songs. */
+    private var refusalShown = false
+
+    /**
+     * Spotify refusing the key a song needs to play, or giving them again.
+     *
+     * Said once for a run of refusals, in words for the listener rather than
+     * the reason: otherwise the song sits at the start with no time on it, and
+     * what that looks like is the app broken.
+     */
+    private fun onKeyRefused(refused: Boolean) {
+        if (!refused) {
+            refusalShown = false
+            return
+        }
+        if (refusalShown) return
+        refusalShown = true
+        android.widget.Toast.makeText(
+            appContext,
+            appContext.getString(dev.lelonio.square.R.string.playback_refused),
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
     }
 
     /**

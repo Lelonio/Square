@@ -351,6 +351,8 @@
     <string name="quality_link_unknown">desconhecida, portanto áudio a %1$d kbps</string>
     <string name="download">Baixar</string>
     <string name="remove_download">Remover download</string>
+    <string name="cancel_download">Cancelar download</string>
+    <string name="playback_refused">O Spotify não está deixando tocar músicas agora. Tente de novo em alguns minutos. Se continuar, saia e entre de novo na conta.</string>
     <string name="downloaded">Baixado</string>
     <string name="downloading">Baixando</string>
     <string name="downloads">Downloads</string>

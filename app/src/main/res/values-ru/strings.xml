@@ -368,6 +368,8 @@
     <string name="quality_link_unknown">неизвестно, значит звук %1$d кбит/с</string>
     <string name="download">Скачать</string>
     <string name="remove_download">Удалить загрузку</string>
+    <string name="cancel_download">Отменить загрузку</string>
+    <string name="playback_refused">Сейчас Spotify не даёт воспроизводить треки. Попробуйте ещё раз через несколько минут. Если не поможет, выйдите из аккаунта и войдите снова.</string>
     <string name="downloaded">Скачано</string>
     <string name="downloading">Загрузка</string>
     <string name="downloads">Загрузки</string>

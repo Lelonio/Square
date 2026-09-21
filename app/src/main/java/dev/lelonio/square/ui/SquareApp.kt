@@ -3316,7 +3316,15 @@ fun SquareApp(
                             val kept = onItsOwn
                             TrackSheetAction(
                                 stringResource(
-                                    if (kept) R.string.remove_download else R.string.download,
+                                    // Asked for and not here yet is a download
+                                    // still to happen, not one to remove: said
+                                    // as "remove", it read as a song already on
+                                    // the phone that the downloads did not list.
+                                    when {
+                                        !kept -> R.string.download
+                                        here -> R.string.remove_download
+                                        else -> R.string.cancel_download
+                                    },
                                 ),
                                 if (kept) {
                                     PhosphorIcons.Fill.ArrowCircleDown

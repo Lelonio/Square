@@ -351,6 +351,8 @@
     <string name="quality_link_unknown">unbekannt, also Ton mit %1$d kbps</string>
     <string name="download">Herunterladen</string>
     <string name="remove_download">Download entfernen</string>
+    <string name="cancel_download">Download abbrechen</string>
+    <string name="playback_refused">Spotify lässt gerade keine Songs abspielen. Versuch es in ein paar Minuten noch einmal. Wenn es weiter passiert, melde dich ab und wieder an.</string>
     <string name="downloaded">Heruntergeladen</string>
     <string name="downloading">Wird heruntergeladen</string>
     <string name="downloads">Downloads</string>

@@ -366,6 +366,8 @@
     <string name="quality_link_unknown">अज्ञात, इसलिए %1$d kbps ऑडियो</string>
     <string name="download">डाउनलोड</string>
     <string name="remove_download">डाउनलोड हटाएँ</string>
+    <string name="cancel_download">डाउनलोड रद्द करें</string>
+    <string name="playback_refused">Spotify अभी गाने चलाने नहीं दे रहा है। कुछ मिनट बाद फिर कोशिश करें। अगर ऐसा होता रहे, तो साइन आउट करके फिर से साइन इन करें।</string>
     <string name="downloaded">डाउनलोड किया</string>
     <string name="downloading">डाउनलोड हो रहा है</string>
     <string name="downloads">डाउनलोड</string>

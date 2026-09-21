@@ -351,6 +351,8 @@
     <string name="quality_link_unknown">desconocida, así que audio a %1$d kbps</string>
     <string name="download">Descargar</string>
     <string name="remove_download">Quitar descarga</string>
+    <string name="cancel_download">Cancelar descarga</string>
+    <string name="playback_refused">Spotify no permite reproducir canciones en este momento. Vuelve a intentarlo en unos minutos. Si sigue pasando, cierra sesión y vuelve a entrar.</string>
     <string name="downloaded">Descargado</string>
     <string name="downloading">Descargando</string>
     <string name="downloads">Descargas</string>

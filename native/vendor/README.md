@@ -109,6 +109,12 @@ all: going back and forth between two songs asks once for each.
 The memory is per session and never written to disk. It holds keys, so it goes
 when the session does.
 
+A refusal is also reported, through `on_playback_refusal`, so the app can say
+why a song is not starting instead of leaving it at the start with no time on
+it. Only refusals that land within a minute of the player asking for a key are
+reported, once for a run of them, and the next key that comes back is reported
+as the end of it. Downloads refused while nothing is playing say nothing.
+
 ### Maintenance
 
 Re-apply this patch when bumping `librespot-core`. If the whole file is replaced,
