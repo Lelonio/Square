@@ -194,81 +194,10 @@ private fun clipFade(from: Float, to: Float): Array<Pair<Float, Color>> {
 }
 
 /**
- * How much of its slot a Canvas fades over once the ending is measured.
- *
- * Longer than the cover's: a clip has no blurred copy of itself to dissolve
- * into first, so the fade is the whole of the handover.
- */
-private const val CLIP_MEASURED_FADE = 0.14f
-
-/**
- * How far under the top of the first control the picture may run.
- *
- * The controls are glass, so the last, nearly clear stretch of the fade can go
- * behind them. Stopping above them instead left the picture visibly finished a
- * little before the button, which is the gap this is closing.
- */
-private val PICTURE_UNDER_CONTROLS = 16.dp
-
-/**
  * The row the "watch the video" button sits in, kept whether there is one or
  * not: its height is the button's own plus the gap to the title under it.
  */
 private val VIDEO_ROW_HEIGHT = 54.dp
-
-/**
- * Where the picture behind the player has to have faded out by, measured.
- *
- * Just under the top of the first control, the video button or the title,
- * which is wherever the phone's shape and the song put it. The picture used to
- * end at a fixed three by four from the top, which on a tall phone left an
- * empty band of blur above the button. Plain fields and a float state read
- * only while drawing, so following the controls, as the video button arrives
- * or leaves, costs a redraw of the masks and nothing else.
- */
-private class PictureEnd {
-    /** The backdrop's layout, which the ending is measured against. */
-    var backdrop: LayoutCoordinates? = null
-
-    /** The gap above the first control, whose foot is the ending. */
-    var controls: LayoutCoordinates? = null
-
-    /** How far under the controls the picture may run, in pixels. */
-    var under: Float = 0f
-
-    /**
-     * Bumped whenever either of those is laid out again.
-     *
-     * Read where the ending is, which is inside a draw: the two are measured
-     * against each other when they are asked for rather than when they were
-     * placed, since on the first pass the backdrop has not been placed yet and
-     * an ending worked out then would be thrown away. It was: a song with no
-     * video button is never laid out a second time, so its picture kept the
-     * ending the fixed fractions gave it, a long way above the controls, while
-     * a song that had the button got a second pass when it arrived and came
-     * out right.
-     */
-    private val version = mutableIntStateOf(0)
-
-    fun mark() {
-        version.intValue++
-    }
-
-    val read: () -> Float = {
-        // Read so that a redraw follows a move; the answer comes from the
-        // layouts themselves, which are current.
-        version.intValue
-        val area = backdrop?.takeIf { it.isAttached }
-        val gap = controls?.takeIf { it.isAttached }
-        if (area == null || gap == null) {
-            0f
-        } else {
-            runCatching {
-                area.localPositionOf(gap, Offset(0f, gap.size.height.toFloat())).y + under
-            }.getOrDefault(0f)
-        }
-    }
-}
 
 /** How long each half of a change between the cover and a panel takes. */
 private const val STAGE_FADE_MS = 180
@@ -541,16 +470,10 @@ fun PlayerScreen(
     val coverAccent by dev.lelonio.square.ui.theme.rememberArtworkColor(state.artworkUrl)
     val coverTone = dev.lelonio.square.ui.theme.pageColorFor(coverAccent)
 
-    val pictureEnd = remember { PictureEnd() }
-    pictureEnd.under = with(LocalDensity.current) { PICTURE_UNDER_CONTROLS.toPx() }
-
     Box(
         Modifier
             .fillMaxSize()
-            .onPlaced {
-                pictureEnd.backdrop = it
-                pictureEnd.mark()
-            },
+            ,
     ) {
         Box(
             Modifier
@@ -652,7 +575,6 @@ fun PlayerScreen(
                     // instead: the three by four only lands on the button on
                     // some phones, and the blur ahead of the fade put the
                     // picture's visible end well above it even there.
-                    pictureEnd = pictureEnd.read,
                     // And carried on below that, in its own colours, rather
                     // than giving way to the app's darkened field.
                     extendPicture = true,
@@ -670,6 +592,14 @@ fun PlayerScreen(
                     // filling it, so the sharp copy has its own blur to dissolve
                     // into. See fadeToPage.
                     fadeToPage = false,
+                    // The tall picture comes with a blur of its own well above
+                    // where this one fades; enlarged until the two coincide.
+                    // A square scan has none and is shown as it is.
+                    zoom = if (coverHeroUrl != null) {
+                        dev.lelonio.square.ui.components.TALL_ART_ZOOM
+                    } else {
+                        1f
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
                 // And the light still moves, in the cover's own colours: it is
@@ -748,14 +678,8 @@ fun PlayerScreen(
                     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                     .drawWithContent {
                         drawContent()
-                        // Ending where the controls begin, like the cover.
-                        val end = pictureEnd.read()
-                            .takeIf { it > 0f && size.height > 0f }
-                            ?.let { (it / size.height).coerceIn(CLIP_MEASURED_FADE, 1f) }
                         drawRect(
-                            brush = Brush.verticalGradient(
-                                *end?.let { clipFade(it - CLIP_MEASURED_FADE, it) } ?: CLIP_FADE,
-                            ),
+                            brush = Brush.verticalGradient(*CLIP_FADE),
                             blendMode = BlendMode.DstIn,
                         )
                     },
@@ -1177,17 +1101,7 @@ fun PlayerScreen(
                         }
                         }
 
-                        // Its bottom is where the controls begin, which is
-                        // where the picture behind has to have gone by; see
-                        // PictureEnd.
-                        Spacer(
-                            Modifier
-                                .height(20.dp)
-                                .onGloballyPositioned { gap ->
-                                    pictureEnd.controls = gap
-                                    pictureEnd.mark()
-                                },
-                        )
+                        Spacer(Modifier.height(20.dp))
 
                         // Only for the few tracks that have a video, and above
                         // the title because that is where the official client
