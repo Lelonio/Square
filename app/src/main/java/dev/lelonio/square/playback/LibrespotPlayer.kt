@@ -625,6 +625,18 @@ class LibrespotPlayer(
     private var skipInFlight = false
 
     /**
+     * A skip made while paused, held until play is pressed.
+     *
+     * Every load is an audio key, and Spotify meters those per account: a
+     * listener paging through the queue with the music paused was spending
+     * one on every song they passed, none of which they heard, and the
+     * refusals that followed landed on the song they finally pressed play on.
+     * The screen moves at once; the engine is told when there is something to
+     * hear.
+     */
+    private var deferredSkip = false
+
+    /**
      * Moves to a track, without making the user wait for the engine.
      *
      * Every skip used to be a command of its own: ten taps were ten loads, each
@@ -654,6 +666,20 @@ class LibrespotPlayer(
         // C.TIME_UNSET for "wherever it starts", which as a number is very
         // negative and made the bar draw itself backwards.
         this.positionMs = positionMs.coerceAtLeast(0)
+
+        // Paused: nothing is loaded until play; see deferredSkip. Held as a
+        // pending skip so what the engine says about the track it is still on
+        // does not pull the screen back to it.
+        if (!playWhenReady && !deviceGone && engineIndex >= 0) {
+            deferredSkip = queue.currentIndex != engineIndex || this.positionMs > 0
+            skipPending = deferredSkip
+            handler.removeCallbacks(settleSkip)
+            handler.removeCallbacks(skipGaveUp)
+            playbackState = Player.STATE_READY
+            invalidateState()
+            return
+        }
+
         playbackState = Player.STATE_BUFFERING
         skipPending = true
         invalidateState()
@@ -813,6 +839,24 @@ class LibrespotPlayer(
                 onPlaybackActive(true)
                 invalidateState()
                 return Futures.immediateVoidFuture()
+            }
+
+            // A skip made while paused goes out now, playing: the track the
+            // engine holds is not the one on the screen. One load for however
+            // many songs were passed.
+            if (deferredSkip) {
+                deferredSkip = false
+                if (queue.currentIndex == engineIndex && positionMs == 0L) {
+                    skipPending = false
+                } else {
+                    playbackState = Player.STATE_BUFFERING
+                    skipInFlight = true
+                    invalidateState()
+                    handler.removeCallbacks(skipGaveUp)
+                    handler.postDelayed(skipGaveUp, SKIP_CONFIRM_MS)
+                    pushQueue(startPlaying = true, positionMs = positionMs.toInt())
+                    return Futures.immediateVoidFuture()
+                }
             }
 
             // If no track is currently loaded but queue exists, load the queue.
