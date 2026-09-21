@@ -106,6 +106,26 @@ class ContextCacheStore(context: Context) {
         }
     }
 
+    /**
+     * The playlists this device holds that have [trackUri] in them.
+     *
+     * For the ticks in the playlist picker, which say where the track already
+     * is so that picking one of those takes it out; the same caveat as
+     * [tracksInPlaylists] about what the app has seen.
+     */
+    suspend fun playlistsWith(trackUri: String): Set<String> = withContext(Dispatchers.IO) {
+        val cutoff = System.currentTimeMillis() - MAX_AGE_MS
+        dir.listFiles().orEmpty().mapNotNullTo(mutableSetOf()) { file ->
+            val entry = runCatching {
+                json.decodeFromString(Entry.serializer(), file.readText())
+            }.getOrNull() ?: return@mapNotNullTo null
+            entry.uri.takeIf {
+                entry.savedAt > cutoff && it.startsWith("spotify:playlist:") &&
+                    entry.tracks.any { track -> track.uri == trackUri }
+            }
+        }
+    }
+
     suspend fun remove(uri: String) = withContext(Dispatchers.IO) {
         fileFor(uri).delete()
         Unit

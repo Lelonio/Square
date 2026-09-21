@@ -1058,6 +1058,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          * be undone: picking it again takes the track back out.
          */
         val liked: Boolean = false,
+        /**
+         * The listener's playlists the track is known to be in already.
+         *
+         * Ticked in the list, and picking one takes the track out: the same as
+         * Liked Songs, and the only way left to take a song out of the list it
+         * is playing from without going to that list.
+         */
+        val containing: Set<String> = emptySet(),
         val error: String? = null,
     )
 
@@ -1068,7 +1076,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * @param asSheet whether to show the modal. False from the player, which
      *   shows the same picker in its own panel and would otherwise get both.
      */
-    fun openAddToPlaylist(trackUri: String?, trackTitle: String, asSheet: Boolean = true) {
+    fun openAddToPlaylist(
+        trackUri: String?,
+        trackTitle: String,
+        asSheet: Boolean = true,
+        /** What the track is playing from, when it is; see [AddToPlaylistState.containing]. */
+        contextUri: String? = null,
+    ) {
         // The other source writes through its own account, to the lists it
         // says can be written to; they are asked for as the sheet opens.
         val backend = container.activeBackend
@@ -1104,6 +1118,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 else -> null
             },
         )
+            if (trackUri != null) viewModelScope.launch {
+            val own = _addToPlaylist.value.playlists.map { it.uri }.toSet()
+            val cached = runCatching { container.contextCache.playlistsWith(trackUri) }.getOrDefault(emptySet())
+            // The list it is playing from counts even when it has not been
+            // read into the cache, as long as it is one of the listener's.
+            val playing = contextUri?.takeIf { it.startsWith("spotify:playlist:") }
+            val open = _playlist.value.uri?.takeIf { uri -> _playlist.value.tracks.any { it.uri == trackUri } }
+            val containing = (cached + listOfNotNull(playing, open)).filterTo(mutableSetOf()) { it in own }
+            if (_addToPlaylist.value.trackUri == trackUri) {
+                _addToPlaylist.value = _addToPlaylist.value.copy(containing = containing)
+            }
+        }
     }
 
     fun closeAddToPlaylist() {
@@ -1167,6 +1193,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
+        // Already in it: the tick in that row is taken back, as the heart is.
+        if (playlist.uri in current.containing) {
+            _addToPlaylist.value =
+                current.copy(busy = playlist.uri, done = null, removed = null, error = null)
+            viewModelScope.launch {
+                runCatching {
+                    container.api.removeFromPlaylist(id, RemoveTracksRequestDto(listOf(TrackUriDto(trackUri))))
+                }
+                    .onSuccess {
+                        val left = _addToPlaylist.value.containing - playlist.uri
+                        _addToPlaylist.value = _addToPlaylist.value.copy(
+                            busy = null,
+                            removed = playlist.name,
+                            containing = left,
+                        )
+                        if (left.isEmpty()) _inPlaylists.value = _inPlaylists.value - trackUri
+                        _takenOut.value = _takenOut.value + "${playlist.uri}|$trackUri"
+                        invalidateContext(playlist.uri)
+                        if (_playlist.value.uri == playlist.uri) {
+                            _playlist.value = _playlist.value.copy(
+                                tracks = _playlist.value.tracks.filterNot { it.uri == trackUri },
+                            )
+                        }
+                    }
+                    .onFailure {
+                        android.util.Log.e(TAG, "remove from playlist failed: ${chain(it)}", it)
+                        _addToPlaylist.value = _addToPlaylist.value.copy(
+                            busy = null,
+                            error = string(R.string.remove_failed, playlist.name),
+                        )
+                    }
+            }
+            return
+        }
+
         _addToPlaylist.value =
             current.copy(busy = playlist.uri, done = null, removed = null, error = null)
         viewModelScope.launch {
@@ -1178,7 +1239,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         busy = null,
                         done = playlist.name,
                         removed = null,
+                        containing = _addToPlaylist.value.containing + playlist.uri,
                     )
+                    _takenOut.value = _takenOut.value - "${playlist.uri}|$trackUri"
                     // Known at once, rather than when that playlist is next
                     // read: the tick is about the track, and the track is in a
                     // playlist from this moment.
@@ -2751,6 +2814,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     val inPlaylists: StateFlow<Set<String>> = _inPlaylists.asStateFlow()
 
+    /**
+     * Tracks taken out of a playlist in this session, as "playlist|track".
+     *
+     * The player ticks a song that is playing from one of the listener's own
+     * playlists, and it goes on playing from it after being taken out: without
+     * this the tick stayed on a song that was no longer in the list. Put back,
+     * it leaves here again.
+     */
+    private val _takenOut = MutableStateFlow<Set<String>>(emptySet())
+    val takenOut: StateFlow<Set<String>> = _takenOut.asStateFlow()
+
     /** Notes the tracks of a playlist that has just been read. */
     private fun rememberMembership(contextUri: String, tracks: List<CatalogTrack>) {
         if (tracks.isEmpty()) return
@@ -3838,6 +3912,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (!uri.startsWith("spotify:playlist:")) return
+        _takenOut.value = _takenOut.value + "$uri|${track.uri}"
 
         val before = _playlist.value.tracks
         _playlist.value = _playlist.value.copy(tracks = before.filterNot { it.uri == track.uri })
@@ -3851,6 +3926,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }.onFailure {
                 android.util.Log.e(TAG, "remove from playlist failed: ${chain(it)}", it)
+                _takenOut.value = _takenOut.value - "$uri|${track.uri}"
                 // Only if the screen is still showing the same playlist.
                 if (_playlist.value.uri == uri) {
                     _playlist.value = _playlist.value.copy(tracks = before)

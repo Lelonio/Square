@@ -421,6 +421,7 @@ fun SquareApp(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
+    val takenOut by viewModel.takenOut.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // The session as it was left, so the player has something to draw before
@@ -2939,8 +2940,18 @@ fun SquareApp(
                                 coverPending = nowPlayingArtPending,
                                 devices = devices,
                                 onAnotherDevice = remote != null,
+                                // Or playing from one of the listener's own
+                                // playlists, which it is in whether or not
+                                // that list has been read into the cache.
                                 alreadySaved = playback.mediaId != null &&
-                                    playback.mediaId in inPlaylists,
+                                    (
+                                        playback.mediaId in inPlaylists ||
+                                            (
+                                                (state as? MainViewModel.UiState.Ready)?.playlists
+                                                    ?.any { it.uri == playback.contextUri } == true &&
+                                                    "${playback.contextUri}|${playback.mediaId}" !in takenOut
+                                                )
+                                        ),
                                 inLikedSongs = playback.mediaId != null &&
                                     playback.mediaId in likedTracks,
                                 // Spotify's own radio, and only where Spotify
@@ -3014,6 +3025,7 @@ fun SquareApp(
                                         playback.mediaId,
                                         playback.title,
                                         asSheet = false,
+                                        contextUri = playback.contextUri,
                                     )
                                 },
                                 // The heart is Spotify's library. On the other

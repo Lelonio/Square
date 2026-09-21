@@ -123,6 +123,7 @@ import com.adamglin.phosphoricons.fill.SkipForward
 import com.adamglin.phosphoricons.regular.CaretDown
 import com.adamglin.phosphoricons.regular.Devices
 import com.adamglin.phosphoricons.regular.Heart
+import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.Broadcast
@@ -1244,7 +1245,10 @@ fun PlayerScreen(
                                     backdrop = glassBackdrop,
                                     size = 40.dp,
                                     onClick = {
-                                        if (onToggleLike != null) {
+                                        // A tick opens the lists, where it can
+                                        // be taken back; a heart, filled or
+                                        // not, is the like itself.
+                                        if (onToggleLike != null && (inLikedSongs || !alreadySaved)) {
                                             onToggleLike()
                                         } else {
                                             panel = if (panel == PlayerPanel.ADD_TO_PLAYLIST) {
@@ -1266,18 +1270,25 @@ fun PlayerScreen(
                                 ) {
                                     // A heart where a tap likes the song, a plus
                                     // where the tap opens the lists instead: the
-                                    // picture says what pressing it does.
+                                    // picture says what pressing it does. And a
+                                    // tick where the song is in one of the
+                                    // listener's playlists and not liked: the
+                                    // heart had taken its place, which left no
+                                    // way to see that, or to take the song back
+                                    // out of the list it was playing from.
                                     val hearts = onToggleLike != null
                                     Icon(
                                         when {
+                                            hearts && inLikedSongs -> PhosphorIcons.Fill.Heart
+                                            alreadySaved -> PhosphorIcons.Regular.Check
                                             !hearts -> PhosphorIcons.Regular.Plus
-                                            inLikedSongs -> PhosphorIcons.Fill.Heart
                                             else -> PhosphorIcons.Regular.Heart
                                         },
                                         contentDescription = stringResource(
                                             when {
+                                                hearts && inLikedSongs -> R.string.remove_from_liked
+                                                alreadySaved -> R.string.in_a_playlist
                                                 !hearts -> R.string.add_to_playlist
-                                                inLikedSongs -> R.string.remove_from_liked
                                                 else -> R.string.liked_songs
                                             },
                                         ),
@@ -1285,7 +1296,7 @@ fun PlayerScreen(
                                             panel == PlayerPanel.ADD_TO_PLAYLIST ->
                                                 panelTint(true)
                                             hearts && inLikedSongs -> SavedInk
-                                            !hearts && alreadySaved -> SavedInk
+                                            alreadySaved -> SavedInk
                                             else -> panelTint(false)
                                         },
                                         modifier = Modifier.size(20.dp),

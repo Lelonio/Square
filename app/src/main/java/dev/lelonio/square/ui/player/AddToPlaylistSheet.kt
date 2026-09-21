@@ -164,7 +164,7 @@ fun AddToPlaylistSheet(
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        state.playlists.forEach { playlist ->
+                        state.playlists.ticksFirst(state).forEach { playlist ->
                             PlaylistRow(
                                 playlist = playlist,
                                 busy = state.busy == playlist.uri,
@@ -173,6 +173,7 @@ fun AddToPlaylistSheet(
                                 // the track already is, and the one a second
                                 // press takes it out of.
                                 liked = state.liked && playlist.uri.endsWith(":collection"),
+                                inIt = playlist.uri in state.containing,
                                 enabled = state.trackUri != null && state.busy == null,
                                 onClick = { onSelect(playlist) },
                             )
@@ -250,7 +251,7 @@ fun PlaylistPicker(
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        state.playlists.forEach { playlist ->
+                        state.playlists.ticksFirst(state).forEach { playlist ->
                             PlaylistRow(
                                 playlist = playlist,
                                 busy = state.busy == playlist.uri,
@@ -259,6 +260,7 @@ fun PlaylistPicker(
                                 // the track already is, and the one a second
                                 // press takes it out of.
                                 liked = state.liked && playlist.uri.endsWith(":collection"),
+                                inIt = playlist.uri in state.containing,
                                 enabled = state.trackUri != null && state.busy == null,
                                 onClick = { onSelect(playlist) },
                             )
@@ -275,6 +277,8 @@ private fun PlaylistRow(
     added: Boolean,
     /** In Liked Songs already, so this row removes rather than adds. */
     liked: Boolean = false,
+    /** In this playlist already, so this row removes rather than adds. */
+    inIt: Boolean = false,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
@@ -316,6 +320,13 @@ private fun PlaylistRow(
                 modifier = Modifier.size(20.dp),
             )
 
+            inIt -> Icon(
+                PhosphorIcons.Regular.Check,
+                contentDescription = stringResource(R.string.remove_from_playlist),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+
             added -> Icon(
                 PhosphorIcons.Regular.Check,
                 contentDescription = null,
@@ -325,3 +336,14 @@ private fun PlaylistRow(
         }
     }
 }
+
+/**
+ * The lists the track is already in, at the top: they are the ones this panel
+ * is opened to find when the song is ticked, and further down a long list of
+ * playlists they were a scroll away. Otherwise in the order they came, which
+ * is the library's.
+ */
+private fun List<CatalogPlaylist>.ticksFirst(state: MainViewModel.AddToPlaylistState) =
+    sortedByDescending { playlist ->
+        playlist.uri in state.containing || (state.liked && playlist.uri.endsWith(":collection"))
+    }
