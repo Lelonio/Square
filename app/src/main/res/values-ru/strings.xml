@@ -370,6 +370,7 @@
     <string name="remove_download">Удалить загрузку</string>
     <string name="cancel_download">Отменить загрузку</string>
     <string name="playback_refused">Сейчас Spotify не даёт воспроизводить треки. Попробуйте ещё раз через несколько минут. Если не поможет, выйдите из аккаунта и войдите снова.</string>
+    <string name="playback_refused_account">Spotify не разрешает этому аккаунту воспроизводить треки в приложениях вроде Square. Приложение тут ни при чём; с другим аккаунтом Premium может работать.</string>
     <string name="downloaded">Скачано</string>
     <string name="downloading">Загрузка</string>
     <string name="downloads">Загрузки</string>

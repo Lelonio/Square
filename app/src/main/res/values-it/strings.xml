@@ -354,6 +354,7 @@
     <string name="remove_download">Rimuovi download</string>
     <string name="cancel_download">Annulla download</string>
     <string name="playback_refused">Spotify al momento non permette di riprodurre i brani. Riprova tra qualche minuto. Se continua, esci e accedi di nuovo.</string>
+    <string name="playback_refused_account">Spotify non permette a questo account di riprodurre brani in app come Square. Non dipende dall\'app: con un altro account Premium potrebbe funzionare.</string>
     <string name="downloaded">Scaricato</string>
     <string name="downloading">Download in corso</string>
     <string name="downloads">Download</string>

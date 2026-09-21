@@ -368,6 +368,7 @@
     <string name="remove_download">İndirmeyi kaldır</string>
     <string name="cancel_download">İndirmeyi iptal et</string>
     <string name="playback_refused">Spotify şu anda şarkı çalmaya izin vermiyor. Birkaç dakika sonra tekrar dene. Devam ederse çıkış yapıp yeniden giriş yap.</string>
+    <string name="playback_refused_account">Spotify bu hesabın Square gibi uygulamalarda şarkı çalmasına izin vermiyor. Bu uygulamadan kaynaklanmıyor; başka bir Premium hesapla çalışabilir.</string>
     <string name="downloaded">İndirildi</string>
     <string name="downloading">İndiriliyor</string>
     <string name="downloads">İndirilenler</string>

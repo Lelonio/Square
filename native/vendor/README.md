@@ -113,7 +113,11 @@ A refusal is also reported, through `on_playback_refusal`, so the app can say
 why a song is not starting instead of leaving it at the start with no time on
 it. Only refusals that land within a minute of the player asking for a key are
 reported, once for a run of them, and the next key that comes back is reported
-as the end of it. Downloads refused while nothing is playing say nothing.
+as the end of it. Downloads refused while nothing is playing say nothing. When
+no key at all has come back since the app started and the refusals have gone on
+for two minutes, the refusal is reported as the account's instead: Spotify
+refuses every key to some accounts (librespot#1649), and for those waiting a few
+minutes is the wrong advice.
 
 And a reply of the wrong size is refused rather than trusted. Upstream copies
 the key with `copy_from_slice` and reads the error code by index, both of which

@@ -1312,7 +1312,7 @@ class LibrespotPlayer(
         // behind whatever the player is in the middle of.
         if (dev.lelonio.square.download.DownloadEvents.accept(type, uri, positionMs)) return
         if (type == "key_refused") {
-            handler.post { onKeyRefused(positionMs == 1L) }
+            handler.post { onKeyRefused(positionMs) }
             return
         }
         handler.post { applyEvent(type, uri, positionMs) }
@@ -1322,22 +1322,46 @@ class LibrespotPlayer(
     private var refusalShown = false
 
     /**
-     * Spotify refusing the key a song needs to play, or giving them again.
-     *
-     * Said once for a run of refusals, in words for the listener rather than
-     * the reason: otherwise the song sits at the start with no time on it, and
-     * what that looks like is the app broken.
+     * Where it is remembered that Spotify refuses this account every song,
+     * across restarts: a fresh start would otherwise tell them to try again in
+     * a few minutes all over again. Forgotten when a song plays.
      */
-    private fun onKeyRefused(refused: Boolean) {
-        if (!refused) {
+    private val keyNotes by lazy {
+        appContext.getSharedPreferences("square_keys", android.content.Context.MODE_PRIVATE)
+    }
+
+    /**
+     * Spotify refusing the key a song needs to play, or giving them again: 0
+     * over, 1 refused, 2 refused to this account whatever is tried; see
+     * audio_key.rs.
+     *
+     * Said in words for the listener rather than the reason: otherwise the
+     * song sits at the start with no time on it, and what that looks like is
+     * the app broken. Once for a run of refusals, and once more if the run
+     * turns out to be the account's, since the advice is not the same.
+     */
+    private fun onKeyRefused(what: Long) {
+        if (what == 0L) {
             refusalShown = false
+            keyNotes.edit().remove(ACCOUNT_REFUSED).apply()
             return
         }
-        if (refusalShown) return
+        val account = what == 2L || keyNotes.getBoolean(ACCOUNT_REFUSED, false)
+        if (what == 2L) {
+            keyNotes.edit().putBoolean(ACCOUNT_REFUSED, true).apply()
+        } else if (refusalShown) {
+            return
+        }
         refusalShown = true
         android.widget.Toast.makeText(
             appContext,
-            appContext.getString(dev.lelonio.square.R.string.playback_refused),
+            appContext.getString(
+                if (account) {
+                    dev.lelonio.square.R.string.playback_refused_account
+                } else {
+                    dev.lelonio.square.R.string.playback_refused
+                },
+            ),
             android.widget.Toast.LENGTH_LONG,
         ).show()
     }
@@ -1405,6 +1429,11 @@ class LibrespotPlayer(
                     "(queue ${queue.currentIndex}/${queue.items.size}, engine $engineIndex, " +
                     "sounding=$sounding, skipPending=$skipPending, own=$ownQueuePending)",
             )
+        }
+
+        // A song playing is the account being given keys after all.
+        if (type == "playing" && keyNotes.contains(ACCOUNT_REFUSED)) {
+            keyNotes.edit().remove(ACCOUNT_REFUSED).apply()
         }
 
         // Nothing is coming out of the speaker any more, so the next load is a
@@ -1675,6 +1704,9 @@ class LibrespotPlayer(
          * that a single skip does not feel delayed.
          */
         const val SKIP_SETTLE_MS = 220L
+
+        /** Set while Spotify is refusing this account every song; see onKeyRefused. */
+        const val ACCOUNT_REFUSED = "account_refused"
 
         /**
          * How long a skip is given to land before its events count again.

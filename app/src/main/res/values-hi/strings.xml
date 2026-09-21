@@ -368,6 +368,7 @@
     <string name="remove_download">डाउनलोड हटाएँ</string>
     <string name="cancel_download">डाउनलोड रद्द करें</string>
     <string name="playback_refused">Spotify अभी गाने चलाने नहीं दे रहा है। कुछ मिनट बाद फिर कोशिश करें। अगर ऐसा होता रहे, तो साइन आउट करके फिर से साइन इन करें।</string>
+    <string name="playback_refused_account">Spotify इस खाते को Square जैसे ऐप में गाने चलाने नहीं देता। यह ऐप की वजह से नहीं है; किसी दूसरे Premium खाते से चल सकता है।</string>
     <string name="downloaded">डाउनलोड किया</string>
     <string name="downloading">डाउनलोड हो रहा है</string>
     <string name="downloads">डाउनलोड</string>

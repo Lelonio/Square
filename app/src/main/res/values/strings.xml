@@ -374,6 +374,7 @@
     <string name="remove_download">Remove download</string>
     <string name="cancel_download">Cancel download</string>
     <string name="playback_refused">Spotify isn\'t letting songs play right now. Try again in a few minutes. If it keeps happening, sign out and sign in again.</string>
+    <string name="playback_refused_account">Spotify doesn\'t let this account play songs in apps like Square. It isn\'t something the app can fix; another Premium account may work.</string>
     <string name="downloaded">Downloaded</string>
     <string name="downloading">Downloading</string>
     <string name="downloads">Downloads</string>

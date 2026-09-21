@@ -106,37 +106,83 @@ pub fn since_playback_request() -> Option<Duration> {
         .map(|at| Instant::now().saturating_duration_since(at))
 }
 
-/// LOCAL PATCH: told when a key playback asked for is refused, with `true`,
-/// and with `false` when a key comes back after that.
+/// LOCAL PATCH: told when a key playback asked for is refused, and when one
+/// comes back after that.
 ///
 /// So the app can say why nothing is starting. Without it a refused song sits
 /// at the start with no time on it and nothing else happens, which to the
 /// listener is the app broken rather than Spotify saying no. Downloads refused
 /// on their own, with playback quiet, are not reported: nobody is waiting on a
 /// song then, and the download queue shows its own wait.
-static ON_PLAYBACK_REFUSAL: OnceLock<fn(bool)> = OnceLock::new();
+///
+/// The hook is given a [Refusal] as a number: 0 over, 1 refused, 2 refused to
+/// the account.
+static ON_PLAYBACK_REFUSAL: OnceLock<fn(i64)> = OnceLock::new();
 static PLAYBACK_REFUSED: AtomicBool = AtomicBool::new(false);
+static ACCOUNT_REPORTED: AtomicBool = AtomicBool::new(false);
+static EVER_GRANTED: AtomicBool = AtomicBool::new(false);
+static FIRST_REFUSED: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// What a refusal is reported as.
+///
+/// Spotify refuses these keys for two reasons that look the same on the wire.
+/// A burst of requests is refused for a minute or so, and waiting fixes it.
+/// Some accounts, mostly newer ones, are refused every key, all the time,
+/// whatever device they are on (librespot#1649), and waiting fixes nothing:
+/// telling them to try again in a few minutes sends them round in circles. An
+/// account that has not had a single key since the app started, over a few
+/// minutes of asking, is taken to be the second.
+#[repr(i64)]
+enum Refusal {
+    Over = 0,
+    Refused = 1,
+    Account = 2,
+}
 
 /// How recent a playback request has to be for a refusal to be its.
 const PLAYBACK_WAITING: Duration = Duration::from_secs(60);
 
+/// How long refusals with no key in between make it the account's.
+const ACCOUNT_AFTER: Duration = Duration::from_secs(120);
+
 /// Sets where refusals are reported; see [ON_PLAYBACK_REFUSAL]. Only the first
 /// call counts.
-pub fn on_playback_refusal(hook: fn(bool)) {
+pub fn on_playback_refusal(hook: fn(i64)) {
     let _ = ON_PLAYBACK_REFUSAL.set(hook);
 }
 
 fn report_refusal(refused: bool) {
-    if refused {
-        let waiting = since_playback_request().is_some_and(|ago| ago < PLAYBACK_WAITING);
-        if !waiting || PLAYBACK_REFUSED.swap(true, Ordering::SeqCst) {
-            return;
+    let report = |what: Refusal| {
+        if let Some(hook) = ON_PLAYBACK_REFUSAL.get() {
+            hook(what as i64);
         }
-    } else if !PLAYBACK_REFUSED.swap(false, Ordering::SeqCst) {
+    };
+    if !refused {
+        EVER_GRANTED.store(true, Ordering::SeqCst);
+        ACCOUNT_REPORTED.store(false, Ordering::SeqCst);
+        if let Ok(mut first) = FIRST_REFUSED.lock() {
+            *first = None;
+        }
+        if PLAYBACK_REFUSED.swap(false, Ordering::SeqCst) {
+            report(Refusal::Over);
+        }
         return;
     }
-    if let Some(hook) = ON_PLAYBACK_REFUSAL.get() {
-        hook(refused);
+    if !since_playback_request().is_some_and(|ago| ago < PLAYBACK_WAITING) {
+        return;
+    }
+    let refused_for = FIRST_REFUSED
+        .lock()
+        .map(|mut first| first.get_or_insert_with(Instant::now).elapsed())
+        .unwrap_or_default();
+    if !EVER_GRANTED.load(Ordering::SeqCst)
+        && refused_for >= ACCOUNT_AFTER
+        && !ACCOUNT_REPORTED.swap(true, Ordering::SeqCst)
+    {
+        PLAYBACK_REFUSED.store(true, Ordering::SeqCst);
+        report(Refusal::Account);
+    } else if !PLAYBACK_REFUSED.swap(true, Ordering::SeqCst) {
+        report(Refusal::Refused);
     }
 }
 

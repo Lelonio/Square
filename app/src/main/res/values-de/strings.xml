@@ -353,6 +353,7 @@
     <string name="remove_download">Download entfernen</string>
     <string name="cancel_download">Download abbrechen</string>
     <string name="playback_refused">Spotify lässt gerade keine Songs abspielen. Versuch es in ein paar Minuten noch einmal. Wenn es weiter passiert, melde dich ab und wieder an.</string>
+    <string name="playback_refused_account">Spotify lässt dieses Konto in Apps wie Square keine Songs abspielen. Das liegt nicht an der App; mit einem anderen Premium-Konto kann es funktionieren.</string>
     <string name="downloaded">Heruntergeladen</string>
     <string name="downloading">Wird heruntergeladen</string>
     <string name="downloads">Downloads</string>

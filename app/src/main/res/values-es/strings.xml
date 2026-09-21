@@ -353,6 +353,7 @@
     <string name="remove_download">Quitar descarga</string>
     <string name="cancel_download">Cancelar descarga</string>
     <string name="playback_refused">Spotify no permite reproducir canciones en este momento. Vuelve a intentarlo en unos minutos. Si sigue pasando, cierra sesión y vuelve a entrar.</string>
+    <string name="playback_refused_account">Spotify no permite que esta cuenta reproduzca canciones en apps como Square. No depende de la app; con otra cuenta Premium puede funcionar.</string>
     <string name="downloaded">Descargado</string>
     <string name="downloading">Descargando</string>
     <string name="downloads">Descargas</string>

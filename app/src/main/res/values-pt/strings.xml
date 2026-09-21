@@ -353,6 +353,7 @@
     <string name="remove_download">Remover download</string>
     <string name="cancel_download">Cancelar download</string>
     <string name="playback_refused">O Spotify não está deixando tocar músicas agora. Tente de novo em alguns minutos. Se continuar, saia e entre de novo na conta.</string>
+    <string name="playback_refused_account">O Spotify não deixa esta conta tocar músicas em apps como o Square. Isso não depende do app; com outra conta Premium pode funcionar.</string>
     <string name="downloaded">Baixado</string>
     <string name="downloading">Baixando</string>
     <string name="downloads">Downloads</string>

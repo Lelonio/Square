@@ -353,6 +353,7 @@
     <string name="remove_download">Retirer le téléchargement</string>
     <string name="cancel_download">Annuler le téléchargement</string>
     <string name="playback_refused">Spotify ne permet pas de lire des titres pour le moment. Réessaie dans quelques minutes. Si ça continue, déconnecte-toi puis reconnecte-toi.</string>
+    <string name="playback_refused_account">Spotify ne permet pas à ce compte de lire des titres dans des applis comme Square. Cela ne dépend pas de l\'appli ; un autre compte Premium peut fonctionner.</string>
     <string name="downloaded">Téléchargé</string>
     <string name="downloading">Téléchargement</string>
     <string name="downloads">Téléchargements</string>
