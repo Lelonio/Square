@@ -50,10 +50,28 @@ private val ThresholdColorFilter = android.graphics.ColorMatrixColorFilter(
 // ranges over 0..GooeyPeakBlur.
 private val gooeyEffectCache = HashMap<Int, RenderEffect>()
 
+/**
+ * LOCAL CHANGE: set once a phone has refused to build the blur, after which
+ * the tab bar changes without the effect rather than failing on every frame.
+ */
+private var gooeyUnsupported = false
+
+/**
+ * The effect for this radius, or null where there is nothing to blur.
+ *
+ * LOCAL CHANGE: null below a whole pixel. The radius is quantised to whole
+ * pixels, and one between zero and one — the last frames of every transition,
+ * as it settles — came out as a blur of zero. Some GPUs answer that with no
+ * effect at all, and the platform fails on it with "nativePtr is null": on a
+ * moto g24 power (Mali, Android 14) the app closed whenever the tab indicator
+ * was swiped (#24). The same as the tab bar's other blur, fixed in 2.2.8.
+ */
 @androidx.annotation.RequiresApi(31)
-private fun gooeyRenderEffect(blurRadiusPx: Float): RenderEffect {
+private fun gooeyRenderEffect(blurRadiusPx: Float): RenderEffect? {
     val key = blurRadiusPx.toInt()
-    return gooeyEffectCache.getOrPut(key) {
+    if (key <= 0 || gooeyUnsupported) return null
+    gooeyEffectCache[key]?.let { return it }
+    return try {
         android.graphics.RenderEffect.createColorFilterEffect(
             ThresholdColorFilter,
             android.graphics.RenderEffect.createBlurEffect(
@@ -61,7 +79,11 @@ private fun gooeyRenderEffect(blurRadiusPx: Float): RenderEffect {
                 key.toFloat(),
                 android.graphics.Shader.TileMode.DECAL,
             ),
-        ).asComposeRenderEffect()
+        ).asComposeRenderEffect().also { gooeyEffectCache[key] = it }
+    } catch (e: IllegalArgumentException) {
+        android.util.Log.w("SquareGlass", "gooey blur refused at $key px, turning it off: $e")
+        gooeyUnsupported = true
+        null
     }
 }
 
@@ -72,16 +94,16 @@ private fun gooeyRenderEffect(blurRadiusPx: Float): RenderEffect {
  * bleed together *before* the threshold — two independently-filtered layers
  * would just look like two blurred blobs with a seam, not a merged one.
  *
- * Zero cost at rest: when [blurRadiusPx] returns 0 (or RenderEffect isn't
+ * Zero cost at rest: when [blurRadiusPx] is under a pixel (or RenderEffect isn't
  * supported pre-API 31), this is a no-op — no offscreen layer, no filter.
  */
 fun Modifier.gooey(blurRadiusPx: () -> Float): Modifier {
     if (!isRenderEffectSupported()) return this
     return this.graphicsLayer {
-        val radius = blurRadiusPx()
-        if (radius > 0f) {
+        val effect = gooeyRenderEffect(blurRadiusPx())
+        if (effect != null) {
             compositingStrategy = CompositingStrategy.Offscreen
-            renderEffect = gooeyRenderEffect(radius)
+            renderEffect = effect
         } else {
             compositingStrategy = CompositingStrategy.Auto
             renderEffect = null
