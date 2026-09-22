@@ -2264,10 +2264,17 @@ fun SquareApp(
                     }
 
                     FloatingTabBar(
-                        // The page's own tab, search included — it is one of
-                        // them now. The bar keeps this tab when it folds and
-                        // finds it by matching this key.
-                        selectedTabKey = activeTab,
+                        // The page's own tab. The bar keeps this tab when it
+                        // folds and finds it by matching this key.
+                        //
+                        // Except search, which folds into the circle rather
+                        // than beside it: the circle is always there in the
+                        // folded bar, so keeping the search tab as well put two
+                        // magnifiers side by side on any page opened from the
+                        // results. Given the circle's key, the bar keeps the
+                        // last place before search instead, as the reference
+                        // does, and lights the circle.
+                        selectedTabKey = if (activeTab == Routes.SEARCH) SEARCH_CIRCLE else activeTab,
                         scrollConnection = tabBarScroll,
                         modifier = Modifier
                             .fillMaxWidth()
