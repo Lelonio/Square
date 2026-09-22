@@ -159,6 +159,7 @@
     <string name="permissions_asked">Angefragte Berechtigungen</string>
     <string name="permissions_note">Eine vor einem Update verbundene Anwendung muss neu verbunden werden, um die seither hinzugekommenen Berechtigungen zu erteilen: die Bereiche, die sie brauchen, bleiben bis dahin leer.</string>
     <string name="developed_by">Entwickelt von</string>
+    <string name="support_development">Entwicklung unterstützen</string>
     <string name="about">Info</string>
     <string name="version">Version</string>
     <string name="licences">Lizenzen</string>

@@ -159,6 +159,7 @@
     <string name="permissions_asked">Permisos solicitados</string>
     <string name="permissions_note">Una aplicación conectada antes de una actualización debe reconectarse para conceder los permisos añadidos después: las secciones que los usan seguirán vacías hasta entonces.</string>
     <string name="developed_by">Desarrollado por</string>
+    <string name="support_development">Apoyar el desarrollo</string>
     <string name="about">Información</string>
     <string name="version">Versión</string>
     <string name="licences">Licencias</string>

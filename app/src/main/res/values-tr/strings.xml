@@ -171,6 +171,7 @@
     <string name="permissions_asked">İstenen izinler</string>
     <string name="permissions_note">Bir güncellemeden önce bağlanan uygulamanın, sonradan eklenen izinleri vermesi için yeniden bağlanması gerekir: o zamana kadar bu izinleri kullanan bölümler boş kalır.</string>
     <string name="developed_by">Geliştiren</string>
+    <string name="support_development">Geliştirmeyi destekle</string>
     <string name="about">Hakkında</string>
     <string name="version">Sürüm</string>
     <string name="licences">Lisanslar</string>

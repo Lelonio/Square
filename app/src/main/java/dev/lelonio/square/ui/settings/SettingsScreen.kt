@@ -379,6 +379,31 @@ fun SettingsScreen(
                         modifier = Modifier.size(18.dp),
                     )
                 }
+                RowDivider()
+                // Beside the name rather than under About: it is about the
+                // person who makes the app, not about the build.
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { uriHandler.openUri(KOFI_URL) }
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.support_development), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            KOFI_URL.removePrefix("https://"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = InkDim,
+                        )
+                    }
+                    Icon(
+                        PhosphorIcons.Regular.ArrowUpRight,
+                        contentDescription = null,
+                        tint = InkDim,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
 
@@ -1274,3 +1299,4 @@ private val LICENCES = listOf(
 
 private const val GITHUB_USER = "Lelonio"
 private const val GITHUB_URL = "https://github.com/Lelonio"
+private const val KOFI_URL = "https://ko-fi.com/lelonio"

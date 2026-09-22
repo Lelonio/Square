@@ -173,6 +173,7 @@
     <string name="permissions_asked">Запрошенные разрешения</string>
     <string name="permissions_note">Приложение, подключённое до обновления, нужно подключить заново, чтобы выдать добавленные с тех пор разрешения: до этого связанные с ними разделы останутся пустыми.</string>
     <string name="developed_by">Разработчик</string>
+    <string name="support_development">Поддержать разработку</string>
     <string name="about">О приложении</string>
     <string name="version">Версия</string>
     <string name="licences">Лицензии</string>

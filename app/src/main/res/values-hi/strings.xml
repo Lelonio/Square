@@ -171,6 +171,7 @@
     <string name="permissions_asked">माँगी गई अनुमतियाँ</string>
     <string name="permissions_note">अपडेट से पहले कनेक्ट किया गया ऐप्लिकेशन बाद में जोड़ी गई अनुमतियाँ देने के लिए फिर से कनेक्ट करना पड़ता है: तब तक उन पर निर्भर हिस्से खाली रहते हैं।</string>
     <string name="developed_by">बनाया</string>
+    <string name="support_development">विकास में सहयोग करें</string>
     <string name="about">परिचय</string>
     <string name="version">संस्करण</string>
     <string name="licences">लाइसेंस</string>

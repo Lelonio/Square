@@ -164,6 +164,11 @@ Music through the private endpoints its own web client uses. It cannot be
 published on the Play Store, and you use it at your own risk. There is no
 warranty of any kind; see the licence.
 
+## Support
+
+Square is free and has no ads. If it is useful to you, you can support its
+development on [Ko-fi](https://ko-fi.com/lelonio).
+
 ## Credits
 
 | Project | Licence | How it is used |
