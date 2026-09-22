@@ -1,4 +1,9 @@
-"""Repaints the left panel of docs/social-preview.png with new copy.
+"""Draws docs/social-preview.png: the name across the top, four phones below.
+
+The phones are full-resolution captures (adb exec-out screencap -p) in
+docs/screenshots, card-*.png, in the order of SHOTS. Each is cut below the
+status bar, given a screen's rounded corners and a soft shadow, and runs off
+the bottom of the card. Replace a file and run this again to change it.
 
 The wordmark is not typeset: it is the same drawing the app puts in its own
 header (`ui/components/Wordmark.kt`) — polylines on a 6x10 grid, orthogonal
@@ -13,9 +18,8 @@ INK = (247, 248, 250)   # theme Ink
 SUB = (150, 150, 158)
 FOOT = (110, 110, 118)
 
-SRC = "docs/social-preview.png"
 OUT = "docs/social-preview.png"
-PANEL = 833  # where the phone screenshot starts
+
 
 HELV = "/System/Library/Fonts/HelveticaNeue.ttc"
 
@@ -60,31 +64,57 @@ def draw_wordmark(im, x, y, height, color, scale=4):
     mask = layer.resize((w // scale, h // scale), Image.LANCZOS)
     im.paste(Image.new("RGB", mask.size, color), (int(x), int(y)), mask)
 
+from PIL import ImageFilter
 
-im = Image.open(SRC).convert("RGB")
+W, H = 1280, 640
+
+# Left to right.
+SHOTS = [
+    "docs/screenshots/card-album.png",
+    "docs/screenshots/card-player.png",
+    "docs/screenshots/card-artist.png",
+    "docs/screenshots/card-lyrics.png",
+]
+SHOT_Y = 222      # where the phones' tops sit
+SHOT_MARGIN = 64  # card edge to the outer phones
+SHOT_GAP = 34
+SHOT_TOP = 120    # px of a 2392-tall capture cut off the top: the status bar
+SHOT_RADIUS = 0.08  # corner radius, as a share of the width
+
+im = Image.new("RGB", (W, H), BG)
 d = ImageDraw.Draw(im)
-d.rectangle([0, 0, PANEL - 1, im.height], fill=BG)
 
-# The icon, same place and size as before.
-icon = Image.open("docs/square.png").convert("RGBA").resize((130, 130), Image.LANCZOS)
-im.paste(icon, (85, 97), icon)
+# The name, centred: the icon, then the wordmark beside it, and the line under.
+icon_size = 84
+mark_height = 44 / 10 * BOX
+mark_width = ADVANCE * len(GLYPHS) * (mark_height / BOX)
+gap = 28
+row = icon_size + gap + mark_width
+x0 = (W - row) / 2
+icon = Image.open("docs/square.png").convert("RGBA").resize((icon_size, icon_size), Image.LANCZOS)
+im.paste(icon, (round(x0), 40), icon)
+draw_wordmark(im, x0 + icon_size + gap, 40 + (icon_size - 44 * 1.2) / 2, height=mark_height, color=INK)
 
-# Cap height 54, matching the Helvetica wordmark this replaces.
-draw_wordmark(im, 85, 272, height=54 / 10 * BOX, color=INK)
+f_sub = ImageFont.truetype(HELV, 27, index=0)
+line = "Spotify and YouTube Music on Android, in Liquid Glass."
+d.text(((W - d.textlength(line, font=f_sub)) / 2, 152), line, font=f_sub, fill=SUB)
 
-f_sub = ImageFont.truetype(HELV, 31, index=0)
-f_foot = ImageFont.truetype(HELV, 23, index=0)
-
-d.text((85, 372), "Spotify and YouTube Music", font=f_sub, fill=SUB)
-d.text((85, 416), "on Android, in Liquid Glass.", font=f_sub, fill=SUB)
-
-x = 85
-for i, part in enumerate(["Two sources", "Audio effects", "Video mode"]):
-    if i:
-        d.text((x, 500), "·", font=f_foot, fill=FOOT)
-        x += d.textlength("·", font=f_foot) + 22
-    d.text((x, 500), part, font=f_foot, fill=FOOT)
-    x += d.textlength(part, font=f_foot) + 22
+width = round((W - 2 * SHOT_MARGIN - 3 * SHOT_GAP) / len(SHOTS))
+radius = round(width * SHOT_RADIUS)
+for i, path in enumerate(SHOTS):
+    left = SHOT_MARGIN + i * (width + SHOT_GAP)
+    shot = Image.open(path).convert("RGB")
+    shot = shot.crop((0, round(SHOT_TOP * shot.height / 2392), shot.width, shot.height))
+    shot = shot.resize((width, round(shot.height * width / shot.width)), Image.LANCZOS)
+    shot = shot.crop((0, 0, width, H - SHOT_Y))
+    # Every phone runs off the bottom, so only its top corners are round.
+    mask = Image.new("L", shot.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, width - 1, shot.height + radius], radius=radius, fill=255)
+    shadow = Image.new("L", im.size, 0)
+    ImageDraw.Draw(shadow).rounded_rectangle([left, SHOT_Y + 10, left + width, H + radius], radius=radius, fill=150)
+    shadow = shadow.filter(ImageFilter.GaussianBlur(16))
+    im.paste(Image.new("RGB", im.size, (0, 0, 0)), (0, 0), shadow)
+    im.paste(shot, (left, SHOT_Y), mask)
 
 im.save(OUT)
 print("wrote", OUT, im.size)
