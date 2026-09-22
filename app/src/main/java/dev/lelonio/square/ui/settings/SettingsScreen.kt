@@ -338,21 +338,6 @@ fun SettingsScreen(
             }
         }
 
-        if (open == SettingsPage.About) item("permissions") {
-            Section(stringResource(R.string.permissions_asked)) {
-                Text(
-                    stringResource(R.string.permissions_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = InkDim,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                )
-                SCOPES.forEach { (scope, why) ->
-                    RowDivider()
-                    InfoRow(scope, stringResource(why))
-                }
-            }
-        }
-
         if (open == SettingsPage.About) item("author") {
             Section(stringResource(R.string.developed_by)) {
                 val uriHandler = LocalUriHandler.current
@@ -406,6 +391,22 @@ fun SettingsScreen(
                 Licences()
                 RowDivider()
                 ReportRows(name = ready?.displayName)
+            }
+        }
+
+        // Last: a reference for whoever wants to check, not something to do.
+        if (open == SettingsPage.About) item("permissions") {
+            Section(stringResource(R.string.permissions_asked)) {
+                Text(
+                    stringResource(R.string.permissions_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkDim,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                )
+                SCOPES.forEach { (scope, why) ->
+                    RowDivider()
+                    InfoRow(scope, stringResource(why))
+                }
             }
         }
 
