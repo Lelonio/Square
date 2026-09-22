@@ -26,9 +26,9 @@
 
 | Player | Lyrics | Effects |
 | :---: | :---: | :---: |
-| ![The player](docs/screenshots/player.png) | ![Synced lyrics](docs/screenshots/lyrics.png) | ![The effects panel](docs/screenshots/effects.png) |
+| ![The player](docs/screenshots/player-2.png) | ![Synced lyrics](docs/screenshots/lyrics-2.png) | ![The effects panel](docs/screenshots/effects-2.png) |
 | **Artist** | **Album** | **Glass settings** |
-| ![An artist's page](docs/screenshots/artist.png) | ![An album](docs/screenshots/album.png) | ![The glass settings](docs/screenshots/glass.png) |
+| ![An artist's page](docs/screenshots/artist-2.png) | ![An album](docs/screenshots/album-2.png) | ![The glass settings](docs/screenshots/glass-2.png) |
 
 ## Features
 
