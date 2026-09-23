@@ -3642,14 +3642,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                     }
-                } else if (cached.isNotEmpty() && isUnchanged(playlist.uri, entry?.snapshotId)) {
-                    // Nothing to do: one small request said the copy on screen
-                    // is the current one.
-                    if (isActive && _playlist.value.uri == playlist.uri) {
-                        publishPlaylist(base.copy(tracks = cached, loadingMore = false))
-                    }
                 } else {
-                    loadContextInto(base, playlist.uri, showProgress = cached.isEmpty())
+                    val freshness = if (cached.isEmpty()) {
+                        Freshness.CHANGED
+                    } else {
+                        isUnchanged(playlist.uri, entry?.snapshotId)
+                    }
+                    val recent = (entry?.savedAt ?: 0) > System.currentTimeMillis() - STALE_AFTER_MS
+                    if (freshness == Freshness.SAME || (freshness == Freshness.UNKNOWN && recent)) {
+                        // Nothing to read again: either one small request said
+                        // the copy on screen is the current one, or nobody
+                        // could say and the copy is new enough to believe.
+                        if (isActive && _playlist.value.uri == playlist.uri) {
+                            publishPlaylist(base.copy(tracks = cached, loadingMore = false))
+                        }
+                        // A copy saved without a stamp is asked for one now, so
+                        // the next open has a question to ask instead of a
+                        // whole playlist to read.
+                        if (entry != null && entry.snapshotId == null) launch {
+                            val stamp = snapshotOf(playlist.uri) ?: return@launch
+                            contextCache[playlist.uri] = entry.copy(snapshotId = stamp)
+                            container.contextCache.write(playlist.uri, entry.tracks, stamp)
+                        }
+                    } else {
+                        loadContextInto(base, playlist.uri, showProgress = cached.isEmpty())
+                    }
                 }
             } catch (e: CancellationException) {
                 // Cooperative cancellation: do NOT treat job cancellation as a failure or set error on the screen!
@@ -3873,15 +3890,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * stamp — an album, a list read through the access point — which simply
      * means it is refreshed as before, silently, behind what is already shown.
      */
-    private suspend fun isUnchanged(uri: String, snapshotId: String?): Boolean {
-        if (snapshotId == null) return false
-        if (!container.webApi.isReady || !uri.startsWith("spotify:playlist:")) return false
-        return runCatching {
-            container.api.playlistSnapshot(uri.substringAfterLast(':')).snapshotId == snapshotId
+    private suspend fun isUnchanged(uri: String, snapshotId: String?): Freshness {
+        if (snapshotId == null) return Freshness.UNKNOWN
+        if (!container.webApi.isReady || !uri.startsWith("spotify:playlist:")) return Freshness.UNKNOWN
+        val id = uri.substringAfterLast(':')
+        repeat(SNAPSHOT_TRIES) { attempt ->
+            val answer = runCatching { container.api.playlistSnapshot(id).snapshotId }
+                .onFailure { android.util.Log.w(TAG, "snapshot check failed: ${describe(it)}") }
+            answer.getOrNull()?.let {
+                return if (it == snapshotId) Freshness.SAME else Freshness.CHANGED
+            }
+            // Spotify metering answers a burst with 429, and the next second
+            // it answers properly. Worth one more try before a thousand-track
+            // playlist is read again from the top.
+            val retryable = answer.exceptionOrNull()?.let { describe(it).contains("429") } == true
+            if (!retryable || attempt == SNAPSHOT_TRIES - 1) return Freshness.UNKNOWN
+            delay(SNAPSHOT_RETRY_MS)
         }
-            .onFailure { android.util.Log.w(TAG, "snapshot check failed: ${describe(it)}") }
-            .getOrDefault(false)
+        return Freshness.UNKNOWN
     }
+
+    /**
+     * What a version check could say about a stored copy.
+     *
+     * [UNKNOWN] is the answer that used to be read as [CHANGED]: no token yet
+     * in the first seconds after a start, a refused request, a playlist saved
+     * before its stamp could be had. Every one of those read a thousand-track
+     * playlist again from the top for nothing, which is minutes of paging on a
+     * list that had not moved. It is now trusted for [STALE_AFTER_MS], after
+     * which a copy nobody can vouch for is read again.
+     */
+    private enum class Freshness { SAME, CHANGED, UNKNOWN }
 
     /**
      * Removes a track from the playlist currently open.
@@ -4084,6 +4123,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         rememberMembership(uri, tracks)
         container.contextCache.write(uri, tracks, snapshotId)
     }
+
+    /**
+     * How long a stored copy nobody could vouch for is used anyway, and how a
+     * refused version check is retried; see [Freshness].
+     */
+    private val STALE_AFTER_MS = 6L * 60 * 60 * 1000
+    private val SNAPSHOT_TRIES = 2
+    private val SNAPSHOT_RETRY_MS = 700L
 
     /** The playlist's current version stamp, or null if it has none to give. */
     private suspend fun snapshotOf(uri: String): String? {
