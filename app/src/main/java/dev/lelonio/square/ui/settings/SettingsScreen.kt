@@ -53,6 +53,43 @@ import com.adamglin.phosphoricons.regular.CaretRight
 import com.adamglin.phosphoricons.regular.CaretUp
 import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.BuildConfig
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.layout.heightIn
+import com.adamglin.phosphoricons.regular.UserCircle
+import com.adamglin.phosphoricons.regular.Waveform
+import com.adamglin.phosphoricons.regular.Drop
+import com.adamglin.phosphoricons.regular.SlidersHorizontal
+import com.adamglin.phosphoricons.regular.Info
+import com.adamglin.phosphoricons.regular.DownloadSimple
+import androidx.compose.ui.res.pluralStringResource
+import dev.lelonio.square.ui.glass.shapes.ContinuousCapsule
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
+import com.adamglin.phosphoricons.regular.DeviceMobile
+import com.adamglin.phosphoricons.regular.Package
+import com.adamglin.phosphoricons.regular.FilmStrip
+import com.adamglin.phosphoricons.regular.Repeat
+import com.adamglin.phosphoricons.regular.Scissors
+import com.adamglin.phosphoricons.regular.WifiHigh
+import com.adamglin.phosphoricons.regular.Heart
+import com.adamglin.phosphoricons.regular.AirplaneTilt
+import com.adamglin.phosphoricons.regular.HardDrives
+import com.adamglin.phosphoricons.regular.Key
+import com.adamglin.phosphoricons.regular.ArrowClockwise
+import com.adamglin.phosphoricons.regular.Image
+import com.adamglin.phosphoricons.regular.Gear
+import com.adamglin.phosphoricons.regular.BatteryCharging
+import com.adamglin.phosphoricons.regular.Broom
+import com.adamglin.phosphoricons.regular.ArrowsInLineHorizontal
+import com.adamglin.phosphoricons.regular.Playlist
+import androidx.compose.foundation.layout.fillMaxHeight
+import com.adamglin.phosphoricons.regular.Trash
+import com.adamglin.phosphoricons.regular.HandHeart
 import dev.lelonio.square.R
 import dev.lelonio.square.data.AppLanguages
 import dev.lelonio.square.backend.BackendId
@@ -132,6 +169,114 @@ fun SettingsScreen(
     // which is the order the screen is read in.
     BackHandler(enabled = open != null) { open = null }
 
+    // One accent for the whole screen; see LocalSettingsAccent.
+    val accent = rememberSettingsAccent()
+
+    // Registered once for the screen, not once per row.
+    //
+    // Both of these used to be made inside a row of the About page, and a row
+    // of a lazy list is made and thrown away every time it scrolls past the
+    // edge: registering and unregistering an activity launcher on every pass
+    // is what froze that page when it was scrolled down and back up.
+    val scope = rememberCoroutineScope()
+    var pendingReport by remember { mutableStateOf<java.io.File?>(null) }
+    val saveReport = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        val file = pendingReport
+        pendingReport = null
+        if (uri == null || file == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        file.inputStream().use { it.copyTo(out) }
+                    } ?: error("no stream for $uri")
+                }
+                android.widget.Toast.makeText(context, context.getString(R.string.report_saved), android.widget.Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                android.util.Log.w("SquareReport", "report not saved: $it")
+                android.widget.Toast.makeText(context, context.getString(R.string.report_failed), android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    val askToSaveReport: (java.io.File) -> Unit = { file ->
+        pendingReport = file
+        saveReport.launch(file.name)
+    }
+
+    val updater = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).updater
+    }
+    var pendingUpdate by remember { mutableStateOf<Updater.State.Available?>(null) }
+    val installPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        val update = pendingUpdate ?: return@rememberLauncherForActivityResult
+        pendingUpdate = null
+        scope.launch { if (updater.canInstall()) updater.install(update) }
+    }
+    val askToInstall: (Updater.State.Available) -> Unit = { update ->
+        pendingUpdate = update
+        installPermission.launch(updater.permissionIntent())
+    }
+
+    // Set rather than assigned from inside, because the page being drawn is a
+    // value handed to the animation below and cannot be written to.
+    val goTo: (SettingsPage?) -> Unit = { open = it }
+
+    // The page's own heading, wherever the page puts it: in the scrolling list
+    // for most of them, above a pinned preview for the glass.
+    val heading: @Composable (SettingsPage?) -> Unit = { shown ->
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 24.dp, top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LiquidButton(
+                onClick = { if (shown != null) goTo(null) else onBack() },
+                backdrop = backdrop,
+            ) {
+                Icon(PhosphorIcons.Regular.ArrowLeft, contentDescription = stringResource(R.string.back))
+            }
+            Text(
+                stringResource(shown?.title ?: R.string.settings),
+                style = MaterialTheme.typography.displayLarge,
+                modifier = Modifier.padding(start = 14.dp),
+            )
+        }
+    }
+
+    // A page arrives from the side it was opened from and leaves the other way,
+    // which is the one thing that said "this is a different page" and was
+    // missing: the list simply swapped its rows for other rows.
+    androidx.compose.runtime.CompositionLocalProvider(LocalSettingsAccent provides accent) {
+    AnimatedContent(
+        targetState = open,
+        transitionSpec = {
+            val forward = initialState == null
+            val width = { w: Int -> if (forward) w / 4 else -w / 4 }
+            val back = { w: Int -> if (forward) -w / 4 else w / 4 }
+            (
+                slideInHorizontally(tween(PAGE_TRAVEL_MS), width) +
+                    fadeIn(tween(PAGE_TRAVEL_MS))
+                ) togetherWith (
+                slideOutHorizontally(tween(PAGE_TRAVEL_MS), back) +
+                    fadeOut(tween(PAGE_FADE_MS))
+                )
+        },
+        label = "settingsPage",
+    ) { shown ->
+    if (shown == SettingsPage.Glass) {
+        GlassPage(
+            backdrop = backdrop,
+            contentPadding = contentPadding,
+            header = { heading(shown) },
+        )
+        return@AnimatedContent
+    }
+
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -139,84 +284,63 @@ fun SettingsScreen(
             bottom = contentPadding.calculateBottomPadding() + 24.dp,
         ),
     ) {
-        item("top") {
-            Row(
+        item("top") { heading(shown) }
+
+        if (shown == null) item("pages") {
+            SettingsIndex(
+                name = ready?.displayName,
+                note = if (ready != null) {
+                    stringResource(R.string.playlist_count, ready.playlists.size)
+                } else {
+                    stringResource(R.string.log_in_to_resume)
+                },
+                avatarUrl = ready?.avatarUrl,
+            ) { goTo(it) }
+        }
+
+        // Who this is, before anything that can be done about it. Nothing else
+        // on the page is worth as much room: the picture and the name answer
+        // the question people open this page with.
+        if (shown == SettingsPage.Account && showSpotify) item("account") {
+            Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 24.dp, top = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                LiquidButton(
-                    onClick = { if (open != null) open = null else onBack() },
-                    backdrop = backdrop,
-                ) {
-                    Icon(PhosphorIcons.Regular.ArrowLeft, contentDescription = stringResource(R.string.back))
-                }
+                Artwork(
+                    url = ready?.avatarUrl,
+                    title = ready?.displayName.orEmpty(),
+                    modifier = Modifier
+                        .size(96.dp)
+                        .softShadow(CircleShape, elevation = 16.dp),
+                    corner = 48.dp,
+                    decodeSize = 96.dp,
+                )
                 Text(
-                    stringResource(open?.title ?: R.string.settings),
-                    style = MaterialTheme.typography.displayLarge,
-                    modifier = Modifier.padding(start = 14.dp),
+                    ready?.displayName ?: stringResource(R.string.not_connected),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    if (ready != null) {
+                        stringResource(R.string.playlist_count, ready.playlists.size)
+                    } else {
+                        stringResource(R.string.log_in_to_resume)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = InkDim,
                 )
             }
-        }
-
-        if (open == null) item("pages") {
             Section(null) {
-                SettingsPage.entries.forEachIndexed { index, page ->
-                    if (index > 0) RowDivider()
-                    PageRow(stringResource(page.title), stringResource(page.summary)) {
-                        open = page
-                    }
-                }
+                InfoRow(stringResource(R.string.connect_device), deviceName, icon = PhosphorIcons.Regular.DeviceMobile)
             }
         }
 
-        if (open == SettingsPage.Account && showSpotify) item("account") {
-            Section(stringResource(R.string.account)) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Artwork(
-                        url = ready?.avatarUrl,
-                        title = ready?.displayName.orEmpty(),
-                        modifier = Modifier
-                            .size(54.dp)
-                            .softShadow(CircleShape, elevation = 10.dp),
-                        corner = 27.dp,
-                        decodeSize = 54.dp,
-                    )
-                    Column(
-                        Modifier
-                            .weight(1f)
-                            .padding(start = 14.dp),
-                    ) {
-                        Text(
-                            ready?.displayName ?: stringResource(R.string.not_connected),
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            if (ready != null) {
-                                stringResource(R.string.playlist_count, ready.playlists.size)
-                            } else {
-                                stringResource(R.string.log_in_to_resume)
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = InkDim,
-                        )
-                    }
-                }
-
-                RowDivider()
-                InfoRow(stringResource(R.string.connect_device), deviceName)
-            }
-        }
-
-        if (open == SettingsPage.Account && showSpotify) item("webapi") {
+        if (shown == SettingsPage.Account && showSpotify) item("webapi") {
             Section(stringResource(R.string.web_api)) {
                 if (webApi.connected) {
                     InfoRow(stringResource(R.string.application), stringResource(R.string.connected))
@@ -236,7 +360,7 @@ fun SettingsScreen(
             }
         }
 
-        if (open == SettingsPage.Account && showSpotify) item("tutorial") {
+        if (shown == SettingsPage.Account && showSpotify) item("tutorial") {
             Section(stringResource(R.string.guide)) {
                 ActionRow(stringResource(R.string.see_setup_again), destructive = false) {
                     onShowTutorial()
@@ -244,11 +368,11 @@ fun SettingsScreen(
             }
         }
 
-        if (open == SettingsPage.Playback) item("backend") {
+        if (shown == SettingsPage.Playback) item("backend") {
             BackendSection()
         }
 
-        if (open == SettingsPage.Account) item("youtube-account") {
+        if (shown == SettingsPage.Account) item("youtube-account") {
             YouTubeAccountSection(
                 onSignIn = onYouTubeSignIn,
                 onChannelChange = onYouTubeChannelChange,
@@ -258,43 +382,118 @@ fun SettingsScreen(
         // What is kept on the phone. Under Playback rather than Account: it is
         // about how the music arrives, and it belongs beside the bitrate it
         // shares its wording with.
-        if (open == SettingsPage.Playback && showSpotify) item("downloads") {
+        // First on the page: where the space went, before anything that can be
+        // done about it.
+        if (shown == SettingsPage.Downloads) item("storage-chart") {
+            StorageChart()
+        }
+
+        if (shown == SettingsPage.Downloads && showSpotify) item("downloads") {
             DownloadsSection(backdrop)
         }
 
         // The bitrate is librespot's; ExoPlayer takes what YouTube serves.
-        if (open == SettingsPage.Playback && showSpotify) item("quality") {
+        if (shown == SettingsPage.Playback && showSpotify) item("quality") {
             QualitySection()
         }
 
         // Crossfade: mixed by the engine on Spotify, volume-shaped on YouTube Music.
-        if (open == SettingsPage.Playback) item("crossfade") {
+        // What happens when the app is swiped away, which is a playback
+        // decision rather than an app one; asked for in #27.
+        if (shown == SettingsPage.Playback) item("keep-playing") {
+            val prefs = remember(context) {
+                (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+            }
+            val keepPlaying by prefs.keepPlayingOnClose.collectAsStateWithLifecycle()
+            Section(stringResource(R.string.page_playback)) {
+                DownloadSwitch(
+                    label = stringResource(R.string.keep_playing_on_close),
+                    checked = keepPlaying,
+                    backdrop = backdrop,
+                    icon = PhosphorIcons.Regular.Playlist,
+                    onChange = prefs::setKeepPlayingOnClose,
+                )
+                Text(
+                    stringResource(R.string.keep_playing_on_close_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkDim,
+                    modifier = Modifier.padding(start = ROW_TEXT_START, end = 18.dp, bottom = 14.dp),
+                )
+            }
+        }
+
+        if (shown == SettingsPage.Playback) item("crossfade") {
             CrossfadeSection(backdrop)
         }
 
         // Autoplay: automatically append similar tracks when queue reaches the end.
-        if (open == SettingsPage.Playback) item("autoplay") {
+        if (shown == SettingsPage.Playback) item("autoplay") {
             AutoplaySection(backdrop)
         }
 
         // Spotify's own, served by its access point: on another source there is
         // no clip to ask for and nothing this switch could turn off.
-        if (open == SettingsPage.Playback && showSpotify) item("canvas") {
+        if (shown == SettingsPage.Playback && showSpotify) item("canvas") {
             CanvasSection(backdrop)
         }
 
         // The effects run on our own output, so this one holds for both backends.
-        if (open == SettingsPage.Playback) item("effect-quality") {
+        if (shown == SettingsPage.Playback) item("effect-quality") {
             EffectQualitySection()
         }
 
-        // How the app looks and what that costs, so under the app rather than
-        // under playback: nothing here touches a note of audio.
-        if (open == SettingsPage.App) item("glass") {
-            GlassSection(backdrop)
+        // The cleaning up, under everything it cleans: the songs first, then
+        // the copies of playlists that make a long list open at once, then the
+        // app's own working files. Each says what goes and what stays.
+        if (shown == SettingsPage.Downloads) item("cleanup") {
+            var clearedLists by remember { mutableStateOf(false) }
+            var clearedCache by remember { mutableStateOf(false) }
+            Section(stringResource(R.string.storage_cleanup)) {
+                ActionRow(
+                    stringResource(R.string.app_clear_list_cache),
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.Broom,
+                ) {
+                    scope.launch {
+                        dev.lelonio.square.data.ContextCacheStore(context).clear()
+                        clearedLists = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.app_clear_list_cache_done),
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }
+                RowDivider()
+                // Everything the app keeps to work faster and nothing it was
+                // asked to keep: images it has drawn, pages it has read, the
+                // engine's own scratch files. The music is not in here.
+                ActionRow(
+                    stringResource(R.string.app_clear_cache),
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.Trash,
+                ) {
+                    scope.launch {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            runCatching {
+                                context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+                            }
+                        }
+                        clearedCache = true
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.app_clear_cache_done),
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }
+            }
+            // Read so the two flags are used; they keep the rows from being
+            // pressed twice in a row with nothing to show for it.
+            if (clearedLists && clearedCache) Spacer(Modifier.height(0.dp))
         }
 
-        if (open == SettingsPage.App) item("language") {
+        if (shown == SettingsPage.App) item("language") {
             Section(stringResource(R.string.language)) {
                 AppLanguages.forEachIndexed { index, (tag, name) ->
                     if (index > 0) RowDivider()
@@ -306,7 +505,59 @@ fun SettingsScreen(
             }
         }
 
-        if (open == SettingsPage.App && android.os.Build.VERSION.SDK_INT >= 31) {
+        // What the bar does, which is behaviour rather than material: the glass
+        // page says what it is made of, this says how it acts.
+        if (shown == SettingsPage.App) item("bar") {
+            val glass = remember(context) {
+                (context.applicationContext as dev.lelonio.square.SquareApplication).glass
+            }
+            val folds by glass.barFolds.collectAsStateWithLifecycle()
+            Section(stringResource(R.string.page_app_bar)) {
+                DownloadSwitch(
+                    label = stringResource(R.string.bar_folds),
+                    checked = folds,
+                    backdrop = backdrop,
+                    icon = PhosphorIcons.Regular.ArrowsInLineHorizontal,
+                    onChange = glass::setBarFolds,
+                )
+            }
+        }
+
+        // The two settings that are Android's rather than the app's, and the
+        // two people are sent to when the music stops in the background or a
+        // notification never arrives.
+        if (shown == SettingsPage.App) item("system") {
+            Section(stringResource(R.string.page_app_system)) {
+                ActionRow(
+                    stringResource(R.string.app_system_settings),
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.Gear,
+                ) {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.fromParts("package", context.packageName, null),
+                            ),
+                        )
+                    }
+                }
+                RowDivider()
+                ActionRow(
+                    stringResource(R.string.app_battery_settings),
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.BatteryCharging,
+                ) {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+                        )
+                    }
+                }
+            }
+        }
+
+        if (shown == SettingsPage.App && android.os.Build.VERSION.SDK_INT >= 31) {
             item("links") {
                 Section(stringResource(R.string.spotify_links)) {
                     Text(
@@ -338,7 +589,7 @@ fun SettingsScreen(
             }
         }
 
-        if (open == SettingsPage.About) item("author") {
+        if (shown == SettingsPage.About) item("author") {
             Section(stringResource(R.string.developed_by)) {
                 val uriHandler = LocalUriHandler.current
                 Row(
@@ -407,30 +658,71 @@ fun SettingsScreen(
             }
         }
 
-        if (open == SettingsPage.About) item("about") {
-            Section(stringResource(R.string.about)) {
-                InfoRow(stringResource(R.string.version), "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE})")
-                RowDivider()
-                UpdateRow()
-                RowDivider()
-                Licences()
-                RowDivider()
-                ReportRows(name = ready?.displayName)
+        // The version as a statement rather than a row: it is the one fact
+        // anybody is asked for when they report something, and it was the
+        // smallest line on the page.
+        if (shown == SettingsPage.About) item("version") {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    "Square ${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    BuildConfig.BUILD_TYPE,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkDim,
+                )
             }
         }
 
-        // Last: a reference for whoever wants to check, not something to do.
-        if (open == SettingsPage.About) item("permissions") {
+        if (shown == SettingsPage.About) item("about") {
+            Section(stringResource(R.string.about)) {
+                UpdateRow(askToInstall)
+                RowDivider()
+                Licences()
+                RowDivider()
+                ReportRows(name = ready?.displayName, onSave = askToSaveReport)
+            }
+        }
+
+        // Last, and tighter than the rest: a reference for whoever wants to
+        // check what the app asks Spotify for, not something anyone does.
+        if (shown == SettingsPage.About) item("permissions") {
             Section(stringResource(R.string.permissions_asked)) {
                 Text(
                     stringResource(R.string.permissions_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = InkDim,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
                 )
                 SCOPES.forEach { (scope, why) ->
                     RowDivider()
-                    InfoRow(scope, stringResource(why))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            scope,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = InkDim,
+                            modifier = Modifier.weight(0.9f),
+                        )
+                        Text(
+                            stringResource(why),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1.1f),
+                        )
+                    }
                 }
             }
         }
@@ -438,13 +730,15 @@ fun SettingsScreen(
         // Spotify's sign-out, so only while Spotify is the source. On YouTube
         // Music the account section above has its own, and this one signed the
         // app out of Spotify from a page about a Google account.
-        if (ready != null && open == SettingsPage.Account && showSpotify) {
+        if (ready != null && shown == SettingsPage.Account && showSpotify) {
             item("logout") {
                 Section(null) {
                     ActionRow(stringResource(R.string.log_out), destructive = true, onClick = onLogOut)
                 }
             }
         }
+    }
+    }
     }
 }
 
@@ -462,11 +756,274 @@ private enum class SettingsPage(
     @StringRes val title: Int,
     /** One line under the name, so a page can be chosen without opening it. */
     @StringRes val summary: Int,
+    /** The mark on its tile; see SettingsIndex. */
+    val icon: ImageVector,
 ) {
-    Account(R.string.account, R.string.page_account_summary),
-    Playback(R.string.page_playback, R.string.page_playback_summary),
-    App(R.string.page_app, R.string.page_app_summary),
-    About(R.string.about, R.string.page_about_summary),
+    Account(R.string.account, R.string.page_account_summary, PhosphorIcons.Regular.UserCircle),
+    Playback(R.string.page_playback, R.string.page_playback_summary, PhosphorIcons.Regular.Waveform),
+    // Its own page rather than a section of the app's: the preview has to stay
+    // on screen while the numbers under it move, and a section inside a list
+    // scrolls away. See GlassPage.
+    Glass(R.string.glass, R.string.page_glass_summary, PhosphorIcons.Regular.Drop),
+    Downloads(R.string.page_downloads, R.string.page_downloads_summary, PhosphorIcons.Regular.DownloadSimple),
+    App(R.string.page_app, R.string.page_app_summary, PhosphorIcons.Regular.SlidersHorizontal),
+    About(R.string.about, R.string.page_about_summary, PhosphorIcons.Regular.Info),
+}
+
+/** How long a page takes to arrive, and how quickly the last one goes. */
+private const val PAGE_TRAVEL_MS = 260
+private const val PAGE_FADE_MS = 140
+
+/**
+ * The way in: whose account this is, and the four places to go.
+ *
+ * Five identical rows was a list of words where the first thing anyone wants
+ * to see is whether they are signed in and as whom. The account is a card with
+ * their picture on it, and the rest are tiles two abreast — a shape you can
+ * aim at, and one that says these are four places rather than four settings.
+ */
+@Composable
+private fun SettingsIndex(
+    name: String?,
+    note: String,
+    avatarUrl: String?,
+    onOpen: (SettingsPage) -> Unit,
+) {
+    Column(
+        Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Ink.copy(alpha = 0.07f))
+                .clickable { onOpen(SettingsPage.Account) }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Artwork(
+                url = avatarUrl,
+                title = name.orEmpty(),
+                modifier = Modifier
+                    .size(56.dp)
+                    .softShadow(CircleShape, elevation = 10.dp),
+                corner = 28.dp,
+                decodeSize = 56.dp,
+            )
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(start = 14.dp),
+            ) {
+                Text(
+                    name ?: stringResource(R.string.not_connected),
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                PhosphorIcons.Regular.CaretRight,
+                contentDescription = null,
+                tint = InkDim,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+
+        // Five places, and a sixth tile that is not a place: it leaves the app
+        // for the Ko-fi page. Last, and in the same shape as the rest, because
+        // it is an offer rather than a setting — asking louder than that would
+        // be asking on a screen somebody opened to change something.
+        val uriHandler = LocalUriHandler.current
+        val pages = SettingsPage.entries.filter { it != SettingsPage.Account }
+        val rows = pages.chunked(2)
+        rows.forEachIndexed { index, pair ->
+            val last = index == rows.lastIndex
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                pair.forEach { page -> PageTile(page, Modifier.weight(1f)) { onOpen(page) } }
+                // The support tile fills the gap a row of one would leave, and
+                // makes its own row when the pages divide evenly.
+                if (last && pair.size == 1) {
+                    SupportTile(Modifier.weight(1f)) { uriHandler.openUri(KOFI_URL) }
+                }
+            }
+            if (last && pair.size == 2) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SupportTile(Modifier.weight(1f)) { uriHandler.openUri(KOFI_URL) }
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+
+        IndexFooter()
+    }
+}
+
+/**
+ * What Square is keeping, as a bar and a legend.
+ *
+ * Three answers to one question — where did the space go — and they are not
+ * the same kind of thing: the music is what was asked for, the covers and
+ * words beside it are what make it read as music offline, and the caches are
+ * the app's own workings, which it rebuilds if they go. A number for each
+ * would make them look alike; a bar says which one is the space.
+ */
+@Composable
+private fun StorageChart() {
+    val context = LocalContext.current
+    val app = remember(context) { context.applicationContext as dev.lelonio.square.SquareApplication }
+    val files by app.downloads.files.collectAsStateWithLifecycle()
+
+    // Measured off the disk rather than from the index: a Canvas is video, and
+    // the caches have nothing to be counted from but their own directories.
+    val sizes by androidx.compose.runtime.produceState(Triple(0L, 0L, 0L), files.size) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val audio = files.values.sumOf { it.bytes }
+            val extras = runCatching { dev.lelonio.square.download.DownloadExtras.bytes() }.getOrDefault(0L)
+            val caches = runCatching {
+                context.cacheDir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+            }.getOrDefault(0L)
+            Triple(audio, extras, caches)
+        }
+    }
+    val (audio, extras, caches) = sizes
+    val total = (audio + extras + caches).coerceAtLeast(1L)
+    val accent = settingsAccent()
+    val parts = listOf(
+        Triple(R.string.storage_music, audio, accent),
+        Triple(R.string.storage_extras, extras, accent.copy(alpha = 0.55f)),
+        Triple(R.string.storage_caches, caches, Ink.copy(alpha = 0.3f)),
+    )
+
+    Column(
+        Modifier
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Ink.copy(alpha = 0.07f))
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text(
+            android.text.format.Formatter.formatShortFileSize(context, audio + extras + caches),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(14.dp)
+                .clip(ContinuousCapsule()),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            parts.forEach { (_, bytes, colour) ->
+                // A share too small to see is left out rather than drawn as a
+                // sliver nobody can read.
+                val share = bytes.toFloat() / total
+                if (share > 0.004f) {
+                    Box(Modifier.fillMaxHeight().weight(share).background(colour))
+                }
+            }
+        }
+        parts.forEach { (label, bytes, colour) ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(Modifier.size(10.dp).clip(ContinuousCapsule()).background(colour))
+                Text(
+                    stringResource(label),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    android.text.format.Formatter.formatShortFileSize(context, bytes),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = InkDim,
+                )
+            }
+        }
+    }
+}
+
+/** What the page ends on: which build this is. */
+@Composable
+private fun IndexFooter() {
+    Text(
+        "Square ${BuildConfig.VERSION_NAME}",
+        style = MaterialTheme.typography.bodySmall,
+        color = InkDim,
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
+}
+
+/** One place to go, as a tile: its mark, its name, and what is in it. */
+@Composable
+private fun PageTile(page: SettingsPage, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Tile(
+        icon = page.icon,
+        title = stringResource(page.title),
+        summary = stringResource(page.summary),
+        modifier = modifier,
+        onClick = onClick,
+    )
+}
+
+/** Not a page: the one tile that leaves the app. */
+@Composable
+private fun SupportTile(modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Tile(
+        icon = PhosphorIcons.Regular.HandHeart,
+        title = stringResource(R.string.support_development),
+        summary = KOFI_URL.removePrefix("https://"),
+        modifier = modifier,
+        onClick = onClick,
+    )
+}
+
+/** The shape every tile on the index has. */
+@Composable
+private fun Tile(
+    icon: ImageVector,
+    title: String,
+    summary: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier
+            .heightIn(min = 132.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Ink.copy(alpha = 0.07f))
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        RowIcon(icon)
+        Spacer(Modifier.weight(1f))
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            summary,
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 /** A row that opens a page. */
@@ -669,6 +1226,7 @@ private fun CanvasSection(backdrop: Backdrop) {
     Section(stringResource(R.string.canvas)) {
         DownloadSwitch(
             label = stringResource(R.string.canvas_show),
+            icon = PhosphorIcons.Regular.FilmStrip,
             checked = enabled,
             backdrop = backdrop,
             onChange = store::setCanvasEnabled,
@@ -687,6 +1245,7 @@ private fun AutoplaySection(backdrop: Backdrop) {
     Section(stringResource(R.string.autoplay)) {
         DownloadSwitch(
             label = stringResource(R.string.autoplay_infinite_title),
+            icon = PhosphorIcons.Regular.Repeat,
             checked = enabled,
             backdrop = backdrop,
             onChange = store::setAutoplayInfinite,
@@ -741,6 +1300,7 @@ private fun CrossfadeSection(backdrop: Backdrop) {
         RowDivider()
         DownloadSwitch(
             label = stringResource(R.string.trim_silence),
+            icon = PhosphorIcons.Regular.Scissors,
             checked = trimSilence,
             backdrop = backdrop,
             onChange = preferences::setTrimSilence,
@@ -752,6 +1312,7 @@ private fun CrossfadeSection(backdrop: Backdrop) {
         // has heard enough.
         DownloadSwitch(
             label = stringResource(R.string.skip_fade),
+            icon = PhosphorIcons.Regular.Waveform,
             checked = skipFade,
             backdrop = backdrop,
             onChange = preferences::setSkipFade,
@@ -822,7 +1383,7 @@ private fun QualitySection() {
  * automatic.
  */
 @Composable
-private fun UpdateRow() {
+private fun UpdateRow(onNeedsPermission: (Updater.State.Available) -> Unit) {
     val context = LocalContext.current
     val updater = remember(context) {
         (context.applicationContext as dev.lelonio.square.SquareApplication).updater
@@ -847,26 +1408,11 @@ private fun UpdateRow() {
         state is Updater.State.Downloading ||
         state is Updater.State.Installing
 
-    // Held across the trip to the system settings, so granting the permission
-    // continues the install instead of ending in a row that has to be pressed
-    // again.
-    var pending by remember { mutableStateOf<Updater.State.Available?>(null) }
-    val permission = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) {
-        val update = pending ?: return@rememberLauncherForActivityResult
-        pending = null
-        scope.launch { if (updater.canInstall()) updater.install(update) }
-    }
-
     Row(
         Modifier
             .fillMaxWidth()
             .clickable(enabled = !busy) {
-                scope.launch {
-                    pending = updater.checkAndInstall()
-                    pending?.let { permission.launch(updater.permissionIntent()) }
-                }
+                scope.launch { updater.checkAndInstall()?.let(onNeedsPermission) }
             }
             .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -996,6 +1542,7 @@ private fun DownloadsSection(backdrop: Backdrop) {
         RowDivider()
         DownloadSwitch(
             label = stringResource(R.string.download_wifi_only),
+            icon = PhosphorIcons.Regular.WifiHigh,
             checked = wifiOnly,
             backdrop = backdrop,
             onChange = settings::setWifiOnly,
@@ -1004,6 +1551,7 @@ private fun DownloadsSection(backdrop: Backdrop) {
         RowDivider()
         DownloadSwitch(
             label = stringResource(R.string.download_liked_songs),
+            icon = PhosphorIcons.Regular.Heart,
             checked = likedSongs,
             backdrop = backdrop,
             onChange = { enable ->
@@ -1038,10 +1586,33 @@ private fun DownloadsSection(backdrop: Backdrop) {
         RowDivider()
         DownloadSwitch(
             label = stringResource(R.string.offline_mode),
+            icon = PhosphorIcons.Regular.AirplaneTilt,
             checked = offline,
             backdrop = backdrop,
             onChange = settings::setOfflineMode,
         )
+
+        // Always offered, unlike the retry above: the music being here is not
+        // the same as its covers and words being here, and a song kept by an
+        // older build has none of them. Nothing is re-downloaded but the
+        // extras; the audio stays where it is.
+        RowDivider()
+        ActionRow(
+            stringResource(R.string.download_refetch_extras),
+            destructive = false,
+            icon = PhosphorIcons.Regular.Image,
+        ) {
+            scope.launch {
+                (context.applicationContext as dev.lelonio.square.SquareApplication)
+                    .downloadQueue.refetchExtras()
+                dev.lelonio.square.download.DownloadService.start(context)
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.download_refetch_started),
+                    android.widget.Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
 
         // Only when there is something to say. A row reporting zero failures is
         // a row about nothing, on a screen that is already long.
@@ -1054,12 +1625,17 @@ private fun DownloadsSection(backdrop: Backdrop) {
                 stringResource(R.string.downloads),
                 stringResource(R.string.download_failed_count, givenUp),
             )
-            ActionRow(stringResource(R.string.download_retry_failed), destructive = false) {
+            ActionRow(
+                stringResource(R.string.download_retry_failed),
+                destructive = false,
+                icon = PhosphorIcons.Regular.ArrowClockwise,
+            ) {
                 scope.launch {
                     store.retryFailed()
                     dev.lelonio.square.download.DownloadService.start(context)
                 }
             }
+
         }
 
         if (files.isNotEmpty()) {
@@ -1088,6 +1664,7 @@ private fun DownloadSwitch(
     label: String,
     checked: Boolean,
     backdrop: Backdrop,
+    icon: ImageVector? = null,
     onChange: (Boolean) -> Unit,
 ) {
     Row(
@@ -1098,13 +1675,10 @@ private fun DownloadSwitch(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        icon?.let { RowIcon(it) }
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        dev.lelonio.square.ui.glass.LiquidToggle(
-            selected = { checked },
-            onSelect = onChange,
-            backdrop = backdrop,
-            accent = MaterialTheme.colorScheme.primary,
-        )
+        // Drawn, not glass; see PlainToggle.
+        PlainToggle(checked = checked, onChange = onChange)
     }
 }
 
@@ -1130,14 +1704,15 @@ private fun Section(title: String?, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
+private fun InfoRow(label: String, value: String, icon: ImageVector? = null) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        icon?.let { RowIcon(it) }
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Text(
             value,
@@ -1159,34 +1734,14 @@ private fun InfoRow(label: String, value: String) {
  * cannot be attached to an issue from the browser.
  */
 @Composable
-private fun ReportRows(name: String?) {
+private fun ReportRows(name: String?, onSave: (java.io.File) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
-    // The report waiting for the folder picker to say where it goes.
-    var pending by remember { mutableStateOf<java.io.File?>(null) }
 
     fun failed(error: Throwable) {
         android.util.Log.w("SquareReport", "report failed: $error")
         android.widget.Toast.makeText(context, context.getString(R.string.report_failed), android.widget.Toast.LENGTH_SHORT).show()
-    }
-
-    val save = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain"),
-    ) { uri ->
-        val file = pending
-        pending = null
-        if (uri == null || file == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            runCatching {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri)?.use { out ->
-                        file.inputStream().use { it.copyTo(out) }
-                    } ?: error("no stream for $uri")
-                }
-                android.widget.Toast.makeText(context, context.getString(R.string.report_saved), android.widget.Toast.LENGTH_SHORT).show()
-            }.onFailure(::failed)
-        }
     }
 
     fun prepare(then: (java.io.File) -> Unit) {
@@ -1204,12 +1759,7 @@ private fun ReportRows(name: String?) {
         ActionRow(
             stringResource(if (busy) R.string.report_preparing else R.string.save_report),
             destructive = false,
-        ) {
-            prepare { file ->
-                pending = file
-                save.launch(file.name)
-            }
-        }
+        ) { prepare(onSave) }
         RowDivider()
         ActionRow(stringResource(R.string.send_report), destructive = false) {
             prepare { file ->
@@ -1226,7 +1776,32 @@ private fun ReportRows(name: String?) {
 }
 
 @Composable
-private fun ActionRow(label: String, destructive: Boolean, onClick: () -> Unit) {
+private fun ActionRow(
+    label: String,
+    destructive: Boolean,
+    icon: ImageVector? = null,
+    onClick: () -> Unit,
+) {
+    if (icon != null) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            RowIcon(icon)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = if (destructive) MaterialTheme.colorScheme.error else Ink,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        return
+    }
     Text(
         label,
         style = MaterialTheme.typography.bodyLarge,
@@ -1241,14 +1816,21 @@ private fun ActionRow(label: String, destructive: Boolean, onClick: () -> Unit) 
 
 /** A row of a list where one is picked, with a tick on the one that is. */
 @Composable
-private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ChoiceRow(
+    label: String,
+    selected: Boolean,
+    icon: ImageVector? = null,
+    onClick: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        icon?.let { RowIcon(it) }
         Text(
             label,
             style = MaterialTheme.typography.bodyLarge,
