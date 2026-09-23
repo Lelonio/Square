@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.luminance
 import dev.lelonio.square.ui.glass.backdrop.BackdropEffectScope
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +70,18 @@ data class GlassEffectConfig(
     val surfaceTintColor: Color = Color.Unspecified,
     /** Specular rim ("pluck") colour. [Color.Unspecified] keeps the default white. */
     val highlightColor: Color = Color.Unspecified,
+    /**
+     * A colour of the listener's choosing for the glass, as a hue in degrees.
+     *
+     * [NO_TINT] leaves the material as it is: a film that follows the page it
+     * is on and a white rim. A hue puts that colour through both, by
+     * [tintStrength], rather than replacing them — the film still knows
+     * whether it is over something light or dark, and only its cast changes.
+     * Asked for in #29.
+     */
+    val tintHue: Float = NO_TINT,
+    /** How far the glass is carried towards [tintHue], 0..1. */
+    val tintStrength: Float = 0.5f,
     /** Specular rim opacity, 0..1. */
     val highlightOpacity: Float = EdgeHighlightAlpha,
     /** Which rendering style every glass surface uses. */
@@ -181,6 +194,18 @@ enum class GlassComponent {
  * Apple-matched LiquidBottomTabs recipe.
  */
 internal const val LENS_MAX_DP = 48f
+
+/**
+ * How much of a pane's shorter side the lens may approach, per edge.
+ *
+ * Just under half, so the two edges' refraction meets nowhere: at exactly a
+ * half they touch, and touching is the crease itself.
+ */
+private const val LENS_MAX_SHARE = 0.45f
+
+/** Below this, in pixels, a surface is too small to be worth a lens. */
+private const val LENS_MIN_PANE_PX = 24f
+
 
 /**
  * The full screen player uses a much heavier blur than the glass pills, matching
@@ -450,7 +475,7 @@ fun Modifier.liquidGlass(
     // is how the library's own adaptive-luminance demo does it and why that
     // demo costs a capture and a pixel copy every frame.
     val backdropLuminance = LocalBackdropLuminance.current
-    val surfaceTintColor = if (config.surfaceTintColor.isSpecified) {
+    val surfaceTintColor = tinted(if (config.surfaceTintColor.isSpecified) {
         config.surfaceTintColor
     } else if (dev.lelonio.square.ui.theme.LocalInkOverride.current != null) {
         // A surface whose ink was chosen for it takes the opposite film.
@@ -469,7 +494,7 @@ fun Modifier.liquidGlass(
         val bright = ((backdropLuminance - BRIGHT_FROM) / (BRIGHT_TO - BRIGHT_FROM))
             .coerceIn(0f, 1f)
         lerp(Color(0xFF4A4A4E), Color(0xFF23232A), bright)
-    }
+    }, config)
 
     // Translucent style short-circuits everything below: no backdrop is sampled and
     // no RenderEffect runs, so there is nothing to configure. Content behind shows
@@ -493,8 +518,10 @@ fun Modifier.liquidGlass(
         // a stroked outline.
         val flatRim = (highlightAlpha * (config.highlightOpacity / EdgeHighlightAlpha))
             .coerceIn(0f, 1f)
-        val flatRimColor =
-            if (config.highlightColor.isSpecified) config.highlightColor else Color.White
+        val flatRimColor = tintedRim(
+            if (config.highlightColor.isSpecified) config.highlightColor else Color.White,
+            config,
+        )
         return this
             .clip(shape)
             .background(surfaceTintColor.copy(alpha = config.surfaceOpacity.coerceIn(0f, 1f)))
@@ -576,11 +603,29 @@ fun Modifier.liquidGlass(
             if (!plainBlur &&
                 applyEdgeEffects &&
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                (lensHeightPx > 0f || lensAmountPx > 0f)
+                (lensHeightPx > 0f || lensAmountPx > 0f) &&
+                // A pane too small to hold a lens is drawn without one: the
+                // shader's cost climbs as its reach approaches the surface,
+                // and on a few pixels there is nothing to see anyway.
+                minOf(size.width, size.height) > LENS_MIN_PANE_PX
             ) {
+                // Never past the middle of the pane. The depth is a length in
+                // dp, and on a surface shorter than twice that length the lens
+                // rolling in from the top edge meets the one from the bottom:
+                // where they meet is a crease, and on the tab bar, barely
+                // taller than this setting's own maximum, it read as a line
+                // across it.
+                //
+                // A hard limit, not a curve. Easing the numbers into what was
+                // left kept the whole slider meaningful and hung the app: the
+                // refraction shader, handed a depth a hair under what the pane
+                // could hold, took the main thread for minutes at a time. Past
+                // the limit the slider stops doing anything on short surfaces,
+                // and goes on working on every tall one.
+                val reach = minOf(size.width, size.height) * LENS_MAX_SHARE
                 lens(
-                    refractionHeight = lensHeightPx,
-                    refractionAmount = lensAmountPx,
+                    refractionHeight = lensHeightPx.coerceAtMost(reach),
+                    refractionAmount = lensAmountPx.coerceAtMost(reach),
                     depthEffect = config.depthEffect,
                     chromaticAberration = config.chromaticAberration,
                 )
@@ -591,7 +636,10 @@ fun Modifier.liquidGlass(
     // The rim's own colour, independent of the surface tint: on a tinted pill a
     // white rim is what reads as "lit glass", but a coloured one is the difference
     // between chrome and neon, so it is worth exposing rather than assuming.
-    val rimColor = if (config.highlightColor.isSpecified) config.highlightColor else Color.White
+    val rimColor = tintedRim(
+        if (config.highlightColor.isSpecified) config.highlightColor else Color.White,
+        config,
+    )
     // Call sites pass a per-component alpha (the nav bar wants a dimmer rim than a
     // button). Scale the user's setting by it rather than replacing it, so both the
     // per-component tuning and the preference still mean something.
@@ -652,3 +700,40 @@ fun Modifier.liquidGlass(
         loopBucket = loopBucket,
     )
 }
+
+/** A hue nobody asked for; see [GlassEffectConfig.tintHue]. */
+const val NO_TINT = -1f
+
+/**
+ * [base] carried towards the listener's hue, keeping its own lightness.
+ *
+ * The film is what says whether the glass is over something light or dark, so
+ * the tint moves its colour rather than replacing it: at full strength a dark
+ * film becomes a dark film of that colour, not a flat slab of it, and the text
+ * on the pane goes on being readable.
+ */
+private fun tinted(base: Color, config: GlassEffectConfig): Color {
+    if (config.tintHue < 0f) return base
+    val strength = config.tintStrength.coerceIn(0f, 1f)
+    if (strength <= 0f) return base
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(base.toArgb(), hsv)
+    val saturation = (hsv[1] + (TINT_SATURATION - hsv[1]) * strength).coerceIn(0f, 1f)
+    return Color(android.graphics.Color.HSVToColor(floatArrayOf(config.tintHue, saturation, hsv[2])))
+        .copy(alpha = base.alpha)
+}
+
+/** The rim, which goes the whole way: it is the part that reads as lit. */
+private fun tintedRim(base: Color, config: GlassEffectConfig): Color {
+    if (config.tintHue < 0f) return base
+    val strength = config.tintStrength.coerceIn(0f, 1f)
+    if (strength <= 0f) return base
+    val hue = Color(
+        android.graphics.Color.HSVToColor(floatArrayOf(config.tintHue, TINT_RIM_SATURATION, 1f)),
+    )
+    return lerp(base, hue, strength).copy(alpha = base.alpha)
+}
+
+/** How coloured the film and the rim go at full strength. */
+private const val TINT_SATURATION = 0.55f
+private const val TINT_RIM_SATURATION = 0.85f

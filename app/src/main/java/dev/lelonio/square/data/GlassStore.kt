@@ -77,7 +77,7 @@ enum class GlassProfile(
  * stored separately from the profile rather than flattened into it, so picking a
  * profile again is a way back: it clears them.
  */
-class GlassStore(context: Context) {
+class GlassStore(private val context: Context) {
 
     private val prefs = context.applicationContext
         .getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
@@ -129,6 +129,42 @@ class GlassStore(context: Context) {
 
     /** How strongly the selected tab is washed; see [read]. */
     fun setPuckOpacity(value: Float) = putFloat(KEY_PUCK, value)
+
+    /** A hue of the listener's choosing for the glass; null puts it back to none. */
+    fun setTintHue(hue: Float?) {
+        val edit = prefs.edit().remove(KEY_TINT_SYSTEM)
+        if (hue == null) edit.remove(KEY_TINT_HUE) else edit.putFloat(KEY_TINT_HUE, hue)
+        edit.apply()
+        _config.value = read()
+    }
+
+    /**
+     * The phone's own accent, as the glass's colour.
+     *
+     * Kept as "whatever the system says" rather than as the hue it says today,
+     * so a wallpaper that changes the accent changes the glass with it — at the
+     * next start, which is when this is read.
+     */
+    fun setTintFromSystem() {
+        prefs.edit().putBoolean(KEY_TINT_SYSTEM, true).remove(KEY_TINT_HUE).apply()
+        _config.value = read()
+    }
+
+    /** Whether the glass is following the phone's accent; see [setTintFromSystem]. */
+    val tintFromSystem: Boolean get() = prefs.getBoolean(KEY_TINT_SYSTEM, false)
+
+    /** The accent's hue, or null where the phone has no accent to give. */
+    private fun systemHue(): Float? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        return runCatching {
+            val argb = context.applicationContext.getColor(android.R.color.system_accent1_400)
+            val hsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(argb, hsv)
+            hsv[0]
+        }.getOrNull()
+    }
+
+    fun setTintStrength(value: Float) = putFloat(KEY_TINT_STRENGTH, value)
 
 
     /**
@@ -199,6 +235,12 @@ class GlassStore(context: Context) {
             // tab was a guess.
             puckColor = androidx.compose.ui.graphics.Color.White,
             puckOpacity = prefs.getFloat(KEY_PUCK, DEFAULT_PUCK_OPACITY),
+            tintHue = if (prefs.getBoolean(KEY_TINT_SYSTEM, false)) {
+                systemHue() ?: dev.lelonio.square.ui.glass.NO_TINT
+            } else {
+                prefs.getFloat(KEY_TINT_HUE, dev.lelonio.square.ui.glass.NO_TINT)
+            },
+            tintStrength = prefs.getFloat(KEY_TINT_STRENGTH, DEFAULT_TINT_STRENGTH),
         )
     }
 
@@ -229,6 +271,12 @@ class GlassStore(context: Context) {
         const val KEY_NAV_BAR = "nav_bar"
         const val KEY_BAR_FOLDS = "bar_folds"
         const val KEY_PUCK = "puck"
+        const val KEY_TINT_HUE = "tint_hue"
+        const val KEY_TINT_SYSTEM = "tint_system"
+        const val KEY_TINT_STRENGTH = "tint_strength"
+
+        /** Enough colour to see at a glance, not enough to read as a coloured slab. */
+        const val DEFAULT_TINT_STRENGTH = 0.6f
 
         /** Enough to read as a lit tab over a bright cover, short of a slab. */
         const val DEFAULT_PUCK_OPACITY = 0.26f
