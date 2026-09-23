@@ -489,6 +489,19 @@ object DownloadExtras {
         }
     }
 
+    /**
+     * The extras go; the music stays.
+     *
+     * For the listener who has covers or words missing on songs already on the
+     * phone — a track kept by a build that had none, or a lookup that failed
+     * the day it was fetched. The audio is untouched, and the queue fills the
+     * extras back in the next time it runs; see DownloadQueue.backfillExtras.
+     */
+    fun forgetAll() {
+        forgetArtAnswers()
+        root?.let { runCatching { it.deleteRecursively() } }
+    }
+
     /** Everything goes, when the downloads do. */
     fun clear() {
         forgetArtAnswers()

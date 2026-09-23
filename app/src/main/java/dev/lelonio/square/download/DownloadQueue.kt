@@ -257,6 +257,18 @@ class DownloadQueue(
     /** Tracks whose extras were attempted this run, successfully or not. */
     private val extrasTried = mutableSetOf<String>()
 
+    /**
+     * Asks for every downloaded song's extras again.
+     *
+     * The answers already filed are what stop a track being asked about twice,
+     * so forgetting them is the whole of it: the next run finds every song
+     * missing its extras and fills them in. See DownloadExtras.forgetAll.
+     */
+    fun refetchExtras() {
+        extrasTried.clear()
+        DownloadExtras.forgetAll()
+    }
+
     private val coversTried = mutableSetOf<String>()
 
     /**
