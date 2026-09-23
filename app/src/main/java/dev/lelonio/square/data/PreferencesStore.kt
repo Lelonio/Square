@@ -84,6 +84,24 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_CANVAS, value).apply()
     }
 
+    private val _keepPlayingOnClose = MutableStateFlow(prefs.getBoolean(KEY_KEEP_PLAYING, false))
+
+    /**
+     * Whether the music survives the app being swiped out of the recents.
+     *
+     * Off by default, and deliberately: a player that goes on after the app has
+     * been dismissed is a player the gesture did not reach, and the shade is
+     * then the only way to stop it. But the same gesture is easy to make by
+     * accident, and losing the song for it is worse for the people who asked
+     * (#27) — so it is a choice rather than a rule.
+     */
+    val keepPlayingOnClose: StateFlow<Boolean> = _keepPlayingOnClose.asStateFlow()
+
+    fun setKeepPlayingOnClose(value: Boolean) {
+        _keepPlayingOnClose.value = value
+        prefs.edit().putBoolean(KEY_KEEP_PLAYING, value).apply()
+    }
+
     private val _autoplayInfinite = MutableStateFlow(prefs.getBoolean(KEY_AUTOPLAY_INFINITE, false))
 
     /** Whether playback automatically appends similar tracks when reaching queue end. */
@@ -226,6 +244,7 @@ class PreferencesStore(context: Context) {
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_CANVAS = "canvas_enabled"
+        const val KEY_KEEP_PLAYING = "keep_playing_on_close"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"
         const val KEY_TRIM_SILENCE = "trim_silence"
         const val KEY_SKIP_FADE = "skip_fade"

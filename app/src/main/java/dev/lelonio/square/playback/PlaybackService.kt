@@ -1636,6 +1636,14 @@ class PlaybackService : MediaLibraryService() {
         // to stop it did nothing, and what was left was a notification the user
         // had already tried to get rid of.
         //
+        // Unless the listener has asked for the music to survive the gesture:
+        // a swipe is easy to make by accident, and losing the song for it is
+        // what #27 asked about. The notification is still there to stop it.
+        if (container.preferences.keepPlayingOnClose.value && player.isPlaying) {
+            android.util.Log.i(TAG, "task removed while playing; kept alive by the setting")
+            return
+        }
+
         // Media3's own helper rather than a bare stopSelf: it pauses every
         // player attached to the service first, so the engine is told to stop
         // instead of being cut off when onDestroy releases it.
