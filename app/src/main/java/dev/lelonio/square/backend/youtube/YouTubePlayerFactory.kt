@@ -69,6 +69,8 @@ object YouTubePlayerFactory {
                 val fades = YouTubeFadeController(exo, crossfadeStore)
                 val preferences = (host.context.applicationContext as? dev.lelonio.square.SquareApplication)
                     ?.preferences
+                // The talking and the sketches around a music video; see SponsorBlock.
+                SponsorBlock(exo) { preferences?.sponsorBlock?.value ?: true }
                 // Every change of song the listener asks for goes through the
                 // fade; see SkipFadePlayer.
                 SkipFadePlayer(exo, fades) { preferences?.skipFadeMs() ?: 0 }

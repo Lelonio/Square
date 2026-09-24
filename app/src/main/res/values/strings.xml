@@ -338,6 +338,8 @@
     <string name="page_downloads_summary">What is on the phone, and what is fetched</string>
     <string name="keep_playing_on_close">Keep playing when the app is closed</string>
     <string name="keep_playing_on_close_note">Swiping Square out of the recents leaves the music playing. The notification still stops it.</string>
+    <string name="sponsor_block">Skip the non-music parts</string>
+    <string name="sponsor_block_note">Intros, sketches and talking in music videos, as marked by SponsorBlock\'s community. Only the video id is sent.</string>
     <string name="page_app_bar">Bottom bar</string>
     <string name="page_app_system">System</string>
     <string name="page_app_storage">Storage</string>

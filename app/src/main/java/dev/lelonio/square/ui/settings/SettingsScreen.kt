@@ -419,6 +419,24 @@ fun SettingsScreen(
                     color = InkDim,
                     modifier = Modifier.padding(start = ROW_TEXT_START, end = 18.dp, bottom = 14.dp),
                 )
+                // Only where it does anything: SponsorBlock knows YouTube videos.
+                if (!showSpotify) {
+                    val sponsorBlock by prefs.sponsorBlock.collectAsStateWithLifecycle()
+                    RowDivider()
+                    DownloadSwitch(
+                        label = stringResource(R.string.sponsor_block),
+                        checked = sponsorBlock,
+                        backdrop = backdrop,
+                        icon = PhosphorIcons.Regular.Scissors,
+                        onChange = prefs::setSponsorBlock,
+                    )
+                    Text(
+                        stringResource(R.string.sponsor_block_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = InkDim,
+                        modifier = Modifier.padding(start = ROW_TEXT_START, end = 18.dp, bottom = 14.dp),
+                    )
+                }
             }
         }
 

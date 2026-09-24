@@ -102,6 +102,20 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_KEEP_PLAYING, value).apply()
     }
 
+    private val _sponsorBlock = MutableStateFlow(prefs.getBoolean(KEY_SPONSOR_BLOCK, true))
+
+    /**
+     * Whether the non-music parts of a YouTube track are skipped; see
+     * SponsorBlock. On to begin with: nobody opens a music app for the sketch
+     * at the start of a music video.
+     */
+    val sponsorBlock: StateFlow<Boolean> = _sponsorBlock.asStateFlow()
+
+    fun setSponsorBlock(value: Boolean) {
+        _sponsorBlock.value = value
+        prefs.edit().putBoolean(KEY_SPONSOR_BLOCK, value).apply()
+    }
+
     private val _autoplayInfinite = MutableStateFlow(prefs.getBoolean(KEY_AUTOPLAY_INFINITE, false))
 
     /** Whether playback automatically appends similar tracks when reaching queue end. */
@@ -245,6 +259,7 @@ class PreferencesStore(context: Context) {
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_CANVAS = "canvas_enabled"
         const val KEY_KEEP_PLAYING = "keep_playing_on_close"
+        const val KEY_SPONSOR_BLOCK = "sponsor_block"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"
         const val KEY_TRIM_SILENCE = "trim_silence"
         const val KEY_SKIP_FADE = "skip_fade"

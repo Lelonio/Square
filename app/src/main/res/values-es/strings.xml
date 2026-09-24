@@ -317,6 +317,8 @@
     <string name="page_downloads_summary">Qué hay en el teléfono y qué se descarga</string>
     <string name="keep_playing_on_close">Seguir sonando al cerrar la app</string>
     <string name="keep_playing_on_close_note">Quitar Square de recientes deja la música sonando. Desde la notificación se detiene igual.</string>
+    <string name="sponsor_block">Saltar las partes sin música</string>
+    <string name="sponsor_block_note">Intros, sketches y partes habladas en videoclips, marcadas por la comunidad de SponsorBlock. Solo se envía el id del vídeo.</string>
     <string name="page_app_bar">Barra inferior</string>
     <string name="page_app_system">Sistema</string>
     <string name="page_app_storage">Almacenamiento</string>

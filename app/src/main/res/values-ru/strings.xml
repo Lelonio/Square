@@ -334,6 +334,8 @@
     <string name="page_downloads_summary">Что лежит на телефоне и что скачивается</string>
     <string name="keep_playing_on_close">Продолжать играть при закрытии приложения</string>
     <string name="keep_playing_on_close_note">Если убрать Square из недавних, музыка продолжит играть. Остановить можно из уведомления.</string>
+    <string name="sponsor_block">Пропускать немузыкальные части</string>
+    <string name="sponsor_block_note">Вступления, сценки и разговоры в клипах, отмеченные сообществом SponsorBlock. Отправляется только id видео.</string>
     <string name="page_app_bar">Нижняя панель</string>
     <string name="page_app_system">Система</string>
     <string name="page_app_storage">Память</string>

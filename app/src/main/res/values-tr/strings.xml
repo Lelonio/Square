@@ -332,6 +332,8 @@
     <string name="page_downloads_summary">Telefonda ne var ve ne indiriliyor</string>
     <string name="keep_playing_on_close">Uygulama kapatılınca çalmaya devam et</string>
     <string name="keep_playing_on_close_note">Square\'i son kullanılanlardan kaydırmak müziği çalar bırakır. Bildirimden yine durdurulur.</string>
+    <string name="sponsor_block">Müzik olmayan kısımları atla</string>
+    <string name="sponsor_block_note">Klip içindeki girişler, skeçler ve konuşmalar, SponsorBlock topluluğunun işaretlediği gibi. Yalnızca video kimliği gönderilir.</string>
     <string name="page_app_bar">Alt çubuk</string>
     <string name="page_app_system">Sistem</string>
     <string name="page_app_storage">Depolama</string>
