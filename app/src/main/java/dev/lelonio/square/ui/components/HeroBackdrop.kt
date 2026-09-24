@@ -533,11 +533,17 @@ private fun PictureExtension(
                         if (imageAspect != null) size.width / imageAspect else size.height
                     val fadeFrom = if (imageAspect != null) 1f - SLOT_FADE else softenFrom
                     val fadeTo = if (imageAspect != null) 1f else softenTo
-                    // Where the picture is last wholly itself: the top of its
-                    // fade, and a little into it. Its own last row where the
-                    // fade is below it, since there is no picture down there
-                    // to read.
-                    val rowFraction = (fadeFrom + (fadeTo - fadeFrom) * 0.2f).coerceAtMost(0.995f)
+                    // Exactly where the fade begins: what the picture is at the
+                    // point it starts to go is what it has to carry on as.
+                    //
+                    // It used to be read a little into the fade, and a cover's
+                    // last stretch is very often something else — a border, a
+                    // strip of text, a floor under the subject — so the
+                    // screen below the cover took the colour of that band
+                    // rather than of the picture the eye was following down.
+                    // Its own last row where the fade is below it, since there
+                    // is no picture down there to read.
+                    val rowFraction = fadeFrom.coerceAtMost(0.995f)
                     // From the fade, or from the picture's bottom edge where
                     // the fade is further down than that: the stretch between
                     // the two is the picture carrying on, and it has to be
@@ -619,13 +625,14 @@ private class ExtensionPicture {
             (held shl 48) or (row.toLong() shl 32) or (left.toLong() shl 16) or width.toLong()
         built?.takeIf { key == wanted && from === source }?.let { return it }
 
-        // Three rows around the one asked for, averaged: a single row of a
-        // small copy is one line of the picture, and one line can be a stroke
-        // that is nowhere else.
+        // A few rows averaged, all of them at or above the one asked for: a
+        // single row can be a stroke that is nowhere else, but a row below it
+        // is already the part of the picture that is fading, and at the
+        // bottom of a cover that is so often a band of another colour.
         val bitmap = source.asAndroidBitmap()
         val sampled = FloatArray(width * 3)
         var rows = 0
-        for (r in (row - 1)..(row + 1)) {
+        for (r in (row - EXTENSION_ROWS_ABOVE)..row) {
             if (r < top || r >= bottom) continue
             val line = IntArray(width)
             bitmap.getPixels(line, 0, width, left, r, width, 1)
@@ -860,8 +867,17 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCropped(
     )
 }
 
-/** How wide the copy the extension is read from is decoded. */
-private const val EXTENSION_PX = 32
+/**
+ * How wide the copy the extension is read from is decoded.
+ *
+ * Large enough that the row where the fade begins is a row of its own: at 32
+ * the last tenth of a cover was three rows, and the one read was whichever of
+ * them the rounding landed on.
+ */
+private const val EXTENSION_PX = 128
+
+/** Rows above the fade that are averaged into the one read; see ExtensionPicture.at. */
+private const val EXTENSION_ROWS_ABOVE = 3
 
 /** Rows in the extension's own picture, top to bottom of the screen. */
 private const val EXTENSION_ROWS = 24
