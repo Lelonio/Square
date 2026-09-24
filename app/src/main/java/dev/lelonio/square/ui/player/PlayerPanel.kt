@@ -253,6 +253,8 @@ data class QueueEntry(
     val title: String,
     val artist: String,
     val isCurrent: Boolean,
+    /** Already heard: shown above the playing track, dimmed. */
+    val played: Boolean = false,
 )
 
 @Composable
@@ -267,7 +269,30 @@ internal fun QueueList(
         return
     }
 
-    LazyColumn(Modifier.padding(vertical = 8.dp)) {
+    // Opens on the playing track, with what was heard above it out of view:
+    // history for whoever scrolls up, and the next songs where they always
+    // were for everyone else. Back to it on every change of song, as the list
+    // used to start there by having nothing before it.
+    val heard = queue.count { it.played }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = if (heard > 0) heard + 1 else 0,
+    )
+    val playingUri = queue.firstOrNull { it.isCurrent }?.uri
+    LaunchedEffect(playingUri, heard) {
+        listState.scrollToItem(if (heard > 0) heard + 1 else 0)
+    }
+
+    LazyColumn(Modifier.padding(vertical = 8.dp), state = listState) {
+        if (heard > 0) {
+            item(key = "history-heading") {
+                Text(
+                    stringResource(R.string.queue_history),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = GlassInkDim,
+                    modifier = Modifier.padding(start = 18.dp, top = 6.dp, bottom = 4.dp),
+                )
+            }
+        }
         // Keyed on the track, not on where it sits.
         //
         // With the index as the key, taking one out renumbered every row below
@@ -291,7 +316,11 @@ internal fun QueueList(
                     Text(
                         entry.title,
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (entry.isCurrent) GlassInk else GlassInk.copy(alpha = 0.85f),
+                        color = when {
+                            entry.isCurrent -> GlassInk
+                            entry.played -> GlassInk.copy(alpha = 0.45f)
+                            else -> GlassInk.copy(alpha = 0.85f)
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -306,7 +335,7 @@ internal fun QueueList(
 
                 // Not on the track being played: taking that one out is a
                 // different act — it is a skip — and it already has a button.
-                if (!entry.isCurrent) {
+                if (!entry.isCurrent && !entry.played) {
                     Icon(
                         PhosphorIcons.Regular.X,
                         contentDescription = stringResource(R.string.remove_from_queue),

@@ -138,6 +138,7 @@
     <string name="play_on">यहाँ चलाएँ</string>
     <string name="no_devices">कोई डिवाइस उपलब्ध नहीं</string>
     <string name="queue_empty">कतार खाली है</string>
+    <string name="queue_history">सुने जा चुके</string>
     <string name="no_lyrics">इस गाने के बोल नहीं हैं</string>
     <string name="speed">गति</string>
     <string name="pitch">पिच</string>

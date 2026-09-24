@@ -138,6 +138,7 @@
     <string name="play_on">Şurada çal</string>
     <string name="no_devices">Kullanılabilir cihaz yok</string>
     <string name="queue_empty">Sıra boş</string>
+    <string name="queue_history">Dinlenenler</string>
     <string name="no_lyrics">Bu şarkının sözleri yok</string>
     <string name="speed">Hız</string>
     <string name="pitch">Perde</string>

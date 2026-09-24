@@ -128,6 +128,7 @@
     <string name="play_on">Reproducir en</string>
     <string name="no_devices">Ningún dispositivo disponible</string>
     <string name="queue_empty">La cola está vacía</string>
+    <string name="queue_history">Ya escuchadas</string>
     <string name="no_lyrics">Sin letra para esta canción</string>
     <string name="speed">Velocidad</string>
     <string name="pitch">Tono</string>

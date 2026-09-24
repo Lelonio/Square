@@ -128,6 +128,7 @@
     <string name="play_on">Tocar em</string>
     <string name="no_devices">Nenhum dispositivo disponível</string>
     <string name="queue_empty">A fila está vazia</string>
+    <string name="queue_history">Já ouvidas</string>
     <string name="no_lyrics">Sem letra para esta faixa</string>
     <string name="speed">Velocidade</string>
     <string name="pitch">Tom</string>

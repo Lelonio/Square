@@ -128,6 +128,7 @@
     <string name="play_on">Lire sur</string>
     <string name="no_devices">Aucun appareil disponible</string>
     <string name="queue_empty">La file est vide</string>
+    <string name="queue_history">Déjà écoutés</string>
     <string name="no_lyrics">Pas de paroles pour ce titre</string>
     <string name="speed">Vitesse</string>
     <string name="pitch">Hauteur</string>

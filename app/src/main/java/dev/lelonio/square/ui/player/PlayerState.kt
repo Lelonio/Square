@@ -291,10 +291,15 @@ fun rememberQueue(player: Player?): State<List<QueueEntry>> {
 
         fun rebuild() {
             val current = player.currentMediaItemIndex
-            // From the playing track onwards. What has already been heard is
-            // not a queue — it is history, and it pushed what comes next off
-            // the bottom of the panel on any list longer than a screen.
-            queue.value = (current until player.mediaItemCount).map { index ->
+            // The last few heard as well as what comes next.
+            //
+            // They were left out once because they pushed the upcoming tracks
+            // off the bottom of the panel; the panel now opens on the playing
+            // track instead, with these above it for whoever scrolls up. A song
+            // that had ended simply vanished from the list, which read as the
+            // app throwing it away (#30).
+            val from = (current - QUEUE_HISTORY).coerceAtLeast(0)
+            queue.value = (from until player.mediaItemCount).map { index ->
                 val metadata = player.getMediaItemAt(index).mediaMetadata
                 QueueEntry(
                     index = index,
@@ -302,6 +307,7 @@ fun rememberQueue(player: Player?): State<List<QueueEntry>> {
                     title = metadata.title?.toString().orEmpty(),
                     artist = metadata.artist?.toString().orEmpty(),
                     isCurrent = index == current,
+                    played = index < current,
                 )
             }
         }
@@ -354,3 +360,6 @@ fun rememberPositionMs(player: Player?, isPlaying: Boolean): State<Long> {
 
     return position
 }
+
+/** How many of the tracks already heard the queue panel keeps above the playing one. */
+private const val QUEUE_HISTORY = 20

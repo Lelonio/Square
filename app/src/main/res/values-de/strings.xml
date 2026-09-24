@@ -128,6 +128,7 @@
     <string name="play_on">Abspielen auf</string>
     <string name="no_devices">Keine Geräte verfügbar</string>
     <string name="queue_empty">Die Warteschlange ist leer</string>
+    <string name="queue_history">Bereits gehört</string>
     <string name="no_lyrics">Kein Songtext für diesen Titel</string>
     <string name="speed">Tempo</string>
     <string name="pitch">Tonhöhe</string>

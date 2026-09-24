@@ -140,6 +140,7 @@
     <string name="play_on">Играть на</string>
     <string name="no_devices">Устройств нет</string>
     <string name="queue_empty">Очередь пуста</string>
+    <string name="queue_history">Уже прослушано</string>
     <string name="no_lyrics">Для этого трека текста нет</string>
     <string name="speed">Скорость</string>
     <string name="pitch">Тон</string>

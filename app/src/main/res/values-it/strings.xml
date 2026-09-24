@@ -129,6 +129,7 @@
     <string name="play_on">Riproduci su</string>
     <string name="no_devices">Nessun dispositivo disponibile</string>
     <string name="queue_empty">La coda è vuota</string>
+    <string name="queue_history">Già ascoltati</string>
     <string name="no_lyrics">Nessun testo per questo brano</string>
     <string name="speed">Velocità</string>
     <string name="pitch">Tonalità</string>
