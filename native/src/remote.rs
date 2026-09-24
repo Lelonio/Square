@@ -127,6 +127,18 @@ pub fn elsewhere_active() -> bool {
         .unwrap_or(false)
 }
 
+/// [`elsewhere_active`], for a caller that already knows this device's id and
+/// must not wait on the engine to be told it; see engine::elsewhere_active.
+pub fn elsewhere_active_for(own: &str) -> bool {
+    let Ok(guard) = CLUSTER.lock() else {
+        return false;
+    };
+    let Some(cluster) = guard.as_ref() else {
+        return false;
+    };
+    !cluster.active_device_id.is_empty() && cluster.active_device_id != own
+}
+
 /// This device's own Connect id, so the caller can tell "here" from "there".
 pub fn device_id() -> engine::EngineResult<String> {
     engine::with_session(|session| session.device_id().to_string())

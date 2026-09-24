@@ -243,6 +243,7 @@ impl Bundle {
 }
 
 /// The inputs to a [`Bundle`], all of them cheap to clone.
+#[derive(Clone)]
 struct Recipe {
     session_config: SessionConfig,
     player_config: PlayerConfig,
@@ -519,7 +520,7 @@ pub fn start(
     // A refused account is not covered: that is Spotify saying no, not the
     // network being absent, and starting anyway would hide it behind an app
     // that plays a few downloaded songs and explains nothing.
-    let bundle = match build_bundle(&rt, &recipe, &mixer, &events_tx) {
+    let bundle = match build_bundle(rt.handle(), &recipe, &mixer, &events_tx) {
         Ok(bundle) => {
             OFFLINE.store(false, Ordering::SeqCst);
             bundle
@@ -528,7 +529,7 @@ pub fn start(
         Err(e) if crate::downloads::any() => {
             log::warn!("{e}; starting offline with what is on the phone");
             OFFLINE.store(true, Ordering::SeqCst);
-            build_offline_bundle(&rt, &recipe, &mixer, &events_tx)?
+            build_offline_bundle(rt.handle(), &recipe, &mixer, &events_tx)?
         }
         Err(e) => return Err(e),
     };
@@ -549,7 +550,7 @@ pub fn start(
 /// the handshake, so it is only ever reached from a JNI call the Kotlin side
 /// makes off the main thread.
 fn build_bundle(
-    rt: &Runtime,
+    rt: &tokio::runtime::Handle,
     recipe: &Recipe,
     mixer: &Arc<SoftMixer>,
     events_tx: &std::sync::mpsc::Sender<Pump>,
@@ -817,7 +818,7 @@ pub fn is_offline() -> bool {
 /// downloaded track needs — [`load_downloaded_track`] reads it off the disk
 /// without asking the session for anything.
 fn build_offline_bundle(
-    rt: &Runtime,
+    rt: &tokio::runtime::Handle,
     recipe: &Recipe,
     mixer: &Arc<SoftMixer>,
     events_tx: &std::sync::mpsc::Sender<Pump>,
@@ -876,7 +877,7 @@ pub(crate) fn live_generation() -> u64 {
 /// moment: a dying player emits a `Stopped`, and delivered late that would tell
 /// Kotlin the new player had stopped before it started.
 fn spawn_event_forwarder(
-    rt: &Runtime,
+    rt: &tokio::runtime::Handle,
     player: Arc<Player>,
     events_tx: std::sync::mpsc::Sender<Pump>,
     generation: u64,
@@ -1062,17 +1063,46 @@ pub fn set_language(language: &str, rebuild: bool) -> EngineResult<()> {
 /// The engine lock is held throughout, so commands arriving mid-reconnection
 /// wait rather than seeing half a bundle.
 pub fn reconnect() -> EngineResult<()> {
-    let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
-    let engine = guard.as_mut().ok_or("engine not started")?;
-    RECONNECTING.store(true, Ordering::SeqCst);
-    // Every path out of here from this point has to clear it, which is what the
-    // closure is for: a `?` on the build would otherwise leave the engine
-    // looking permanently mid-reconnection.
+    // Not under the engine lock while the network is being waited on.
+    //
+    // A new session is a TCP connection, a handshake and a login, which on a
+    // bad signal is seconds. The lock was held for all of it, so every other
+    // call into the engine waited the same seconds — including the main
+    // thread's, and a phone that has had no answer from the main thread for
+    // five seconds calls the app unresponsive. A run of skips that lost the
+    // Connect device did exactly that (#31). The bundle is taken out and what
+    // building needs is copied under the lock; the slow part runs without it,
+    // and anyone asking meanwhile hears "reconnecting" at once, which every
+    // caller already handles; the new bundle is put back under the lock.
+    if RECONNECTING.swap(true, Ordering::SeqCst) {
+        // One at a time: a second request would tear down the session the
+        // first is still building.
+        return Ok(());
+    }
+    let taken = (|| -> EngineResult<_> {
+        let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        let engine = guard.as_mut().ok_or("engine not started")?;
+        Ok((
+            engine.bundle.take(),
+            engine.rt.handle().clone(),
+            engine.recipe.clone(),
+            engine.mixer.clone(),
+            engine.events_tx.clone(),
+        ))
+    })();
+    let (old, handle, recipe, mixer, events_tx) = match taken {
+        Ok(parts) => parts,
+        Err(e) => {
+            RECONNECTING.store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+    };
+
     let result = (|| {
-        // Taken out first, and dropped before the new one is built: two live
-        // sessions would be two devices in the account's list, and the old one
-        // would go on publishing state for a player nobody is listening to.
-        if let Some(old) = engine.bundle.take() {
+        // Dropped before the new one is built: two live sessions would be two
+        // devices in the account's list, and the old one would go on
+        // publishing state for a player nobody is listening to.
+        if let Some(old) = old {
             log::info!("discarding the old session");
             crate::remote::clear();
             if let Some(spirc) = old.spirc.as_ref() {
@@ -1093,26 +1123,30 @@ pub fn reconnect() -> EngineResult<()> {
         // leave the engine with no bundle at all — no session and no player,
         // which takes the downloads away too. A retry that cannot reach the
         // network puts the offline player back instead.
-        let bundle = match build_bundle(&engine.rt, &engine.recipe, &engine.mixer, &engine.events_tx)
-        {
+        match build_bundle(&handle, &recipe, &mixer, &events_tx) {
             Ok(bundle) => {
                 OFFLINE.store(false, Ordering::SeqCst);
                 log::info!("reconnected");
-                bundle
+                Ok(bundle)
             }
-            Err(e) if e == PREMIUM_REQUIRED => return Err(e),
+            Err(e) if e == PREMIUM_REQUIRED => Err(e),
             Err(e) if crate::downloads::any() => {
                 log::warn!("{e}; staying offline with what is on the phone");
                 OFFLINE.store(true, Ordering::SeqCst);
-                build_offline_bundle(&engine.rt, &engine.recipe, &engine.mixer, &engine.events_tx)?
+                build_offline_bundle(&handle, &recipe, &mixer, &events_tx)
             }
-            Err(e) => return Err(e),
-        };
+            Err(e) => Err(e),
+        }
+    })();
+
+    let installed = result.and_then(|bundle| {
+        let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        let engine = guard.as_mut().ok_or("engine not started")?;
         engine.bundle = Some(bundle);
         Ok(())
-    })();
+    });
     RECONNECTING.store(false, Ordering::SeqCst);
-    result
+    installed
 }
 
 /// Forward player events to Kotlin. Runs for the life of the engine.
@@ -1897,11 +1931,22 @@ pub fn elsewhere_active() -> bool {
         return false;
     }
 
-    match with_bundle(|bundle| bundle.spirc().map(|spirc| spirc.is_active()).unwrap_or(false)) {
-        Ok(true) => false,
-        Ok(false) => crate::remote::elsewhere_active(),
-        Err(_) => crate::remote::elsewhere_active(),
+    // Without waiting for the engine. This is asked on the main thread for
+    // every player event, and the engine lock can be held for a login's worth
+    // of seconds while it starts: a busy lock means the device is being built,
+    // and a device being built is not somewhere else playing. See #31.
+    let Ok(guard) = ENGINE.try_lock() else {
+        return false;
+    };
+    let Some(bundle) = guard.as_ref().and_then(|engine| engine.bundle.as_ref()) else {
+        return false;
+    };
+    if bundle.spirc().map(|spirc| spirc.is_active()).unwrap_or(false) {
+        return false;
     }
+    let own = bundle.session.device_id().to_string();
+    drop(guard);
+    crate::remote::elsewhere_active_for(&own)
 }
 
 /// What the Connect state says this device is playing, as JSON.
