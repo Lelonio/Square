@@ -362,8 +362,9 @@ pub fn start(
 ) -> EngineResult<()> {
     tune_fetching();
 
-    let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
-    if guard.is_some() {
+    // Checked, and let go: the lock is not held across the first handshake.
+    // See the note where the engine is put in place below.
+    if ENGINE.lock().map_err(|_| "engine mutex poisoned")?.is_some() {
         return Err("engine already started".into());
     }
 
@@ -509,6 +510,28 @@ pub fn start(
         cache_dir.to_string(),
     );
 
+    // In place before the handshake, with no bundle yet, and the handshake
+    // made without the lock.
+    //
+    // It used to hold the engine lock for the whole of the first connection,
+    // which on a slow network is seconds, and a song tapped in those seconds
+    // asked the engine for it on the main thread and waited as long: long
+    // enough for Android to call the app unresponsive (#33). The same was
+    // true of a reconnection, fixed in #31. Anything that asks in the
+    // meantime now hears "reconnecting", which every caller already handles.
+    let handle = rt.handle().clone();
+    RECONNECTING.store(true, Ordering::SeqCst);
+    {
+        let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        *guard = Some(Engine {
+            rt,
+            mixer: mixer.clone(),
+            recipe: recipe.clone(),
+            events_tx: events_tx.clone(),
+            bundle: None,
+        });
+    }
+
     // The handshake, and what to do when it cannot be made.
     //
     // A failure here used to be the end of the app: no session, no player, no
@@ -520,28 +543,38 @@ pub fn start(
     // A refused account is not covered: that is Spotify saying no, not the
     // network being absent, and starting anyway would hide it behind an app
     // that plays a few downloaded songs and explains nothing.
-    let bundle = match build_bundle(rt.handle(), &recipe, &mixer, &events_tx) {
+    let built = match build_bundle(&handle, &recipe, &mixer, &events_tx) {
         Ok(bundle) => {
             OFFLINE.store(false, Ordering::SeqCst);
-            bundle
+            Ok(bundle)
         }
-        Err(e) if e == PREMIUM_REQUIRED => return Err(e),
+        Err(e) if e == PREMIUM_REQUIRED => Err(e),
         Err(e) if crate::downloads::any() => {
             log::warn!("{e}; starting offline with what is on the phone");
             OFFLINE.store(true, Ordering::SeqCst);
-            build_offline_bundle(rt.handle(), &recipe, &mixer, &events_tx)?
+            build_offline_bundle(&handle, &recipe, &mixer, &events_tx)
         }
-        Err(e) => return Err(e),
+        Err(e) => Err(e),
     };
 
-    *guard = Some(Engine {
-        rt,
-        mixer,
-        recipe,
-        events_tx,
-        bundle: Some(bundle),
-    });
-    Ok(())
+    let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+    RECONNECTING.store(false, Ordering::SeqCst);
+    match built {
+        Ok(bundle) => {
+            if let Some(engine) = guard.as_mut() {
+                engine.bundle = Some(bundle);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            // As if it had never started, which is what the caller expects of
+            // a failed start: the runtime goes with it, off the lock.
+            let failed = guard.take();
+            drop(guard);
+            drop(failed);
+            Err(e)
+        }
+    }
 }
 
 /// Builds a session, a player and a Connect device, and wires them to the pump.
