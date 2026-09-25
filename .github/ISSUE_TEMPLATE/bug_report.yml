@@ -1,0 +1,46 @@
+name: Report a problem
+description: Something does not work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The more of this you can fill in, the faster it gets fixed.
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Settings → About shows it at the top.
+      placeholder: "2.3.1"
+    validations:
+      required: true
+  - type: input
+    id: phone
+    attributes:
+      label: Phone and Android version
+      placeholder: "Pixel 9, Android 17"
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Music source
+      options:
+        - Spotify
+        - YouTube Music
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Report
+      description: |
+        If the app closed or froze, open it again and go to Settings → About → Save a report, then drag the file here. It has your account name and email taken out.
