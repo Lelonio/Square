@@ -179,6 +179,9 @@
     <string name="permissions_note">An application connected before an update has to be reconnected to grant the permissions added since: the sections that use them stay empty until you do.</string>
     <string name="developed_by">Developed by</string>
     <string name="support_development">Support development</string>
+    <string name="help_feedback">Help and feedback</string>
+    <string name="help_discussions">Questions and ideas</string>
+    <string name="help_report_problem">Report a problem</string>
     <string name="about">About</string>
     <string name="version">Version</string>
     <string name="licences">Licences</string>

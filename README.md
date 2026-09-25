@@ -164,6 +164,14 @@ Music through the private endpoints its own web client uses. It cannot be
 published on the Play Store, and you use it at your own risk. There is no
 warranty of any kind; see the licence.
 
+## Help and feedback
+
+- **Questions** (how something works, how to set it up): [Discussions, Q&A](https://github.com/Lelonio/Square/discussions/categories/q-a)
+- **Ideas and requests**: [Discussions, Ideas](https://github.com/Lelonio/Square/discussions/categories/ideas)
+- **Something broken**: [open an issue](https://github.com/Lelonio/Square/issues/new/choose). If the app closed or froze, attach a report from Settings → About → Save a report.
+
+The same two links are in the app, under Settings → About.
+
 ## Support
 
 Square is free and has no ads. If it is useful to you, you can support its

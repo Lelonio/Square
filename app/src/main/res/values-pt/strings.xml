@@ -161,6 +161,9 @@
     <string name="permissions_note">Uma aplicação conectada antes de uma atualização precisa ser reconectada para conceder as permissões acrescentadas depois: as seções que as usam ficam vazias até lá.</string>
     <string name="developed_by">Desenvolvido por</string>
     <string name="support_development">Apoiar o desenvolvimento</string>
+    <string name="help_feedback">Ajuda e sugestões</string>
+    <string name="help_discussions">Perguntas e ideias</string>
+    <string name="help_report_problem">Relatar um problema</string>
     <string name="about">Sobre</string>
     <string name="version">Versão</string>
     <string name="licences">Licenças</string>

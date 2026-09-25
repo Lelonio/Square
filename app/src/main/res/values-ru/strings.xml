@@ -175,6 +175,9 @@
     <string name="permissions_note">Приложение, подключённое до обновления, нужно подключить заново, чтобы выдать добавленные с тех пор разрешения: до этого связанные с ними разделы останутся пустыми.</string>
     <string name="developed_by">Разработчик</string>
     <string name="support_development">Поддержать разработку</string>
+    <string name="help_feedback">Помощь и отзывы</string>
+    <string name="help_discussions">Вопросы и идеи</string>
+    <string name="help_report_problem">Сообщить о проблеме</string>
     <string name="about">О приложении</string>
     <string name="version">Версия</string>
     <string name="licences">Лицензии</string>

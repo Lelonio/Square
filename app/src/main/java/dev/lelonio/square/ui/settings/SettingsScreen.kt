@@ -90,6 +90,8 @@ import com.adamglin.phosphoricons.regular.Playlist
 import androidx.compose.foundation.layout.fillMaxHeight
 import com.adamglin.phosphoricons.regular.Trash
 import com.adamglin.phosphoricons.regular.HandHeart
+import com.adamglin.phosphoricons.regular.ChatsCircle
+import com.adamglin.phosphoricons.regular.Bug
 import dev.lelonio.square.R
 import dev.lelonio.square.data.AppLanguages
 import dev.lelonio.square.backend.BackendId
@@ -707,6 +709,26 @@ fun SettingsScreen(
                 Licences()
                 RowDivider()
                 ReportRows(name = ready?.displayName, onSave = askToSaveReport)
+            }
+        }
+
+        // Where to take a question, an idea or a problem. Beside the report,
+        // which is what a problem needs attached: the whole errand on one
+        // page, rather than a web address to go and find.
+        if (shown == SettingsPage.About) item("help") {
+            val uriHandler = LocalUriHandler.current
+            Section(stringResource(R.string.help_feedback)) {
+                ActionRow(
+                    stringResource(R.string.help_discussions),
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.ChatsCircle,
+                ) { uriHandler.openUri(DISCUSSIONS_URL) }
+                RowDivider()
+                ActionRow(
+                    stringResource(R.string.help_report_problem),
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.Bug,
+                ) { uriHandler.openUri(NEW_ISSUE_URL) }
             }
         }
 
@@ -1900,3 +1922,5 @@ private val LICENCES = listOf(
 private const val GITHUB_USER = "Lelonio"
 private const val GITHUB_URL = "https://github.com/Lelonio"
 private const val KOFI_URL = "https://ko-fi.com/lelonio"
+private const val DISCUSSIONS_URL = "https://github.com/Lelonio/Square/discussions"
+private const val NEW_ISSUE_URL = "https://github.com/Lelonio/Square/issues/new/choose"
