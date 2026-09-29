@@ -137,7 +137,7 @@ class PathfinderKeys(context: Context) {
         const val DEFAULT_LIKED =
             "c2c53c28f71da143c0753c22dc84d98b315cb4275472ea5a597c29338ae20b23"
         const val DEFAULT_PLAYLIST =
-            "86dde7b9d9356e2369414647cf6950cfed96e778e129cfdfc99aea6c1613b3b0"
+            "8964e8eafb21aa992a7d951d256d83285c04be2105d209262901de70cb97584a"
         const val DEFAULT_LIBRARY =
             "134337999233cc6fdd6b1e6dbf94841409f04a946c5c7b744b09ba0dfe5a85ed"
         const val DEFAULT_SEARCH =

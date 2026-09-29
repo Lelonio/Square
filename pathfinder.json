@@ -2,7 +2,7 @@
   "_comment": "Identifiers Spotify's GraphQL gateway wants from a caller. Read by Square at runtime so a change here needs no new version of the app: see app/src/main/java/dev/lelonio/square/data/PathfinderKeys.kt. Both values are retired by Spotify whenever it rebuilds its web client, and both are readable from a network capture of open.spotify.com.",
   "home": "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a",
   "likedSongs": "c2c53c28f71da143c0753c22dc84d98b315cb4275472ea5a597c29338ae20b23",
-  "playlist": "86dde7b9d9356e2369414647cf6950cfed96e778e129cfdfc99aea6c1613b3b0",
+  "playlist": "8964e8eafb21aa992a7d951d256d83285c04be2105d209262901de70cb97584a",
   "library": "134337999233cc6fdd6b1e6dbf94841409f04a946c5c7b744b09ba0dfe5a85ed",
   "search": "db61238974d27839a136c9dc02bfdbe3fab7635f21cf85976ebff9a1ee281345",
   "artistOverview": "9f8134ef565e78621f1e1793555bd6633c5ac144ae0f89604ed3ae3f80b3c8e6",
