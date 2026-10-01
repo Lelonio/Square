@@ -131,4 +131,5 @@ val AppLanguages: List<Pair<String, String>> = listOf(
     "ru" to "Русский",
     "tr" to "Türkçe",
     "hi" to "हिन्दी",
+    "vi" to "Tiếng Việt",
 )
