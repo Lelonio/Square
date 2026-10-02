@@ -70,9 +70,12 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
 
     /** What was last written to the log; see [evaluate]. */
     private var lastReport: String? = null
+    private var lastConnected: Boolean? = null
 
     private fun evaluate() {
         val connected = connected()
+        val returned = connected && lastConnected == false
+        lastConnected = connected
         // Only when it changes. The system reports every step in signal
         // strength as a new set of capabilities, so this was a line every second
         // or two, and it pushed out of the phone's log the very playback lines
@@ -84,7 +87,9 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
         }
         pending?.cancel()
         if (connected) {
-            OfflineMode.setNoSession(false)
+            // Signal-strength updates do not prove that Spotify's session is
+            // back. Only an actual network return starts a reconnection.
+            if (returned) OfflineMode.setNoSession(false)
             OfflineMode.setSlow(false)
             return
         }

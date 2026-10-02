@@ -308,5 +308,7 @@ still playing, and upstream has only one way to say so — load the queue again,
 which restarts the decoder. The listener heard a gap in the middle of the track
 for a change that was only ever about the tracks after it.
 
-`state::metadata` and its `Metadata` trait are `pub(crate)` for this, so a track
-built in `spirc.rs` can be stamped with the context it belongs to.
+The backing context is replaced with the same running order, at the current
+track, without loading the decoder. Otherwise refilling the next-track window,
+or disabling the Connect shuffle flag, restores the old order (#39). The new
+successor is preloaded and the state is marked for publication.

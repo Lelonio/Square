@@ -1900,7 +1900,7 @@ fun SquareApp(
                                         // selection rather than the context.
                                         onPlay(
                                             tracks,
-                                            0,
+                                            if (tracks.isEmpty()) 0 else tracks.indices.random(),
                                             page.uri,
                                             false,
                                             source,

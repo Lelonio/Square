@@ -30,6 +30,44 @@ pub struct StateContext {
     pub index: ContextIndex,
 }
 
+#[cfg(test)]
+mod running_order_tests {
+    use super::*;
+    use crate::{core::{Session, config::SessionConfig}, state::ConnectConfig};
+
+    #[tokio::test]
+    async fn reordered_context_survives_refill_and_shuffle_reset() {
+        let session = Session::new(SessionConfig::default(), None);
+        let mut state = ConnectState::new(ConnectConfig::default(), &session);
+        // More than the 80-track next window, with the same song twice.
+        let original = (0..100).map(|i| {
+            format!("spotify:track:{:022}", i % 99)
+        }).collect::<Vec<_>>();
+        state.update_context(Context {
+            uri: Some("spotify:playlist:test".into()),
+            pages: vec![original.clone().into()],
+            ..Default::default()
+        }, ContextType::Default).unwrap();
+        state.reset_playback_to_position(Some(0)).unwrap();
+        let mut reordered = original.clone();
+        reordered[1..].reverse();
+        state.replace_running_order(reordered.clone(), 0).unwrap();
+        // The app keeps the account's shuffle flag off. That must not undo
+        // its order, including after the initial next window is exhausted.
+        state.handle_shuffle(false).unwrap();
+        assert_eq!(state.current_track(|t| t.uri.clone()), reordered[0]);
+        for expected in &reordered[1..] {
+            state.next_track().unwrap();
+            assert_eq!(&state.current_track(|t| t.uri.clone()), expected);
+        }
+        assert!(state.next_track().unwrap().is_none());
+        state.replace_running_order(original.clone(), 17).unwrap();
+        assert_eq!(state.current_track(|t| t.uri.clone()), original[17]);
+        state.next_track().unwrap();
+        assert_eq!(state.current_track(|t| t.uri.clone()), original[18]);
+    }
+}
+
 #[derive(Default, Debug, Copy, Clone, PartialEq, Hash, Eq)]
 pub enum ContextType {
     #[default]
@@ -65,6 +103,21 @@ fn page_url_to_uri(page_url: &str) -> String {
 }
 
 impl ConnectState {
+    /// Replaces the running order without asking the decoder to reload.
+    pub fn replace_running_order(&mut self, uris: Vec<String>, index: usize) -> Result<(), Error> {
+        let uri = self.context_uri().clone();
+        self.update_context(Context {
+            url: Some(format!("context://{uri}")),
+            uri: Some(uri),
+            pages: vec![uris.into()],
+            ..Default::default()
+        }, ContextType::Default)?;
+        self.set_active_context(ContextType::Default);
+        self.reset_playback_to_position(Some(index))?;
+        self.update_queue_revision();
+        Ok(())
+    }
+
     pub fn find_index_in_context<F: Fn(&ProvidedTrack) -> bool>(
         ctx: &StateContext,
         f: F,

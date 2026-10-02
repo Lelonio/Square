@@ -234,7 +234,11 @@ object NativeBridge {
      *
      * Blocks on the handshake. Never call it from the main thread.
      */
-    fun reconnect() = nativeReconnect()
+    fun reconnect() {
+        nativeReconnect()
+        // A successful call may have rebuilt the downloads-only player.
+        dev.lelonio.square.playback.OfflineMode.setNoSession(isOffline)
+    }
 
     // --- The account's other devices ---
     //

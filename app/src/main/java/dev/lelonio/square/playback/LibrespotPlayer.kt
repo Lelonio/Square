@@ -462,7 +462,7 @@ class LibrespotPlayer(
      * the queue instead of stepping through it.
      */
     private val deviceGone: Boolean
-        get() = OfflineMode.active.value ||
+        get() = runCatching { NativeBridge.isOffline }.getOrDefault(false) ||
             runCatching { NativeBridge.spircLost }.getOrDefault(false)
 
     /** Set while a reconnection is in flight, so a burst of taps starts one. */
@@ -543,6 +543,12 @@ class LibrespotPlayer(
      * ahead at least reaches the engine's own fallback, which stops the sound.
      */
     private fun withDevice(then: () -> Unit) {
+        // Keep downloaded tracks moving while Spotify is unavailable. A
+        // reconnect on every skip destroys the working downloads-only player.
+        if (OfflineMode.active.value && runCatching { NativeBridge.isOffline }.getOrDefault(false)) {
+            handler.post { if (!released) then() }
+            return
+        }
         if (!deviceGone) {
             handler.post { if (!released) then() }
             return
@@ -1517,7 +1523,7 @@ class LibrespotPlayer(
                     skipInFlight = false
                     if (type == "playing") sounding = true
                     if (type == "playing" || type == "loading") positionMs = 0
-                } else if (!skipPending && type == "playing") {
+                } else if (!skipPending && (type == "playing" || type == "paused")) {
                     // The engine is the truth about what is coming out of the
                     // speaker. While a skip is on its way its events are about
                     // the track being left, and following them dragged the
@@ -1585,7 +1591,7 @@ class LibrespotPlayer(
                 // tracks overlap by the length the listener asked for. With the
                 // setting at zero there is nothing to run up to, and the track
                 // is left to end on its own.
-                if (dev.lelonio.square.playback.OfflineMode.active.value) {
+                if (runCatching { NativeBridge.isOffline }.getOrDefault(false)) {
                     val length = queue.items.getOrNull(queue.currentIndex)?.durationMs ?: 0L
                     val fade = crossfade.durationMs().toLong()
                     if (fade > 0 && length > 0 && length - eventPositionMs in 1..fade) {
@@ -1640,7 +1646,7 @@ class LibrespotPlayer(
                 // two was skipped without ever being heard, which is what "it
                 // sometimes jumps straight to the next one" was.
                 if (uri == advancedFrom) return
-                if (dev.lelonio.square.playback.OfflineMode.active.value) {
+                if (runCatching { NativeBridge.isOffline }.getOrDefault(false)) {
                     advanceOffline(early = false)
                 }
                 return

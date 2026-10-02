@@ -27,15 +27,12 @@ use crate::{
     },
     state::{
         context::{ContextType, ResetContext},
-        metadata::Metadata,
         provider::IsProvider,
         {ConnectConfig, ConnectState},
     },
 };
 use futures_util::StreamExt;
 use librespot_protocol::context_page::ContextPage;
-use librespot_protocol::player::ProvidedTrack;
-use uuid::Uuid;
 use protobuf::MessageField;
 use std::{
     future::Future,
@@ -889,7 +886,7 @@ impl SpircTask {
             SpircCommand::Repeat(repeat) => self.handle_repeat_context(repeat)?,
             SpircCommand::RepeatTrack(repeat) => self.handle_repeat_track(repeat),
             SpircCommand::SetPosition(position) => self.handle_seek(position),
-            SpircCommand::SetQueueTracks { prev, next } => self.handle_set_queue_tracks(prev, next),
+            SpircCommand::SetQueueTracks { prev, next } => self.handle_set_queue_tracks(prev, next)?,
             SpircCommand::SetVolume(volume) => self.set_volume(volume),
             SpircCommand::Load(command) => self.handle_load(command, None, None).await?,
         };
@@ -898,28 +895,22 @@ impl SpircTask {
     }
 
     /// LOCAL PATCH: see [`Spirc::set_queue_tracks`].
-    fn handle_set_queue_tracks(&mut self, prev: Vec<String>, next: Vec<String>) {
-        let context_uri = self.connect_state.context_uri().clone();
-        let track_of = |uri: &String| {
-            let mut track = ProvidedTrack {
-                uri: uri.clone(),
-                uid: Uuid::new_v4().as_simple().to_string(),
-                provider: "context".to_string(),
-                ..Default::default()
-            };
-            if !context_uri.is_empty() {
-                track.set_entity_uri(context_uri.clone());
-                track.set_context_uri(context_uri.clone());
-            }
-            track
-        };
-
-        self.connect_state
-            .set_prev_tracks(prev.iter().map(track_of).collect());
-        self.connect_state.clear_next_tracks();
-        self.connect_state
-            .set_next_tracks(next.iter().map(track_of).collect());
-        self.connect_state.update_queue_revision();
+    fn handle_set_queue_tracks(&mut self, prev: Vec<String>, next: Vec<String>) -> Result<(), Error> {
+        let current = self.connect_state.current_track(|track| track.uri.clone());
+        if current.is_empty() {
+            return Ok(());
+        }
+        let index = prev.len();
+        let tracks = prev.into_iter().chain(std::iter::once(current)).chain(next)
+            .collect::<Vec<_>>();
+        // Replace the backing context too: refill and shuffle(false) otherwise
+        // restore the old order after the next-tracks window has been consumed.
+        self.context_resolver.clear();
+        self.connect_state.replace_running_order(tracks, index)?;
+        self.update_state = true;
+        // The old successor may already be buffered. Warm the new one instead.
+        self.handle_preload_next_track();
+        Ok(())
     }
 
     fn handle_player_event(&mut self, event: PlayerEvent) -> Result<(), Error> {
