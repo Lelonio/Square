@@ -44,9 +44,11 @@ object YouTubePlayerFactory {
         val dataSources = ResolvingDataSource.Factory(
             // Files as well as the network: a kept song resolves to one on the
             // phone, which an HTTP source cannot open.
-            androidx.media3.datasource.DefaultDataSource.Factory(
-                host.context,
-                DefaultHttpDataSource.Factory(),
+            ChunkedDataSource.Factory(
+                androidx.media3.datasource.DefaultDataSource.Factory(
+                    host.context,
+                    DefaultHttpDataSource.Factory(),
+                ),
             ),
             YouTubeStreamResolver(host.context.applicationContext),
         )
@@ -128,6 +130,16 @@ object YouTubePlayerFactory {
             parameters: androidx.media3.common.PlaybackParameters,
         ) {
             android.util.Log.w(TAG, "params speed=${parameters.speed} pitch=${parameters.pitch}")
+        }
+
+        override fun onLoadError(
+            eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+            loadEventInfo: androidx.media3.exoplayer.source.LoadEventInfo,
+            mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData,
+            error: java.io.IOException,
+            wasCanceled: Boolean,
+        ) {
+            android.util.Log.w(TAG, "load error ${loadEventInfo.uri.host}: ${error.message}")
         }
 
         override fun onAudioSinkError(
@@ -390,7 +402,19 @@ object YouTubeStreams {
         val chosen = runCatching { OfficialVideos.forSong(songId, song) }.getOrNull()
             ?.let { id ->
                 runCatching { id to info(id) }
-                    .onFailure { android.util.Log.i("SquareYTVideo", "official video $id unplayable: ${it.message}") }
+                    .onFailure {
+                        android.util.Log.i("SquareYTVideo", "official video $id unplayable: ${it.message}")
+                        // Said under the picture, so the cover standing in for
+                        // the video is not mistaken for a bug.
+                        YouTubeVideoMode.markUnavailable(
+                            songId,
+                            if (it is org.schabi.newpipe.extractor.exceptions.AgeRestrictedContentException) {
+                                YouTubeVideoMode.Unavailable.AGE_RESTRICTED
+                            } else {
+                                YouTubeVideoMode.Unavailable.OTHER
+                            },
+                        )
+                    }
                     .getOrNull()
             }
             ?: (songId to song)

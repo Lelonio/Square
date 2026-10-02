@@ -490,6 +490,7 @@ fun SquareApp(
     val positionMs = if (remote != null) remotePosition else localPosition
     val queueSource = rememberQueue(player)
     val videoOn by YouTubeVideoMode.enabled.collectAsStateWithLifecycle()
+    val videoUnavailable by YouTubeVideoMode.unavailable.collectAsStateWithLifecycle()
 
     // Video keeps playing when the app leaves the foreground, surface or no
     // surface. Switching back to the audio-only stream would be tidier, but the
@@ -3085,6 +3086,18 @@ fun SquareApp(
                                     }
                                     ?.let { { YouTubeVideoMode.toggle(it) } },
                                 videoOn = videoOn || spotifyVideoOn,
+                                videoNotice = playback.mediaId
+                                    ?.takeIf { it.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX) }
+                                    ?.let { videoUnavailable[dev.lelonio.square.backend.youtube.YouTubeBackend.videoIdOfUri(it)] }
+                                    ?.let { reason ->
+                                        stringResource(
+                                            if (reason == YouTubeVideoMode.Unavailable.AGE_RESTRICTED) {
+                                                R.string.video_age_restricted
+                                            } else {
+                                                R.string.video_unavailable
+                                            },
+                                        )
+                                    },
                                 videoPlayer = player,
                                 videoAttachKey = spotifyVideoGeneration,
                             )

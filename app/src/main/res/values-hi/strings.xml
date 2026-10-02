@@ -490,4 +490,6 @@
     <string name="subscribers_count">%s सब्सक्राइबर</string>
     <string name="exit_full_screen">फ़ुल स्क्रीन से बाहर निकलें</string>
     <string name="rotate_video">फ़ुल स्क्रीन के लिए घुमाएँ</string>
+    <string name="video_age_restricted">आधिकारिक वीडियो आयु-प्रतिबंधित है और YouTube साइन-इन चाहिए: गाने का वीडियो दिखाया जा रहा है।</string>
+    <string name="video_unavailable">आधिकारिक वीडियो नहीं चल सकता: गाने का वीडियो दिखाया जा रहा है।</string>
 </resources>

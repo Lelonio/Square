@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -355,6 +356,8 @@ fun PlayerScreen(
     onWatchVideo: (() -> Unit)? = null,
     /** Showing the picture right now. */
     videoOn: Boolean = false,
+    /** Why the picture is not the song's official video, when it is not. */
+    videoNotice: String? = null,
     /** The player to hang the video surface off; null when there is no video. */
     videoPlayer: Player? = null,
     /** Changes when the session starts playing a new video; see VideoStage. */
@@ -1005,7 +1008,12 @@ fun PlayerScreen(
                                     // keeps drawing the one it is leaving, and
                                     // the controller it holds is gone the moment
                                     // the activity stops.
-                                    Box(contentAlignment = Alignment.Center) {
+                                    // Gives up height to the button under it rather
+                                    // than taking the whole stage and squashing it.
+                                    Box(
+                                        Modifier.weight(1f, fill = false),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
                                         videoPlayer?.let {
                                             VideoStage(
                                                 it,
@@ -1020,12 +1028,21 @@ fun PlayerScreen(
                                     Row(
                                         Modifier
                                             .fillMaxWidth()
-                                            .padding(top = 10.dp, end = 4.dp),
-                                        horizontalArrangement = Arrangement.End,
+                                            .padding(top = 10.dp, start = 4.dp, end = 4.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
+                                        Text(
+                                            videoNotice.orEmpty(),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f),
+                                        )
                                         Box(
                                             Modifier
-                                                .size(36.dp)
+                                                .requiredSize(36.dp)
                                                 .clip(CircleShape)
                                                 .background(Color.Black.copy(alpha = 0.35f))
                                                 .pressable(onClick = {

@@ -502,4 +502,6 @@
     <string name="subscribers_count">%s subscribers</string>
     <string name="exit_full_screen">Exit full screen</string>
     <string name="rotate_video">Rotate to full screen</string>
+    <string name="video_age_restricted">The official video is age-restricted and needs a YouTube sign-in: showing the song\'s own video.</string>
+    <string name="video_unavailable">The official video can\'t be played: showing the song\'s own video.</string>
 </resources>

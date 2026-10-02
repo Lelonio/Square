@@ -475,4 +475,6 @@
     <string name="subscribers_count">%s abonnés</string>
     <string name="exit_full_screen">Quitter le plein écran</string>
     <string name="rotate_video">Pivoter en plein écran</string>
+    <string name="video_age_restricted">La vidéo officielle est soumise à une limite d\'âge et nécessite une connexion à YouTube : affichage de la vidéo du titre.</string>
+    <string name="video_unavailable">La vidéo officielle ne peut pas être lue : affichage de la vidéo du titre.</string>
 </resources>

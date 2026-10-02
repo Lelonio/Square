@@ -475,4 +475,6 @@
     <string name="subscribers_count">%s inscritos</string>
     <string name="exit_full_screen">Sair da tela cheia</string>
     <string name="rotate_video">Girar para tela cheia</string>
+    <string name="video_age_restricted">O vídeo oficial tem restrição de idade e exige login no YouTube: mostrando o vídeo da música.</string>
+    <string name="video_unavailable">O vídeo oficial não pode ser reproduzido: mostrando o vídeo da música.</string>
 </resources>

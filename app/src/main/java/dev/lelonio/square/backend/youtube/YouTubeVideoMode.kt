@@ -78,6 +78,18 @@ object YouTubeVideoMode {
     var byItem = false
         private set
 
+    /** Why a song's official video could not be shown in its place. */
+    enum class Unavailable { AGE_RESTRICTED, OTHER }
+
+    private val _unavailable = MutableStateFlow<Map<String, Unavailable>>(emptyMap())
+
+    /** By video id of the song: the songs showing their own upload instead of their video. */
+    val unavailable: StateFlow<Map<String, Unavailable>> = _unavailable.asStateFlow()
+
+    fun markUnavailable(songId: String, reason: Unavailable) {
+        _unavailable.value = _unavailable.value + (songId to reason)
+    }
+
     /** Set when the listener asked for the video playing to be sound alone. */
     @Volatile
     private var audioOnly = false

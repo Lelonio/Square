@@ -476,4 +476,6 @@
     <string name="subscribers_count">%s iscritti</string>
     <string name="exit_full_screen">Esci da schermo intero</string>
     <string name="rotate_video">Ruota a schermo intero</string>
+    <string name="video_age_restricted">Il video ufficiale è vietato ai minori e richiede l\'accesso a YouTube: mostro il video del brano.</string>
+    <string name="video_unavailable">Il video ufficiale non può essere riprodotto: mostro il video del brano.</string>
 </resources>
