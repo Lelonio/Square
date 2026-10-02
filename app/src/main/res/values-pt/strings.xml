@@ -472,4 +472,7 @@
     <string name="search_library">Pesquisar na biblioteca</string>
     <string name="skip_fade">Fade ao mudar de música</string>
     <string name="skip_fade_note">A música que você pula ou substitui desaparece enquanto a escolhida sobe. No Spotify as duas se sobrepõem; no YouTube Music uma segue a outra.</string>
+    <string name="subscribers_count">%s inscritos</string>
+    <string name="exit_full_screen">Sair da tela cheia</string>
+    <string name="rotate_video">Girar para tela cheia</string>
 </resources>

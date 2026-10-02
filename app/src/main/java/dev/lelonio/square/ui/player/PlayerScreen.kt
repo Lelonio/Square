@@ -112,6 +112,7 @@ import dev.lelonio.square.ui.theme.softShadow
 import com.adamglin.phosphoricons.regular.MonitorPlay
 import com.adamglin.phosphoricons.regular.MusicNotes
 import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.regular.DeviceRotate
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.fill.Heart
@@ -995,20 +996,50 @@ fun PlayerScreen(
                                 // is what fills the slot when no panel is open.
                                 Stage.COVER -> Box(Modifier.fillMaxSize())
 
-                                Stage.VIDEO -> Box(
+                                Stage.VIDEO -> Column(
                                     Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
+                                    verticalArrangement = Arrangement.Center,
+                                    horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     // Nullable even in this stage: the crossfade
                                     // keeps drawing the one it is leaving, and
                                     // the controller it holds is gone the moment
                                     // the activity stops.
-                                    videoPlayer?.let {
-                                        VideoStage(
-                                            it,
-                                            videoAttachKey,
-                                            protectedContent = videoMode,
-                                        ) { ambient = it }
+                                    Box(contentAlignment = Alignment.Center) {
+                                        videoPlayer?.let {
+                                            VideoStage(
+                                                it,
+                                                videoAttachKey,
+                                                protectedContent = videoMode,
+                                            ) { ambient = it }
+                                        }
+                                    }
+                                    // Under the picture, at its edge, the way into
+                                    // the whole screen without turning the phone.
+                                    val context = androidx.compose.ui.platform.LocalContext.current
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 10.dp, end = 4.dp),
+                                        horizontalArrangement = Arrangement.End,
+                                    ) {
+                                        Box(
+                                            Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.Black.copy(alpha = 0.35f))
+                                                .pressable(onClick = {
+                                                    dev.lelonio.square.ui.player.lockVideoOrientation(context, landscape = true)
+                                                }),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                com.adamglin.PhosphorIcons.Regular.DeviceRotate,
+                                                contentDescription = stringResource(R.string.rotate_video),
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
                                     }
                                 }
 

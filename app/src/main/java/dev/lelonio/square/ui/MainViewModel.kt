@@ -257,6 +257,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          * Only the phone's own music can be in this state; see openLocalFiles.
          */
         val needsPermission: Boolean = false,
+        /** YouTube's count of the channel's subscribers, as it words it. */
+        val subscribers: String? = null,
+        /** An artist page's rows in the source's own order; see ArtistShelf. */
+        val shelves: List<dev.lelonio.square.data.ArtistShelf> = emptyList(),
+        /** Where the top songs' "see all" leads, when the source has a list for it. */
+        val topSongsMoreUri: String? = null,
     )
 
     private val container get() = getApplication<SquareApplication>()
@@ -1856,7 +1862,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Asked for the open track; a repeat for the same one is free. */
     fun loadCredits(trackUri: String?) {
-        if (trackUri == null || !trackUri.startsWith("spotify:track:")) {
+        val youtube = trackUri?.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX) == true
+        if (trackUri == null || (!trackUri.startsWith("spotify:track:") && !youtube)) {
             creditsJob?.cancel()
             creditsFor = null
             _credits.value = null
@@ -1870,7 +1877,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _credits.value = null
         _creditsLoading.value = true
         creditsJob = viewModelScope.launch {
-            val found = dev.lelonio.square.backend.spotify.SpotifyCredits.of(trackUri)
+            val found = if (youtube) {
+                dev.lelonio.square.backend.youtube.YouTubeCredits.of(trackUri)
+            } else {
+                dev.lelonio.square.backend.spotify.SpotifyCredits.of(trackUri)
+            }
             if (creditsFor == trackUri) {
                 _credits.value = found
                 _creditsLoading.value = false
@@ -3583,6 +3594,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // than page by page: the Spotify paths below are built
                     // around the Web API's paging and the access point's
                     // per-track lookups, neither of which exists here.
+                    val youtube = container.activeBackend as? dev.lelonio.square.backend.youtube.YouTubeBackend
+                    val artistPage = if (kind == DetailKind.ARTIST && youtube != null) {
+                        youtube.artistPage(playlist.uri)
+                    } else {
+                        null
+                    }
+                    if (artistPage != null) {
+                        if (isActive && _playlist.value.uri == playlist.uri) {
+                            publishPlaylist(
+                                base.copy(
+                                    name = base.name.ifEmpty { artistPage.name },
+                                    artworkUrl = artistPage.artworkUrl ?: base.artworkUrl,
+                                    tracks = artistPage.topSongs,
+                                    notes = base.notes ?: artistPage.description,
+                                    subscribers = artistPage.subscribers,
+                                    monthlyListeners = artistPage.monthlyListeners,
+                                    shelves = artistPage.shelves,
+                                    topSongsMoreUri = artistPage.topSongsMoreUri,
+                                    following = _playlist.value.following,
+                                    loading = false,
+                                ),
+                            )
+                        }
+                        return@launch
+                    }
                     val tracks = container.activeBackend.tracksOf(playlist.uri)
                     if (isActive && _playlist.value.uri == playlist.uri) {
                         publishPlaylist(base.copy(tracks = tracks, loading = false))

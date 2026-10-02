@@ -1,76 +1,91 @@
 package dev.lelonio.square.backend.youtube
 
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import dev.lelonio.square.data.CrossfadeStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Manages smooth volume transitions (fade out / fade in) between tracks on YouTube Music.
+ * Dissolves one YouTube song into the next, the way the Spotify engine does.
  *
- * ExoPlayer plays gapless sequentially; this controller applies equal-power volume
- * shaping as a track nears its end, and smoothly ramps the next track up upon transition.
+ * The main player owns the queue and moves to the next song as the dissolve
+ * begins. The song it leaves carries on in a second player, the tail, which has
+ * been playing the same song held back in the [PcmMixer]; the mixer swaps the
+ * two at the very sample, so the handover cannot be heard, and the two songs
+ * are then summed into one speaker on an equal-power curve.
  */
+@UnstableApi
 class YouTubeFadeController(
     private val player: ExoPlayer,
     private val crossfadeStore: CrossfadeStore?,
+    private val mixer: PcmMixer,
+    private val mainSlot: MixerSlot,
+    private val tailSlot: MixerSlot,
+    private val createOutgoing: () -> ExoPlayer,
 ) : Player.Listener {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var ticker: Job? = null
+    private var transition: Job? = null
+    private var outgoing: ExoPlayer? = null
+    private var preparedItem: MediaItem? = null
+    private var changing = false
+    private var internalChange = false
 
-    private val scope = CoroutineScope(Dispatchers.Main.immediate)
-    private var tickerJob: Job? = null
-    private var rampJob: Job? = null
-    private var skipJob: Job? = null
-    private var isFadingOut = false
+    /** Which transition owns the state; bumped by every new one and every cancel. */
+    private var generations = 0
 
-    /**
-     * Whether a change the listener asked for is being dissolved right now.
-     *
-     * While it is, this controller's own rules about the volume are off: the
-     * ticker would put it back to full between the two halves of the fade, and
-     * the transition and the seek that the change itself causes would each
-     * bring the incoming song in at once.
-     */
-    private var skipping = false
+    init { player.addListener(this) }
 
-    init {
-        player.addListener(this)
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        // Buffering the incoming song must not interrupt the outgoing audio.
+        syncTailPlayback()
+        if (!isPlaying) {
+            ticker?.cancel()
+            ticker = null
+        }
+        if (isPlaying && ticker?.isActive != true) {
+            ticker = scope.launch {
+                while (isActive) {
+                    checkEnd()
+                    delay(40)
+                }
+            }
+        }
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
-        if (playbackState == Player.STATE_READY && player.playWhenReady) {
-            startTicker()
-        } else if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
-            stopTicker()
-            resetVolume()
+        if (!internalChange && (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED)) {
+            cancelOverlap()
         }
     }
 
-    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-        if (playWhenReady && player.playbackState == Player.STATE_READY) {
-            startTicker()
-        } else {
-            stopTicker()
-        }
+    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = syncTailPlayback()
+
+    override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) = syncTailPlayback()
+
+    override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+        outgoing?.playbackParameters = playbackParameters
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-        isFadingOut = false
-        if (skipping) return
-        val fadeMs = crossfadeStore?.durationMs() ?: 0
-        if (fadeMs > 0) {
-            rampUp(minOf(fadeMs / 2, 1500))
-        } else {
-            resetVolume()
-        }
+        if (!internalChange) cancelOverlap()
     }
 
     override fun onPositionDiscontinuity(
@@ -78,129 +93,277 @@ class YouTubeFadeController(
         newPosition: Player.PositionInfo,
         reason: Int,
     ) {
-        if (reason == Player.DISCONTINUITY_REASON_SEEK) {
-            isFadingOut = false
-            if (skipping) return
-            resetVolume()
+        if (!internalChange && reason == Player.DISCONTINUITY_REASON_SEEK) cancelOverlap()
+    }
+
+    private fun syncTailPlayback() {
+        outgoing?.playWhenReady = changing && player.playWhenReady && player.playbackSuppressionReason == 0
+    }
+
+    private fun prepareOutgoing(): ExoPlayer? {
+        val item = player.currentMediaItem ?: return null
+        val tail = outgoing ?: createOutgoing().also { instance ->
+            outgoing = instance
+            instance.addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    android.util.Log.w(TAG, "outgoing stream unavailable", error)
+                    cancelOverlap()
+                }
+            })
         }
-    }
-
-    private fun startTicker() {
-        if (tickerJob?.isActive == true) return
-        tickerJob = scope.launch {
-            while (isActive) {
-                checkFade()
-                delay(80)
-            }
+        if (preparedItem != item) {
+            preparedItem = item
+            tail.pause()
+            tail.repeatMode = Player.REPEAT_MODE_OFF
+            tail.playbackParameters = player.playbackParameters
+            tail.setMediaItem(item, player.currentPosition)
+            tail.prepare()
         }
+        return tail
     }
 
-    private fun stopTicker() {
-        tickerJob?.cancel()
-        tickerJob = null
-    }
-
-    private fun checkFade() {
-        if (skipping) return
+    private fun checkEnd() {
+        if (changing || !player.isPlaying) return
         val fadeMs = crossfadeStore?.durationMs() ?: 0
         if (fadeMs <= 0) {
-            if (player.volume != 1f) player.volume = 1f
+            if (preparedItem != null) cancelOverlap()
             return
         }
-
-        if (rampJob?.isActive == true) return
-
-        val duration = player.duration
-        val position = player.currentPosition
-        if (duration <= 0 || position <= 0 || duration <= fadeMs) return
-
-        val remaining = duration - position
-        if (remaining in 1..fadeMs) {
-            isFadingOut = true
-            val x = remaining.toFloat() / fadeMs.toFloat()
-            // Equal-power curve: sin(x * pi / 2) so remaining=fadeMs -> 1.0, remaining=0 -> 0.0
-            val volume = sin(x * (PI.toFloat() / 2f)).coerceIn(0f, 1f)
-            player.volume = volume
-        } else if (!isFadingOut && player.volume < 1f) {
-            player.volume = 1f
+        val remaining = player.duration - player.currentPosition
+        if (player.duration <= fadeMs || remaining <= 0) return
+        val next = if (player.repeatMode == Player.REPEAT_MODE_ONE) player.currentMediaItemIndex
+            else player.nextMediaItemIndex
+        if (next < 0) return
+        // Resolve and buffer the tail ahead of time, without making it audible.
+        if (remaining <= fadeMs + 5_000) prepareOutgoing()
+        if (remaining <= fadeMs && outgoing?.playbackState == Player.STATE_READY) {
+            changeWith(fadeMs) { player.seekToDefaultPosition(next) }
         }
     }
 
-    private fun rampUp(durationMs: Int) {
-        rampJob?.cancel()
-        if (durationMs <= 0) {
-            resetVolume()
+    fun changeWith(fadeMs: Int, change: () -> Unit) {
+        if (changing) cancelOverlap()
+        if (fadeMs <= 0 || !player.isPlaying) {
+            cancelOverlap()
+            change()
             return
         }
-        player.volume = 0f
-        rampJob = scope.launch {
-            val steps = 20
-            val stepDelay = (durationMs / steps).toLong().coerceAtLeast(10L)
-            for (i in 1..steps) {
-                if (!isActive) break
-                val x = i.toFloat() / steps.toFloat()
-                // Equal-power fade in
-                val volume = sin(x * (PI.toFloat() / 2f)).coerceIn(0f, 1f)
-                player.volume = volume
-                delay(stepDelay)
+        val tail = outgoing?.takeIf {
+            preparedItem == player.currentMediaItem && it.playbackState == Player.STATE_READY
+        }
+        // A skip far from the end has no tail buffered, and building one would delay
+        // the skip by a whole stream resolution: what the mixer already holds of
+        // the song is enough for the listener's short fade.
+        if (tail == null || !mainSlot.mixed) {
+            if (!crossWith(fadeMs, change)) dip(fadeMs, change)
+            return
+        }
+        changing = true
+        val generation = ++generations
+        transition = scope.launch {
+            try {
+                tailSlot.fade = 0f
+                tailSlot.held = true
+                tail.playbackParameters = player.playbackParameters
+                // A little ahead of what is heard, so that by the time the tail has
+                // piled up its first frames the main player has reached them.
+                tail.seekTo(player.currentPosition + TAIL_LEAD_MS)
+                tail.play()
+                val handed = withTimeoutOrNull(HANDOVER_WAIT_MS) {
+                    suspendCancellableCoroutine { continuation ->
+                        continuation.invokeOnCancellation { mixer.cancelHandOver() }
+                        mixer.handOver(mainSlot, tailSlot) { ok ->
+                            scope.launch { if (continuation.isActive) continuation.resume(ok) }
+                        }
+                    }
+                } ?: false
+                if (!handed) {
+                    android.util.Log.w(TAG, "no handover, crossing what is buffered instead")
+                    retire(tail)
+                    val short = fadeMs.coerceAtMost(MAX_BUFFERED_FADE_MS)
+                    if (mixer.detach(mainSlot, short)) {
+                        mainSlot.fade = 0f
+                        internalChange = true
+                        try { change() } finally { internalChange = false }
+                        rise(short)
+                    } else {
+                        dipNow(fadeMs, change)
+                    }
+                    return@launch
+                }
+                // The mixer has silenced the main player and opened the tail.
+                internalChange = true
+                try { change() } finally { internalChange = false }
+                android.util.Log.i(TAG, "overlap started: ${tail.currentMediaItem?.mediaId} -> ${player.currentMediaItem?.mediaId}, ${fadeMs}ms")
+                var elapsed = 0L
+                var previous = player.currentPosition
+                while (elapsed < fadeMs) {
+                    delay(20)
+                    if (!player.playWhenReady || player.playbackSuppressionReason != 0) {
+                        tail.pause()
+                        previous = player.currentPosition
+                        continue
+                    }
+                    tail.play()
+                    val position = player.currentPosition
+                    if (player.isPlaying) elapsed += (position - previous).coerceAtLeast(0)
+                    previous = position
+                    val x = (elapsed.toFloat() / fadeMs).coerceIn(0f, 1f)
+                    mainSlot.fade = sin(x * PI.toFloat() / 2)
+                    tailSlot.fade = cos(x * PI.toFloat() / 2)
+                }
+                android.util.Log.i(TAG, "overlap completed")
+            } finally {
+                // A cancelled job reaches here only after whatever cancelled it has moved
+                // on, possibly into a new overlap: that one owns the state now.
+                if (generation == generations) {
+                    transition = null
+                    changing = false
+                    retire(tail)
+                    setMainFade(1f)
+                }
             }
-            player.volume = 1f
         }
     }
 
     /**
-     * Takes the song out, makes the listener's change, and brings in what it
-     * lands on.
-     *
-     * One after the other rather than over each other: this player holds one
-     * song at a time, so there is no moment where both are audible. What the
-     * listener asked for is late by the length of the first half, which is why
-     * that half is the shorter thing a dissolve can be and still be one.
-     *
-     * Nothing to fade out of, or the fade turned off, and the change happens
-     * where it was asked for, on the caller's own thread.
+     * The engine's change of song: the outgoing one fades out of what the mixer
+     * holds of it while the player moves on at once, and the incoming one rises
+     * on its own clock, from when it is actually heard.
      */
-    fun changeWith(fadeMs: Int, change: () -> Unit) {
-        if (fadeMs <= 0 || !player.isPlaying || player.volume <= 0f) {
-            change()
-            return
-        }
-        skipJob?.cancel()
-        skipping = true
-        skipJob = scope.launch {
+    private fun crossWith(fadeMs: Int, change: () -> Unit): Boolean {
+        if (!mainSlot.mixed || !mixer.detach(mainSlot, fadeMs)) return false
+        changing = true
+        val generation = ++generations
+        mainSlot.fade = 0f
+        internalChange = true
+        try { change() } finally { internalChange = false }
+        transition = scope.launch {
             try {
-                val half = (fadeMs / 2).coerceAtLeast(MIN_HALF_MS)
-                val from = player.volume
-                step(half) { x -> from * cos(x * (PI.toFloat() / 2f)) }
-                player.volume = 0f
-                change()
-                step(half) { x -> sin(x * (PI.toFloat() / 2f)) }
-                player.volume = 1f
+                rise(fadeMs)
             } finally {
-                skipping = false
+                if (generation == generations) {
+                    transition = null
+                    changing = false
+                    setMainFade(1f)
+                }
+            }
+        }
+        return true
+    }
+
+    /** Brings the main player up over [fadeMs] of its own playback. */
+    private suspend fun rise(fadeMs: Int) {
+        var elapsed = 0L
+        var previous = player.currentPosition
+        val deadline = System.currentTimeMillis() + RISE_GIVE_UP_MS
+        while (elapsed < fadeMs && System.currentTimeMillis() < deadline) {
+            delay(16)
+            val position = player.currentPosition
+            if (player.isPlaying) elapsed += (position - previous).coerceIn(0, 100)
+            previous = position
+            mainSlot.fade = sin((elapsed.toFloat() / fadeMs).coerceIn(0f, 1f) * PI.toFloat() / 2)
+        }
+    }
+
+    /** Out, change, in, on the main player alone: half of [fadeMs] each way. */
+    private fun dip(fadeMs: Int, change: () -> Unit) {
+        changing = true
+        val generation = ++generations
+        transition = scope.launch {
+            try {
+                dipNow(fadeMs, change)
+            } finally {
+                if (generation == generations) {
+                    transition = null
+                    changing = false
+                    setMainFade(1f)
+                }
             }
         }
     }
 
-    /** One half of a dissolve, as a curve read from nothing to everything. */
-    private suspend fun step(durationMs: Int, curve: (Float) -> Float) {
-        val steps = SKIP_STEPS
-        val wait = (durationMs / steps).toLong().coerceAtLeast(8L)
-        for (i in 1..steps) {
-            val x = i.toFloat() / steps.toFloat()
-            player.volume = curve(x).coerceIn(0f, 1f)
-            delay(wait)
+    private suspend fun dipNow(fadeMs: Int, change: () -> Unit) {
+        val half = (fadeMs / 2).coerceIn(MIN_HALF_MS, MAX_HALF_MS)
+        ramp(half) { x -> setMainFade(cos(x * PI.toFloat() / 2)) }
+        setMainFade(0f)
+        internalChange = true
+        try { change() } finally { internalChange = false }
+        ramp(half) { x -> setMainFade(sin(x * PI.toFloat() / 2)) }
+    }
+
+    /** Through the mixer when the main player is in it, on the player itself otherwise. */
+    private fun setMainFade(value: Float) {
+        if (mainSlot.mixed) {
+            mainSlot.fade = value
+            if (player.volume != 1f) player.volume = 1f
+        } else {
+            mainSlot.fade = 1f
+            player.volume = value
         }
     }
 
-    private fun resetVolume() {
-        rampJob?.cancel()
-        player.volume = 1f
+    private suspend fun ramp(durationMs: Int, step: (Float) -> Unit) {
+        var elapsed = 0
+        while (elapsed < durationMs) {
+            delay(16)
+            elapsed += 16
+            step((elapsed.toFloat() / durationMs).coerceIn(0f, 1f))
+        }
     }
+
+    /**
+     * Silences the tail and holds it where it is.
+     *
+     * Not stopped: releasing its decoder while the main player is changing song
+     * aborts inside MediaCodec (`ubsan: sub-overflow` in `updateMediametrics`) on
+     * this hardware. The decoder goes when the tail is next given a song, seconds
+     * before an end, with the main player steady.
+     */
+    private fun retire(tail: ExoPlayer) {
+        tailSlot.fade = 0f
+        tailSlot.held = true
+        tail.pause()
+        preparedItem = null
+    }
+
+    private fun cancelOverlap() {
+        generations++
+        transition?.cancel()
+        transition = null
+        changing = false
+        mixer.cancelHandOver()
+        outgoing?.let(::retire)
+        setMainFade(1f)
+    }
+
+    fun release() {
+        player.removeListener(this)
+        scope.cancel()
+        outgoing?.release()
+        outgoing = null
+    }
+
+    /** After the main player is gone too: it writes into the mixer until then. */
+    fun releaseMixer() = mixer.release()
 }
 
-/** How many volume steps each half of a listener's dissolve is made of. */
-private const val SKIP_STEPS = 16
+private const val TAG = "SquareYTFade"
 
-/** Shorter than this and a fade is a click with a delay in front of it. */
+/** Shorter than this and a dip is a click with a delay in front of it. */
 private const val MIN_HALF_MS = 120
+
+/** A skip is late by this much at most: it is the listener's, not the song's end. */
+private const val MAX_HALF_MS = 400
+
+/** The most of a song the mixer holds ahead, with a margin: see PcmMixer. */
+private const val MAX_BUFFERED_FADE_MS = 1_500
+
+/** A song that will not start is not waited on with the volume down. */
+private const val RISE_GIVE_UP_MS = 20_000L
+
+/** How far ahead of the heard position the tail starts piling up. */
+private const val TAIL_LEAD_MS = 300L
+
+/** Longer than the mixer's own timeout, which is the one meant to fire. */
+private const val HANDOVER_WAIT_MS = 4_000L

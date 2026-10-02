@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,8 @@ import com.adamglin.phosphoricons.fill.Play
 import com.adamglin.phosphoricons.fill.SkipBack
 import com.adamglin.phosphoricons.fill.SkipForward
 import dev.lelonio.square.R
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.CornersIn
 import dev.lelonio.square.ui.library.formatDuration
 
 /**
@@ -148,6 +151,34 @@ fun FullScreenVideo(
             )
         }
 
+        // Back to upright, with the controls: the way out for a rotation the
+        // button asked for, which turning the phone does not undo.
+        val context = androidx.compose.ui.platform.LocalContext.current
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showControls,
+            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)),
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(220)),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+        ) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .clickable { lockVideoOrientation(context, landscape = false) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    PhosphorIcons.Regular.CornersIn,
+                    contentDescription = stringResource(R.string.exit_full_screen),
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+
         // What is playing, at the top, with the controls: on a screen with no
         // cover and no page around it, this is the only thing naming the song.
         androidx.compose.animation.AnimatedVisibility(
@@ -227,3 +258,19 @@ fun FullScreenVideo(
 
 /** How long the controls stay up before getting out of the picture. */
 private const val CONTROLS_LINGER_MS = 3_500L
+
+/**
+ * Turns the app for the video: [landscape] true lies it on its side whichever
+ * way the phone is held, false stands it back up, null hands the decision back
+ * to the phone.
+ */
+fun lockVideoOrientation(context: android.content.Context, landscape: Boolean?) {
+    var at: android.content.Context? = context
+    while (at is android.content.ContextWrapper && at !is android.app.Activity) at = at.baseContext
+    val activity = at as? android.app.Activity ?: return
+    activity.requestedOrientation = when (landscape) {
+        true -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        false -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        null -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+}

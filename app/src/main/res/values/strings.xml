@@ -499,4 +499,7 @@
     <string name="mood_mixes">Mood Mixes</string>
     <string name="skip_fade">Fade when changing song</string>
     <string name="skip_fade_note">A song you skip or replace fades out while the one you chose comes up. On the Spotify source the two overlap; on YouTube Music one follows the other.</string>
+    <string name="subscribers_count">%s subscribers</string>
+    <string name="exit_full_screen">Exit full screen</string>
+    <string name="rotate_video">Rotate to full screen</string>
 </resources>

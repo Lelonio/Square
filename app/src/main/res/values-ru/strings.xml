@@ -499,4 +499,7 @@
     <string name="mood_mixes">Миксы по настроению</string>
     <string name="skip_fade">Плавная смена трека</string>
     <string name="skip_fade_note">Трек, который вы переключаете или заменяете, затихает, пока поднимается выбранный. В источнике Spotify они накладываются, в YouTube Music идут друг за другом.</string>
+    <string name="subscribers_count">%s подписчиков</string>
+    <string name="exit_full_screen">Выйти из полноэкранного режима</string>
+    <string name="rotate_video">Повернуть на весь экран</string>
 </resources>

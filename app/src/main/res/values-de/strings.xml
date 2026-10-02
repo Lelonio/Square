@@ -472,4 +472,7 @@
     <string name="search_library">Bibliothek durchsuchen</string>
     <string name="skip_fade">Überblenden beim Wechseln</string>
     <string name="skip_fade_note">Der übersprungene oder ersetzte Titel blendet aus, während der gewählte aufkommt. Bei Spotify überlappen sich beide, bei YouTube Music folgt einer auf den anderen.</string>
+    <string name="subscribers_count">%s Abonnenten</string>
+    <string name="exit_full_screen">Vollbild beenden</string>
+    <string name="rotate_video">Ins Vollbild drehen</string>
 </resources>

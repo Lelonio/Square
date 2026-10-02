@@ -5,22 +5,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.ForwardingPlayer
 
-/**
- * The YouTube Music player, with the song being left behind faded out first.
- *
- * Everything that changes what is playing arrives here: the skip buttons, a
- * song picked from a list, a queue handed over whole. Each of them used to cut
- * the music dead and start the next one at full volume, which beside the
- * Spotify source, where the engine dissolves the two into each other, sounded
- * like the app changing its mind rather than changing song.
- *
- * One player holds one song, so the two halves cannot overlap the way the
- * engine's do; see [YouTubeFadeController.changeWith], which owns the volume
- * and runs them one after the other.
- *
- * A seek inside the song that is playing is not a change of song and is passed
- * straight through: dragging the progress bar is not something to dissolve.
- */
+/** Keeps the public queue on the main player while its outgoing audio overlaps the next song. */
 @UnstableApi
 class SkipFadePlayer(
     player: Player,
@@ -30,6 +15,12 @@ class SkipFadePlayer(
 ) : ForwardingPlayer(player) {
 
     private fun changing(change: () -> Unit) = fades.changeWith(fadeMs(), change)
+
+    override fun release() {
+        fades.release()
+        super.release()
+        fades.releaseMixer()
+    }
 
     override fun seekToNext() = changing { super.seekToNext() }
 

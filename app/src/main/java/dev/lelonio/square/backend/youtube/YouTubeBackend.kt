@@ -40,6 +40,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * YouTube Music, over two clients rather than one.
@@ -418,20 +419,46 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         artworkUrl = item.thumbnail,
     )
 
-    private fun toCatalogTrack(item: SongItem) = CatalogTrack(
-        uri = "$TRACK_PREFIX${item.id}",
-        name = item.title,
-        artist = item.artists.joinToString(", ") { it.name },
-        album = item.album?.name.orEmpty(),
-        durationMs = item.duration?.takeIf { it > 0 }?.times(1000L) ?: 0L,
-        explicit = item.explicit,
-        artworkUrl = item.thumbnail.atSize(COVER_SIZE),
-    )
+    private fun toCatalogTrack(item: SongItem): CatalogTrack {
+        // Every name its own way in, and the record too: what makes the lines
+        // under the title in the player lead somewhere, as they do for Spotify.
+        // A video's byline arrives as runs, and the joining words between the
+        // names ("," "&" "e" "and") come through as artists of their own.
+        val named = item.artists.filter { artist ->
+            val name = artist.name.trim()
+            name.isNotEmpty() && name.lowercase() !in BYLINE_JOINERS && name.any { it.isLetterOrDigit() }
+        }
+        val credited = named.map { artist ->
+            dev.lelonio.square.data.CatalogArtist(
+                name = artist.name.trim(),
+                uri = artist.id?.takeIf { it.isNotBlank() }?.let { "$ARTIST_PREFIX$it" },
+            )
+        }
+        return CatalogTrack(
+            uri = "$TRACK_PREFIX${item.id}",
+            name = item.title,
+            artist = named.joinToString(", ") { it.name.trim() },
+            artistUri = credited.firstNotNullOfOrNull { it.uri },
+            artists = credited,
+            album = item.album?.name.orEmpty(),
+            albumUri = item.album?.id?.takeIf { it.startsWith("MPRE") }?.let { "$ALBUM_PREFIX$it" },
+            durationMs = item.duration?.takeIf { it > 0 }?.times(1000L) ?: 0L,
+            explicit = item.explicit,
+            artworkUrl = item.thumbnail.atSize(COVER_SIZE),
+        )
+    }
 
     override suspend fun tracksOf(uri: String): List<CatalogTrack> = withContext(Dispatchers.IO) {
         val id = uri.substringAfterLast(':')
         when {
-            uri.startsWith(TRACK_PREFIX) -> emptyList()
+            uri.startsWith(TRACK_PREFIX) || uri.startsWith(VIDEO_PREFIX) -> emptyList()
+
+            // Videos stay videos: no swapping them for their songs here, which
+            // is the whole reason somebody opened this list.
+            uri.startsWith(VIDEOS_PREFIX) -> YouTube.playlist(id).getOrThrow().songs.map(::toVideoTrack)
+
+            // A record opened from the player, by the album's own id.
+            uri.startsWith(ALBUM_PREFIX) -> YouTube.album(id).getOrThrow().songs.map(::toCatalogTrack)
 
             // An artist has no track list of its own, so what "open an artist"
             // means here is the same as everywhere else: their best-known
@@ -450,16 +477,159 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                     .map(::toCatalogTrack)
             }
 
-            else -> YouTube.playlist(id).getOrThrow()
-                .songs
-                .onEach { song ->
+            else -> {
+                val listed = YouTube.playlist(id).getOrThrow().songs
+                val songs = asSongs(listed)
+                listed.zip(songs).forEach { (entry, song) ->
                     // What taking a song out of this list will need: YouTube
-                    // removes an entry, not a song, and names the entry here.
-                    song.setVideoId?.let { entries["$id/${song.id}"] = it }
+                    // removes an entry, not a song, and names the entry here —
+                    // under the song it now plays as, too, if it was a video.
+                    entry.setVideoId?.let {
+                        entries["$id/${entry.id}"] = it
+                        entries["$id/${song.id}"] = it
+                    }
                 }
-                .map(::toCatalogTrack)
+                songs.map(::toCatalogTrack)
+            }
         }
     }
+
+    /** What [songFor] found for a video, including that it found nothing. */
+    private class Counterpart(val song: SongItem?)
+
+    private val counterparts = java.util.concurrent.ConcurrentHashMap<String, Counterpart>()
+
+    /**
+     * [items] with every music video swapped for the song it is a video of.
+     *
+     * A video saved to a list plays its own soundtrack: the intro, the skit in
+     * the middle, the sound effects, and a title no lyrics site knows. YouTube
+     * Music has the record itself as a separate entry, and that is what should
+     * play. Looked up a few at a time and given up on quickly, so a long list
+     * opens at most a few seconds late the first time and at once after.
+     */
+    private suspend fun asSongs(items: List<SongItem>): List<SongItem> = coroutineScope {
+        val gate = kotlinx.coroutines.sync.Semaphore(COUNTERPART_PARALLELISM)
+        items.map { item ->
+            async {
+                if (!isVideo(item)) item
+                else gate.withPermit { songFor(item) } ?: item
+            }
+        }.awaitAll()
+    }
+
+    private fun isVideo(item: SongItem) =
+        !item.isEpisode && item.uploadEntityId == null &&
+            (item.musicVideoType == MUSIC_VIDEO_TYPE_OMV || item.musicVideoType == MUSIC_VIDEO_TYPE_UGC)
+
+    private suspend fun songFor(video: SongItem): SongItem? {
+        counterparts[video.id]?.let { return it.song }
+        val artist = video.artists.firstOrNull()?.name.orEmpty()
+        val title = songTitleOf(video.title, artist)
+        var answered = false
+        val found = kotlinx.coroutines.withTimeoutOrNull(COUNTERPART_TIMEOUT_MS) {
+            val results = YouTube.search("$title $artist".trim(), YouTube.SearchFilter.FILTER_SONG)
+                .getOrNull()?.items
+            answered = results != null
+            results.orEmpty()
+                .filterIsInstance<SongItem>()
+                .take(COUNTERPART_CANDIDATES)
+                .firstOrNull { isSongOf(video, title, it) }
+        }
+        // A timeout is not an answer: asked again next time.
+        if (found != null || answered) counterparts[video.id] = Counterpart(found)
+        if (found == null && answered) android.util.Log.i(TAG, "no song for video ${video.id} \"${video.title}\"")
+        return found
+    }
+
+    /** A video's title as a song's: no "(Official Video)", no "Artist - " in front. */
+    private fun songTitleOf(title: String, artist: String): String {
+        var clean = title.replace(VIDEO_TAG, " ")
+        if (artist.isNotEmpty()) {
+            clean = clean.replace(Regex("^\\s*${Regex.escape(artist)}\\s*[-–—:|]\\s*", RegexOption.IGNORE_CASE), "")
+        }
+        return clean.replace(Regex("\\s+"), " ").trim().ifEmpty { title }
+    }
+
+    private fun isSongOf(video: SongItem, title: String, song: SongItem): Boolean {
+        if (song.musicVideoType != null && song.musicVideoType != MUSIC_VIDEO_TYPE_ATV) return false
+        val wanted = squash(title)
+        val got = squash(song.title)
+        if (wanted.isEmpty() || got.isEmpty()) return false
+        val sameTitle = wanted == got || (kotlin.math.min(wanted.length, got.length) >= 4 && (wanted.contains(got) || got.contains(wanted)))
+        if (!sameTitle) return false
+        val channel = video.artists.map { squash(it.name).replace(CHANNEL_NOISE, "") }
+        val sameArtist = song.artists.any { credited ->
+            val name = squash(credited.name)
+            name.isNotEmpty() && (channel.any { it == name || it.contains(name) } || squash(video.title).contains(name))
+        }
+        if (!sameArtist) return false
+        val a = video.duration
+        val b = song.duration
+        return a == null || b == null || kotlin.math.abs(a - b) <= COUNTERPART_DURATION_SLACK_S
+    }
+
+    private fun squash(text: String) = text.lowercase().filter { it.isLetterOrDigit() }
+
+    /**
+     * An artist's page as YouTube Music lays it out: their best-known songs, then
+     * each shelf under its own heading — albums, singles, videos, performances,
+     * the lists they are in, the artists their fans also play.
+     */
+    suspend fun artistPage(uri: String): dev.lelonio.square.data.YouTubeArtistPage? = withContext(Dispatchers.IO) {
+        val id = publicArtistId(uri.removePrefix(ARTIST_PREFIX))
+        val page = runCatching { YouTube.artist(id).getOrThrow() }
+            .onFailure { android.util.Log.w(TAG, "artist $id", it) }
+            .getOrNull() ?: return@withContext null
+        artists[id] = ArtistFacts(channelId = page.artist.channelId ?: id, subscribed = page.isSubscribed)
+
+        // The first shelf of songs is the "top songs" list; any later one is
+        // videos, whose pictures are wide.
+        val top = page.sections.firstOrNull { section -> section.items.isNotEmpty() && section.items.all { it is SongItem } }
+        val shelves = page.sections.filter { it !== top }.mapNotNull { section ->
+            val more = moreUriOf(section.moreEndpoint?.browseId)
+            val songs = section.items.filterIsInstance<SongItem>()
+            if (songs.size == section.items.size && songs.isNotEmpty()) {
+                return@mapNotNull dev.lelonio.square.data.ArtistShelf(
+                    title = section.title,
+                    tracks = songs.map(::toVideoTrack),
+                    moreUri = section.moreEndpoint?.browseId?.takeIf { it.startsWith("VL") }
+                        ?.let { "$VIDEOS_PREFIX${it.removePrefix("VL")}" },
+                )
+            }
+            val items = section.items.mapNotNull { item ->
+                val playlist = toCatalogPlaylist(item) ?: return@mapNotNull null
+                SearchItem(
+                    uri = playlist.uri,
+                    title = playlist.name,
+                    // What the reference writes under a record: the year.
+                    subtitle = (item as? AlbumItem)?.year?.toString() ?: playlist.subtitle.orEmpty(),
+                    artworkUrl = playlist.artworkUrl,
+                )
+            }
+            items.takeIf { it.isNotEmpty() }?.let {
+                dev.lelonio.square.data.ArtistShelf(title = section.title, items = it)
+            }
+        }
+        dev.lelonio.square.data.YouTubeArtistPage(
+            name = page.artist.title,
+            artworkUrl = page.artist.thumbnail?.atSize(HERO_SIZE),
+            description = page.description?.takeIf { it.isNotBlank() },
+            subscribers = page.subscriberCountText?.takeIf { it.isNotBlank() },
+            monthlyListeners = page.monthlyListenerCount?.takeIf { it.isNotBlank() },
+            topSongs = top?.items.orEmpty().filterIsInstance<SongItem>().map(::toCatalogTrack),
+            topSongsMoreUri = moreUriOf(top?.moreEndpoint?.browseId),
+            shelves = shelves,
+        )
+    }
+
+    /** A video as a video: its wide picture, and an address that plays the picture. */
+    private fun toVideoTrack(item: SongItem) =
+        toCatalogTrack(item).copy(uri = "$VIDEO_PREFIX${item.id}", artworkUrl = item.thumbnail)
+
+    /** A shelf's "see all", where it leads to a list this app can open. */
+    private fun moreUriOf(browseId: String?): String? =
+        browseId?.takeIf { it.startsWith("VL") }?.let { "$PLAYLIST_PREFIX${it.removePrefix("VL")}" }
 
     /** The lists the library said the account can write to; see [canWriteTo]. */
     private val editable = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -619,10 +789,31 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         YouTubePlayerFactory.create(host)
 
     companion object {
+        private const val TAG = "SquareYouTube"
+        private const val HERO_SIZE = 1200
+        private val BYLINE_JOINERS = setOf("&", "e", "and", "y", "et", "und", "x", "i", "и", "ve", "और", "feat.", "ft.")
+        private const val MUSIC_VIDEO_TYPE_OMV = "MUSIC_VIDEO_TYPE_OMV"
+        private const val MUSIC_VIDEO_TYPE_UGC = "MUSIC_VIDEO_TYPE_UGC"
+        private const val MUSIC_VIDEO_TYPE_ATV = "MUSIC_VIDEO_TYPE_ATV"
+        private const val COUNTERPART_PARALLELISM = 6
+        private const val COUNTERPART_TIMEOUT_MS = 5_000L
+        private const val COUNTERPART_CANDIDATES = 5
+        /** An intro or an outro the record does not have, at most. */
+        private const val COUNTERPART_DURATION_SLACK_S = 75
+        private val VIDEO_TAG = Regex(
+            "[(\\[][^)\\]]*(official|video|lyric|audio|visuali[sz]er|\\bmv\\b|\\bhd\\b|\\b4k\\b|clip)[^)\\]]*[)\\]]",
+            RegexOption.IGNORE_CASE,
+        )
+        private val CHANNEL_NOISE = Regex("vevo|topic|official|music|tv$")
         const val URI_SCHEME = "ytmusic:"
         const val TRACK_PREFIX = "ytmusic:track:"
         const val PLAYLIST_PREFIX = "ytmusic:playlist:"
         const val ARTIST_PREFIX = "ytmusic:artist:"
+        const val ALBUM_PREFIX = "ytmusic:album:"
+        /** A video played as one, picture and all, whatever the video button says. */
+        const val VIDEO_PREFIX = "ytmusic:video:"
+        /** A list of videos, opened from an artist's video shelf. */
+        const val VIDEOS_PREFIX = "ytmusic:videos:"
 
         /** YouTube Music's own browse id for the account's playlist library. */
         private const val LOG_TAG = "SquareYouTube"

@@ -1139,6 +1139,14 @@ fun SquareApp(
     // touches what is playing.
     val landscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
         android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    // The rotation the video buttons asked for is let go of once there is no
+    // video: the app turns with the phone again.
+    val rotationContext = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(videoOn || spotifyVideoOn) {
+        if (!(videoOn || spotifyVideoOn)) {
+            dev.lelonio.square.ui.player.lockVideoOrientation(rotationContext, null)
+        }
+    }
     if (landscape && (videoOn || spotifyVideoOn) && player != null) {
         SquareTheme(seed = accent) {
             dev.lelonio.square.ui.player.FullScreenVideo(
@@ -2786,7 +2794,13 @@ fun SquareApp(
                                 // resolved before the app kept it — it is
                                 // looked up on the tap rather than left inert.
                                 onOpenAlbum = playback.mediaId
-                                    ?.takeIf { it.startsWith("spotify:track:") }
+                                    ?.takeIf {
+                                        it.startsWith("spotify:track:") ||
+                                            // YouTube has no lookup to fall back
+                                            // on: the record's address or nothing.
+                                            (it.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX) &&
+                                                playback.albumUri != null)
+                                    }
                                     ?.let { track ->
                                         {
                                             scope.launch {
@@ -3064,8 +3078,10 @@ fun SquareApp(
                                         // A video is streamed, so there is
                                         // nothing to offer offline.
                                         !offlineNow &&
-                                            playback.mediaId
-                                                ?.startsWith("ytmusic:track:") == true
+                                            playback.mediaId?.let { id ->
+                                                id.startsWith("ytmusic:track:") ||
+                                                    id.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.VIDEO_PREFIX)
+                                            } == true
                                     }
                                     ?.let { { YouTubeVideoMode.toggle(it) } },
                                 videoOn = videoOn || spotifyVideoOn,

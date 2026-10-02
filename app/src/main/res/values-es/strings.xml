@@ -478,4 +478,7 @@
     <string name="mood_mixes">Mixes por estado de ánimo</string>
     <string name="skip_fade">Fundido al cambiar de canción</string>
     <string name="skip_fade_note">La canción que saltas o sustituyes se desvanece mientras sube la que has elegido. Con Spotify las dos se superponen; en YouTube Music una sigue a la otra.</string>
+    <string name="subscribers_count">%s suscriptores</string>
+    <string name="exit_full_screen">Salir de pantalla completa</string>
+    <string name="rotate_video">Girar a pantalla completa</string>
 </resources>

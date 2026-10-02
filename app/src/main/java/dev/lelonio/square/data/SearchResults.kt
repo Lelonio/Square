@@ -94,3 +94,29 @@ fun SearchDto.toResults(
         )
     },
 )
+
+/**
+ * One row of an artist page as the source lays it out: its own heading, in
+ * the source's own words and order.
+ */
+data class ArtistShelf(
+    val title: String,
+    /** Records, lists and artists, opened as pages. */
+    val items: List<SearchItem> = emptyList(),
+    /** Videos and performances, played where they are. */
+    val tracks: List<CatalogTrack> = emptyList(),
+    /** The whole of it, where the source has a page for that. */
+    val moreUri: String? = null,
+)
+
+/** Everything a YouTube Music artist page holds. */
+data class YouTubeArtistPage(
+    val name: String,
+    val artworkUrl: String?,
+    val description: String?,
+    val subscribers: String?,
+    val monthlyListeners: String?,
+    val topSongs: List<CatalogTrack>,
+    val topSongsMoreUri: String?,
+    val shelves: List<ArtistShelf>,
+)

@@ -140,6 +140,8 @@ import com.adamglin.phosphoricons.bold.DotsThree
 import com.adamglin.phosphoricons.bold.Plus
 import com.adamglin.phosphoricons.bold.Check
 import com.adamglin.phosphoricons.bold.Star
+import com.adamglin.phosphoricons.bold.Users
+import com.adamglin.phosphoricons.bold.Waveform
 import com.adamglin.phosphoricons.bold.ArrowsDownUp
 import com.adamglin.phosphoricons.bold.ArrowCircleDown
 import com.adamglin.phosphoricons.fill.Shuffle
@@ -640,6 +642,8 @@ fun PlaylistScreen(
                 onToggleFollow = onToggleFollow,
                 infoOpen = infoOpen,
                 onToggleInfo = { infoOpen = !infoOpen },
+                subscribers = state.subscribers,
+                monthlyListeners = state.monthlyListeners,
                 pageColor = pageColor,
                 backdrop = pageBackdrop,
                 collapse = collapseFraction,
@@ -740,7 +744,8 @@ fun PlaylistScreen(
                             followers = state.followers,
                             genres = state.genres,
                             origin = state.origin,
-                            bio = state.notes,
+                            // Shown on the page itself now, under "About".
+                            bio = null,
                         )
                     }
                 }
@@ -777,6 +782,23 @@ fun PlaylistScreen(
                 }
             }
 
+            // Who they are, a few lines of it and a word to open the rest, on
+            // the page rather than behind the "i": the reference leads with it.
+            if (isArtist && query.isBlank()) {
+                state.notes?.takeIf { it.isNotBlank() }?.let { notes ->
+                    item(contentType = "artistNotes") {
+                        Column(Modifier.padding(top = 14.dp)) {
+                            Text(
+                                stringResource(R.string.about),
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(start = 24.dp),
+                            )
+                            EditorialNotes(notes)
+                        }
+                    }
+                }
+            }
+
             if (state.tracks.isNotEmpty()) {
                 item(contentType = "sectionTitle") {
                     SectionHeader(
@@ -793,9 +815,25 @@ fun PlaylistScreen(
                         // Only where there is more than what is shown.
                         expandable = isArtist &&
                             query.isBlank() &&
-                            visible.size > TOP_SONGS,
+                            (visible.size > TOP_SONGS || state.topSongsMoreUri != null),
                         expanded = topSongsOpen,
-                        onToggle = { topSongsOpen = !topSongsOpen },
+                        onToggle = {
+                            // The whole list, where the source has one; the
+                            // rest of what is already here otherwise.
+                            val more = state.topSongsMoreUri
+                            if (more != null) {
+                                onOpenItem(
+                                    dev.lelonio.square.data.SearchItem(
+                                        uri = more,
+                                        title = state.name,
+                                        subtitle = "",
+                                        artworkUrl = state.artworkUrl,
+                                    ),
+                                )
+                            } else {
+                                topSongsOpen = !topSongsOpen
+                            }
+                        },
                     )
                 }
             }
@@ -944,6 +982,44 @@ fun PlaylistScreen(
             // past the artist to reach the artist. Albums, then singles, then
             // the records that are somebody else's, then what Spotify built
             // around them — the order is how much of the artist is in each.
+            // The source's own rows, in its order and under its headings.
+            if (query.isBlank()) {
+                state.shelves.forEachIndexed { index, shelf ->
+                    item(key = "shelf $index ${shelf.title}", contentType = "shelf") {
+                        val more = shelf.moreUri?.let { uri ->
+                            {
+                                // Named for whose it is, under their picture:
+                                // "Video" alone, on a blank page, said nothing.
+                                onOpenItem(
+                                    dev.lelonio.square.data.SearchItem(
+                                        uri = uri,
+                                        title = "${state.name} · ${shelf.title}",
+                                        subtitle = state.name,
+                                        artworkUrl = state.artworkUrl
+                                            ?: shelf.tracks.firstOrNull()?.artworkUrl
+                                            ?: shelf.items.firstOrNull()?.artworkUrl,
+                                    ),
+                                )
+                            }
+                        }
+                        if (shelf.tracks.isNotEmpty()) {
+                            VideoStrip(
+                                shelf = shelf,
+                                onPlay = { at -> onPlay(shelf.tracks, at, false) },
+                                onMore = more,
+                            )
+                        } else {
+                            AlbumStrip(
+                                albums = shelf.items,
+                                title = shelf.title,
+                                onOpen = onOpenItem,
+                                onMore = more,
+                            )
+                        }
+                    }
+                }
+            }
+
             if (state.albums.isNotEmpty() && query.isBlank()) {
                 item(contentType = "albums") {
                     AlbumStrip(
@@ -1755,6 +1831,9 @@ private fun ArtistHeader(
     onToggleFollow: () -> Unit,
     infoOpen: Boolean,
     onToggleInfo: () -> Unit,
+    /** The channel's subscribers, as YouTube words the number; null elsewhere. */
+    subscribers: String?,
+    monthlyListeners: String?,
     pageColor: Color,
     backdrop: Backdrop,
     collapse: () -> Float,
@@ -1907,6 +1986,28 @@ private fun ArtistHeader(
                     )
                 }
 
+            }
+
+            // How big they are, in the two numbers the reference puts under
+            // the buttons: who follows the channel and who listens in a month.
+            val subscriberLine = subscribers?.let { count ->
+                if (count.any { it.isWhitespace() }) count else stringResource(R.string.subscribers_count, count)
+            }
+            val monthlyLine = monthlyListeners?.let { count ->
+                if (count.any { it.isLetter() }) {
+                    count
+                } else {
+                    pluralStringResource(R.plurals.monthly_listeners, 2, count)
+                }
+            }
+            if (subscriberLine != null || monthlyLine != null) {
+                Row(
+                    Modifier.padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    subscriberLine?.let { StatPill(PhosphorIcons.Bold.Users, it, ink) }
+                    monthlyLine?.let { StatPill(PhosphorIcons.Bold.Waveform, it, ink) }
+                }
             }
         }
 
@@ -2269,13 +2370,11 @@ private fun AlbumStrip(
     albums: List<dev.lelonio.square.data.SearchItem>,
     title: String,
     onOpen: (dev.lelonio.square.data.SearchItem) -> Unit,
+    /** The whole shelf, where the source has a page for it. */
+    onMore: (() -> Unit)? = null,
 ) {
     Column(Modifier.padding(top = 18.dp)) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(start = 24.dp, bottom = 10.dp),
-        )
+        ShelfTitle(title, onMore)
         androidx.compose.foundation.lazy.LazyRow(
             contentPadding = PaddingValues(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -2286,13 +2385,16 @@ private fun AlbumStrip(
                         .width(132.dp)
                         .pressable({ onOpen(album) }),
                 ) {
+                    // A person is a portrait, round; a record is a sleeve.
+                    val round = album.uri.contains(":artist:")
+                    val corner = if (round) 66.dp else 14.dp
                     Artwork(
                         url = album.artworkUrl,
                         title = album.title,
                         modifier = Modifier
                             .size(132.dp)
-                            .softShadow(RoundedCornerShape(14.dp), elevation = 14.dp),
-                        corner = 14.dp,
+                            .softShadow(RoundedCornerShape(corner), elevation = 14.dp),
+                        corner = corner,
                         decodeSize = 132.dp,
                     )
                     Text(
@@ -2307,6 +2409,114 @@ private fun AlbumStrip(
                             album.subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A shelf's heading, with the way to all of it at the end where there is one. */
+@Composable
+private fun ShelfTitle(title: String, onMore: (() -> Unit)?) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 18.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (onMore != null) {
+            val shape = RoundedCornerShape(percent = 50)
+            Text(
+                stringResource(R.string.show_all),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .clip(shape)
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f))
+                    .pressable(onMore, shape = shape)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
+    }
+}
+
+/** One of the two numbers under an artist's buttons. */
+@Composable
+private fun StatPill(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, ink: Color) {
+    val shape = RoundedCornerShape(percent = 50)
+    Row(
+        Modifier
+            .clip(shape)
+            .background(ink.copy(alpha = 0.10f))
+            .border(0.6.dp, ink.copy(alpha = 0.28f), shape)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = ink.copy(alpha = 0.9f), modifier = Modifier.size(14.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            color = ink,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 6.dp),
+        )
+    }
+}
+
+/**
+ * Videos and performances: wide pictures, because that is what they are, and
+ * played where they are rather than opened as a page.
+ */
+@Composable
+private fun VideoStrip(
+    shelf: dev.lelonio.square.data.ArtistShelf,
+    onPlay: (Int) -> Unit,
+    onMore: (() -> Unit)?,
+) {
+    Column(Modifier.padding(top = 18.dp)) {
+        ShelfTitle(shelf.title, onMore)
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding = PaddingValues(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            itemsIndexed(items = shelf.tracks, key = { index, track -> "$index ${track.uri}" }) { index, track ->
+                Column(
+                    Modifier
+                        .width(200.dp)
+                        .pressable({ onPlay(index) }),
+                ) {
+                    Artwork(
+                        url = track.artworkUrl,
+                        title = track.name,
+                        modifier = Modifier
+                            .size(width = 200.dp, height = 112.dp)
+                            .softShadow(RoundedCornerShape(12.dp), elevation = 12.dp),
+                        corner = 12.dp,
+                        decodeSize = 200.dp,
+                    )
+                    Text(
+                        track.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    if (track.artist.isNotBlank()) {
+                        Text(
+                            track.artist,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }

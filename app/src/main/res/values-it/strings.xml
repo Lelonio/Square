@@ -473,4 +473,7 @@
     <string name="search_library">Cerca nella libreria</string>
     <string name="skip_fade">Dissolvenza al cambio brano</string>
     <string name="skip_fade_note">Il brano che salti o sostituisci sfuma mentre sale quello che hai scelto. Con Spotify i due si sovrappongono, su YouTube Music uno segue l\'altro.</string>
+    <string name="subscribers_count">%s iscritti</string>
+    <string name="exit_full_screen">Esci da schermo intero</string>
+    <string name="rotate_video">Ruota a schermo intero</string>
 </resources>

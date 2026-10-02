@@ -485,4 +485,7 @@
     <string name="search_library">Kitaplıkta ara</string>
     <string name="skip_fade">Şarkı değişiminde geçiş</string>
     <string name="skip_fade_note">Atladığınız veya değiştirdiğiniz şarkı kısılırken seçtiğiniz şarkı yükselir. Spotify kaynağında ikisi üst üste biner, YouTube Music\'te biri diğerini izler.</string>
+    <string name="subscribers_count">%s abone</string>
+    <string name="exit_full_screen">Tam ekrandan çık</string>
+    <string name="rotate_video">Tam ekran için döndür</string>
 </resources>

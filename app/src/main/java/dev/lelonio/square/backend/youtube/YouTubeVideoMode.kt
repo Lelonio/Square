@@ -30,11 +30,19 @@ object YouTubeVideoMode {
      * queue, and the position is put back by hand because stopping loses it.
      */
     fun toggle(player: Player) {
+        val onVideo = player.currentMediaItem?.mediaId?.startsWith(YouTubeBackend.VIDEO_PREFIX) == true
         _enabled.value = !_enabled.value
+        // On a video the button means "this one as sound", and the mode goes
+        // back to following the queue once it moves on.
+        audioOnly = onVideo && !_enabled.value
+        byItem = onVideo && _enabled.value
         val index = player.currentMediaItemIndex
         val position = player.currentPosition
         val wasPlaying = player.isPlaying
         player.stop()
+        // A new source for the item, so it is built for the mode it is now in:
+        // the picture comes as its own stream; see VideoAwareSourceFactory.
+        player.currentMediaItem?.let { player.replaceMediaItem(index, it) }
         player.seekTo(index, position)
         player.prepare()
         if (wasPlaying) player.play()
@@ -58,5 +66,36 @@ object YouTubeVideoMode {
     /** Back to sound alone — for when the source or the track changes under it. */
     fun reset() {
         _enabled.value = false
+        byItem = false
+        audioOnly = false
     }
+
+    /**
+     * Whether the mode is on because the item playing is a video, rather than
+     * because somebody pressed the button: it then goes off again with the item.
+     */
+    @Volatile
+    var byItem = false
+        private set
+
+    /** Set when the listener asked for the video playing to be sound alone. */
+    @Volatile
+    private var audioOnly = false
+
+    /** Follows the queue: on for a video, off again for the song after it. */
+    fun onItem(mediaId: String?) {
+        audioOnly = false
+        val video = mediaId?.startsWith(YouTubeBackend.VIDEO_PREFIX) == true
+        if (video && !_enabled.value) {
+            byItem = true
+            _enabled.value = true
+        } else if (!video && byItem) {
+            byItem = false
+            _enabled.value = false
+        }
+    }
+
+    /** Whether [uri] should open as video: a video always, a song when the button says so. */
+    fun wantsVideo(uri: String): Boolean =
+        if (uri.startsWith(YouTubeBackend.VIDEO_PREFIX)) !audioOnly else _enabled.value && !byItem
 }
