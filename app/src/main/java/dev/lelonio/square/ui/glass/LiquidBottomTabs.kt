@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +70,9 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sign
 
+// The tinted copy is a drawing source, not another shared-transition endpoint.
+internal val LocalLiquidBottomTabsReplica = staticCompositionLocalOf { false }
+
 @Composable
 fun LiquidBottomTabs(
     selectedTabIndex: () -> Int,
@@ -109,6 +113,7 @@ fun LiquidBottomTabs(
      * keeps upstream's.
      */
     indicatorColor: Color? = null,
+    drawContainer: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
     val isLightTheme = !isSystemInDarkTheme()
@@ -234,7 +239,7 @@ fun LiquidBottomTabs(
                 // other pane. The puck below keeps its own recipe on purpose —
                 // what it does is press-driven, a bend and a rim that only exist
                 // while a finger is on it, which is not a material.
-                .liquidGlass(
+                .then(if (drawContainer) Modifier.liquidGlass(
                     config = LocalGlassEffectConfig.current,
                     shape = ContinuousCapsule(),
                     // Follows the setting like everything else; the shell of a
@@ -247,7 +252,7 @@ fun LiquidBottomTabs(
                         scaleX = scale
                         scaleY = scale
                     },
-                )
+                ) else Modifier)
                 .then(interactiveHighlight.modifier)
                 .height(height)
                 .fillMaxWidth()
@@ -257,6 +262,7 @@ fun LiquidBottomTabs(
         )
 
         CompositionLocalProvider(
+            LocalLiquidBottomTabsReplica provides true,
             LocalLiquidBottomTabScale provides {
                 lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
             }

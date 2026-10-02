@@ -7,6 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.FilterQuality
@@ -248,53 +251,32 @@ fun HeroBackdrop(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    // Its own layer, so the mask below erases this copy alone
-                    // and not the sharp one underneath it.
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                    .drawWithContent {
-                        // The moving cover's own frame when it is playing, so
-                        // the blur is of what is on screen rather than of the
-                        // still it started from.
+                    // Compose the bitmap and its alpha mask in one shader:
+                    // no header-sized offscreen render target on each redraw.
+                    .drawWithCache {
                         val frame = motion.latest.value
-                        drawCropped(frame?.soft ?: blur, shown.zoom)
-                        drawRect(
-                            // Eased rather than straight, and started well
-                            // before the colour does.
-                            //
-                            // A linear ramp between two stops is a band: the eye
-                            // finds both ends of it, and what should read as a
-                            // picture dissolving reads as a picture with a strip
-                            // over it. These are the same two ends with the
-                            // middle bent — slow to leave, quick through the
-                            // middle, slow to arrive — which is the shape a fade
-                            // has to have before it stops looking like a shape.
-                            brush = Brush.verticalGradient(
-                                // Ahead of the slot's own fade where the
-                                // picture ends on itself: the copy that
-                                // dissolves has to be blurred *before* it
-                                // starts going, or what dissolves is a sharp
-                                // photograph and the eye follows it down.
-                                *if (fadeToPage) {
-                                    softening(softenFrom, softenTo, Color.Black)
-                                } else if (extendPicture) {
-                                    // Just behind the fade rather than a third
-                                    // of the way up: the picture stays sharp
-                                    // down to where it gives way.
-                                    softening(
-                                        1f - SLOT_FADE - SLOT_BLUR_LEAD,
-                                        1f - SLOT_FADE + SLOT_BLUR_TAIL,
-                                        Color.Black,
-                                    )
-                                } else {
-                                    softening(
-                                        (softenFrom - 0.16f).coerceAtLeast(0f),
-                                        softenFrom + 0.03f,
-                                        Color.Black,
-                                    )
-                                },
-                            ),
-                            blendMode = BlendMode.DstIn,
+                        val stops = if (fadeToPage) {
+                            softening(softenFrom, softenTo, Color.Black)
+                        } else if (extendPicture) {
+                            softening(
+                                1f - SLOT_FADE - SLOT_BLUR_LEAD,
+                                1f - SLOT_FADE + SLOT_BLUR_TAIL,
+                                Color.Black,
+                            )
+                        } else {
+                            softening(
+                                (softenFrom - 0.16f).coerceAtLeast(0f),
+                                softenFrom + 0.03f,
+                                Color.Black,
+                            )
+                        }
+                        val brush = maskedPictureBrush(
+                            frame?.soft ?: blur,
+                            shown.zoom,
+                            size,
+                            stops,
                         )
+                        onDrawBehind { drawRect(brush = brush) }
                     },
             )
             }
@@ -848,6 +830,39 @@ private const val FRAME_SOFTEN = 2
 
 /** How far each copy of a frame moves [MotionFrames]' blend towards itself. */
 private const val FRAME_FOLLOW = 0.2f
+
+/** The same cropped picture and DstIn fade, without an intermediate surface. */
+private fun maskedPictureBrush(
+    image: ImageBitmap,
+    zoom: Float,
+    size: androidx.compose.ui.geometry.Size,
+    stops: Array<Pair<Float, Color>>,
+): androidx.compose.ui.graphics.Brush {
+    val crop = croppedTo(image.width, image.height, size.width / size.height, zoom)
+    val picture = android.graphics.BitmapShader(
+        image.asAndroidBitmap(),
+        android.graphics.Shader.TileMode.CLAMP,
+        android.graphics.Shader.TileMode.CLAMP,
+    ).apply {
+        setLocalMatrix(android.graphics.Matrix().apply {
+            setRectToRect(
+                android.graphics.RectF(
+                    crop.left.toFloat(), crop.top.toFloat(),
+                    crop.right.toFloat(), crop.bottom.toFloat(),
+                ),
+                android.graphics.RectF(0f, 0f, size.width, size.height),
+                android.graphics.Matrix.ScaleToFit.FILL,
+            )
+        })
+    }
+    val mask = android.graphics.LinearGradient(
+        0f, 0f, 0f, size.height,
+        stops.map { it.second.toArgb() }.toIntArray(),
+        stops.map { it.first }.toFloatArray(),
+        android.graphics.Shader.TileMode.CLAMP,
+    )
+    return ShaderBrush(android.graphics.ComposeShader(picture, mask, android.graphics.PorterDuff.Mode.DST_IN))
+}
 
 /**
  * Draws [image] filling this area, cropped at the sides or the top and bottom

@@ -64,6 +64,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import com.adamglin.phosphoricons.fill.XCircle
 import dev.lelonio.square.ui.glass.floatingtabbar.FloatingTabBar
+import dev.lelonio.square.ui.glass.floatingtabbar.sharedSearchTab
 import dev.lelonio.square.ui.glass.floatingtabbar.FloatingTabBarDefaults
 import dev.lelonio.square.ui.glass.floatingtabbar.rememberFloatingTabBarScrollConnection
 import androidx.compose.ui.unit.sp
@@ -313,6 +314,12 @@ private fun androidx.compose.foundation.layout.RowScope.BarTab(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    // The geometric bar draws the selected control once, outside the fixed
+    // tab strip, so it can travel without leaving a second icon behind.
+    if (dev.lelonio.square.ui.glass.floatingtabbar.LocalGeometricFloatingTabBar.current && selected) {
+        Spacer(Modifier.weight(1f))
+        return
+    }
     LiquidBottomTab(onClick = onClick, modifier = modifier) {
         Icon(
             icon,
@@ -2118,7 +2125,8 @@ fun SquareApp(
                                             }
                                         },
                                     ),
-                                inline = tabBarScroll.isInline,
+                                inline = dev.lelonio.square.ui.glass.floatingtabbar.LocalFloatingTabBarInline.current,
+                                collapseProgress = dev.lelonio.square.ui.glass.floatingtabbar.LocalFloatingTabBarCollapseProgress.current?.invoke(),
                                 onClick = {
                                     scope.launch { expand.animateTo(1f, expandSpec) }
                                 },
@@ -2395,6 +2403,7 @@ fun SquareApp(
                                 // own.
                                 indicatorVisible = activeTab in TAB_ROUTES,
                                 modifier = tabsModifier,
+                                drawContainer = !dev.lelonio.square.ui.glass.floatingtabbar.LocalGeometricFloatingTabBar.current,
                             ) {
                                 BarTab(
                                     R.string.home,
@@ -2436,34 +2445,30 @@ fun SquareApp(
                                     viewModel.clearPageHistory()
                                     navController.switchTab(Routes.LIBRARY)
                                 }
-                                BarTab(
-                                    R.string.search,
-                                    // Heavy rather than solid: a filled
-                                    // magnifier reads as a blob at this size,
-                                    // and it is the one glyph here whose shape
-                                    // is the whole of its meaning.
-                                    PhosphorIcons.Bold.MagnifyingGlass,
-                                    activeTab == Routes.SEARCH,
-                                    tabAccent,
-                                    barInk,
-                                    // This slot is the folded bar's search
-                                    // circle standing in the row. Sharing its
-                                    // bounds is what keeps it at the right edge
-                                    // while the pill collapses to the left,
-                                    // instead of shrinking away with the pill
-                                    // and a circle fading in where it was — which
-                                    // is what the reference does: the first and
-                                    // last of the row survive the fold, the
-                                    // three in between go.
-                                    modifier = Modifier.sharedElement(
-                                        sharedContentState = rememberSharedContentState("standaloneTab"),
-                                        animatedVisibilityScope = tabsVisibility,
-                                        zIndexInOverlay = 2f,
-                                    ),
-                                ) {
-                                    viewModel.clearPageHistory()
-                                    searchOpen = true
-                                    navController.switchTab(Routes.SEARCH)
+                                if (dev.lelonio.square.ui.glass.floatingtabbar.LocalGeometricFloatingTabBar.current) {
+                                    Spacer(Modifier.weight(1f))
+                                } else {
+                                    BarTab(
+                                        R.string.search,
+                                        // Heavy rather than solid: a filled
+                                        // magnifier reads as a blob at this size,
+                                        // and it is the one glyph here whose shape
+                                        // is the whole of its meaning.
+                                        PhosphorIcons.Bold.MagnifyingGlass,
+                                        activeTab == Routes.SEARCH,
+                                        tabAccent,
+                                        barInk,
+                                        // The circle and labelled tab share bounds,
+                                        // retaining their surfaces during the fold.
+                                        // The incoming tab inherits the capsule clip.
+                                        modifier = if (dev.lelonio.square.ui.glass.LocalLiquidBottomTabsReplica.current) {
+                                            Modifier
+                                        } else sharedSearchTab(tabsVisibility),
+                                    ) {
+                                        viewModel.clearPageHistory()
+                                        searchOpen = true
+                                        navController.switchTab(Routes.SEARCH)
+                                    }
                                 }
                             }
                             }

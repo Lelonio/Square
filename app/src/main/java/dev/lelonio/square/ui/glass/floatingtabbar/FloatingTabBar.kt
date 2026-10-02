@@ -10,12 +10,11 @@
  * SharedTransitionScope.sharedElement. Compiling the source here keeps it
  * binary-compatible.
  *
- * Kept as close to upstream as it can be. The library animates the fold itself
- * — shared bounds on a spring, with the crossfade only clearing away what has
- * no counterpart in the other state — and every local attempt to describe that
- * movement by hand made it worse. What this app adds goes through the seams the
- * library already has: the glass through tabBarContentModifier, the selection
- * shape through colors.selectedTabBackgroundColor.
+ * Shared elements carry the tab group, search and player between layouts.
+ * A single bounds animation moves and resizes each surface continuously.
+ * Search crossfades its circle and tab within shared bounds; the incoming
+ * tab stays clipped to the growing group's surface.
+ * Glass styling remains supplied through tabBarContentModifier.
  */
 
 @file:OptIn(ExperimentalSharedTransitionApi::class)
@@ -23,6 +22,8 @@
 package dev.lelonio.square.ui.glass.floatingtabbar
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.BoundsTransform
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -30,8 +31,11 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.keyframes
@@ -61,6 +65,8 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -295,6 +301,27 @@ fun FloatingTabBar(
 ) {
     val scope = remember(contentKey) { FloatingTabBarScopeImpl().apply { content() } }
 
+    if (expandedTabs != null && !standaloneInExpanded && expandedTabsHeight != Dp.Unspecified) {
+        SharedTransitionLayout(modifier = modifier) {
+            GeometricFloatingTabBar(
+                scope = scope,
+                selectedTabKey = selectedTabKey,
+                isInline = scrollConnection.isInline,
+                searchMode = searchMode && searchBarContent != null,
+                onExpand = scrollConnection::expand,
+                expandedTabs = expandedTabs,
+                accessory = expandedAccessory ?: inlineAccessory,
+                searchBarContent = searchBarContent,
+                rowHeight = expandedTabsHeight,
+                tabBarContentModifier = tabBarContentModifier,
+                colors = colors,
+                shapes = shapes,
+                sizes = sizes,
+            )
+        }
+        return
+    }
+
     val isAccessoryShared = inlineAccessory != null && expandedAccessory != null
 
     // Three shapes rather than two; see searchMode.
@@ -305,29 +332,15 @@ fun FloatingTabBar(
     }
 
     SharedTransitionLayout(modifier = modifier) {
-        // LOCAL CHANGE: the fold as two drops of water rather than two layouts.
-        //
-        // Held as a transition of its own so the merge can be timed against it:
-        // the shapes travel through the middle of the fold, and it is only there
-        // that the blur-and-threshold pass has anything to join. The radius runs
-        // 0 at both ends and peaks halfway, which is what draws the neck between
-        // the circles, thins it, and pinches it off. See gooey.
         val fold = updateTransition(targetState = visual, label = "fold")
-        val gooeyRadius by fold.animateFloat(
-            transitionSpec = {
-                keyframes {
-                    durationMillis = GooeyDurationMs
-                    0f at 0
-                    GooeyPeakBlur at GooeyDurationMs / 2 using FastOutSlowInEasing
-                    0f at GooeyDurationMs
-                }
-            },
-            label = "gooey",
-        ) { 0f }
-
-        Box(Modifier.gooey { gooeyRadius }) {
         fold.AnimatedContent(
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            transitionSpec = {
+                (fadeIn(tween(FoldDurationMs, easing = FoldEasing)) togetherWith
+                    fadeOut(tween(FoldDurationMs, easing = FoldEasing)))
+                    .using(SizeTransform(clip = false) { _, _ ->
+                        tween(FoldDurationMs, easing = FoldEasing)
+                    })
+            },
             contentAlignment = Alignment.BottomStart
         ) { target ->
             if (target == FloatingTabBarVisual.SEARCH) {
@@ -379,21 +392,33 @@ fun FloatingTabBar(
                 )
             }
         }
-        }
     }
 }
 
-/**
- * The merge, and how long it lasts.
- *
- * Blur enough for the two circles' edges to reach each other and no more: at a
- * larger radius the icons inside them smear, and the pass covers the whole bar.
- * The window is the fold's own — the shapes are between places for about that
- * long — and the radius is zero at both ends, so at rest this costs nothing: no
- * offscreen layer, no filter. See gooey.
- */
-private const val GooeyPeakBlur = 14f
-private const val GooeyDurationMs = 260
+// Measured against the supplied clip: one continuous movement, with a quick
+// departure and a soft settle. All bounds use the same progress curve.
+internal const val FoldDurationMs = 320
+private val FoldEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+internal val LocalFloatingTabBarInline = staticCompositionLocalOf { false }
+
+// Search changes its content (glass circle -> labelled tab), so retain both
+// versions during the morph. sharedElement would draw only the incoming tab,
+// dropping the circle before the growing bar has reached it.
+@Composable
+internal fun SharedTransitionScope.sharedSearchTab(
+    animatedVisibilityScope: AnimatedVisibilityScope,
+): Modifier = Modifier.sharedBounds(
+    sharedContentState = rememberSharedContentState("standaloneTab"),
+    animatedVisibilityScope = animatedVisibilityScope,
+    enter = fadeIn(tween(FoldDurationMs, easing = LinearEasing)),
+    exit = fadeOut(tween(FoldDurationMs, easing = LinearEasing)),
+    boundsTransform = FoldBoundsTransform,
+    zIndexInOverlay = 2f,
+)
+
+internal val FoldBoundsTransform = BoundsTransform { _, _ ->
+    tween(FoldDurationMs, easing = FoldEasing)
+}
 
 /** LOCAL CHANGE: the three shapes the bar can take; see searchMode. */
 private enum class FloatingTabBarVisual { INLINE, EXPANDED, SEARCH }
@@ -472,11 +497,7 @@ private fun SharedTransitionScope.SearchExpandedBar(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .sharedElement(
-                        sharedContentState = rememberSharedContentState("standaloneTab"),
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        zIndexInOverlay = 1f
-                    )
+                    .then(sharedSearchTab(animatedVisibilityScope))
                     .shadow(shape = shapes.tabBarShape, elevation = elevations.expandedElevation)
                     .background(color = colors.backgroundColor, shape = shapes.tabBarShape)
                     .clip(shapes.tabBarShape)
@@ -748,6 +769,7 @@ private fun SharedTransitionScope.InlineTab(
             .sharedElement(
                 sharedContentState = rememberSharedContentState("tabGroup"),
                 animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform = FoldBoundsTransform,
                 zIndexInOverlay = 1f
             )
             .shadow(
@@ -773,6 +795,7 @@ private fun SharedTransitionScope.InlineTab(
                     Modifier.sharedElement(
                         sharedContentState = rememberSharedContentState("tab#${inlineTab.key}-icon"),
                         animatedVisibilityScope = animatedVisibilityScope,
+                        boundsTransform = FoldBoundsTransform,
                         zIndexInOverlay = 1f
                     )
                 ) {
@@ -802,11 +825,7 @@ private fun SharedTransitionScope.InlineStandaloneTab(
         isInline = true,
         isStandalone = true,
         modifier = modifier
-            .sharedElement(
-                sharedContentState = rememberSharedContentState("standaloneTab"),
-                animatedVisibilityScope = animatedVisibilityScope,
-                zIndexInOverlay = 1f
-            )
+            .then(sharedSearchTab(animatedVisibilityScope))
             .shadow(
                 shape = shapes.standaloneTabShape,
                 elevation = elevations.inlineElevation
@@ -843,27 +862,31 @@ private fun SharedTransitionScope.InlineAccessory(
                     if (isAccessoryShared) {
                         Modifier.sharedElement(
                             sharedContentState = rememberSharedContentState("accessory"),
-                            animatedVisibilityScope = animatedVisibilityScope
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            boundsTransform = FoldBoundsTransform,
+                            zIndexInOverlay = 3f,
                         )
                     } else {
                         Modifier.animateEnterExitAccessory(
                             sharedTransitionScope = this,
-                            animatedVisibilityScope = animatedVisibilityScope
+                            animatedVisibilityScope = animatedVisibilityScope,
                         )
                     }
                 )
         ) {
-            accessory(
-                Modifier
-                    .fillMaxSize()
-                    .shadow(
-                        shape = shapes.accessoryShape,
-                        elevation = elevations.inlineElevation
-                    )
-                    .background(color = colors.accessoryBackgroundColor, shapes.accessoryShape)
-                    .clip(shapes.accessoryShape),
-                animatedVisibilityScope
-            )
+            CompositionLocalProvider(LocalFloatingTabBarInline provides true) {
+                accessory(
+                    Modifier
+                        .fillMaxSize()
+                        .shadow(
+                            shape = shapes.accessoryShape,
+                            elevation = elevations.inlineElevation
+                        )
+                        .background(color = colors.accessoryBackgroundColor, shapes.accessoryShape)
+                        .clip(shapes.accessoryShape),
+                    animatedVisibilityScope
+                )
+            }
         }
     }
 }
@@ -950,6 +973,8 @@ private fun SharedTransitionScope.ExpandedBar(
                         .sharedElement(
                             sharedContentState = rememberSharedContentState("tabGroup"),
                             animatedVisibilityScope = animatedVisibilityScope,
+                            boundsTransform = FoldBoundsTransform,
+                            clipInOverlayDuringTransition = OverlayClip(shapes.tabBarShape),
                             zIndexInOverlay = 1f
                         )
                 ) {
@@ -1019,26 +1044,30 @@ private fun SharedTransitionScope.ExpandedAccessory(
                 if (isAccessoryShared) {
                     Modifier.sharedElement(
                         sharedContentState = rememberSharedContentState("accessory"),
-                        animatedVisibilityScope = animatedVisibilityScope
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        boundsTransform = FoldBoundsTransform,
+                        zIndexInOverlay = 3f,
                     )
                 } else {
                     Modifier.animateEnterExitAccessory(
                         sharedTransitionScope = this,
-                        animatedVisibilityScope = animatedVisibilityScope
+                        animatedVisibilityScope = animatedVisibilityScope,
                     )
                 }
             )
     ) {
-        accessory(
-            Modifier
-                .shadow(
-                    shape = shapes.accessoryShape,
-                    elevation = elevations.expandedElevation
-                )
-                .background(color = colors.accessoryBackgroundColor, shapes.accessoryShape)
-                .clip(shapes.accessoryShape),
-            animatedVisibilityScope
-        )
+        CompositionLocalProvider(LocalFloatingTabBarInline provides false) {
+            accessory(
+                Modifier
+                    .shadow(
+                        shape = shapes.accessoryShape,
+                        elevation = elevations.expandedElevation
+                    )
+                    .background(color = colors.accessoryBackgroundColor, shapes.accessoryShape)
+                    .clip(shapes.accessoryShape),
+                animatedVisibilityScope
+            )
+        }
     }
 }
 @Composable
@@ -1078,6 +1107,7 @@ private fun SharedTransitionScope.ExpandedTabs(
             .sharedElement(
                 sharedContentState = rememberSharedContentState("tabGroup"),
                 animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform = FoldBoundsTransform,
                 zIndexInOverlay = 1f
             )
             .shadow(
@@ -1132,12 +1162,13 @@ private fun SharedTransitionScope.ExpandedTabs(
                             Modifier.sharedElement(
                                 sharedContentState = rememberSharedContentState("tab#${tab.key}-icon"),
                                 animatedVisibilityScope = animatedVisibilityScope,
+                                boundsTransform = FoldBoundsTransform,
                                 zIndexInOverlay = 1f
                             )
                         } else {
                             Modifier.animateEnterExitTab(
                                 sharedTransitionScope = this@ExpandedTabs,
-                                animatedVisibilityScope = animatedVisibilityScope
+                                animatedVisibilityScope = animatedVisibilityScope,
                             )
                         }
                     ) {
@@ -1148,7 +1179,7 @@ private fun SharedTransitionScope.ExpandedTabs(
                     Box(
                         Modifier.animateEnterExitTab(
                             sharedTransitionScope = this@ExpandedTabs,
-                            animatedVisibilityScope = animatedVisibilityScope
+                            animatedVisibilityScope = animatedVisibilityScope,
                         )
                     ) {
                         tab.title()
@@ -1197,11 +1228,7 @@ private fun SharedTransitionScope.ExpandedStandaloneTab(
         isInline = false,
         isStandalone = true,
         modifier = modifier
-            .sharedElement(
-                sharedContentState = rememberSharedContentState("standaloneTab"),
-                animatedVisibilityScope = animatedVisibilityScope,
-                zIndexInOverlay = 1f
-            )
+            .then(sharedSearchTab(animatedVisibilityScope))
             .shadow(
                 shape = shapes.standaloneTabShape,
                 elevation = elevations.expandedElevation
@@ -1276,9 +1303,9 @@ private fun Modifier.animateEnterExitTab(
     animatedVisibilityScope: AnimatedVisibilityScope
 ): Modifier = with(sharedTransitionScope) {
     with(animatedVisibilityScope) {
-        val enterStartFraction = 0.5f
-        val enterEndFraction = 0.8f
-        val durationMs = 150
+        val enterStartFraction = 0.15f
+        val enterEndFraction = 0.85f
+        val durationMs = FoldDurationMs
 
         val animatedAlpha by transition.animateFloat(
             transitionSpec = {
@@ -1297,7 +1324,7 @@ private fun Modifier.animateEnterExitTab(
             }
         }
 
-        val blurRadius = with(LocalDensity.current) { 50.dp.toPx() }
+        val blurRadius = with(LocalDensity.current) { 8.dp.toPx() }
         val animatedBlur by transition.animateFloat(
             transitionSpec = {
                 keyframes {
@@ -1335,7 +1362,7 @@ private fun Modifier.animateEnterExitTab(
     }
 }
 
-private class FloatingTabBarScopeImpl : FloatingTabBarScope {
+internal class FloatingTabBarScopeImpl : FloatingTabBarScope {
     val tabs = mutableStateListOf<FloatingTabBarTab>()
     var standaloneTab: FloatingTabBarTab? by mutableStateOf(null)
         private set
@@ -1389,7 +1416,7 @@ private class FloatingTabBarScopeImpl : FloatingTabBarScope {
     }
 }
 
-private data class FloatingTabBarTab(
+internal data class FloatingTabBarTab(
     val key: Any,
     val title: @Composable () -> Unit,
     val icon: @Composable () -> Unit,

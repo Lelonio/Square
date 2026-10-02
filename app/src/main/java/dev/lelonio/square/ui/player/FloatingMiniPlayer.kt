@@ -94,12 +94,16 @@ fun FloatingMiniPlayer(
     remoteLabel: String? = null,
     /** Folded: the strip has room for the song and one button, nothing else. */
     inline: Boolean = false,
+    collapseProgress: Float? = null,
     onClick: () -> Unit,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSeek: (Long) -> Unit,
 ) {
+    val fold = (collapseProgress ?: if (inline) 1f else 0f).coerceIn(0f, 1f)
+    val artSize = androidx.compose.ui.unit.lerp(ArtSize, 36.dp, fold)
+    val controlSize = androidx.compose.ui.unit.lerp(ControlSize, 36.dp, fold)
     val scope = rememberCoroutineScope()
     val layoutDirection = LocalLayoutDirection.current
 
@@ -181,28 +185,28 @@ fun FloatingMiniPlayer(
                     onClick = onClick,
                 )
                 .padding(
-                    horizontal = if (inline) 10.dp else 12.dp,
-                    vertical = if (inline) 6.dp else 8.dp,
+                    horizontal = androidx.compose.ui.unit.lerp(12.dp, 10.dp, fold),
+                    vertical = androidx.compose.ui.unit.lerp(8.dp, 6.dp, fold),
                 ),
         ) {
             Artwork(
                 url = state.artworkUrl,
                 title = state.title,
-                modifier = Modifier.size(if (inline) 36.dp else ArtSize),
+                modifier = Modifier.size(artSize),
                 corner = 9.dp,
                 decodeSize = ArtSize,
             )
 
-            Spacer(Modifier.width(if (inline) 8.dp else 10.dp))
+            Spacer(Modifier.width(androidx.compose.ui.unit.lerp(10.dp, 8.dp, fold)))
 
             Column(Modifier.weight(1f)) {
                 Text(
                     text = state.title,
-                    style = if (inline) {
-                        MaterialTheme.typography.bodySmall
-                    } else {
-                        MaterialTheme.typography.bodyMedium
-                    },
+                    style = androidx.compose.ui.text.lerp(
+                        MaterialTheme.typography.bodyMedium,
+                        MaterialTheme.typography.bodySmall,
+                        fold,
+                    ),
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -214,17 +218,17 @@ fun FloatingMiniPlayer(
                             contentDescription = null,
                             tint = MiniPlayerAccent,
                             modifier = Modifier
-                                .size(if (inline) 10.dp else 12.dp)
+                                .size(androidx.compose.ui.unit.lerp(12.dp, 10.dp, fold))
                                 .padding(end = 0.dp),
                         )
                     }
                     Text(
                         text = remoteLabel ?: state.artist,
-                        style = if (inline) {
-                            MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp)
-                        } else {
-                            MaterialTheme.typography.bodySmall
-                        },
+                        style = androidx.compose.ui.text.lerp(
+                            MaterialTheme.typography.bodySmall,
+                            MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                            fold,
+                        ),
                         color = if (remoteLabel != null) {
                             MiniPlayerAccent
                         } else {
@@ -239,8 +243,10 @@ fun FloatingMiniPlayer(
 
             // Skip first and play second, which is the order asked for: the
             // button that starts the music is the one nearest the thumb.
-            if (!inline) {
-                IconButton(onClick = onNext, modifier = Modifier.size(ControlSize)) {
+            if (fold < 1f) {
+                IconButton(onClick = onNext, enabled = fold < 0.5f,
+                    modifier = Modifier.width(ControlSize * (1f - fold)).height(controlSize)
+                        .graphicsLayer { alpha = 1f - fold }.clipToBounds()) {
                     Icon(
                         PhosphorIcons.Fill.SkipForward,
                         contentDescription = stringResource(R.string.next),
@@ -252,7 +258,7 @@ fun FloatingMiniPlayer(
 
             IconButton(
                 onClick = onTogglePlay,
-                modifier = Modifier.size(if (inline) 36.dp else ControlSize),
+                modifier = Modifier.size(controlSize),
             ) {
                 // The same ring the full player draws, for the same reason: a
                 // track being fetched can take long enough that a tap on play
@@ -263,7 +269,7 @@ fun FloatingMiniPlayer(
                         CircularProgressIndicator(
                             color = contentColor.copy(alpha = 0.5f),
                             strokeWidth = 1.5.dp,
-                            modifier = Modifier.size(if (inline) 30.dp else 34.dp),
+                            modifier = Modifier.size(androidx.compose.ui.unit.lerp(34.dp, 30.dp, fold)),
                         )
                     }
                     Icon(
@@ -272,7 +278,7 @@ fun FloatingMiniPlayer(
                             if (state.wantsPlay) R.string.pause else R.string.play,
                         ),
                         tint = contentColor,
-                        modifier = Modifier.size(if (inline) 20.dp else 24.dp),
+                        modifier = Modifier.size(androidx.compose.ui.unit.lerp(24.dp, 20.dp, fold)),
                     )
                 }
             }
