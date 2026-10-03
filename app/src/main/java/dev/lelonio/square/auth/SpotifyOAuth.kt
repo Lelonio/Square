@@ -267,7 +267,8 @@ object SpotifyOAuth {
 /**
  * Single-shot loopback HTTP listener for the OAuth redirect.
  *
- * Binds an ephemeral port on 127.0.0.1, serves exactly one request, and closes.
+ * Binds the registered port on 127.0.0.1, waits for the one request that
+ * matters, and closes.
  * Only the device's own browser can reach it.
  */
 private class LoopbackReceiver(port: Int, private val doneMessage: String) : AutoCloseable {
@@ -276,6 +277,8 @@ private class LoopbackReceiver(port: Int, private val doneMessage: String) : Aut
 
     /**
      * Bound to the IPv4 loopback explicitly, on the exact registered port.
+     * A backlog of several, so a browser's spare connections queue rather than
+     * being refused.
      *
      * `InetAddress.getLoopbackAddress()` returns `::1` on Android, so binding
      * through it leaves nothing listening on `127.0.0.1` — which is the literal
@@ -293,7 +296,7 @@ private class LoopbackReceiver(port: Int, private val doneMessage: String) : Aut
             try {
                 boundServer = ServerSocket().apply {
                     reuseAddress = true
-                    bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 1)
+                    bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 8)
                     soTimeout = REDIRECT_TIMEOUT_MS
                 }
                 break
@@ -325,34 +328,55 @@ private class LoopbackReceiver(port: Int, private val doneMessage: String) : Aut
     val redirectUri: String =
         "http://${server.inetAddress.hostAddress}:${server.localPort}/login"
 
+    /**
+     * Waits for the browser to land on `/login`, however many connections it
+     * opens first.
+     *
+     * Chromium-based browsers often open a spare connection ahead of the real
+     * one and send nothing on it, and ask for `/favicon.ico` beside the page.
+     * Taking the first connection as the redirect left this reading a socket
+     * that would never speak while the real request waited behind it, and the
+     * browser stood still on the loopback address. Each connection is now given
+     * a few seconds to say something, and only `/login` ends the wait.
+     */
     fun awaitRedirect(): Callback {
-        val socket = try {
-            server.accept()
-        } catch (e: SocketException) {
-            if (server.isClosed) {
-                throw CancellationException("OAuth loopback receiver was closed", e)
+        while (true) {
+            val socket = try {
+                server.accept()
+            } catch (e: SocketException) {
+                if (server.isClosed) {
+                    throw CancellationException("OAuth loopback receiver was closed", e)
+                }
+                throw e
             }
-            throw e
+            serve(socket)?.let { return it }
         }
-        socket.use {
-            val reader = it.getInputStream().bufferedReader()
-            val requestLine = reader.readLine() ?: error("empty redirect request")
-            // "GET /login?code=...&state=... HTTP/1.1"
-            val target = requestLine.split(' ').getOrNull(1)
-                ?: error("malformed redirect request: $requestLine")
-            val uri = Uri.parse("http://127.0.0.1$target")
+    }
 
-            it.getOutputStream().writer().apply {
-                write(response)
-                flush()
-            }
-
-            return Callback(
-                code = uri.getQueryParameter("code"),
-                state = uri.getQueryParameter("state"),
-                error = uri.getQueryParameter("error"),
-            )
+    /** The redirect if [socket] carried it; null for anything else, answered and closed. */
+    private fun serve(socket: java.net.Socket): Callback? = socket.use {
+        it.soTimeout = REQUEST_TIMEOUT_MS
+        val requestLine = try {
+            it.getInputStream().bufferedReader().readLine()
+        } catch (_: java.net.SocketTimeoutException) {
+            null
+        } ?: return null
+        // "GET /login?code=...&state=... HTTP/1.1"
+        val target = requestLine.split(' ').getOrNull(1) ?: return null
+        val writer = it.getOutputStream().writer()
+        if (!target.startsWith("/login")) {
+            writer.write(NOT_FOUND)
+            writer.flush()
+            return null
         }
+        val uri = Uri.parse("http://127.0.0.1$target")
+        writer.write(response)
+        writer.flush()
+        Callback(
+            code = uri.getQueryParameter("code"),
+            state = uri.getQueryParameter("state"),
+            error = uri.getQueryParameter("error"),
+        )
     }
 
     override fun close() {
@@ -361,5 +385,10 @@ private class LoopbackReceiver(port: Int, private val doneMessage: String) : Aut
 
     private companion object {
         const val REDIRECT_TIMEOUT_MS = 2 * 60 * 1000
+
+        /** How long a connection may stay silent before it is let go. */
+        const val REQUEST_TIMEOUT_MS = 5_000
+
+        const val NOT_FOUND = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     }
 }
