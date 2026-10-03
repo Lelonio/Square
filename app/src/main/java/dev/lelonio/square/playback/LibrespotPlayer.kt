@@ -465,6 +465,19 @@ class LibrespotPlayer(
         get() = runCatching { NativeBridge.isOffline }.getOrDefault(false) ||
             runCatching { NativeBridge.spircLost }.getOrDefault(false)
 
+    /**
+     * Whether the track playing went into the player around Connect: offline,
+     * or with the Connect device lost. Its end is then this side's to act on —
+     * also after the session comes back, which is when the music used to stop:
+     * online again, the offline advance stood aside, and Connect had never been
+     * given this queue to advance.
+     */
+    private var outsideSpirc = false
+
+    /** Whether the next track is this side's to start rather than the engine's. */
+    private fun ownsAdvance(): Boolean =
+        outsideSpirc || runCatching { NativeBridge.isOffline }.getOrDefault(false)
+
     /** Set while a reconnection is in flight, so a burst of taps starts one. */
     private var reconnecting = false
 
@@ -1549,6 +1562,9 @@ class LibrespotPlayer(
             "loading" -> {
                 playbackState = Player.STATE_BUFFERING
                 if (uri.isNotEmpty()) bandwidth.loading(uri)
+                // Loaded straight into the player, around Connect: nobody but
+                // this side will move on from it, even once the session is back.
+                outsideSpirc = deviceGone
                 loadInFlight = true
                 handler.removeCallbacks(stallWatch)
             }
@@ -1591,7 +1607,7 @@ class LibrespotPlayer(
                 // tracks overlap by the length the listener asked for. With the
                 // setting at zero there is nothing to run up to, and the track
                 // is left to end on its own.
-                if (runCatching { NativeBridge.isOffline }.getOrDefault(false)) {
+                if (ownsAdvance()) {
                     val length = queue.items.getOrNull(queue.currentIndex)?.durationMs ?: 0L
                     val fade = crossfade.durationMs().toLong()
                     if (fade > 0 && length > 0 && length - eventPositionMs in 1..fade) {
@@ -1646,9 +1662,7 @@ class LibrespotPlayer(
                 // two was skipped without ever being heard, which is what "it
                 // sometimes jumps straight to the next one" was.
                 if (uri == advancedFrom) return
-                if (runCatching { NativeBridge.isOffline }.getOrDefault(false)) {
-                    advanceOffline(early = false)
-                }
+                if (ownsAdvance()) advanceOffline(early = false)
                 return
             }
 
