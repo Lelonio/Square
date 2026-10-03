@@ -62,6 +62,7 @@ import com.adamglin.phosphoricons.regular.DotsThree
 private enum class Kind(@StringRes val label: Int) {
     ALL(R.string.feed_all),
     TRACKS(R.string.tracks),
+    VIDEOS(R.string.videos),
     ARTISTS(R.string.artists),
     ALBUMS(R.string.albums),
     PLAYLISTS(R.string.playlists),
@@ -150,7 +151,8 @@ fun SearchScreen(
 
         if (!state.results.isEmpty && !state.loading) {
             item(contentType = "chips") {
-                KindRow(kind, backdrop) { kind = it }
+                // Videos only where the source has them: Spotify's search does not.
+                KindRow(kind, backdrop, hasVideos = state.results.videos.isNotEmpty()) { kind = it }
             }
         }
 
@@ -301,6 +303,30 @@ fun SearchScreen(
                     }
                 }
 
+                val videos = state.results.videos.let { if (all) it.take(TOP_RESULTS) else it }
+                if ((all || kind == Kind.VIDEOS) && videos.isNotEmpty()) {
+                    item(contentType = "section") { SectionTitle(stringResource(R.string.videos)) }
+                    items(
+                        count = videos.size,
+                        key = { "video-${videos[it].uri}-$it" },
+                        contentType = { "track" },
+                    ) { index ->
+                        val video = videos[index]
+                        SwipeToQueue(onQueue = { onEnqueue(video) }) {
+                            ResultRow(
+                                title = video.name,
+                                subtitle = video.artist,
+                                artworkUrl = video.artworkUrl,
+                                highlighted = video.uri == nowPlayingUri,
+                                round = false,
+                                // Played as a video: the picture is what they are.
+                                onClick = { onPlayTrack(videos, index) },
+                                onMenu = { onTrackMenu(video) },
+                            )
+                        }
+                    }
+                }
+
                 if (all || kind == Kind.ARTISTS) {
                     section(R.string.artists, state.results.artists, all, round = true, onOpenContext)
                 }
@@ -337,13 +363,13 @@ fun SearchScreen(
 
 /** The same chips the home page filters with; see the note there. */
 @Composable
-private fun KindRow(selected: Kind, backdrop: Backdrop, onSelect: (Kind) -> Unit) {
+private fun KindRow(selected: Kind, backdrop: Backdrop, hasVideos: Boolean, onSelect: (Kind) -> Unit) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
     ) {
-        items(Kind.entries.toList(), key = { it.name }) { entry ->
+        items(Kind.entries.filter { it != Kind.VIDEOS || hasVideos }, key = { it.name }) { entry ->
             dev.lelonio.square.ui.components.FilterChip(
                 label = stringResource(entry.label),
                 selected = entry == selected,
@@ -439,7 +465,7 @@ private fun ResultRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .pressable(onClick, shape = RoundedCornerShape(16.dp), pressedScale = 0.98f)
+            .pressable(onClick, shape = RoundedCornerShape(16.dp), pressedScale = 0.98f, onLongClick = onMenu)
             .padding(start = 24.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

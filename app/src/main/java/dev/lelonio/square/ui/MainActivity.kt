@@ -348,6 +348,14 @@ class MainActivity : ComponentActivity() {
         if (wasEmpty) {
             player.prepare()
             player.play()
+        } else {
+            // Said, because nothing on screen changes: the song went somewhere
+            // the listener cannot see from here.
+            android.widget.Toast.makeText(
+                this,
+                getString(dev.lelonio.square.R.string.added_to_queue, track.name),
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
         }
     }
 

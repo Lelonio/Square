@@ -757,6 +757,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var devicesJob: Job? = null
 
     init {
+        // A video in an open list, put right as its song is found; see
+        // YouTubeBackend.asSongs, which opens the list without waiting for all.
+        viewModelScope.launch {
+            container.youtubeBackend.conversions.collect { (videoUri, song) ->
+                val open = _playlist.value
+                if (open.tracks.none { it.uri == videoUri }) return@collect
+                _playlist.value = open.copy(
+                    tracks = open.tracks.map { if (it.uri == videoUri) song else it },
+                )
+            }
+        }
         // Offline and back, without a restart in between.
         //
         // The library and the home page are each built once, from whichever

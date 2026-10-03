@@ -477,4 +477,6 @@
     <string name="rotate_video">Ins Vollbild drehen</string>
     <string name="video_age_restricted">Das offizielle Video ist altersbeschränkt und erfordert eine YouTube-Anmeldung: Das Video des Songs wird gezeigt.</string>
     <string name="video_unavailable">Das offizielle Video kann nicht abgespielt werden: Das Video des Songs wird gezeigt.</string>
+    <string name="added_to_queue">Zur Warteschlange hinzugefügt: %s</string>
+    <string name="videos">Videos</string>
 </resources>

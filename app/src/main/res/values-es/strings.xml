@@ -483,4 +483,6 @@
     <string name="rotate_video">Girar a pantalla completa</string>
     <string name="video_age_restricted">El vídeo oficial tiene restricción de edad y requiere iniciar sesión en YouTube: se muestra el vídeo de la canción.</string>
     <string name="video_unavailable">El vídeo oficial no se puede reproducir: se muestra el vídeo de la canción.</string>
+    <string name="added_to_queue">Añadido a la cola: %s</string>
+    <string name="videos">Vídeos</string>
 </resources>

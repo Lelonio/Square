@@ -24,6 +24,12 @@ object OfficialVideos {
     /** Blocking: called from the stream resolver, on a loading thread. */
     fun forSong(songId: String, song: StreamInfo): String? {
         found[songId]?.let { return it.videoId }
+        // A song on YouTube Music is uploaded by the artist's "- Topic" channel.
+        // Anything else is already a video, and is its own picture: no search.
+        if (!song.uploaderName.orEmpty().endsWith(" - Topic")) {
+            found[songId] = Found(null)
+            return null
+        }
         val title = song.name.orEmpty()
         val artist = song.uploaderName.orEmpty().removeSuffix(" - Topic").trim()
         val seconds = song.duration.toInt()

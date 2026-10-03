@@ -2806,7 +2806,8 @@ private fun TrackRow(
                 if (unavailable) {
                     Modifier
                 } else {
-                    Modifier.pressable(onClick, shape = shape, pressedScale = 0.985f)
+                    // A long press opens the song's menu, the same as the dots.
+                    Modifier.pressable(onClick, shape = shape, pressedScale = 0.985f, onLongClick = onMenu)
                 },
             )
             .graphicsLayer { alpha = dim }

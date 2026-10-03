@@ -492,4 +492,6 @@
     <string name="rotate_video">फ़ुल स्क्रीन के लिए घुमाएँ</string>
     <string name="video_age_restricted">आधिकारिक वीडियो आयु-प्रतिबंधित है और YouTube साइन-इन चाहिए: गाने का वीडियो दिखाया जा रहा है।</string>
     <string name="video_unavailable">आधिकारिक वीडियो नहीं चल सकता: गाने का वीडियो दिखाया जा रहा है।</string>
+    <string name="added_to_queue">कतार में जोड़ा गया: %s</string>
+    <string name="videos">वीडियो</string>
 </resources>

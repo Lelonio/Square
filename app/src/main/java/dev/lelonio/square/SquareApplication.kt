@@ -284,6 +284,8 @@ class SquareApplication : Application(), ImageLoaderFactory {
     /** YouTube Music; see [dev.lelonio.square.backend.youtube.YouTubeBackend]. */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     val youtubeBackend: dev.lelonio.square.backend.youtube.YouTubeBackend by lazy {
+        // Songs already found for the videos in lists; see SongCounterparts.
+        dev.lelonio.square.backend.youtube.SongCounterparts.init(filesDir)
         dev.lelonio.square.backend.youtube.YouTubeBackend(youtubeAccount)
     }
 

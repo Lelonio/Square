@@ -360,7 +360,7 @@ private fun SongRow(track: CatalogTrack, onMenu: () -> Unit, onClick: () -> Unit
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .pressable(onClick, shape = shape, pressedScale = 0.985f)
+            .pressable(onClick, shape = shape, pressedScale = 0.985f, onLongClick = onMenu)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

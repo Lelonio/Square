@@ -1,6 +1,10 @@
 package dev.lelonio.square.backend.youtube
 
 import androidx.media3.common.Player
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.android.asCoroutineDispatcher
+import kotlinx.coroutines.launch
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -77,6 +81,11 @@ object YouTubePlayerFactory {
                 exo.addListener(object : Player.Listener {
                     override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
                         YouTubeVideoMode.onItem(mediaItem?.mediaId)
+                        // A video whose song is already known says so at once.
+                        mediaItem?.mediaId?.takeIf { it.startsWith(YouTubeBackend.TRACK_PREFIX) }
+                            ?.let(YouTubeBackend::videoIdOfUri)
+                            ?.takeIf(SongCounterparts::wanted)
+                            ?.let { video -> SongCounterparts.known(video)?.let { retitle(exo, video, it) } }
                         // The next one asked for now, while this one plays.
                         val next = exo.nextMediaItemIndex
                         if (next >= 0) {
@@ -91,12 +100,45 @@ object YouTubePlayerFactory {
                 }
                 val preferences = (host.context.applicationContext as? dev.lelonio.square.SquareApplication)
                     ?.preferences
+                // Each song found for a video in the queue renames its entry, so
+                // the player shows what it plays; see SongCounterparts.
+                CoroutineScope(SupervisorJob() + android.os.Handler(host.looper).asCoroutineDispatcher()).launch {
+                    SongCounterparts.resolved.collect { (video, song) ->
+                        if (SongCounterparts.wanted(video)) retitle(exo, video, song)
+                    }
+                }
                 // The talking and the sketches around a music video; see SponsorBlock.
                 SponsorBlock(exo) { preferences?.sponsorBlock?.value ?: true }
                 // Every change of song the listener asks for goes through the
                 // fade; see SkipFadePlayer.
                 SkipFadePlayer(exo, fades) { preferences?.skipFadeMs() ?: 0 }
             }
+    }
+
+    /**
+     * Shows [song] in place of [video] wherever the queue has it. Same stream
+     * address, so nothing reloads: only the name, the picture and the id the
+     * rest of the app reads (lyrics, credits, likes) change.
+     */
+    private fun retitle(player: ExoPlayer, video: String, song: com.metrolist.innertube.models.SongItem) {
+        val listed = "${YouTubeBackend.TRACK_PREFIX}$video"
+        for (index in 0 until player.mediaItemCount) {
+            val item = player.getMediaItemAt(index)
+            if (item.mediaId != listed) continue
+            val metadata = item.mediaMetadata.buildUpon()
+                .setTitle(song.title)
+                .setArtist(song.artists.joinToString(", ") { it.name })
+                .setAlbumTitle(song.album?.name ?: item.mediaMetadata.albumTitle)
+                .setArtworkUri(android.net.Uri.parse(song.thumbnail.atSize(COVER_SIZE)))
+                .build()
+            player.replaceMediaItem(
+                index,
+                item.buildUpon()
+                    .setMediaId("${YouTubeBackend.TRACK_PREFIX}${song.id}")
+                    .setMediaMetadata(metadata)
+                    .build(),
+            )
+        }
     }
 
     /** Temporary: chasing a stall where the position stops with the sink idle. */
@@ -277,7 +319,16 @@ private class YouTubeStreamResolver(
         val (videoId, info) = if (watching && base.startsWith(YouTubeBackend.TRACK_PREFIX)) {
             YouTubeStreams.watchSource(songId)
         } else {
-            songId to YouTubeStreams.info(songId)
+            // A music video from a list, heard: its song, found now if the list
+            // did not get to it before the row was tapped; see SongCounterparts.
+            val heard = if (!watching && base.startsWith(YouTubeBackend.TRACK_PREFIX) &&
+                SongCounterparts.wanted(songId)
+            ) {
+                runCatching { SongCounterparts.findBlocking(songId) }.getOrNull()?.id
+            } else {
+                null
+            } ?: songId
+            heard to YouTubeStreams.info(heard)
         }
 
         // The picture alone, as sharp as is worth it on a phone: H.264 first,

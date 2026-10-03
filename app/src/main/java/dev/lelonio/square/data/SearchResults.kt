@@ -13,6 +13,8 @@ data class SearchResults(
     val artists: List<SearchItem> = emptyList(),
     val albums: List<SearchItem> = emptyList(),
     val playlists: List<SearchItem> = emptyList(),
+    /** Videos, music and otherwise (ASMR, sessions); YouTube Music only. Played as videos. */
+    val videos: List<CatalogTrack> = emptyList(),
     /**
      * The tracks that were found by their words rather than their titles.
      *
@@ -25,7 +27,7 @@ data class SearchResults(
 ) {
     /** How many rows this holds in total, for telling a page from an echo. */
     val count: Int
-        get() = tracks.size + artists.size + albums.size + playlists.size
+        get() = tracks.size + artists.size + albums.size + playlists.size + videos.size
 
     /**
      * This, with another page's rows after it.
@@ -44,12 +46,14 @@ data class SearchResults(
             artists = artists + page.artists.filter { it.uri !in heldArtists },
             albums = albums + page.albums.filter { it.uri !in heldAlbums },
             playlists = playlists + page.playlists.filter { it.uri !in heldLists },
+            videos = videos + page.videos.filter { video -> videos.none { it.uri == video.uri } },
             lyricMatches = lyricMatches + page.lyricMatches,
         )
     }
 
     val isEmpty: Boolean
-        get() = tracks.isEmpty() && artists.isEmpty() && albums.isEmpty() && playlists.isEmpty()
+        get() = tracks.isEmpty() && artists.isEmpty() && albums.isEmpty() && playlists.isEmpty() &&
+            videos.isEmpty()
 }
 
 /**

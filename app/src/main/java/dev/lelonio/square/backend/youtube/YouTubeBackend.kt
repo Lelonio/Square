@@ -22,6 +22,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.withContext
 import com.metrolist.innertube.YouTube
 import com.metrolist.innertube.models.AlbumItem
@@ -111,6 +114,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                 val playlists = async {
                     searchItems(trimmed, YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST)
                 }
+                // Videos of every kind YouTube Music has: music videos, and the
+                // uploads people listen to rather than watch (ASMR, sessions).
+                val videos = async { searchItems(trimmed, YouTube.SearchFilter.FILTER_VIDEO) }
 
                 SearchResults(
                     tracks = songs.await().filterIsInstance<SongItem>().map(::toCatalogTrack),
@@ -131,6 +137,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                             artworkUrl = artist.thumbnail?.atSize(COVER_SIZE),
                         )
                     },
+                    videos = videos.await().filterIsInstance<SongItem>().map(::toVideoTrack),
                     playlists = playlists.await().filterIsInstance<PlaylistItem>().map { playlist ->
                         SearchItem(
                             uri = "$PLAYLIST_PREFIX${playlist.id}",
@@ -479,7 +486,12 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
             else -> {
                 val listed = YouTube.playlist(id).getOrThrow().songs
-                val songs = asSongs(listed)
+                // Only the listener's own lists: a video there is a song they
+                // saved, and they want the song. A list YouTube made of videos
+                // (a chart of music videos) is meant to be videos, and an album's
+                // entries are already its songs.
+                val own = id == LIKED_MUSIC_ID || id in editable
+                val songs = if (own) asSongs(listed) else listed
                 listed.zip(songs).forEach { (entry, song) ->
                     // What taking a song out of this list will need: YouTube
                     // removes an entry, not a song, and names the entry here —
@@ -494,82 +506,37 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         }
     }
 
-    /** What [songFor] found for a video, including that it found nothing. */
-    private class Counterpart(val song: SongItem?)
-
-    private val counterparts = java.util.concurrent.ConcurrentHashMap<String, Counterpart>()
+    /** Conversions run on past the list that asked for them; see [asSongs]. */
+    private val background = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
     /**
-     * [items] with every music video swapped for the song it is a video of.
+     * [items] with every music video swapped for the song it is a video of, as
+     * far as is known within [LIST_WAIT_MS]; see [SongCounterparts].
      *
-     * A video saved to a list plays its own soundtrack: the intro, the skit in
-     * the middle, the sound effects, and a title no lyrics site knows. YouTube
-     * Music has the record itself as a separate entry, and that is what should
-     * play. Looked up a few at a time and given up on quickly, so a long list
-     * opens at most a few seconds late the first time and at once after.
+     * The list does not wait for the rest: those keep being looked up, each
+     * row is put right as its song arrives (see [conversions]), and a row
+     * played before then plays its song anyway, because the resolver asks too.
      */
-    private suspend fun asSongs(items: List<SongItem>): List<SongItem> = coroutineScope {
-        val gate = kotlinx.coroutines.sync.Semaphore(COUNTERPART_PARALLELISM)
-        items.map { item ->
-            async {
-                if (!isVideo(item)) item
-                else gate.withPermit { songFor(item) } ?: item
+    private suspend fun asSongs(items: List<SongItem>): List<SongItem> {
+        SongCounterparts.remember(items)
+        val pending = items
+            .filter { SongCounterparts.isVideo(it) && SongCounterparts.known(it.id) == null }
+            .distinctBy { it.id }
+        if (pending.isNotEmpty()) {
+            val gate = kotlinx.coroutines.sync.Semaphore(COUNTERPART_PARALLELISM)
+            val jobs = pending.map { video ->
+                background.launch { gate.withPermit { SongCounterparts.find(video) } }
             }
-        }.awaitAll()
-    }
-
-    private fun isVideo(item: SongItem) =
-        !item.isEpisode && item.uploadEntityId == null &&
-            (item.musicVideoType == MUSIC_VIDEO_TYPE_OMV || item.musicVideoType == MUSIC_VIDEO_TYPE_UGC)
-
-    private suspend fun songFor(video: SongItem): SongItem? {
-        counterparts[video.id]?.let { return it.song }
-        val artist = video.artists.firstOrNull()?.name.orEmpty()
-        val title = songTitleOf(video.title, artist)
-        var answered = false
-        val found = kotlinx.coroutines.withTimeoutOrNull(COUNTERPART_TIMEOUT_MS) {
-            val results = YouTube.search("$title $artist".trim(), YouTube.SearchFilter.FILTER_SONG)
-                .getOrNull()?.items
-            answered = results != null
-            results.orEmpty()
-                .filterIsInstance<SongItem>()
-                .take(COUNTERPART_CANDIDATES)
-                .firstOrNull { isSongOf(video, title, it) }
+            kotlinx.coroutines.withTimeoutOrNull(LIST_WAIT_MS) { jobs.joinAll() }
         }
-        // A timeout is not an answer: asked again next time.
-        if (found != null || answered) counterparts[video.id] = Counterpart(found)
-        if (found == null && answered) android.util.Log.i(TAG, "no song for video ${video.id} \"${video.title}\"")
-        return found
-    }
-
-    /** A video's title as a song's: no "(Official Video)", no "Artist - " in front. */
-    private fun songTitleOf(title: String, artist: String): String {
-        var clean = title.replace(VIDEO_TAG, " ")
-        if (artist.isNotEmpty()) {
-            clean = clean.replace(Regex("^\\s*${Regex.escape(artist)}\\s*[-–—:|]\\s*", RegexOption.IGNORE_CASE), "")
+        return items.map { item ->
+            if (SongCounterparts.isVideo(item)) SongCounterparts.known(item.id) ?: item else item
         }
-        return clean.replace(Regex("\\s+"), " ").trim().ifEmpty { title }
     }
 
-    private fun isSongOf(video: SongItem, title: String, song: SongItem): Boolean {
-        if (song.musicVideoType != null && song.musicVideoType != MUSIC_VIDEO_TYPE_ATV) return false
-        val wanted = squash(title)
-        val got = squash(song.title)
-        if (wanted.isEmpty() || got.isEmpty()) return false
-        val sameTitle = wanted == got || (kotlin.math.min(wanted.length, got.length) >= 4 && (wanted.contains(got) || got.contains(wanted)))
-        if (!sameTitle) return false
-        val channel = video.artists.map { squash(it.name).replace(CHANNEL_NOISE, "") }
-        val sameArtist = song.artists.any { credited ->
-            val name = squash(credited.name)
-            name.isNotEmpty() && (channel.any { it == name || it.contains(name) } || squash(video.title).contains(name))
-        }
-        if (!sameArtist) return false
-        val a = video.duration
-        val b = song.duration
-        return a == null || b == null || kotlin.math.abs(a - b) <= COUNTERPART_DURATION_SLACK_S
-    }
-
-    private fun squash(text: String) = text.lowercase().filter { it.isLetterOrDigit() }
+    /** Each song found for a video a list showed, as (the video's uri, the song). */
+    val conversions: kotlinx.coroutines.flow.Flow<Pair<String, CatalogTrack>> =
+        SongCounterparts.resolved.map { (video, song) -> "$TRACK_PREFIX$video" to toCatalogTrack(song) }
 
     /**
      * An artist's page as YouTube Music lays it out: their best-known songs, then
@@ -753,12 +720,14 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                 YouTube.likeVideo(videoId, like = false).getOrThrow()
                 return@withContext
             }
-            val key = "$playlistId/$videoId"
+            // The list holds the video a song was shown in place of.
+            val listedId = SongCounterparts.videoOf(videoId) ?: videoId
+            val key = "$playlistId/$listedId"
             // Read again when the list was not read here: the entry id is the
             // only thing YouTube removes by.
             if (entries[key] == null) tracksOf(playlistUri)
             val entry = entries[key] ?: error("no entry for $videoId in $playlistId")
-            YouTube.removeFromPlaylist(playlistId, videoId, entry).getOrThrow()
+            YouTube.removeFromPlaylist(playlistId, listedId, entry).getOrThrow()
             entries.remove(key)
         }
     }
@@ -792,19 +761,10 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         private const val TAG = "SquareYouTube"
         private const val HERO_SIZE = 1200
         private val BYLINE_JOINERS = setOf("&", "e", "and", "y", "et", "und", "x", "i", "и", "ve", "और", "feat.", "ft.")
-        private const val MUSIC_VIDEO_TYPE_OMV = "MUSIC_VIDEO_TYPE_OMV"
-        private const val MUSIC_VIDEO_TYPE_UGC = "MUSIC_VIDEO_TYPE_UGC"
-        private const val MUSIC_VIDEO_TYPE_ATV = "MUSIC_VIDEO_TYPE_ATV"
         private const val COUNTERPART_PARALLELISM = 6
-        private const val COUNTERPART_TIMEOUT_MS = 5_000L
-        private const val COUNTERPART_CANDIDATES = 5
-        /** An intro or an outro the record does not have, at most. */
-        private const val COUNTERPART_DURATION_SLACK_S = 75
-        private val VIDEO_TAG = Regex(
-            "[(\\[][^)\\]]*(official|video|lyric|audio|visuali[sz]er|\\bmv\\b|\\bhd\\b|\\b4k\\b|clip)[^)\\]]*[)\\]]",
-            RegexOption.IGNORE_CASE,
-        )
-        private val CHANNEL_NOISE = Regex("vevo|topic|official|music|tv$")
+
+        /** How long a list waits for its videos' songs before opening without them. */
+        private const val LIST_WAIT_MS = 1_500L
         const val URI_SCHEME = "ytmusic:"
         const val TRACK_PREFIX = "ytmusic:track:"
         const val PLAYLIST_PREFIX = "ytmusic:playlist:"

@@ -504,4 +504,6 @@
     <string name="rotate_video">Повернуть на весь экран</string>
     <string name="video_age_restricted">Официальное видео с возрастным ограничением и требует входа в YouTube: показано видео трека.</string>
     <string name="video_unavailable">Официальное видео недоступно: показано видео трека.</string>
+    <string name="added_to_queue">Добавлено в очередь: %s</string>
+    <string name="videos">Видео</string>
 </resources>

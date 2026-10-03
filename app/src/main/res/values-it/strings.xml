@@ -478,4 +478,6 @@
     <string name="rotate_video">Ruota a schermo intero</string>
     <string name="video_age_restricted">Il video ufficiale è vietato ai minori e richiede l\'accesso a YouTube: mostro il video del brano.</string>
     <string name="video_unavailable">Il video ufficiale non può essere riprodotto: mostro il video del brano.</string>
+    <string name="added_to_queue">Aggiunto in coda: %s</string>
+    <string name="videos">Video</string>
 </resources>

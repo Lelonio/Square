@@ -490,4 +490,6 @@
     <string name="rotate_video">Tam ekran için döndür</string>
     <string name="video_age_restricted">Resmi video yaş kısıtlamalı ve YouTube girişi gerektiriyor: şarkının kendi videosu gösteriliyor.</string>
     <string name="video_unavailable">Resmi video oynatılamıyor: şarkının kendi videosu gösteriliyor.</string>
+    <string name="added_to_queue">Sıraya eklendi: %s</string>
+    <string name="videos">Videolar</string>
 </resources>
