@@ -2,6 +2,10 @@ package dev.lelonio.square.ui
 
 import android.content.ComponentName
 import android.os.Bundle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
+import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
@@ -87,6 +91,19 @@ class MainActivity : ComponentActivity() {
             openPlayer++
         }
         intent?.let(::takeLink)
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                dev.lelonio.square.playback.websdk.WebSdkRecovery.setupRequests.collect { request ->
+                    if (request > 0) {
+                        dev.lelonio.square.playback.websdk.WebSdkRecovery.consume(request)
+                        startActivity(android.content.Intent(this@MainActivity,
+                            dev.lelonio.square.playback.websdk.WebSdkActivity::class.java)
+                            .putExtra("recovery", true))
+                    }
+                }
+            }
+        }
 
         setContent {
             SquareApp(

@@ -481,4 +481,38 @@
     <string name="added_to_queue">Aggiunto in coda: %s</string>
     <string name="videos">Video</string>
     <string name="web_playback_on">Spotify rifiuta a questo account le chiavi per i brani: li riproduco come fa il web player. In questa modalità Spotify Connect e i download non sono disponibili.</string>
+
+    <!-- Official Spotify SDK proof of concept. -->
+    <string name="web_sdk_title">Spotify Web Playback · prototipo</string>
+    <string name="web_sdk_open">Apri prova di riproduzione</string>
+    <string name="web_sdk_explainer">Prova il player ufficiale Spotify con un account Premium. Registra una tua applicazione sviluppatore abilitando Web Playback SDK, poi inserisci il suo Client ID.</string>
+    <string name="web_sdk_redirect">Sul dashboard apri la tua app, spunta Web Playback SDK e aggiungi questo URI di reindirizzamento:</string>
+    <string name="web_sdk_login">Accedi a Spotify</string>
+    <string name="web_sdk_reauthorize">Autorizza di nuovo</string>
+    <string name="web_sdk_check">Verifica compatibilità</string>
+    <string name="web_sdk_connect">Collega player</string>
+    <string name="web_sdk_loading">Verifica e collegamento…</string>
+    <string name="web_sdk_ready">Player pronto</string>
+    <string name="web_sdk_capable">DRM supportato. Accedi per provare la riproduzione Spotify.</string>
+    <string name="web_sdk_idle">Player fermo</string>
+    <string name="web_sdk_track">Link o URI di un brano Spotify</string>
+    <string name="web_sdk_stop">Ferma prova</string>
+    <string name="web_sdk_background">Dopo aver avviato un brano, spegni lo schermo o apri un’altra app. I controlli restano nella notifica. Questo prototipo non offre dissolvenza incrociata o riproduzione offline.</string>
+    <string name="web_sdk_running">Prova riproduzione Spotify SDK</string>
+    <string name="web_sdk_unsupported">Questa WebView Android non può eseguire il DRM richiesto da Spotify Web Playback SDK. Un servizio in background non risolve questo limite del browser.</string>
+    <string name="web_sdk_premium">È richiesto Spotify Premium.</string>
+    <string name="web_sdk_auth_error">Controlla il tuo Client ID e l’URI di reindirizzamento registrato, poi autorizza di nuovo.</string>
+    <string name="web_sdk_forbidden">Spotify ha rifiutato la riproduzione. Controlla Premium, permessi SDK e accesso alla tua applicazione sviluppatore.</string>
+    <string name="web_sdk_rate_limit">Limite richieste Spotify raggiunto. Attendi prima di riprovare.</string>
+    <string name="web_sdk_invalid_track">Inserisci il link di un brano Spotify o un URI spotify:track:.</string>
+    <string name="web_sdk_focus">Un’altra app controlla attualmente l’audio. Riprova.</string>
+    <string name="web_sdk_play_error">Collegamento o riproduzione non riusciti. Ferma la prova e ricollega il player.</string>
+    <string name="web_sdk_failed">Player non disponibile</string>
+    <string name="web_sdk_recovery_title">Attiva la riproduzione Spotify</string>
+    <string name="web_sdk_recovery_explainer">Spotify non riproduce i brani di questo account nel player abituale di Square. Square può usare il player web ufficiale di Spotify, con l’accesso tramite la tua app sviluppatore.</string>
+    <string name="web_sdk_enable">Attiva riproduzione</string>
+    <string name="web_sdk_settings_title">Riproduzione Spotify alternativa</string>
+    <string name="web_sdk_limits">Con questo player non sono disponibili dissolvenza incrociata, effetti audio, karaoke, scelta della qualità e download.</string>
+    <string name="web_sdk_settings_open">Configura player web</string>
+    <string name="web_sdk_authorized">Account Spotify autorizzato</string>
 </resources>

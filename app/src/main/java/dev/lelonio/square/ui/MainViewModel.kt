@@ -2012,6 +2012,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         SpotifyOAuth.cancelActiveAuthorization()
         container.tokenStore.clear()
         container.webApi.disconnect()
+        container.spotifySdkAccount.disconnect()
+        getApplication<android.app.Application>().getSharedPreferences("square_keys", android.content.Context.MODE_PRIVATE)
+            .edit().remove("account_refused").apply()
+        dev.lelonio.square.playback.websdk.WebSdkRecovery.refresh(getApplication())
         // The engine's own credential too, or the next launch would log itself
         // back in with it and signing out would mean nothing.
         dev.lelonio.square.auth.EngineCredentials.clear(getApplication())
@@ -3056,8 +3060,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             if (syncResult.isSuccess && container.downloadSettings.downloadLikedSongs.value) {
                 if (nowLiked) {
-                    container.downloads.addLiked(resolvedTrack)
-                    dev.lelonio.square.download.DownloadService.start(container)
+                    // Nothing to fetch it with while the official SDK plays.
+                    if (!dev.lelonio.square.playback.websdk.WebSdkRecovery.inUse.value) {
+                        container.downloads.addLiked(resolvedTrack)
+                        dev.lelonio.square.download.DownloadService.start(container)
+                    }
                 } else {
                     container.downloads.removeLiked(trackUri)
                     container.downloads.pruneOrphans().forEach {
@@ -4072,7 +4079,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val it = uri ?: return false
         val backend = container.activeBackend
         return backend.owns(it) && when (backend.id) {
-            BackendId.SPOTIFY -> it.startsWith("spotify:")
+            // The official SDK streams and keeps nothing; see WebSdkRecovery.inUse.
+            BackendId.SPOTIFY -> it.startsWith("spotify:") &&
+                !dev.lelonio.square.playback.websdk.WebSdkRecovery.inUse.value
             BackendId.YOUTUBE_MUSIC -> true
         }
     }

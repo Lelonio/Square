@@ -53,6 +53,15 @@
         android:theme="@style/Theme.Square">
 
         <activity
+            android:name=".playback.websdk.WebSdkActivity"
+            android:exported="false"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden" />
+        <service
+            android:name=".playback.websdk.WebSdkService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <activity
             android:name=".ui.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"

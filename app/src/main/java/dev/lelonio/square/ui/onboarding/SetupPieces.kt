@@ -139,13 +139,14 @@ internal fun PrimaryButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Box(
         modifier
-            .pressable(onClick, pressedScale = 0.96f)
+            .pressable({ if (enabled) onClick() }, pressedScale = if (enabled) 0.96f else 1f)
             .height(52.dp)
             .clip(CircleShape)
-            .background(Ink)
+            .background(if (enabled) Ink else Ink.copy(alpha = 0.3f))
             .padding(horizontal = 26.dp),
         contentAlignment = Alignment.Center,
     ) {

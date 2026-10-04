@@ -155,6 +155,9 @@ fun SettingsScreen(
      */
     val spotifyActive by app.preferences.backend.collectAsStateWithLifecycle()
     val showSpotify = spotifyActive == BackendId.SPOTIFY
+    // Spotify through the official SDK, which mixes its own audio: none of the
+    // engine's crossfade, bitrate, effects or downloads reach it.
+    val sdkPlayback by dev.lelonio.square.playback.websdk.WebSdkRecovery.inUse.collectAsStateWithLifecycle()
 
     /**
      * Which page is open, or null for the list of them.
@@ -370,6 +373,24 @@ fun SettingsScreen(
             }
         }
 
+        if (shown == SettingsPage.Playback && showSpotify &&
+            (dev.lelonio.square.backend.spotify.SpotifyWebPlayback.needed(context) ||
+                dev.lelonio.square.playback.websdk.WebSdkRecovery.isConfigured(context))) item("web-sdk-recovery") {
+            Section(stringResource(R.string.web_sdk_settings_title)) {
+                ActionRow(stringResource(R.string.web_sdk_settings_open), destructive = false) {
+                    context.startActivity(android.content.Intent(
+                        context, dev.lelonio.square.playback.websdk.WebSdkActivity::class.java,
+                    ).putExtra("recovery", true))
+                }
+                if (sdkPlayback) Text(
+                    stringResource(R.string.web_sdk_limits),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkDim,
+                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 14.dp),
+                )
+            }
+        }
+
         if (shown == SettingsPage.Playback) item("backend") {
             BackendSection()
         }
@@ -390,12 +411,12 @@ fun SettingsScreen(
             StorageChart()
         }
 
-        if (shown == SettingsPage.Downloads && showSpotify) item("downloads") {
+        if (shown == SettingsPage.Downloads && showSpotify && !sdkPlayback) item("downloads") {
             DownloadsSection(backdrop)
         }
 
         // The bitrate is librespot's; ExoPlayer takes what YouTube serves.
-        if (shown == SettingsPage.Playback && showSpotify) item("quality") {
+        if (shown == SettingsPage.Playback && showSpotify && !sdkPlayback) item("quality") {
             QualitySection()
         }
 
@@ -442,7 +463,7 @@ fun SettingsScreen(
             }
         }
 
-        if (shown == SettingsPage.Playback) item("crossfade") {
+        if (shown == SettingsPage.Playback && !sdkPlayback) item("crossfade") {
             CrossfadeSection(backdrop)
         }
 
@@ -458,7 +479,7 @@ fun SettingsScreen(
         }
 
         // The effects run on our own output, so this one holds for both backends.
-        if (shown == SettingsPage.Playback) item("effect-quality") {
+        if (shown == SettingsPage.Playback && !sdkPlayback) item("effect-quality") {
             EffectQualitySection()
         }
 

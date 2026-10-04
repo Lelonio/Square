@@ -23,6 +23,19 @@ object RemoteConnect {
 
     /** This device's own id, read once the engine has a session. */
     private var ownId: String = ""
+    private var sdkId: String? = null
+
+    /** The official SDK is another Spotify device, but plays on this phone. */
+    fun registerSdkDevice(id: String) {
+        sdkId = id
+        runCatching { refresh() }
+    }
+
+    fun unregisterSdkDevice(id: String?) {
+        if (id == null || sdkId != id) return
+        sdkId = null
+        runCatching { refresh() }
+    }
 
     private val _playback = MutableStateFlow<RemotePlayback?>(null)
 
@@ -70,7 +83,7 @@ object RemoteConnect {
     /** Whether an id is this phone's own. */
     fun isThisPhone(deviceId: String): Boolean {
         if (ownId.isEmpty()) ownId = NativeBridge.deviceId()
-        return deviceId.isNotEmpty() && deviceId == ownId
+        return deviceId.isNotEmpty() && (deviceId == ownId || deviceId == sdkId)
     }
 
     /** Called on every `cluster` event from the engine. */
@@ -93,10 +106,11 @@ object RemoteConnect {
         // this phone it starts playing at once, while the account goes on naming
         // the device it came from until that device lets go. Comparing ids meant
         // the app believed the account and not its own ears.
-        val elsewhere = NativeBridge.playbackElsewhere
+        val elsewhere = NativeBridge.playbackElsewhere && active != sdkId
         _elsewhere.value = elsewhere
         _playback.value = playback?.takeIf { elsewhere }
-        _here.value = playback?.takeIf { !elsewhere && active.isNotEmpty() }
+        // The SDK adapter already owns its queue; it must not be adopted by librespot.
+        _here.value = playback?.takeIf { !elsewhere && active.isNotEmpty() && active != sdkId }
     }
 
     private fun read(state: JSONObject, active: String): RemotePlayback? {
@@ -159,6 +173,7 @@ object RemoteConnect {
 
     /** Forgets everything. For a session ending, where none of it is true any more. */
     fun clear() {
+        sdkId = null
         _elsewhere.value = false
         _playback.value = null
         _here.value = null
@@ -176,7 +191,7 @@ object RemoteConnect {
                 type = device.optString("type"),
                 volume = device.optInt("volume"),
                 active = device.optBoolean("active"),
-                isThisPhone = id == ownId,
+                isThisPhone = id == ownId || id == sdkId,
             )
         }
     }

@@ -329,12 +329,19 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
-        // Spotify refusing this account every key (#35): what the engine was
-        // about to play goes over to the web player's way of playing it.
+        // Only an explicit account-level refusal offers SDK recovery.
         scope.launch {
             dev.lelonio.square.backend.spotify.SpotifyWebPlayback.accountRefused.collect {
                 runCatching { moveToWebPlayback() }
-                    .onFailure { android.util.Log.w(TAG, "web playback: $it") }
+                    .onFailure { android.util.Log.w(TAG, "SDK recovery failed", it) }
+            }
+        }
+        scope.launch {
+            dev.lelonio.square.playback.websdk.WebSdkRecovery.configured.collect {
+                if (webPlaybackNeeded()) {
+                    if (playerKind == PlayerKind.SPOTIFY_WEB) { player.prepare(); player.play() }
+                    else moveToWebPlayback()
+                }
             }
         }
 
@@ -667,19 +674,21 @@ class PlaybackService : MediaLibraryService() {
      * last one, which is nothing at all.
      */
     suspend fun ensurePlayerFor(firstUri: String?) {
+        pendingWebPlayback = null
         val wanted = if (firstUri != null && dev.lelonio.square.data.LocalLibrary.isLocal(firstUri)) {
             PlayerKind.LOCAL
         } else {
             kindFor(container.preferences.backend.value).let { kind ->
                 // An account Spotify refuses its keys goes on playing the web
                 // player's way, once the engine is up to lend it a token.
-                if (kind == PlayerKind.SPOTIFY && webPlaybackNeeded() &&
-                    (librespot != null || parkedSpotify != null)
-                ) {
-                    PlayerKind.SPOTIFY_WEB
-                } else {
-                    kind
-                }
+                if (kind == PlayerKind.SPOTIFY && webPlaybackNeeded()) {
+                    if (dev.lelonio.square.playback.websdk.WebSdkRecovery.isConfigured(this)) {
+                        PlayerKind.SPOTIFY_WEB
+                    } else {
+                        dev.lelonio.square.playback.websdk.WebSdkRecovery.requestSetup()
+                        kind
+                    }
+                } else kind
             }
         }
         if (wanted == playerKind) return
@@ -708,33 +717,39 @@ class PlaybackService : MediaLibraryService() {
         container.preferences.backend.value == dev.lelonio.square.backend.BackendId.SPOTIFY &&
             dev.lelonio.square.backend.spotify.SpotifyWebPlayback.needed(this)
 
-    /**
-     * Carries the engine's queue, track and position over to the web player.
-     *
-     * The engine's items name their songs and nothing more; ExoPlayer plays an
-     * address, so each is given its own name as one, which the web player's
-     * resolver turns into its MP4 file.
-     */
+    private data class PendingWebPlayback(
+        val items: List<androidx.media3.common.MediaItem>,
+        val index: Int,
+        val position: Long,
+        val shuffle: Boolean,
+        val repeat: Int,
+    )
+    private var pendingWebPlayback: PendingWebPlayback? = null
+
+    /** Keep the failed selection while OAuth is completed; resume through the official SDK. */
     private suspend fun moveToWebPlayback() {
         if (playerKind != PlayerKind.SPOTIFY) return
         val engine = librespot ?: return
-        val items = (0 until engine.mediaItemCount).map { index ->
-            val item = engine.getMediaItemAt(index)
-            item.buildUpon().setUri(item.mediaId).build()
+        if (pendingWebPlayback == null) {
+            val items = (0 until engine.mediaItemCount).map(engine::getMediaItemAt)
+            if (items.isEmpty()) return
+            pendingWebPlayback = PendingWebPlayback(items,
+                engine.currentMediaItemIndex.coerceIn(0, items.lastIndex),
+                engine.currentPosition.coerceAtLeast(0), engine.shuffleModeEnabled, engine.repeatMode)
         }
-        if (items.isEmpty()) return
-        val index = engine.currentMediaItemIndex.coerceIn(0, items.lastIndex)
-        val position = engine.currentPosition.coerceAtLeast(0)
-        android.util.Log.i(TAG, "keys refused to the account: playing ${items.size} tracks the web player's way")
+        if (!dev.lelonio.square.playback.websdk.WebSdkRecovery.isConfigured(this)) {
+            engine.pause()
+            dev.lelonio.square.playback.websdk.WebSdkRecovery.requestSetup()
+            return
+        }
+        val pending = pendingWebPlayback ?: return
         swapPlayer(PlayerKind.SPOTIFY_WEB, restore = false)
-        player.setMediaItems(items, index, position)
+        player.setMediaItems(pending.items, pending.index, pending.position)
+        player.shuffleModeEnabled = pending.shuffle
+        player.repeatMode = pending.repeat
         player.prepare()
         player.play()
-        android.widget.Toast.makeText(
-            this,
-            getString(dev.lelonio.square.R.string.web_playback_on),
-            android.widget.Toast.LENGTH_LONG,
-        ).show()
+        pendingWebPlayback = null
     }
 
     private fun buildPlayer(
@@ -807,22 +822,11 @@ class PlaybackService : MediaLibraryService() {
         PlayerKind.SPOTIFY -> buildBackendPlayer(dev.lelonio.square.backend.BackendId.SPOTIFY)
         PlayerKind.YOUTUBE -> buildBackendPlayer(dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC)
 
-        // Spotify the way its web player plays it, for an account refused its
-        // keys; see SpotifyWebPlayback. The engine stays parked behind it, for
-        // the catalogue and for the token the licence is asked with.
+        // Keep the engine parked for catalogue access; only the SDK owns playback.
         PlayerKind.SPOTIFY_WEB -> {
             librespot = null
             playerKind = kind
-            dev.lelonio.square.backend.spotify.SpotifyWebPlayback.create(
-                this,
-                playbackHost.looper,
-                LocalPlayerFactory.renderers(playbackHost),
-            ).also { built ->
-                built.playbackParameters = androidx.media3.common.PlaybackParameters(
-                    AudioEffects.speed.value,
-                    AudioEffects.pitch.value,
-                )
-            }
+            dev.lelonio.square.playback.websdk.WebSdkPlayer(this, playbackHost.looper)
         }
     }
 

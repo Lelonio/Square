@@ -1419,11 +1419,13 @@ class LibrespotPlayer(
         if (what == 0L) {
             refusalShown = false
             keyNotes.edit().remove(ACCOUNT_REFUSED).apply()
+            dev.lelonio.square.playback.websdk.WebSdkRecovery.refresh(appContext)
             return
         }
         val account = what == 2L || keyNotes.getBoolean(ACCOUNT_REFUSED, false)
         if (what == 2L) {
             keyNotes.edit().putBoolean(ACCOUNT_REFUSED, true).apply()
+            dev.lelonio.square.playback.websdk.WebSdkRecovery.refresh(appContext)
         } else if (refusalShown) {
             return
         }
@@ -1515,6 +1517,7 @@ class LibrespotPlayer(
         // A song playing is the account being given keys after all.
         if (type == "playing" && keyNotes.contains(ACCOUNT_REFUSED)) {
             keyNotes.edit().remove(ACCOUNT_REFUSED).apply()
+            dev.lelonio.square.playback.websdk.WebSdkRecovery.refresh(appContext)
         }
 
         // Nothing is coming out of the speaker any more, so the next load is a

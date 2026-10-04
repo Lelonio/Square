@@ -131,10 +131,18 @@ fun PlayerPanelSection(
         val effectsOn = speed != 1f || pitch != 1f || reverb > 0f
         val karaoke by dev.lelonio.square.playback.AudioEffects.karaoke
             .collectAsStateWithLifecycle()
-        val karaokeOn = karaoke > 0f
+        // The official SDK mixes its own audio, so it has no effects to offer.
+        val sdkPlayback by dev.lelonio.square.playback.websdk.WebSdkRecovery.inUse
+            .collectAsStateWithLifecycle()
+        val karaokeOn = karaoke > 0f && !sdkPlayback
 
-        val views = remember {
-            listOf(PlayerPanel.NONE, PlayerPanel.LYRICS, PlayerPanel.EFFECTS, PlayerPanel.INFO)
+        val views = remember(sdkPlayback) {
+            listOfNotNull(
+                PlayerPanel.NONE,
+                PlayerPanel.LYRICS,
+                PlayerPanel.EFFECTS.takeUnless { sdkPlayback },
+                PlayerPanel.INFO,
+            )
         }
         val selected = views.indexOf(panel).coerceAtLeast(0)
         // Stable, or LiquidBottomTabs throws away the state it keys on this and
@@ -164,29 +172,29 @@ fun PlayerPanelSection(
                 icon = PhosphorIcons.Regular.VinylRecord,
                 activeIcon = PhosphorIcons.Fill.VinylRecord,
                 label = stringResource(R.string.cover),
-                selected = selected == 0,
+                selected = selected == views.indexOf(PlayerPanel.NONE),
             ) { onSelect(PlayerPanel.NONE) }
             PanelTab(
                 icon = PhosphorIcons.Regular.TextAlignLeft,
                 activeIcon = PhosphorIcons.Fill.TextAlignLeft,
                 label = stringResource(R.string.lyrics),
-                selected = selected == 1,
+                selected = selected == views.indexOf(PlayerPanel.LYRICS),
                 // The karaoke lives in this view and keeps working with the
                 // panel shut; see the same halo on the effects tab.
                 marked = karaokeOn,
             ) { onSelect(PlayerPanel.LYRICS) }
-            PanelTab(
+            if (!sdkPlayback) PanelTab(
                 icon = PhosphorIcons.Regular.SlidersHorizontal,
                 activeIcon = PhosphorIcons.Fill.SlidersHorizontal,
                 label = stringResource(R.string.effects),
-                selected = selected == 2,
+                selected = selected == views.indexOf(PlayerPanel.EFFECTS),
                 marked = effectsOn,
             ) { onSelect(PlayerPanel.EFFECTS) }
             PanelTab(
                 icon = PhosphorIcons.Regular.Info,
                 activeIcon = PhosphorIcons.Fill.Info,
                 label = stringResource(R.string.credits),
-                selected = selected == 3,
+                selected = selected == views.indexOf(PlayerPanel.INFO),
             ) { onSelect(PlayerPanel.INFO) }
         }
 

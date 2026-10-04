@@ -93,6 +93,16 @@ class SquareApplication : Application(), ImageLoaderFactory {
             )
         }
 
+        // Whether Spotify goes through the official SDK depends on the source
+        // too: on YouTube Music the engine's features are all there.
+        kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+        ).launch {
+            preferences.backend.collect {
+                dev.lelonio.square.playback.websdk.WebSdkRecovery.refresh(this@SquareApplication)
+            }
+        }
+
         // Not a feature: a line in the log saying whether this install has been
         // compiled ahead of time yet. See reportProfileStatus.
         reportProfileStatus(
@@ -201,6 +211,7 @@ class SquareApplication : Application(), ImageLoaderFactory {
      * are metered against a quota nobody else shares — see [WebApiAccount].
      */
     val webApi: WebApiAccount by lazy { WebApiAccount(this) }
+    internal val spotifySdkAccount by lazy { dev.lelonio.square.playback.websdk.WebSdkAccount(this) }
 
     /**
      * Shared [OkHttpClient] providing a common connection pool, DNS cache, and dispatcher

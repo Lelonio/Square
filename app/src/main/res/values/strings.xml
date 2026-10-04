@@ -508,4 +508,38 @@
     <string name="videos">Videos</string>
     <string name="device_this_app" translatable="false">%1$s (Square)</string>
     <string name="web_playback_on">Spotify refuses this account the keys its songs need: playing them the way the web player does. Spotify Connect and downloads are not available this way.</string>
+
+    <!-- Official Spotify SDK proof of concept. -->
+    <string name="web_sdk_title">Spotify Web Playback · prototype</string>
+    <string name="web_sdk_open">Open playback test</string>
+    <string name="web_sdk_explainer">Test the official Spotify player with a Premium account. Register your own developer app with Web Playback SDK enabled, then enter its Client ID.</string>
+    <string name="web_sdk_redirect">On the dashboard, open your app, tick Web Playback SDK and add this redirect URI:</string>
+    <string name="web_sdk_login">Sign in to Spotify</string>
+    <string name="web_sdk_reauthorize">Authorize again</string>
+    <string name="web_sdk_check">Check compatibility</string>
+    <string name="web_sdk_connect">Connect player</string>
+    <string name="web_sdk_loading">Checking and connecting…</string>
+    <string name="web_sdk_ready">Player ready</string>
+    <string name="web_sdk_capable">DRM supported. Sign in to test Spotify playback.</string>
+    <string name="web_sdk_idle">Player stopped</string>
+    <string name="web_sdk_track">Spotify track link or URI</string>
+    <string name="web_sdk_stop">Stop test</string>
+    <string name="web_sdk_background">After playback starts, turn off the screen or open another app. Notification controls stay available. This prototype does not provide crossfade or offline playback.</string>
+    <string name="web_sdk_running">Spotify SDK playback test</string>
+    <string name="web_sdk_unsupported">This Android WebView cannot run the DRM required by Spotify Web Playback SDK. A foreground service cannot fix this browser limitation.</string>
+    <string name="web_sdk_premium">Spotify Premium is required.</string>
+    <string name="web_sdk_auth_error">Check your own Client ID and registered redirect URI, then authorize again.</string>
+    <string name="web_sdk_forbidden">Spotify refused playback. Check Premium, SDK permissions and access to your developer app.</string>
+    <string name="web_sdk_rate_limit">Spotify request limit reached. Wait before trying again.</string>
+    <string name="web_sdk_invalid_track">Enter a Spotify track link or spotify:track: URI.</string>
+    <string name="web_sdk_focus">Another app currently controls audio. Try again.</string>
+    <string name="web_sdk_play_error">Player connection or playback failed. Stop the test and reconnect.</string>
+    <string name="web_sdk_failed">Player unavailable</string>
+    <string name="web_sdk_recovery_title">Turn on Spotify playback</string>
+    <string name="web_sdk_recovery_explainer">Spotify won’t play this account’s songs in Square’s usual player. Square can use Spotify’s official web player instead, signed in through your developer app.</string>
+    <string name="web_sdk_enable">Enable playback</string>
+    <string name="web_sdk_settings_title">Alternative Spotify playback</string>
+    <string name="web_sdk_limits">With this player, crossfade, audio effects, karaoke, sound quality and downloads are not available.</string>
+    <string name="web_sdk_settings_open">Configure web player</string>
+    <string name="web_sdk_authorized">Spotify account authorized</string>
 </resources>

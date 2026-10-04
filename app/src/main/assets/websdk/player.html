@@ -1,0 +1,78 @@
+<!doctype html>
+<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Square Spotify SDK</title></head><body>
+<script>
+'use strict';
+let player;
+let lastState;
+const connectAfterProbe = __CONNECT__;
+const tokenRequests = new Map();
+let nextTokenRequest = 0;
+function event(type, data = {}) { SquareSdk.event(JSON.stringify({type, ...data})); }
+window.receiveToken = (id, token) => {
+  const callback = tokenRequests.get(id);
+  tokenRequests.delete(id);
+  if (callback && token) callback(token);
+};
+function emitState(state) {
+  if (!state) { event('inactive'); return; }
+  const track = state.track_window.current_track;
+  const ended = state.paused && state.position === 0 && lastState && !lastState.paused &&
+    lastState.track_window.current_track.uri === track.uri && lastState.duration > 0 &&
+    lastState.position >= lastState.duration - 2500;
+  lastState = state;
+  event('state', {uri: track.uri || '', ended: !!ended, paused: state.paused, position: state.position, duration: state.duration,
+    title: track.name, artist: track.artists.map(a => a.name).join(', ')});
+}
+window.command = async (name, position) => {
+  if (!player) return;
+  try {
+    switch (name) {
+      case 'pause': await player.pause(); break;
+      case 'resume': await player.activateElement(); await player.resume(); break;
+      case 'seek': await player.seek(position); break;
+      case 'activate': await player.activateElement(); break;
+      case 'disconnect': player.disconnect(); break;
+      case 'poll': emitState(await player.getCurrentState()); break;
+    }
+  } catch (_) { event('error', {code: 'command_error'}); }
+};
+window.onSpotifyWebPlaybackSDKReady = () => {
+  player = new Spotify.Player({
+    name: 'Square Web Player',
+    getOAuthToken: callback => {
+      const id = ++nextTokenRequest;
+      tokenRequests.set(id, callback);
+      SquareSdk.token(id);
+    },
+    volume: 1,
+    enableMediaSession: false // Native service owns the notification controls.
+  });
+  player.addListener('ready', ({device_id}) => event('ready', {deviceId: device_id}));
+  player.addListener('not_ready', () => event('not_ready'));
+  player.addListener('autoplay_failed', () => event('error', {code: 'autoplay_failed'}));
+  for (const name of ['initialization_error', 'authentication_error', 'account_error', 'playback_error']) {
+    player.addListener(name, () => event('error', {code: name}));
+  }
+  player.addListener('player_state_changed', emitState);
+  player.connect().then(ok => { if (!ok) event('error', {code: 'connect_error'}); })
+    .catch(() => event('error', {code: 'connect_error'}));
+};
+(async () => {
+  // Check the actual browser environment before requesting any Spotify token.
+  if (!window.isSecureContext || !navigator.requestMediaKeySystemAccess) {
+    event('error', {code: 'eme_unavailable'}); return;
+  }
+  try {
+    await navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{
+      initDataTypes: ['cenc'],
+      audioCapabilities: [{contentType: 'audio/mp4; codecs="mp4a.40.2"'}]
+    }]);
+  } catch (_) { event('error', {code: 'eme_unavailable'}); return; }
+  event('capable');
+  if (!connectAfterProbe) return;
+  const script = document.createElement('script');
+  script.src = 'https://sdk.scdn.co/spotify-player.js';
+  script.onerror = () => event('error', {code: 'sdk_load_error'});
+  document.head.appendChild(script);
+})();
+</script></body></html>

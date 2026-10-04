@@ -57,6 +57,7 @@ object WidevineProbe {
                         val on = mode == "on"
                         context.getSharedPreferences("square_keys", Context.MODE_PRIVATE)
                             .edit().putBoolean("account_refused", on).apply()
+                        dev.lelonio.square.playback.websdk.WebSdkRecovery.refresh(context)
                         log("web playback forced ${if (on) "on" else "off"}")
                         if (on) {
                             forceWeb()

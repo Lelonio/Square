@@ -374,6 +374,11 @@ fun PlayerScreen(
     onAnotherDevice: Boolean = false,
 ) {
     var panel by remember { mutableStateOf(PlayerPanel.NONE) }
+    // The official SDK mixes its own audio: no effects or karaoke reach it.
+    val sdkPlayback by dev.lelonio.square.playback.websdk.WebSdkRecovery.inUse.collectAsStateWithLifecycle()
+    LaunchedEffect(sdkPlayback) {
+        if (sdkPlayback && panel == PlayerPanel.EFFECTS) panel = PlayerPanel.NONE
+    }
 
     /** Bumped to open the karaoke control; see KaraokeDial. */
     var karaokeExpand by remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -925,7 +930,7 @@ fun PlayerScreen(
                             val karaokeAmount by dev.lelonio.square.playback.AudioEffects.karaoke
                                 .collectAsStateWithLifecycle()
                             androidx.compose.animation.AnimatedVisibility(
-                                visible = karaokeAmount > 0f,
+                                visible = karaokeAmount > 0f && !sdkPlayback,
                                 enter = fadeIn(tween(220)),
                                 exit = fadeOut(tween(180)),
                                 modifier = Modifier
@@ -2433,7 +2438,10 @@ private fun LyricsStage(
             )
         }
 
-        KaraokeDial(
+        // Not over the official SDK, whose audio never passes through the effect.
+        val sdkPlayback by dev.lelonio.square.playback.websdk.WebSdkRecovery.inUse
+            .collectAsStateWithLifecycle()
+        if (!sdkPlayback) KaraokeDial(
             amount = karaoke,
             onChange = dev.lelonio.square.playback.AudioEffects::setKaraoke,
             backdrop = backdrop,
