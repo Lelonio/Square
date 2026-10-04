@@ -478,6 +478,9 @@ class LibrespotPlayer(
     private fun ownsAdvance(): Boolean =
         outsideSpirc || runCatching { NativeBridge.isOffline }.getOrDefault(false)
 
+    /** Set when the engine stopped its player; a play then has to load again. */
+    private var engineStopped = false
+
     /** Set while a reconnection is in flight, so a burst of taps starts one. */
     private var reconnecting = false
 
@@ -880,7 +883,16 @@ class LibrespotPlayer(
 
             // If no track is currently loaded but queue exists, load the queue.
             // Otherwise, unpause the existing loaded track immediately via NativeBridge.play().
-            if (currentMediaItem == null && queue.items.isNotEmpty()) {
+            //
+            // Also when the engine has stopped the player under the paused
+            // track — which Spotify does to a device left paused and inactive
+            // for a few seconds. A stopped player refuses "play" (it only logs
+            // it), so the button spun forever; the track is loaded again where
+            // it was paused instead.
+            if ((currentMediaItem == null || engineStopped) && queue.items.isNotEmpty()) {
+                engineStopped = false
+                playbackState = Player.STATE_BUFFERING
+                invalidateState()
                 pushQueue(startPlaying = true, positionMs = positionMs.toInt())
             } else {
                 var playFailed = false
@@ -1560,6 +1572,7 @@ class LibrespotPlayer(
 
         when (type) {
             "loading" -> {
+                engineStopped = false
                 playbackState = Player.STATE_BUFFERING
                 if (uri.isNotEmpty()) bandwidth.loading(uri)
                 // Loaded straight into the player, around Connect: nobody but
@@ -1618,6 +1631,7 @@ class LibrespotPlayer(
             "stopped" -> {
                 playbackState = Player.STATE_IDLE
                 playWhenReady = false
+                engineStopped = true
                 onPlaybackActive(false)
             }
             // Both used to advance the queue from here. The engine does it now
