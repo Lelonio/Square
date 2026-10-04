@@ -42,6 +42,10 @@ object WidevineProbe {
             context,
             object : BroadcastReceiver() {
                 override fun onReceive(context: Context, intent: Intent) {
+                    // The web player's client-token, for the licence request; kept in
+                    // memory only and never written to the log.
+                    clientToken = intent.getStringExtra("clienttoken")
+                    intent.getStringExtra("webtoken")?.let { webToken = it.removePrefix("Bearer ").trim() }
                     if (intent.getBooleanExtra("reference", false)) {
                         playReference()
                         return
@@ -216,7 +220,8 @@ object WidevineProbe {
         }
 
         // 6. Whether ExoPlayer plays it: eight seconds, quietly.
-        // if (cdn != null) playFor(cdn, token)
+        // 6. The same file as DASH, the way the web player reads it.
+        if (cdn != null && seektable != null) playAsDash(cdn, seektable, pssh, token)
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -343,12 +348,24 @@ object WidevineProbe {
             }
             val player = androidx.media3.exoplayer.ExoPlayer.Builder(appContext!!, renderers).build()
             player.volume = 0f
+            // The audio alone: it is the audio's decryption being compared.
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_VIDEO, true)
+                .build()
             player.addListener(object : androidx.media3.common.Player.Listener {
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) { log("R error ${error.errorCodeName} ${error.cause}") }
             })
+            player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                override fun onDrmKeysLoaded(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime) { log("R keys loaded") }
+                override fun onAudioInputFormatChanged(
+                    eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                    format: androidx.media3.common.Format,
+                    decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+                ) { log("R audio ${format.codecs} drm=${format.drmInitData?.schemeType}") }
+            })
             player.setMediaItem(
                 androidx.media3.common.MediaItem.Builder()
-                    .setUri("https://storage.googleapis.com/wvmedia/cenc/h264/tears/tears_aac.mpd")
+                    .setUri("https://storage.googleapis.com/wvmedia/cenc/h264/tears/tears.mpd")
                     .setDrmConfiguration(
                         androidx.media3.common.MediaItem.DrmConfiguration.Builder(androidx.media3.common.C.WIDEVINE_UUID)
                             .setLicenseUri("https://proxy.uat.widevine.com/proxy?video_id=2015_tears&provider=widevine_test")
@@ -363,7 +380,82 @@ object WidevineProbe {
                 override fun run() {
                     log("R t=${n}s pos=${player.currentPosition} playing=${player.isPlaying} peak=$peak tracks=${player.currentTracks.groups.map { it.type }}")
                     peak = 0
-                    if (++n < 25) main.postDelayed(this, 1_000) else player.release()
+                    if (++n < 22) main.postDelayed(this, 1_000) else player.release()
+                }
+            }
+            main.postDelayed(tick, 1_000)
+        }
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun playAsDash(cdn: String, seektable: JSONObject, pssh: String, token: String) {
+        val index = seektable.optJSONArray("index_range")
+        log("6 seektable offset=${seektable.opt("offset")} index_range=$index timescale=${seektable.opt("timescale")}")
+        if (index == null || index.length() < 2) return log("6 no index range")
+        val start = index.getLong(0)
+        val end = index.getLong(1)
+        val url = cdn.replace("&", "&amp;")
+        val mpd = """<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:cenc="urn:mpeg:cenc:2013" type="static" mediaPresentationDuration="PT600S" minBufferTime="PT2S" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011">
+ <Period>
+  <AdaptationSet mimeType="audio/mp4" codecs="mp4a.40.2" contentType="audio">
+   <ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc"/>
+   <ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"><cenc:pssh>$pssh</cenc:pssh></ContentProtection>
+   <Representation id="a" bandwidth="256000" audioSamplingRate="44100">
+    <BaseURL>$url</BaseURL>
+    <SegmentBase indexRange="$start-$end"><Initialization range="0-${start - 1}"/></SegmentBase>
+   </Representation>
+  </AdaptationSet>
+ </Period>
+</MPD>"""
+        val file = java.io.File(appContext!!.cacheDir, "probe.mpd").apply { writeText(mpd) }
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        main.post {
+            var peak = 0
+            val meter = object : androidx.media3.exoplayer.audio.TeeAudioProcessor.AudioBufferSink {
+                override fun flush(sampleRateHz: Int, channelCount: Int, encoding: Int) {}
+                override fun handleBuffer(buffer: java.nio.ByteBuffer) {
+                    val shorts = buffer.duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer()
+                    while (shorts.hasRemaining()) { val v = kotlin.math.abs(shorts.get().toInt()); if (v > peak) peak = v }
+                }
+            }
+            val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(appContext!!) {
+                override fun buildAudioSink(c: Context, f: Boolean, p: Boolean) =
+                    androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(c)
+                        .setAudioProcessors(arrayOf(androidx.media3.exoplayer.audio.TeeAudioProcessor(meter)))
+                        .build()
+            }
+            val player = androidx.media3.exoplayer.ExoPlayer.Builder(appContext!!, renderers).build()
+            player.volume = 0f
+            player.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) { log("6 error ${error.errorCodeName} ${error.cause}") }
+            })
+            player.setMediaItem(
+                androidx.media3.common.MediaItem.Builder()
+                    .setUri(android.net.Uri.fromFile(file))
+                    .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_MPD)
+                    .setDrmConfiguration(
+                        androidx.media3.common.MediaItem.DrmConfiguration.Builder(androidx.media3.common.C.WIDEVINE_UUID)
+                            .setLicenseUri("$SPCLIENT/widevine-license/v1/audio/license")
+                            .setLicenseRequestHeaders(
+                                buildMap {
+                                    put("Authorization", "Bearer ${webToken ?: token}")
+                                    clientToken?.let { put("client-token", it) }
+                                },
+                            )
+                            .build(),
+                    )
+                    .build(),
+            )
+            log("6 licence with client-token: ${clientToken != null}, web player token: ${webToken != null}")
+            player.prepare()
+            player.play()
+            val tick = object : Runnable {
+                var n = 0
+                override fun run() {
+                    log("6 dash t=${n}s pos=${player.currentPosition} playing=${player.isPlaying} peak=$peak")
+                    peak = 0
+                    if (++n < 22) main.postDelayed(this, 1_000) else player.release()
                 }
             }
             main.postDelayed(tick, 1_000)
@@ -371,6 +463,9 @@ object WidevineProbe {
     }
 
     private var appContext: Context? = null
+
+    @Volatile private var clientToken: String? = null
+    @Volatile private var webToken: String? = null
 
     private fun get(url: String, token: String?, json: Boolean): Pair<Int, String?> {
         val request = Request.Builder().url(url).apply {
