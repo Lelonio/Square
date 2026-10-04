@@ -506,4 +506,5 @@
     <string name="video_unavailable">The official video can\'t be played: showing the song\'s own video.</string>
     <string name="added_to_queue">Added to queue: %s</string>
     <string name="videos">Videos</string>
+    <string name="device_this_app" translatable="false">%1$s (Square)</string>
 </resources>

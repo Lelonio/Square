@@ -821,18 +821,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _devices.value = _devices.value.copy(
                     loading = false,
                     error = null,
-                    devices = cluster.map { device ->
-                        SpotifyDevice(
-                            id = device.id,
-                            name = device.name,
-                            type = device.type,
-                            isActive = device.active,
-                        )
-                    },
+                    devices = ordered(
+                        cluster.map { device ->
+                            SpotifyDevice(
+                                id = device.id,
+                                name = named(device.id, device.name),
+                                type = device.type,
+                                isActive = device.active,
+                            )
+                        },
+                    ),
                 )
             }
         }
     }
+
+    /**
+     * The devices in an order that does not move: this phone first, then by
+     * name. The cluster sends them in a different order every few seconds, and
+     * a list reshuffled under the finger sent the music to whichever row had
+     * just slid into the place the listener was tapping.
+     */
+    private fun ordered(devices: List<SpotifyDevice>): List<SpotifyDevice> =
+        devices.sortedWith(
+            compareByDescending<SpotifyDevice> { dev.lelonio.square.data.RemoteConnect.isThisPhone(it.id) }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
+                .thenBy { it.id },
+        )
+
+    /**
+     * This app's own entry, said to be this app. Spotify's official app on the
+     * same phone carries the same model name, and two identical rows are a
+     * coin toss.
+     */
+    private fun named(id: String, name: String): String =
+        if (dev.lelonio.square.data.RemoteConnect.isThisPhone(id)) string(R.string.device_this_app, name) else name
 
     fun openDevices() {
         _devices.value = _devices.value.copy(open = true)
@@ -864,18 +887,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         devicesJob = viewModelScope.launch {
             runCatching { container.api.devices().devices }
                 .onSuccess { list ->
+                    // The engine's own list wins once it has one. The Web API
+                    // leaves out speakers it considers asleep (a Sonos, mostly),
+                    // and replacing the list with its answer when the sheet
+                    // opened took the very speaker being reached for off it.
+                    if (dev.lelonio.square.data.RemoteConnect.devices.value.isNotEmpty()) {
+                        _devices.value = _devices.value.copy(loading = false)
+                        return@onSuccess
+                    }
                     _devices.value = _devices.value.copy(
                         loading = false,
-                        devices = list.mapNotNull { device ->
-                            SpotifyDevice(
-                                // A device with no id cannot be addressed, so it
-                                // is dropped rather than shown as a dead row.
-                                id = device.id ?: return@mapNotNull null,
-                                name = device.name,
-                                type = device.type,
-                                isActive = device.isActive,
-                            )
-                        },
+                        devices = ordered(
+                            list.mapNotNull { device ->
+                                SpotifyDevice(
+                                    // A device with no id cannot be addressed, so it
+                                    // is dropped rather than shown as a dead row.
+                                    id = device.id ?: return@mapNotNull null,
+                                    name = named(device.id, device.name),
+                                    type = device.type,
+                                    isActive = device.isActive,
+                                )
+                            },
+                        ),
                     )
                 }
                 .onFailure {
