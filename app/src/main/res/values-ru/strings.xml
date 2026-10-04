@@ -506,4 +506,5 @@
     <string name="video_unavailable">Официальное видео недоступно: показано видео трека.</string>
     <string name="added_to_queue">Добавлено в очередь: %s</string>
     <string name="videos">Видео</string>
+    <string name="web_playback_on">Spotify не выдаёт этому аккаунту ключи для треков: они воспроизводятся как в веб-плеере. Spotify Connect и загрузки так недоступны.</string>
 </resources>

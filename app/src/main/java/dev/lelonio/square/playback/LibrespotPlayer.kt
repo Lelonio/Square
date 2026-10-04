@@ -1427,6 +1427,12 @@ class LibrespotPlayer(
         } else if (refusalShown) {
             return
         }
+        // The whole account refused: there is another way to play it.
+        if (account) {
+            dev.lelonio.square.backend.spotify.SpotifyWebPlayback.reportAccountRefused()
+            refusalShown = true
+            return
+        }
         refusalShown = true
         android.widget.Toast.makeText(
             appContext,

@@ -479,4 +479,5 @@
     <string name="video_unavailable">Das offizielle Video kann nicht abgespielt werden: Das Video des Songs wird gezeigt.</string>
     <string name="added_to_queue">Zur Warteschlange hinzugefügt: %s</string>
     <string name="videos">Videos</string>
+    <string name="web_playback_on">Spotify verweigert diesem Konto die Schlüssel für die Songs: Sie werden wie im Webplayer abgespielt. Spotify Connect und Downloads sind so nicht verfügbar.</string>
 </resources>

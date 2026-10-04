@@ -485,4 +485,5 @@
     <string name="video_unavailable">El vídeo oficial no se puede reproducir: se muestra el vídeo de la canción.</string>
     <string name="added_to_queue">Añadido a la cola: %s</string>
     <string name="videos">Vídeos</string>
+    <string name="web_playback_on">Spotify niega a esta cuenta las claves de las canciones: se reproducen como en el reproductor web. Spotify Connect y las descargas no están disponibles así.</string>
 </resources>

@@ -329,6 +329,15 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
+        // Spotify refusing this account every key (#35): what the engine was
+        // about to play goes over to the web player's way of playing it.
+        scope.launch {
+            dev.lelonio.square.backend.spotify.SpotifyWebPlayback.accountRefused.collect {
+                runCatching { moveToWebPlayback() }
+                    .onFailure { android.util.Log.w(TAG, "web playback: $it") }
+            }
+        }
+
         // The end-of-track timer, watched by position.
         //
         // It used to wait for the player to report moving on by itself, and
@@ -532,7 +541,7 @@ class PlaybackService : MediaLibraryService() {
      * neither backend's player can open them. So what decides this is not only
      * the setting but what is being played; see [ensurePlayerFor].
      */
-    private enum class PlayerKind { SPOTIFY, YOUTUBE, LOCAL, VIDEO }
+    private enum class PlayerKind { SPOTIFY, YOUTUBE, LOCAL, VIDEO, SPOTIFY_WEB }
 
     private var playerKind = PlayerKind.SPOTIFY
 
@@ -661,7 +670,17 @@ class PlaybackService : MediaLibraryService() {
         val wanted = if (firstUri != null && dev.lelonio.square.data.LocalLibrary.isLocal(firstUri)) {
             PlayerKind.LOCAL
         } else {
-            kindFor(container.preferences.backend.value)
+            kindFor(container.preferences.backend.value).let { kind ->
+                // An account Spotify refuses its keys goes on playing the web
+                // player's way, once the engine is up to lend it a token.
+                if (kind == PlayerKind.SPOTIFY && webPlaybackNeeded() &&
+                    (librespot != null || parkedSpotify != null)
+                ) {
+                    PlayerKind.SPOTIFY_WEB
+                } else {
+                    kind
+                }
+            }
         }
         if (wanted == playerKind) return
 
@@ -684,6 +703,39 @@ class PlaybackService : MediaLibraryService() {
     private fun buildPlayer(
         backendId: dev.lelonio.square.backend.BackendId,
     ): androidx.media3.common.Player = buildPlayer(kindFor(backendId))
+
+    private fun webPlaybackNeeded(): Boolean =
+        container.preferences.backend.value == dev.lelonio.square.backend.BackendId.SPOTIFY &&
+            dev.lelonio.square.backend.spotify.SpotifyWebPlayback.needed(this)
+
+    /**
+     * Carries the engine's queue, track and position over to the web player.
+     *
+     * The engine's items name their songs and nothing more; ExoPlayer plays an
+     * address, so each is given its own name as one, which the web player's
+     * resolver turns into its MP4 file.
+     */
+    private suspend fun moveToWebPlayback() {
+        if (playerKind != PlayerKind.SPOTIFY) return
+        val engine = librespot ?: return
+        val items = (0 until engine.mediaItemCount).map { index ->
+            val item = engine.getMediaItemAt(index)
+            item.buildUpon().setUri(item.mediaId).build()
+        }
+        if (items.isEmpty()) return
+        val index = engine.currentMediaItemIndex.coerceIn(0, items.lastIndex)
+        val position = engine.currentPosition.coerceAtLeast(0)
+        android.util.Log.i(TAG, "keys refused to the account: playing ${items.size} tracks the web player's way")
+        swapPlayer(PlayerKind.SPOTIFY_WEB, restore = false)
+        player.setMediaItems(items, index, position)
+        player.prepare()
+        player.play()
+        android.widget.Toast.makeText(
+            this,
+            getString(dev.lelonio.square.R.string.web_playback_on),
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+    }
 
     private fun buildPlayer(
         kind: PlayerKind,
@@ -754,6 +806,24 @@ class PlaybackService : MediaLibraryService() {
 
         PlayerKind.SPOTIFY -> buildBackendPlayer(dev.lelonio.square.backend.BackendId.SPOTIFY)
         PlayerKind.YOUTUBE -> buildBackendPlayer(dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC)
+
+        // Spotify the way its web player plays it, for an account refused its
+        // keys; see SpotifyWebPlayback. The engine stays parked behind it, for
+        // the catalogue and for the token the licence is asked with.
+        PlayerKind.SPOTIFY_WEB -> {
+            librespot = null
+            playerKind = kind
+            dev.lelonio.square.backend.spotify.SpotifyWebPlayback.create(
+                this,
+                playbackHost.looper,
+                LocalPlayerFactory.renderers(playbackHost),
+            ).also { built ->
+                built.playbackParameters = androidx.media3.common.PlaybackParameters(
+                    AudioEffects.speed.value,
+                    AudioEffects.pitch.value,
+                )
+            }
+        }
     }
 
     private fun buildBackendPlayer(
@@ -849,7 +919,7 @@ class PlaybackService : MediaLibraryService() {
         // song comes back — it is also what the whole catalogue is read
         // through while the video plays.
         val parking = librespot != null &&
-            (kind == PlayerKind.LOCAL || kind == PlayerKind.VIDEO)
+            (kind == PlayerKind.LOCAL || kind == PlayerKind.VIDEO || kind == PlayerKind.SPOTIFY_WEB)
         if (parking) {
             runCatching { player.playWhenReady = false }
             parkedSpotify = librespot

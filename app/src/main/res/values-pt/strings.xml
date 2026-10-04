@@ -479,4 +479,5 @@
     <string name="video_unavailable">O vídeo oficial não pode ser reproduzido: mostrando o vídeo da música.</string>
     <string name="added_to_queue">Adicionado à fila: %s</string>
     <string name="videos">Vídeos</string>
+    <string name="web_playback_on">O Spotify recusa a esta conta as chaves das músicas: elas tocam como no reprodutor web. Spotify Connect e downloads não estão disponíveis assim.</string>
 </resources>

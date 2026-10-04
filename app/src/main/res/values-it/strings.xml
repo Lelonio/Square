@@ -480,4 +480,5 @@
     <string name="video_unavailable">Il video ufficiale non può essere riprodotto: mostro il video del brano.</string>
     <string name="added_to_queue">Aggiunto in coda: %s</string>
     <string name="videos">Video</string>
+    <string name="web_playback_on">Spotify rifiuta a questo account le chiavi per i brani: li riproduco come fa il web player. In questa modalità Spotify Connect e i download non sono disponibili.</string>
 </resources>

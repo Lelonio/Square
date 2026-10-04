@@ -492,4 +492,5 @@
     <string name="video_unavailable">Resmi video oynatılamıyor: şarkının kendi videosu gösteriliyor.</string>
     <string name="added_to_queue">Sıraya eklendi: %s</string>
     <string name="videos">Videolar</string>
+    <string name="web_playback_on">Spotify bu hesaba şarkı anahtarlarını vermiyor: şarkılar web oynatıcıdaki gibi çalınıyor. Bu şekilde Spotify Connect ve indirmeler kullanılamaz.</string>
 </resources>

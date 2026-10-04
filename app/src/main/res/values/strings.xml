@@ -507,4 +507,5 @@
     <string name="added_to_queue">Added to queue: %s</string>
     <string name="videos">Videos</string>
     <string name="device_this_app" translatable="false">%1$s (Square)</string>
+    <string name="web_playback_on">Spotify refuses this account the keys its songs need: playing them the way the web player does. Spotify Connect and downloads are not available this way.</string>
 </resources>

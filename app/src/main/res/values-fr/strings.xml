@@ -479,4 +479,5 @@
     <string name="video_unavailable">La vidéo officielle ne peut pas être lue : affichage de la vidéo du titre.</string>
     <string name="added_to_queue">Ajouté à la file d\'attente : %s</string>
     <string name="videos">Vidéos</string>
+    <string name="web_playback_on">Spotify refuse à ce compte les clés des titres : ils sont lus comme dans le lecteur web. Spotify Connect et les téléchargements ne sont pas disponibles ainsi.</string>
 </resources>
