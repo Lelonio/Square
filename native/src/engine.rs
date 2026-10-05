@@ -1060,6 +1060,20 @@ pub fn set_sleep_timer(value: i64) -> EngineResult<()> {
     Ok(())
 }
 
+/// Which file on the phone each local entry of a playlist is, as the app
+/// matched it: a JSON object of `spotify:local:` URIs to file paths. Replaces
+/// what was set before; see librespot-playback's local_file.
+pub fn set_local_files(json: &str) -> EngineResult<()> {
+    let files: std::collections::HashMap<String, String> =
+        serde_json::from_str(json).map_err(|e| format!("local files: {e}"))?;
+    let files = files
+        .into_iter()
+        .filter_map(|(uri, path)| Some((SpotifyUri::from_uri(&uri).ok()?, std::path::PathBuf::from(path))))
+        .collect();
+    librespot_playback::local_file::set_app_files(files);
+    Ok(())
+}
+
 /// How long a track the listener changes away from dissolves into the one they
 /// asked for; see `PlayerConfig::skip_fade_ms`. Kept in the recipe, so a
 /// rebuilt player still fades.

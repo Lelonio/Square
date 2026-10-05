@@ -3436,21 +3436,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var deviceFiles: List<CatalogTrack> = emptyList()
 
     /**
-     * A playlist's local entries, swapped for the files on this phone they
-     * describe. The playlist's own name for each is kept, and the file's URI
-     * is what plays; an entry with no file here stays as it came, and the page
-     * shows it greyed out, as Spotify's own apps do.
+     * A playlist's local entries, each given the file on this phone it
+     * describes. The entry keeps its `spotify:local:` URI, so it stays in the
+     * playlist's queue and Spotify's engine plays it from the file, between the
+     * streamed tracks; an entry with no file here is left without one, and the
+     * page shows it greyed out, as Spotify's own apps do.
      */
     private fun withDeviceFiles(tracks: List<CatalogTrack>): List<CatalogTrack> {
         if (tracks.none { LocalLibrary.isSpotifyLocal(it.uri) }) return tracks
         val files = deviceFiles
-        return tracks.map { track ->
+        val matched = tracks.map { track ->
             if (!LocalLibrary.isSpotifyLocal(track.uri)) return@map track
-            LocalLibrary.match(track, files)
-                ?.let { file -> track.copy(uri = file.uri, artworkUrl = track.artworkUrl ?: file.artworkUrl) }
-                ?: track
+            val file = LocalLibrary.match(track, files)
+            track.copy(
+                localFile = file?.localFile,
+                artworkUrl = track.artworkUrl ?: file?.artworkUrl,
+            )
         }
+        // Told to the engine as they are found, and kept: a queue started on
+        // one page plays on while another is open.
+        matched.forEach { track ->
+            val path = track.localFile ?: return@forEach
+            if (LocalLibrary.isSpotifyLocal(track.uri)) engineLocalFiles[track.uri] = path
+        }
+        runCatching {
+            dev.lelonio.square.nativecore.NativeBridge.setLocalFiles(
+                org.json.JSONObject(engineLocalFiles.toMap()).toString(),
+            )
+        }
+        return matched
     }
+
+    /** Every local entry matched so far, as the engine is told them. */
+    private val engineLocalFiles = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     fun openPlaylist(playlist: CatalogPlaylist) {
         // Read again on every page: a file copied to the phone since the last

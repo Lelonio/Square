@@ -330,16 +330,19 @@ class MainActivity : ComponentActivity() {
         } else {
             val here = (application as dev.lelonio.square.SquareApplication)
                 .downloads.files.value
-            tracks.filter { it.uri.startsWith("local:") || it.uri in here }
+            tracks.filter { it.uri.startsWith("local:") || it.localFile != null || it.uri in here }
         }
 
         // One player plays a queue: Spotify's engine or the phone's own files,
-        // not both. A Spotify playlist with local files in it plays whichever
-        // kind was tapped, and the other kind waits for its own tap; an entry
-        // with no file on this phone plays as neither.
+        // not both. A Spotify playlist's local entries are Spotify's to play —
+        // the engine opens the matched file between the streamed tracks — and
+        // an entry with no file on this phone is left out, as the engine could
+        // only skip it. The phone's own shelf plays on the files' own player.
         val local = dev.lelonio.square.data.LocalLibrary
         val tappedLocal = tracks.getOrNull(index)?.uri?.let(local::isLocal) == true
-        val playable = reachable.filter { !local.isSpotifyLocal(it.uri) && local.isLocal(it.uri) == tappedLocal }
+        val playable = reachable.filter {
+            local.isLocal(it.uri) == tappedLocal && (!local.isSpotifyLocal(it.uri) || it.localFile != null)
+        }
         if (playable.isEmpty()) return
 
         // The song that was tapped keeps its place, wherever the filtering left

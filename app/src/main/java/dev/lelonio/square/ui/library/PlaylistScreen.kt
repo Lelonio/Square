@@ -937,7 +937,8 @@ fun PlaylistScreen(
                             // else — they were never coming over the network.
                             // A local file the playlist names and this phone
                             // does not have is greyed out, as on Spotify.
-                            unavailable = dev.lelonio.square.data.LocalLibrary.isSpotifyLocal(track.uri) ||
+                            unavailable = (dev.lelonio.square.data.LocalLibrary.isSpotifyLocal(track.uri) &&
+                                track.localFile == null) ||
                                 offline &&
                                 !track.uri.startsWith("local:") &&
                                 trackDownload(track) !=

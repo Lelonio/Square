@@ -29,6 +29,31 @@ impl LocalFileLookup {
     pub fn get(&self, uri: &SpotifyUri) -> Option<&Path> {
         self.0.get(uri).map(|p| p.as_path())
     }
+
+    /// LOCAL PATCH: the app's own match first, then the scanned directories.
+    pub fn path_for(&self, uri: &SpotifyUri) -> Option<PathBuf> {
+        APP_FILES
+            .read()
+            .ok()
+            .and_then(|files| files.as_ref()?.get(uri).cloned())
+            .or_else(|| self.get(uri).map(Path::to_path_buf))
+    }
+}
+
+/// LOCAL PATCH: which file each local entry of a playlist is, as the app
+/// matched it.
+///
+/// The scan below wants a file's tags to spell out the entry exactly, which a
+/// copy on a phone rarely does; the app matches more forgivingly and with the
+/// phone's own media index, and hands the result over here.
+static APP_FILES: std::sync::RwLock<Option<HashMap<SpotifyUri, PathBuf>>> =
+    std::sync::RwLock::new(None);
+
+/// LOCAL PATCH: replaces the app's matches; see [APP_FILES].
+pub fn set_app_files(files: HashMap<SpotifyUri, PathBuf>) {
+    if let Ok(mut current) = APP_FILES.write() {
+        *current = Some(files);
+    }
 }
 
 pub fn create_local_file_lookup(directories: &[PathBuf]) -> LocalFileLookup {

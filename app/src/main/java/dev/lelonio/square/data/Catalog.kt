@@ -60,6 +60,15 @@ data class CatalogTrack(
      * and sorting by it then leaves the list in playlist order.
      */
     val addedAt: String? = null,
+    /**
+     * The file on this phone that plays for this entry, where there is one.
+     *
+     * Set for the phone's own music, and for a local file a Spotify playlist
+     * names once a file here has been matched to it (see
+     * LocalLibrary.match). Null on a `spotify:local:` entry means this phone
+     * has nothing to play for it.
+     */
+    val localFile: String? = null,
 )
 
 /**

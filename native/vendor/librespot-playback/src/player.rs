@@ -1710,14 +1710,15 @@ impl PlayerTrackLoader {
             return None;
         };
 
-        let entry = self.local_file_lookup.get(&track_uri);
+        // LOCAL PATCH: the app's matches too; see local_file::set_app_files.
+        let entry = self.local_file_lookup.path_for(&track_uri);
 
         let Some(path) = entry else {
             error!("Unable to find file path for local file <{track_uri}>");
             return None;
         };
 
-        let src = match File::open(path) {
+        let src = match File::open(&path) {
             Ok(src) => src,
             Err(e) => {
                 error!("Failed to open local file: {e}");
@@ -1756,7 +1757,7 @@ impl PlayerTrackLoader {
             }
         };
 
-        let file_size = fs::metadata(path).ok()?.len();
+        let file_size = fs::metadata(&path).ok()?.len();
         let bytes_per_second = (file_size / duration.as_secs()) as usize;
 
         let stream_loader_controller = StreamLoaderController::from_local_file(file_size);

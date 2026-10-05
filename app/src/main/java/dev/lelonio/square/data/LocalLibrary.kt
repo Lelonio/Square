@@ -146,6 +146,10 @@ object LocalLibrary {
             MediaStore.Audio.Media.ALBUM_ID,
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.DATE_ADDED,
+            // The path, for Spotify's engine, which opens local files itself.
+            // Readable with the audio permission on every version this app
+            // runs on.
+            @Suppress("DEPRECATION") MediaStore.Audio.Media.DATA,
         )
 
         runCatching {
@@ -165,6 +169,8 @@ object LocalLibrary {
                 val albumId = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
                 val duration = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
                 val added = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+                @Suppress("DEPRECATION")
+                val data = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
 
                 buildList {
                     while (cursor.moveToNext()) {
@@ -185,6 +191,7 @@ object LocalLibrary {
                                 // index counts in seconds; everything else in
                                 // this app reads an ISO-8601 stamp.
                                 addedAt = isoStamp(cursor.getLong(added)),
+                                localFile = cursor.getString(data),
                             ),
                         )
                     }

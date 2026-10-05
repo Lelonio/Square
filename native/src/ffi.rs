@@ -576,6 +576,19 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetLocalFiles(
+    mut env: JNIEnv,
+    _class: JClass,
+    json: JString,
+) {
+    let json = match env.get_string(&json) {
+        Ok(value) => String::from(value),
+        Err(_) => return,
+    };
+    guard(&mut env, "SetLocalFiles", || engine::set_local_files(&json));
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetSleepTimer(
     mut env: JNIEnv,
     _class: JClass,

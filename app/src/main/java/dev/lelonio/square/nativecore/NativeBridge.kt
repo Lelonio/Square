@@ -204,6 +204,13 @@ object NativeBridge {
     fun setSleepTimer(value: Long) = nativeSetSleepTimer(value)
 
     /**
+     * Which file on this phone each local entry of a Spotify playlist is, as a
+     * JSON object of `spotify:local:` URIs to paths. The engine plays those
+     * entries from the files; see MainViewModel.withDeviceFiles.
+     */
+    fun setLocalFiles(json: String) = nativeSetLocalFiles(json)
+
+    /**
      * How long a track the listener changes away from dissolves into the one
      * they asked for, in milliseconds. Zero cuts, as it always did.
      *
@@ -498,6 +505,7 @@ object NativeBridge {
     private external fun nativeSetTrimSilence(enabled: Boolean)
     private external fun nativeSetHoldEnd(enabled: Boolean)
     private external fun nativeSetSleepTimer(value: Long)
+    private external fun nativeSetLocalFiles(json: String)
 
     private external fun nativeSetSkipFade(ms: Int)
     private external fun nativeSetLanguage(language: String, rebuild: Int)

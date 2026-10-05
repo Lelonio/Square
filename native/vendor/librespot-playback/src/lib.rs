@@ -10,7 +10,8 @@ pub mod config;
 pub mod convert;
 pub mod decoder;
 pub mod dither;
-mod local_file;
+/// LOCAL PATCH: public for `local_file::set_app_files`.
+pub mod local_file;
 pub mod mixer;
 pub mod player;
 mod symphonia_util;

@@ -169,6 +169,9 @@ features = [
     "ogg",
     "vorbis",
     "flac",
+    # LOCAL PATCH: local files on a phone are as often AAC in MP4 as MP3.
+    "aac",
+    "isomp4",
 ]
 default-features = false
 
