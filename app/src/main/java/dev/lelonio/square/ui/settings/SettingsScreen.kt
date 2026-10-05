@@ -1937,6 +1937,7 @@ private val LICENCES = listOf(
     "AndroidLiquidGlass" to "Apache-2.0",
     "Phosphor Icons" to "MIT",
     "Coil" to "Apache-2.0",
+    "Spicy Lyrics" to "AGPL-3.0",
     "OkHttp / Retrofit" to "Apache-2.0",
 )
 
