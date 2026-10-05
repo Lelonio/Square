@@ -86,6 +86,17 @@ object LocalLibrary {
     fun isSpotifyLocal(uri: String): Boolean = uri.startsWith(SPOTIFY_PREFIX)
 
     /**
+     * How a file on this phone is written into a Spotify playlist, the way
+     * Spotify's own apps write one: its tags, each URL-encoded with `+` for a
+     * space, and its length in whole seconds.
+     */
+    fun spotifyUri(file: CatalogTrack): String {
+        fun part(text: String) = java.net.URLEncoder.encode(text, "UTF-8")
+        return SPOTIFY_PREFIX + listOf(file.artist, file.album, file.name).joinToString(":") { part(it) } +
+            ":" + file.durationMs / 1000
+    }
+
+    /**
      * The file on this phone that a playlist's local entry describes, or null.
      *
      * By title and artist first, then by title alone, then by the title without

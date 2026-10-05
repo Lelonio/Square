@@ -211,6 +211,12 @@ object NativeBridge {
     fun setLocalFiles(json: String) = nativeSetLocalFiles(json)
 
     /**
+     * Appends an item to one of the user's playlists through the playlist
+     * service: how a local file goes in, which the Web API refuses. Blocking.
+     */
+    fun addToPlaylist(playlistUri: String, itemUri: String) = nativeAddToPlaylist(playlistUri, itemUri)
+
+    /**
      * How long a track the listener changes away from dissolves into the one
      * they asked for, in milliseconds. Zero cuts, as it always did.
      *
@@ -506,6 +512,7 @@ object NativeBridge {
     private external fun nativeSetHoldEnd(enabled: Boolean)
     private external fun nativeSetSleepTimer(value: Long)
     private external fun nativeSetLocalFiles(json: String)
+    private external fun nativeAddToPlaylist(playlistUri: String, itemUri: String)
 
     private external fun nativeSetSkipFade(ms: Int)
     private external fun nativeSetLanguage(language: String, rebuild: Int)

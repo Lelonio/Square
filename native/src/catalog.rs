@@ -789,3 +789,76 @@ fn read_first_message_field(bytes: &[u8], field: u32) -> Option<&[u8]> {
     }
     None
 }
+
+/// Appends one item to one of the user's playlists, through the playlist
+/// service rather than the Web API.
+///
+/// For the one kind of item the Web API refuses: a local file, written as
+/// `spotify:local:artist:album:title:seconds`, which is how Spotify's own apps
+/// put one in a playlist. The change is the same ADD those apps send, at the
+/// end of the list and against its current revision.
+pub fn add_to_playlist(playlist_uri: &str, item_uri: &str) -> EngineResult<()> {
+    use librespot_protocol::playlist4_external::{
+        op::Kind, Add, Delta, Item, ItemAttributes, ListChanges, Op,
+    };
+
+    let parsed = SpotifyUri::from_uri(playlist_uri).map_err(|e| format!("bad uri: {e}"))?;
+    let SpotifyUri::Playlist { id, .. } = parsed else {
+        return Err(format!("{playlist_uri} is not a playlist"));
+    };
+    let base62 = id.to_base62().map_err(|e| format!("bad playlist id: {e}"))?;
+
+    let session = with_session(|s| s.clone())?;
+    block_on(async move {
+        let bytes = session
+            .spclient()
+            .get_playlist(&id)
+            .await
+            .map_err(|e| format!("playlist read failed: {e}"))?;
+        let list = SelectedListContent::parse_from_bytes(&bytes)
+            .map_err(|e| format!("playlist was not a SelectedListContent: {e}"))?;
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or_default();
+
+        // Only the moment it went in: who added it is the session's, and the
+        // service fills it in itself. Sent, it was refused as an invalid
+        // argument.
+        let mut attributes = ItemAttributes::new();
+        attributes.set_timestamp(now);
+        let mut item = Item::new();
+        item.set_uri(item_uri.to_string());
+        item.attributes = Some(attributes).into();
+
+        // At the end, said once: an index as well as "last" is two positions.
+        let mut add = Add::new();
+        add.items.push(item);
+        add.set_add_last(true);
+
+        let mut op = Op::new();
+        op.set_kind(Kind::ADD);
+        op.add = Some(add).into();
+
+        let mut delta = Delta::new();
+        delta.ops.push(op);
+
+        let mut changes = ListChanges::new();
+        changes.set_base_revision(list.revision().to_vec());
+        changes.deltas.push(delta);
+        changes.set_want_resulting_revisions(true);
+
+        session
+            .spclient()
+            .request_with_protobuf(
+                &Method::POST,
+                &format!("/playlist/v2/playlist/{base62}/changes"),
+                None,
+                &changes,
+            )
+            .await
+            .map_err(|e| format!("playlist change refused: {e}"))?;
+        Ok(())
+    })
+}

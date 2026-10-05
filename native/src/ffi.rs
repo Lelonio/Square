@@ -410,6 +410,23 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePla
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeAddToPlaylist(
+    mut env: JNIEnv,
+    _class: JClass,
+    playlist: JString,
+    item: JString,
+) {
+    let (playlist, item) = match (read_string(&mut env, &playlist), read_string(&mut env, &item)) {
+        (Ok(playlist), Ok(item)) => (playlist, item),
+        (Err(message), _) | (_, Err(message)) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return;
+        }
+    };
+    guard(&mut env, "AddToPlaylist", || catalog::add_to_playlist(&playlist, &item));
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlaylistCover(
     mut env: JNIEnv,
     _class: JClass,

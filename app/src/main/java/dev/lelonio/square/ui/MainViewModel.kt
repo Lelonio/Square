@@ -1161,7 +1161,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             playlists = (_state.value as? UiState.Ready)?.playlists.orEmpty(),
             liked = trackUri != null && container.likedStore.isLiked(trackUri),
             error = when {
-                trackUri?.startsWith("spotify:track:") != true ->
+                trackUri == null || !(trackUri.startsWith("spotify:track:") ||
+                    LocalLibrary.isLocal(trackUri) || LocalLibrary.isSpotifyLocal(trackUri)) ->
                     string(R.string.track_cannot_be_added)
                 !container.webApi.isReady && !container.tokenStore.isLoggedIn ->
                     string(R.string.connect_app_in_settings)
@@ -1178,6 +1179,54 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val containing = (cached + listOfNotNull(playing, open)).filterTo(mutableSetOf()) { it in own }
             if (_addToPlaylist.value.trackUri == trackUri) {
                 _addToPlaylist.value = _addToPlaylist.value.copy(containing = containing)
+            }
+        }
+    }
+
+    /**
+     * A file on this phone, or a playlist's local entry, put into a playlist.
+     *
+     * Written as Spotify's own apps write it — a `spotify:local:` entry built
+     * from the file's tags — and through the playlist service, since the Web
+     * API refuses anything that is not a catalogue track. Every device of the
+     * account then shows it, playable wherever there is a matching file.
+     */
+    private fun addLocalToPlaylist(playlist: CatalogPlaylist, trackUri: String) {
+        _addToPlaylist.value = _addToPlaylist.value.copy(busy = playlist.uri, done = null, removed = null, error = null)
+        viewModelScope.launch {
+            runCatching {
+                val entry = if (LocalLibrary.isSpotifyLocal(trackUri)) {
+                    trackUri
+                } else {
+                    val files = deviceFiles.ifEmpty { LocalLibrary.tracks(getApplication()).also { deviceFiles = it } }
+                    val file = files.firstOrNull { it.uri == trackUri } ?: error("$trackUri is not on this phone")
+                    LocalLibrary.spotifyUri(file).also { uri ->
+                        // Playable at once from the playlist, without waiting
+                        // for its page to be matched again.
+                        file.localFile?.let { path ->
+                            engineLocalFiles[uri] = path
+                            runCatching {
+                                dev.lelonio.square.nativecore.NativeBridge.setLocalFiles(
+                                    org.json.JSONObject(engineLocalFiles.toMap()).toString(),
+                                )
+                            }
+                        }
+                    }
+                }
+                withContext(Dispatchers.IO) {
+                    dev.lelonio.square.nativecore.NativeBridge.addToPlaylist(playlist.uri, entry)
+                }
+            }.onSuccess {
+                _addToPlaylist.value = _addToPlaylist.value.copy(busy = null, done = playlist.name)
+                _inPlaylists.value = _inPlaylists.value + trackUri
+                invalidateContext(playlist.uri)
+                if (_playlist.value.uri == playlist.uri) openPlaylist(playlist)
+            }.onFailure {
+                android.util.Log.e(TAG, "add local file to playlist failed: ${chain(it)}", it)
+                _addToPlaylist.value = _addToPlaylist.value.copy(
+                    busy = null,
+                    error = string(R.string.add_failed, playlist.name),
+                )
             }
         }
     }
@@ -1199,6 +1248,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val trackUri = current.trackUri ?: return
         if (current.busy != null) return
         val id = playlist.uri.substringAfterLast(':')
+
+        if (playlist.uri.startsWith("spotify:playlist:") &&
+            (LocalLibrary.isLocal(trackUri) || LocalLibrary.isSpotifyLocal(trackUri))
+        ) {
+            addLocalToPlaylist(playlist, trackUri)
+            return
+        }
 
         if (!playlist.uri.startsWith("spotify:")) {
             _addToPlaylist.value =
