@@ -74,6 +74,51 @@ object LocalLibrary {
     fun isLocal(uri: String): Boolean = uri.startsWith(PREFIX)
 
     /**
+     * How Spotify writes a local file into a playlist:
+     * `spotify:local:artist:album:title:seconds`.
+     *
+     * Not a file anywhere, only a description of one: every device looks for
+     * a file of its own that fits it, and shows the entry greyed out when it
+     * has none. See [match].
+     */
+    const val SPOTIFY_PREFIX = "spotify:local:"
+
+    fun isSpotifyLocal(uri: String): Boolean = uri.startsWith(SPOTIFY_PREFIX)
+
+    /**
+     * The file on this phone that a playlist's local entry describes, or null.
+     *
+     * By title and artist first, then by title alone, then by the title without
+     * what is in brackets: the entry carries the tags of the file on the
+     * computer it was added from, and the copy on the phone is often tagged a
+     * little differently — "Max Pezzali" where the computer had "Max Pezzali /
+     * 883", "Domo Mia" without the "(Feat. …)". Every step also wants the length
+     * within a few seconds, so a song does not land on its live version.
+     */
+    fun match(entry: CatalogTrack, files: List<CatalogTrack>): CatalogTrack? {
+        fun close(file: CatalogTrack) = entry.durationMs <= 0 || file.durationMs <= 0 ||
+            kotlin.math.abs(file.durationMs - entry.durationMs) <= MATCH_SLACK_MS
+        val title = normal(entry.name)
+        val artist = normal(entry.artist)
+        val base = normal(bare(entry.name))
+        return files.firstOrNull { normal(it.name) == title && normal(it.artist) == artist && close(it) }
+            ?: files.firstOrNull { normal(it.name) == title && close(it) }
+            ?: files.firstOrNull { normal(bare(it.name)) == base && close(it) }
+    }
+
+    /** Letters and digits only, without accents and case. */
+    private fun normal(text: String): String =
+        java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD)
+            .filter { it.isLetterOrDigit() }
+            .lowercase()
+
+    /** The title before any bracket or " - ", where versions and guests go. */
+    private fun bare(title: String): String =
+        title.substringBefore('(').substringBefore('[').substringBefore(" - ")
+
+    private const val MATCH_SLACK_MS = 3_000L
+
+    /**
      * The content URI a player can open.
      *
      * Built back from the id rather than stored: a `content://` URI is only

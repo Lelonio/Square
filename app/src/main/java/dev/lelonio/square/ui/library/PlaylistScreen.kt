@@ -127,6 +127,7 @@ import com.adamglin.phosphoricons.Bold
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.CaretRight
 import com.adamglin.phosphoricons.fill.ArrowCircleDown
+import com.adamglin.phosphoricons.fill.FloppyDisk
 import com.adamglin.phosphoricons.fill.Check
 import com.adamglin.phosphoricons.fill.MagnifyingGlass
 import com.adamglin.phosphoricons.fill.Play
@@ -934,7 +935,10 @@ fun PlaylistScreen(
                             download = trackDownload(track),
                             // The phone's own files play offline like anything
                             // else — they were never coming over the network.
-                            unavailable = offline &&
+                            // A local file the playlist names and this phone
+                            // does not have is greyed out, as on Spotify.
+                            unavailable = dev.lelonio.square.data.LocalLibrary.isSpotifyLocal(track.uri) ||
+                                offline &&
                                 !track.uri.startsWith("local:") &&
                                 trackDownload(track) !=
                                 dev.lelonio.square.data.DownloadState.Done,
@@ -2894,7 +2898,22 @@ private fun TrackRow(
                 // downloads existed — no greyed-out placeholder, nothing to
                 // read past. Starting a download is the row menu's job, so this
                 // never needs to be a target.
-                DownloadMark(download)
+                // A file on the phone, or one a Spotify playlist names: never
+                // downloaded, so it gets its own mark rather than the arrow.
+                if (dev.lelonio.square.data.LocalLibrary.isLocal(track.uri) ||
+                    dev.lelonio.square.data.LocalLibrary.isSpotifyLocal(track.uri)
+                ) {
+                    Icon(
+                        PhosphorIcons.Fill.FloppyDisk,
+                        contentDescription = stringResource(R.string.local_file),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(end = 6.dp)
+                            .size(14.dp),
+                    )
+                } else {
+                    DownloadMark(download)
+                }
                 // The rating before the names, where every other client puts
                 // it, and only on the rows that carry one.
                 if (track.explicit) {

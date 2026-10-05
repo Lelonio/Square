@@ -19,8 +19,26 @@ internal object GatewayTracks {
      * local file, something this market has no licensed copy of. Keeping those
      * would put items in the queue that the engine could only skip.
      */
+    /**
+     * A local file in a playlist: its tags as the computer that added it had
+     * them, and a `spotify:local:` URI that only describes it. Which file on
+     * this phone it is, if any, is decided later; see LocalLibrary.match.
+     */
+    private fun localTrack(data: JSONObject, addedAt: String?): CatalogTrack? {
+        val uri = data.optString("uri").takeIf(LocalLibrary::isSpotifyLocal) ?: return null
+        return CatalogTrack(
+            uri = uri,
+            name = data.optString("name"),
+            artist = data.optString("artistName"),
+            album = data.optString("albumName"),
+            durationMs = data.optJSONObject("localTrackDuration")?.optLong("totalMilliseconds") ?: 0L,
+            addedAt = addedAt,
+        )
+    }
+
     fun track(data: JSONObject?, addedAt: String?): CatalogTrack? {
         if (data == null) return null
+        if (data.optString("__typename") == "LocalTrack") return localTrack(data, addedAt)
         val uri = data.optString("uri").takeIf { it.startsWith("spotify:track:") } ?: return null
         if (data.optJSONObject("playability")?.optBoolean("playable", true) == false) return null
 

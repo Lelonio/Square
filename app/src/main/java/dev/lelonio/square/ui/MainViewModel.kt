@@ -2443,7 +2443,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * half a second and vanishing. Neither field is ever cleared here: an empty
      * name and a missing picture mean "not known yet", never "gone".
      */
-    private fun publishPlaylist(state: PlaylistState) {
+    private fun publishPlaylist(published: PlaylistState) {
+        val state = published.copy(tracks = withDeviceFiles(published.tracks))
         val current = _playlist.value
         _playlist.value = if (current.uri != state.uri) {
             state
@@ -3427,7 +3428,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _pageDepth.value = 0
     }
 
+    /**
+     * The phone's own music, read when a page opens, for the local files a
+     * Spotify playlist names; see [withDeviceFiles].
+     */
+    @Volatile
+    private var deviceFiles: List<CatalogTrack> = emptyList()
+
+    /**
+     * A playlist's local entries, swapped for the files on this phone they
+     * describe. The playlist's own name for each is kept, and the file's URI
+     * is what plays; an entry with no file here stays as it came, and the page
+     * shows it greyed out, as Spotify's own apps do.
+     */
+    private fun withDeviceFiles(tracks: List<CatalogTrack>): List<CatalogTrack> {
+        if (tracks.none { LocalLibrary.isSpotifyLocal(it.uri) }) return tracks
+        val files = deviceFiles
+        return tracks.map { track ->
+            if (!LocalLibrary.isSpotifyLocal(track.uri)) return@map track
+            LocalLibrary.match(track, files)
+                ?.let { file -> track.copy(uri = file.uri, artworkUrl = track.artworkUrl ?: file.artworkUrl) }
+                ?: track
+        }
+    }
+
     fun openPlaylist(playlist: CatalogPlaylist) {
+        // Read again on every page: a file copied to the phone since the last
+        // one should be found the next time its playlist is opened.
+        viewModelScope.launch {
+            deviceFiles = LocalLibrary.tracks(getApplication())
+            val shown = _playlist.value
+            if (shown.tracks.any { LocalLibrary.isSpotifyLocal(it.uri) }) publishPlaylist(shown)
+        }
         // What is on screen now, if it is a different page and a real one. The
         // list is kept whole rather than re-resolved on the way back: an artist
         // page is four requests and a discography, and walking back into it
@@ -4080,7 +4112,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val backend = container.activeBackend
         return backend.owns(it) && when (backend.id) {
             // The official SDK streams and keeps nothing; see WebSdkRecovery.inUse.
-            BackendId.SPOTIFY -> it.startsWith("spotify:") &&
+            BackendId.SPOTIFY -> it.startsWith("spotify:") && !LocalLibrary.isSpotifyLocal(it) &&
                 !dev.lelonio.square.playback.websdk.WebSdkRecovery.inUse.value
             BackendId.YOUTUBE_MUSIC -> true
         }
@@ -4297,7 +4329,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // that the engine can only skip.
             loaded += page.items.mapNotNull { item ->
                 item.track
-                    ?.takeIf { it.isPlayable != false && it.uri.startsWith("spotify:track:") }
+                    ?.takeIf {
+                        (it.isPlayable != false && it.uri.startsWith("spotify:track:")) ||
+                            LocalLibrary.isSpotifyLocal(it.uri)
+                    }
                     ?.toCatalogTrack(item.addedAt)
             }
             offset += page.items.size

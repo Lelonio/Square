@@ -325,13 +325,21 @@ class MainActivity : ComponentActivity() {
         // like the download had failed rather than like the song after it was
         // never here. Files on the phone play in every mode; they were never
         // coming over the network.
-        val playable = if (!dev.lelonio.square.playback.OfflineMode.active.value) {
+        val reachable = if (!dev.lelonio.square.playback.OfflineMode.active.value) {
             tracks
         } else {
             val here = (application as dev.lelonio.square.SquareApplication)
                 .downloads.files.value
             tracks.filter { it.uri.startsWith("local:") || it.uri in here }
         }
+
+        // One player plays a queue: Spotify's engine or the phone's own files,
+        // not both. A Spotify playlist with local files in it plays whichever
+        // kind was tapped, and the other kind waits for its own tap; an entry
+        // with no file on this phone plays as neither.
+        val local = dev.lelonio.square.data.LocalLibrary
+        val tappedLocal = tracks.getOrNull(index)?.uri?.let(local::isLocal) == true
+        val playable = reachable.filter { !local.isSpotifyLocal(it.uri) && local.isLocal(it.uri) == tappedLocal }
         if (playable.isEmpty()) return
 
         // The song that was tapped keeps its place, wherever the filtering left
@@ -341,7 +349,13 @@ class MainActivity : ComponentActivity() {
         val start = playable.indexOfFirst { it.uri == wanted }.coerceAtLeast(0)
 
         player.setMediaItems(
-            playable.map { toMediaItem(it, contextUri, asContext, contextLabel) },
+            // The phone's files out of a Spotify playlist are not that
+            // playlist to the engine, which would load the context from
+            // Spotify and play its tracks instead.
+            playable.map {
+                val spotifyContext = tappedLocal && contextUri?.startsWith("spotify:") == true
+                toMediaItem(it, contextUri.takeUnless { spotifyContext }, asContext && !spotifyContext, contextLabel)
+            },
             start,
             positionMs,
         )

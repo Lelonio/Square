@@ -27,7 +27,8 @@ object PlaylistContents {
         val read = (0 until items.length()).mapNotNull { index ->
             val item = items.optJSONObject(index) ?: return@mapNotNull null
             // Episodes come through here too, wrapped in a different type, and
-            // GatewayTracks turns down anything without a track URI anyway.
+            // GatewayTracks turns down anything that is neither a track nor a
+            // local file.
             GatewayTracks.track(
                 item.optJSONObject("itemV2")?.optJSONObject("data"),
                 addedAt = item.optJSONObject("addedAt")
