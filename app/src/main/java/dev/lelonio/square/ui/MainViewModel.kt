@@ -4152,10 +4152,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch {
             runCatching {
-                container.api.removeFromPlaylist(
-                    uri.substringAfterLast(':'),
-                    RemoveTracksRequestDto(listOf(TrackUriDto(track.uri))),
-                )
+                if (LocalLibrary.isSpotifyLocal(track.uri)) {
+                    // The Web API cannot take out what it could not put in.
+                    withContext(Dispatchers.IO) {
+                        dev.lelonio.square.nativecore.NativeBridge.removeFromPlaylist(uri, track.uri)
+                    }
+                } else {
+                    container.api.removeFromPlaylist(
+                        uri.substringAfterLast(':'),
+                        RemoveTracksRequestDto(listOf(TrackUriDto(track.uri))),
+                    )
+                }
             }.onFailure {
                 android.util.Log.e(TAG, "remove from playlist failed: ${chain(it)}", it)
                 _takenOut.value = _takenOut.value - "$uri|${track.uri}"

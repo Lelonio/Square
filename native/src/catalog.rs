@@ -862,3 +862,60 @@ pub fn add_to_playlist(playlist_uri: &str, item_uri: &str) -> EngineResult<()> {
         Ok(())
     })
 }
+
+/// Takes an item out of one of the user's playlists, through the playlist
+/// service: the way out for a local file, which the Web API cannot remove
+/// any more than it can add one. Every occurrence goes, as with the Web API's
+/// removal; the item is named rather than placed, so a long playlist does not
+/// have to be read to find where it is.
+pub fn remove_from_playlist(playlist_uri: &str, item_uri: &str) -> EngineResult<()> {
+    use librespot_protocol::playlist4_external::{op::Kind, Delta, Item, ListChanges, Op, Rem};
+
+    let parsed = SpotifyUri::from_uri(playlist_uri).map_err(|e| format!("bad uri: {e}"))?;
+    let SpotifyUri::Playlist { id, .. } = parsed else {
+        return Err(format!("{playlist_uri} is not a playlist"));
+    };
+    let base62 = id.to_base62().map_err(|e| format!("bad playlist id: {e}"))?;
+
+    let session = with_session(|s| s.clone())?;
+    block_on(async move {
+        let bytes = session
+            .spclient()
+            .get_playlist(&id)
+            .await
+            .map_err(|e| format!("playlist read failed: {e}"))?;
+        let list = SelectedListContent::parse_from_bytes(&bytes)
+            .map_err(|e| format!("playlist was not a SelectedListContent: {e}"))?;
+
+        let mut item = Item::new();
+        item.set_uri(item_uri.to_string());
+
+        let mut rem = Rem::new();
+        rem.items.push(item);
+        rem.set_items_as_key(true);
+
+        let mut op = Op::new();
+        op.set_kind(Kind::REM);
+        op.rem = Some(rem).into();
+
+        let mut delta = Delta::new();
+        delta.ops.push(op);
+
+        let mut changes = ListChanges::new();
+        changes.set_base_revision(list.revision().to_vec());
+        changes.deltas.push(delta);
+        changes.set_want_resulting_revisions(true);
+
+        session
+            .spclient()
+            .request_with_protobuf(
+                &Method::POST,
+                &format!("/playlist/v2/playlist/{base62}/changes"),
+                None,
+                &changes,
+            )
+            .await
+            .map_err(|e| format!("playlist change refused: {e}"))?;
+        Ok(())
+    })
+}
