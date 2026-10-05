@@ -51,7 +51,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 42
-        versionName = "2.4.1-sdk1"
+        versionName = "2.4.1"
         buildConfigField("boolean", "VERBOSE_LOG", "false")
 
         ndk {
