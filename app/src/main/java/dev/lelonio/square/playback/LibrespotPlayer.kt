@@ -1390,6 +1390,18 @@ class LibrespotPlayer(
             handler.post { onKeyRefused(positionMs) }
             return
         }
+        // Set on this device from another of the account's; the timer is the
+        // app's own, so the screen and the countdown are the ones it always has.
+        if (type == "sleep_timer") {
+            handler.post {
+                when {
+                    positionMs < 0 -> SleepTimer.cancel()
+                    positionMs == 0L -> SleepTimer.atEndOfTrack()
+                    else -> SleepTimer.inSeconds(positionMs)
+                }
+            }
+            return
+        }
         handler.post { applyEvent(type, uri, positionMs) }
     }
 

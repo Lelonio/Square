@@ -149,7 +149,7 @@ impl ConnectState {
             spirc_version: version::SPOTIFY_SPIRC_VERSION.to_string(),
             client_id: session.client_id(),
             is_group: cfg.is_group,
-            capabilities: MessageField::some(Capabilities {
+            capabilities: MessageField::some(crate::sleep_timer::advertise(Capabilities {
                 volume_steps: cfg.volume_steps.into(),
                 disable_volume: cfg.disable_volume,
 
@@ -189,7 +189,7 @@ impl ConnectState {
                 command_acks: true,
 
                 ..Default::default()
-            }),
+            })),
             ..Default::default()
         };
 
@@ -240,6 +240,11 @@ impl ConnectState {
             .device
             .as_mut()
             .expect("the request is always available")
+    }
+
+    /// LOCAL PATCH: the sleep timer goes into every state put; see sleep_timer.
+    pub(crate) fn apply_sleep_timer(&mut self) {
+        crate::sleep_timer::apply(self.player_mut());
     }
 
     fn player_mut(&mut self) -> &mut PlayerState {

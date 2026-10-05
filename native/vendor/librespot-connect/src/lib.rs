@@ -11,6 +11,8 @@ use librespot_protocol as protocol;
 mod context_resolver;
 mod model;
 mod shuffle_vec;
+/// LOCAL PATCH: see the module.
+pub mod sleep_timer;
 mod spirc;
 mod state;
 

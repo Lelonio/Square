@@ -36,6 +36,8 @@ pub enum Command {
     SetOptions(SetOptionsCommand),
     UpdateContext(UpdateContextCommand),
     SkipNext(SkipNextCommand),
+    /// LOCAL PATCH: see librespot-connect's sleep_timer.
+    SetSleepTimer(SetSleepTimerCommand),
     // commands that don't send any context (at least not usually...)
     SkipPrev(GenericCommand),
     Resume(GenericCommand),
@@ -67,6 +69,7 @@ impl Display for Command {
                 SetOptions(_) => "set_options",
                 UpdateContext(_) => "update_context",
                 SkipNext(_) => "skip_next",
+                SetSleepTimer(_) => "set_sleep_timer",
                 SkipPrev(_) => "skip_prev",
                 Resume(_) => "resume",
                 Unknown(json) => {
@@ -117,6 +120,22 @@ pub struct SkipNextCommand {
     #[serde(default, deserialize_with = "option_json_proto")]
     pub track: Option<ProvidedTrack>,
     pub logging_params: LoggingParams,
+}
+
+/// LOCAL PATCH: `{"timer_type":{"type":"duration","duration_s":300}}`, or
+/// `"end_of_track"`; anything else cancels.
+#[derive(Clone, Debug, Deserialize)]
+pub struct SetSleepTimerCommand {
+    #[serde(default)]
+    pub timer_type: Option<SleepTimerType>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SleepTimerType {
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    #[serde(default)]
+    pub duration_s: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -576,6 +576,15 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetSleepTimer(
+    mut env: JNIEnv,
+    _class: JClass,
+    value: jlong,
+) {
+    guard(&mut env, "SetSleepTimer", || engine::set_sleep_timer(value));
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeReconnect(
     mut env: JNIEnv,
     _class: JClass,

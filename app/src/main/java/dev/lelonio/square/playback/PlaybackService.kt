@@ -425,6 +425,22 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
+        // Shown on the account's other devices, which read it back from the
+        // state this one publishes rather than keeping their own. The end is
+        // sent as a time of day, which is what they count down to.
+        scope.launch {
+            kotlinx.coroutines.flow.combine(SleepTimer.endsAt, SleepTimer.atTrackEnd) { deadline, atEnd ->
+                when {
+                    atEnd -> 0L
+                    deadline != null -> System.currentTimeMillis() +
+                        (deadline - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                    else -> -1L
+                }
+            }.collect { value ->
+                runCatching { dev.lelonio.square.nativecore.NativeBridge.setSleepTimer(value) }
+            }
+        }
+
         // Already read by the application object, and harmless twice: `load`
         // returns at once once the file is open.
         AudioEffects.load(this)

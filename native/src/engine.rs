@@ -503,6 +503,9 @@ pub fn start(
     // Spotify refusing the keys a song needs, told to the app so it can say so
     // rather than sit on a song that never starts. See the patch in audio_key.
     librespot_core::audio_key::on_playback_refusal(|what| emit_app("key_refused", "", what));
+    // A sleep timer set on this device from another of the account's; the
+    // timer is the app's, see librespot-connect's sleep_timer.
+    librespot_connect::sleep_timer::on_request(|value| emit_app("sleep_timer", "", value));
     spawn_event_pump(
         events_rx,
         listener,
@@ -1044,6 +1047,16 @@ pub fn set_hold_end(enabled: bool) -> EngineResult<()> {
     if let Some(bundle) = engine.bundle.as_ref() {
         bundle.player.set_hold_end(enabled);
     }
+    Ok(())
+}
+
+/// What the app's sleep timer is doing, for the state other devices read:
+/// -1 none, 0 the end of the track, otherwise its end in epoch milliseconds.
+/// Kept by the connect crate, so a rebuilt device still publishes it.
+pub fn set_sleep_timer(value: i64) -> EngineResult<()> {
+    librespot_connect::sleep_timer::set(value);
+    // Put now if there is a device to put it; otherwise with the next state.
+    let _ = with_bundle(|bundle| bundle.spirc().map(|spirc| spirc.push_state()));
     Ok(())
 }
 

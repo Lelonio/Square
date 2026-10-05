@@ -197,6 +197,13 @@ object NativeBridge {
     fun setHoldEnd(enabled: Boolean) = nativeSetHoldEnd(enabled)
 
     /**
+     * What the sleep timer is doing, for the state the account's other devices
+     * read: -1 none, 0 the end of the track, otherwise its end in epoch
+     * milliseconds. See SleepTimer and the engine's sleep_timer.
+     */
+    fun setSleepTimer(value: Long) = nativeSetSleepTimer(value)
+
+    /**
      * How long a track the listener changes away from dissolves into the one
      * they asked for, in milliseconds. Zero cuts, as it always did.
      *
@@ -490,6 +497,7 @@ object NativeBridge {
     private external fun nativeSetBitrate(bitrateKbps: Int)
     private external fun nativeSetTrimSilence(enabled: Boolean)
     private external fun nativeSetHoldEnd(enabled: Boolean)
+    private external fun nativeSetSleepTimer(value: Long)
 
     private external fun nativeSetSkipFade(ms: Int)
     private external fun nativeSetLanguage(language: String, rebuild: Int)

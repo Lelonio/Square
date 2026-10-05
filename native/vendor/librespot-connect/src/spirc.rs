@@ -147,6 +147,8 @@ enum SpircCommand {
     Activate,
     Transfer(Option<TransferRequest>),
     Load(LoadRequest),
+    /// LOCAL PATCH: see [`Spirc::push_state`].
+    PushState,
 }
 
 const CONTEXT_FETCH_THRESHOLD: usize = 2;
@@ -526,6 +528,12 @@ impl Spirc {
             .commands
             .send(SpircCommand::Transfer(transfer_request))?)
     }
+
+    /// LOCAL PATCH: puts the state again, for what is kept outside it — the
+    /// sleep timer; see [`crate::sleep_timer`].
+    pub fn push_state(&self) -> Result<(), Error> {
+        Ok(self.commands.send(SpircCommand::PushState)?)
+    }
 }
 
 impl SpircTask {
@@ -849,6 +857,10 @@ impl SpircTask {
             }
             SpircCommand::Transfer(..) | SpircCommand::Activate => {
                 warn!("SpircCommand::{cmd:?} will be ignored while already active")
+            }
+            SpircCommand::PushState => {
+                self.update_state = true;
+                return Ok(());
             }
             _ if !self.connect_state.is_active() => {
                 warn!("SpircCommand::{cmd:?} will be ignored while Not Active")
@@ -1325,6 +1337,14 @@ impl SpircTask {
                 self.handle_repeat_context(repeat_context.value)?
             }
             SetRepeatingTrack(repeat_track) => self.handle_repeat_track(repeat_track.value),
+            // LOCAL PATCH: the timer is the app's; see sleep_timer.
+            SetSleepTimer(sleep_timer) => crate::sleep_timer::request(match sleep_timer.timer_type {
+                Some(timer) if timer.kind == "duration" && timer.duration_s > 0 => {
+                    timer.duration_s.min(i64::MAX as u64) as i64
+                }
+                Some(timer) if timer.kind == "end_of_track" => crate::sleep_timer::END_OF_TRACK,
+                _ => crate::sleep_timer::NONE,
+            }),
             AddToQueue(add_to_queue) => self.connect_state.add_to_queue(add_to_queue.track, true),
             SetQueue(set_queue) => self.connect_state.handle_set_queue(set_queue),
             SetOptions(set_options) => {
@@ -2099,6 +2119,7 @@ impl SpircTask {
         }
 
         self.connect_state.set_now(self.now_ms() as u64);
+        self.connect_state.apply_sleep_timer();
 
         self.connect_state
             .send_state(&self.session)

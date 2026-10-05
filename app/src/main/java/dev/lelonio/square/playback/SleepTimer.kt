@@ -45,6 +45,16 @@ object SleepTimer {
         _endsAt.value = SystemClock.elapsedRealtime() + minutes * 60_000L
     }
 
+    /**
+     * A length in seconds, as another Spotify device asks for it over Connect.
+     * The row shows it rounded up to the minute.
+     */
+    fun inSeconds(seconds: Long) {
+        _atTrackEnd.value = false
+        _minutes.value = ((seconds + 59) / 60).toInt()
+        _endsAt.value = SystemClock.elapsedRealtime() + seconds * 1_000L
+    }
+
     fun atEndOfTrack() {
         _minutes.value = null
         _endsAt.value = null
