@@ -10,7 +10,7 @@ use symphonia::core::{
     probe::{Hint, ProbeResult},
 };
 
-use super::{AudioDecoder, AudioPacket, AudioPacketPosition, DecoderError, DecoderResult};
+use super::{AudioDecoder, AudioPacket, AudioPacketPosition, DecoderError, DecoderResult, resample::Resampler};
 
 use crate::{NUM_CHANNELS, PAGES_PER_MS, SAMPLE_RATE, player::NormalisationData, symphonia_util};
 
@@ -18,6 +18,8 @@ pub struct SymphoniaDecoder {
     probe_result: ProbeResult,
     decoder: Box<dyn Decoder>,
     sample_buffer: Option<SampleBuffer<f64>>,
+    /// LOCAL PATCH: for a file that is not 44.1 kHz stereo; see resample.rs.
+    resampler: Option<Resampler>,
 }
 
 #[derive(Default)]
@@ -64,24 +66,21 @@ impl SymphoniaDecoder {
             DecoderError::SymphoniaDecoder("Could not retrieve sample rate".into())
         })?;
 
-        // TODO: The official client supports local files with sample rates other than 44,100 kHz.
-        // To play these accurately, we need to either resample the input audio, or introduce a way
-        // to change the player's current sample rate (likely by closing and re-opening the sink
-        // with new parameters).
-        if rate != SAMPLE_RATE {
-            return Err(DecoderError::SymphoniaDecoder(format!(
-                "Unsupported sample rate: {rate}"
-            )));
-        }
-
         let channels = decoder.codec_params().channels.ok_or_else(|| {
             DecoderError::SymphoniaDecoder("Could not retrieve channel configuration".into())
         })?;
-        if channels.count() != NUM_CHANNELS as usize {
+        if channels.count() == 0 || channels.count() > NUM_CHANNELS as usize {
             return Err(DecoderError::SymphoniaDecoder(format!(
                 "Unsupported number of channels: {channels}"
             )));
         }
+
+        // LOCAL PATCH: upstream refused anything but 44.1 kHz stereo, which is
+        // all Spotify streams and much less than what a phone holds. Other
+        // rates are resampled and a mono file is played on both sides; a
+        // 44.1 kHz stereo stream goes through untouched.
+        let resampler = (rate != SAMPLE_RATE || channels.count() != NUM_CHANNELS as usize)
+            .then(|| Resampler::new(rate, SAMPLE_RATE, channels.count()));
 
         Ok(Self {
             probe_result,
@@ -89,6 +88,7 @@ impl SymphoniaDecoder {
             // We set the sample buffer when decoding the first full packet,
             // whose duration is also the ideal sample buffer size.
             sample_buffer: None,
+            resampler,
         })
     }
 
@@ -213,6 +213,9 @@ impl AudioDecoder for SymphoniaDecoder {
         // Seeking is a `FormatReader` operation, so the decoder cannot reliably
         // know when a seek took place. Reset it to avoid audio glitches.
         self.decoder.reset();
+        if let Some(resampler) = self.resampler.as_mut() {
+            resampler.reset();
+        }
 
         Ok(self.ts_to_ms(seeked_to_ts.actual_ts))
     }
@@ -253,7 +256,14 @@ impl AudioDecoder for SymphoniaDecoder {
                     };
 
                     sample_buffer.copy_interleaved_ref(decoded);
-                    let samples = AudioPacket::Samples(sample_buffer.samples().to_vec());
+                    let samples = match self.resampler.as_mut() {
+                        // A packet can be too short to finish an output sample.
+                        Some(resampler) => match resampler.process(sample_buffer.samples()) {
+                            resampled if resampled.is_empty() => continue,
+                            resampled => AudioPacket::Samples(resampled),
+                        },
+                        None => AudioPacket::Samples(sample_buffer.samples().to_vec()),
+                    };
 
                     return Ok(Some((packet_position, samples)));
                 }

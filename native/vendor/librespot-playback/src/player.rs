@@ -197,6 +197,66 @@ struct FadeOut {
     /// incoming song then came in most of the way up already, which is a cut
     /// with a fade in front of it.
     rising: Option<usize>,
+    /// LOCAL PATCH: the limiter the outgoing track was being played through,
+    /// carried on for its tail; see [`TailLimiter`].
+    limiter: TailLimiter,
+}
+
+/// LOCAL PATCH: the dynamic limiter, for the tail of a crossfade.
+///
+/// A track plays through the limiter after its normalisation gain, and the
+/// tail of one being faded out used to be given the gain alone. Where the gain
+/// is above unity — a quiet local file brought up to the level of the streamed
+/// tracks, plus the pregain — the tail came out far louder than the song had
+/// been a second before. This is the same limiter, picking up from where the
+/// main one was when the fade began, so the tail stays at its own level.
+#[derive(Clone, Copy)]
+struct TailLimiter {
+    integrators: [f64; 2],
+    peaks: [f64; 2],
+    channel: usize,
+}
+
+/// LOCAL PATCH: what [`TailLimiter`] needs from the configuration, copied out
+/// so it can be read while the fade is borrowed.
+#[derive(Clone, Copy)]
+struct LimiterParams {
+    dynamic: bool,
+    threshold_db: f64,
+    knee_db: f64,
+    knee_factor: f64,
+    attack_cf: f64,
+    release_cf: f64,
+}
+
+impl TailLimiter {
+    /// The main limiter's step, on one sample already scaled by its gain.
+    fn limit(&mut self, sample: f64, params: &LimiterParams) -> f64 {
+        if !params.dynamic {
+            return sample;
+        }
+        let sample = sample + f64::MIN_POSITIVE;
+        let bias_db = ratio_to_db(sample.abs()) - params.threshold_db;
+        let knee_boundary_db = bias_db * 2.0;
+        let limiter_db = if knee_boundary_db < -params.knee_db {
+            0.0
+        } else if knee_boundary_db.abs() <= params.knee_db {
+            let term = knee_boundary_db + params.knee_db;
+            term * term * params.knee_factor
+        } else {
+            bias_db
+        };
+        let channel = self.channel;
+        self.channel ^= 1;
+        let integrator = &mut self.integrators[channel];
+        *integrator = f64::max(
+            limiter_db,
+            params.release_cf * *integrator + (1.0 - params.release_cf) * limiter_db,
+        );
+        let peak = &mut self.peaks[channel];
+        *peak = params.attack_cf * *peak + (1.0 - params.attack_cf) * *integrator;
+        sample * db_to_ratio(-f64::max(self.peaks[0], self.peaks[1]))
+    }
 }
 
 static PLAYER_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -1740,10 +1800,22 @@ impl PlayerTrackLoader {
         };
 
         let mut decoder = Box::new(decoder);
-        let normalisation_data = decoder.normalisation_data().unwrap_or_else(|| {
-            warn!("Unable to get normalisation data, continuing with defaults.");
-            NormalisationData::default()
-        });
+        // LOCAL PATCH: a file with no ReplayGain tags is measured instead, so
+        // it plays at the level of the streamed tracks; see local_file.rs.
+        let normalisation_data = match decoder.normalisation_data() {
+            Some(data) => data,
+            None => {
+                let measured_path = path.clone();
+                tokio::task::spawn_blocking(move || crate::local_file::loudness(&measured_path))
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| {
+                        warn!("Unable to get normalisation data, continuing with defaults.");
+                        NormalisationData::default()
+                    })
+            }
+        };
 
         let local_file_metadata = decoder.local_file_metadata().unwrap_or_default();
 
@@ -2316,6 +2388,11 @@ impl PlayerInternal {
                     spare: std::collections::VecDeque::new(),
                     drained: false,
                     rising,
+                    limiter: TailLimiter {
+                        integrators: self.normalisation_integrators,
+                        peaks: self.normalisation_peaks,
+                        channel: self.normalisation_channel,
+                    },
                 });
             }
             // Nothing was playing: put the state back and leave the caller to
@@ -2336,8 +2413,22 @@ impl PlayerInternal {
     /// The result is clamped just under full scale. Two tracks played at once
     /// can exceed it between them, and what comes out of an overflow is a click
     /// rather than a loud moment.
+    /// LOCAL PATCH: see [`LimiterParams`].
+    fn limiter_params(&self) -> LimiterParams {
+        LimiterParams {
+            dynamic: self.config.normalisation
+                && self.config.normalisation_method == NormalisationMethod::Dynamic,
+            threshold_db: self.config.normalisation_threshold_dbfs,
+            knee_db: self.config.normalisation_knee_db,
+            knee_factor: self.normalisation_knee_factor,
+            attack_cf: self.config.normalisation_attack_cf,
+            release_cf: self.config.normalisation_release_cf,
+        }
+    }
+
     fn apply_fade(&mut self, data: &mut [f64]) {
         let volume = self.volume_getter.attenuation_factor();
+        let params = self.limiter_params();
         let channels = NUM_CHANNELS as usize;
 
         let Some(fade) = self.fade_out.as_mut() else {
@@ -2391,8 +2482,9 @@ impl PlayerInternal {
                 } else {
                     0.0
                 };
-                let mixed = *sample * gain_in
-                    + tail * gain_out * fade.normalisation_factor * volume;
+                // Levelled as it was while it played alone, then faded.
+                let tail = fade.limiter.limit(tail * fade.normalisation_factor, &params);
+                let mixed = *sample * gain_in + tail * gain_out * volume;
                 *sample = soft_limit(mixed);
             }
 
@@ -2422,6 +2514,7 @@ impl PlayerInternal {
     /// caller knows to come round again rather than wait to be woken.
     fn pump_fade_out(&mut self) -> bool {
         let volume = self.volume_getter.attenuation_factor();
+        let params = self.limiter_params();
 
         let (samples, drained, rising) = {
             let Some(fade) = self.fade_out.as_mut() else {
@@ -2450,11 +2543,10 @@ impl PlayerInternal {
             }
 
             let x = fade.done as f64 / fade.total as f64;
-            let gain = (x * std::f64::consts::FRAC_PI_2).cos()
-                * fade.normalisation_factor
-                * volume;
+            let gain = (x * std::f64::consts::FRAC_PI_2).cos() * volume;
             for sample in samples.iter_mut() {
-                *sample = soft_limit(*sample * gain);
+                let levelled = fade.limiter.limit(*sample * fade.normalisation_factor, &params);
+                *sample = soft_limit(levelled * gain);
             }
 
             // Counted here as well, or the curve would stand still through the

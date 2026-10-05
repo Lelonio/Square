@@ -7,6 +7,8 @@ mod passthrough_decoder;
 #[cfg(feature = "passthrough-decoder")]
 pub use passthrough_decoder::PassthroughDecoder;
 
+/// LOCAL PATCH: see the module.
+mod resample;
 mod symphonia_decoder;
 pub use symphonia_decoder::SymphoniaDecoder;
 

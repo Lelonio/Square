@@ -162,6 +162,11 @@ optional = true
 [dependencies.shell-words]
 version = "1.1"
 
+# LOCAL PATCH: loudness of local files, which carry no Spotify normalisation
+# data; see local_file.rs.
+[dependencies.ebur128]
+version = "0.1.10"
+
 [dependencies.symphonia]
 version = "0.5"
 features = [
