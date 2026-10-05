@@ -1,6 +1,7 @@
 name: Release
 
-# A tag like v2.2.4 builds the signed APK and leaves it on a draft release.
+# A tag like v2.2.4 builds the signed APKs and leaves them on a draft release:
+# one per ABI and a universal one.
 # The notes are still written by hand, and publishing the draft is still a
 # person's decision. Run by hand, it builds and signs the same way but only
 # keeps the APK as an artifact, which is how the setup can be tried without
@@ -71,36 +72,45 @@ jobs:
       # whichever is newest on the runner, and what it prints is shown: a
       # certificate is public, anyone can read it off the APK, and the first
       # run failed here with nothing to go on.
+      #
+      # Every split is checked, and copied under the name the app's updater
+      # looks for: it picks the one naming the phone's ABI, then "universal".
       - name: Check the signature
         run: |
           set -o pipefail
-          apk=app/build/outputs/apk/release/app-release.apk
-          certs=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk")
-          echo "$certs"
-          digest=$(echo "$certs" | sed -n 's/^Signer.*certificate SHA-256 digest: //p' | head -n 1)
-          if [ "$digest" != "9f3469d5049fa93e6b63effd1ad10a1913c9a65b0f7c9a5f2f770cd8ea27cf0c" ]; then
-            echo "::error::signed with ${digest:-nothing}, not the release key"
-            exit 1
-          fi
-          cp "$apk" "square-${{ steps.version.outputs.name }}.apk"
+          for abi in arm64-v8a armeabi-v7a universal; do
+            apk=app/build/outputs/apk/release/app-$abi-release.apk
+            certs=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk")
+            echo "$certs"
+            digest=$(echo "$certs" | sed -n 's/^Signer.*certificate SHA-256 digest: //p' | head -n 1)
+            if [ "$digest" != "9f3469d5049fa93e6b63effd1ad10a1913c9a65b0f7c9a5f2f770cd8ea27cf0c" ]; then
+              echo "::error::$abi signed with ${digest:-nothing}, not the release key"
+              exit 1
+            fi
+            cp "$apk" "square-${{ steps.version.outputs.name }}-$abi.apk"
+          done
 
       - name: Draft release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
+        # arm64 first, and on its own: the updater in 2.4.2 and earlier takes
+        # the first APK it finds, every phone that has one of those is 64-bit,
+        # and gh uploads several files at once in no fixed order.
         run: |
-          apk="square-${{ steps.version.outputs.name }}.apk"
+          name="square-${{ steps.version.outputs.name }}"
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
+            gh release upload "$GITHUB_REF_NAME" "$name-arm64-v8a.apk" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "$apk" --draft \
+            gh release create "$GITHUB_REF_NAME" "$name-arm64-v8a.apk" --draft \
               --title "${{ steps.version.outputs.name }}" --notes ""
           fi
+          gh release upload "$GITHUB_REF_NAME" "$name-armeabi-v7a.apk" "$name-universal.apk" --clobber
 
       - uses: actions/upload-artifact@v7
         if: github.ref_type != 'tag'
         with:
           name: square-${{ steps.version.outputs.name }}-signed
-          path: square-${{ steps.version.outputs.name }}.apk
+          path: square-${{ steps.version.outputs.name }}-*.apk
           retention-days: 7
           if-no-files-found: error

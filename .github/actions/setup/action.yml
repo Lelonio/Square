@@ -32,7 +32,8 @@ runs:
     - name: Rust
       shell: bash
       run: |
-        rustup toolchain install stable --profile minimal --target aarch64-linux-android
+        rustup toolchain install stable --profile minimal \
+          --target aarch64-linux-android --target armv7-linux-androideabi
         rustup default stable
 
     # The Rust core is most of a cold build. Keyed on the lock file and the

@@ -137,9 +137,19 @@ class Updater(context: Context) {
             val body = json.parseToJsonElement(response.body?.string().orEmpty()) as? JsonObject
                 ?: return null
             val tag = body["tag_name"]?.jsonPrimitive?.content?.removePrefix("v") ?: return null
-            val asset = (body["assets"] as? JsonArray)
+            val apks = (body["assets"] as? JsonArray)
                 ?.filterIsInstance<JsonObject>()
-                ?.firstOrNull { it["name"]?.jsonPrimitive?.content?.endsWith(".apk") == true }
+                ?.filter { it["name"]?.jsonPrimitive?.content?.endsWith(".apk") == true }
+                .orEmpty()
+            // One APK per ABI and a universal one: the phone's own first, in
+            // the order it prefers them, then the universal, then whatever
+            // there is, for a release that ships a single APK.
+            fun named(part: String) = apks.firstOrNull {
+                it["name"]?.jsonPrimitive?.content?.contains(part) == true
+            }
+            val asset = android.os.Build.SUPPORTED_ABIS.firstNotNullOfOrNull(::named)
+                ?: named("universal")
+                ?: apks.firstOrNull()
                 ?: return null
             val url = asset["browser_download_url"]?.jsonPrimitive?.content ?: return null
             val size = asset["size"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0L

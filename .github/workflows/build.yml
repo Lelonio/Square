@@ -32,6 +32,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: square-dev-${{ github.sha }}
-          path: app/build/outputs/apk/dev/app-dev.apk
+          path: app/build/outputs/apk/dev/app-universal-dev.apk
           retention-days: 14
           if-no-files-found: error

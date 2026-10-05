@@ -14,7 +14,7 @@ plugins {
  * extra Rust build (~2 min from cold), so the default is deliberately just the
  * one. Add "x86_64" for the emulator and "armeabi-v7a" for pre-2015 hardware.
  */
-val nativeAbis = listOf("arm64-v8a")
+val nativeAbis = listOf("arm64-v8a", "armeabi-v7a")
 
 /** NDK used for both AGP and the Cargo cross-build; keep the two in step. */
 val ndkVersionForCargo = "28.2.13676358"
@@ -54,8 +54,24 @@ android {
         versionName = "2.4.2"
         buildConfigField("boolean", "VERBOSE_LOG", "false")
 
-        ndk {
-            abiFilters += nativeAbis
+        // Bungee only for the ABIs that ship; see the splits below.
+        externalNativeBuild {
+            cmake {
+                abiFilters += nativeAbis
+            }
+        }
+    }
+
+    // One APK per ABI, and a universal one for whoever does not know which
+    // their phone is. The split sets the ABIs, so the NDK filter it would
+    // conflict with is not set; CMake is told the same list, or it would build
+    // Bungee for ABIs nothing ships.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include(*nativeAbis.toTypedArray())
+            isUniversalApk = true
         }
     }
 
@@ -163,6 +179,10 @@ android {
         // The Rust cdylib is already stripped by the release profile; letting
         // Gradle re-strip it with the wrong tool breaks the arm64 build.
         jniLibs.keepDebugSymbols += "**/libsquarecore.so"
+        // The universal APK would otherwise carry the x86 builds some
+        // dependencies ship, without the Rust core: installable on an x86
+        // device, and closing at once there.
+        jniLibs.excludes += listOf("lib/x86/**", "lib/x86_64/**")
     }
 }
 
