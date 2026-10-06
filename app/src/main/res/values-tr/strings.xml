@@ -494,4 +494,20 @@
     <string name="added_to_queue">Sıraya eklendi: %s</string>
     <string name="videos">Videolar</string>
     <string name="web_playback_on">Spotify bu hesaba şarkı anahtarlarını vermiyor: şarkılar web oynatıcıdaki gibi çalınıyor. Bu şekilde Spotify Connect ve indirmeler kullanılamaz.</string>
+    <string name="playlist_description">Açıklama (isteğe bağlı)</string>
+    <string name="choose_cover">Kapak seç</string>
+    <string name="change_cover">Kapağı değiştir</string>
+    <string name="public_playlist">Herkese açık</string>
+    <string name="public_playlist_on">Herkes profilinde bulabilir</string>
+    <string name="public_playlist_off">Yalnızca sen görebilirsin</string>
+    <string name="create_playlist_failed">Çalma listesi oluşturulamadı. Bağlantını kontrol edip tekrar dene.</string>
+    <string name="cover_failed">Çalma listesi oluşturuldu ama kapağı kaydedilemedi.</string>
+    <string name="cover_needs_permission">Çalma listesi kapaksız oluşturuldu: kapaklara izin vermek için Ayarlar’da Spotify uygulamanı yeniden bağla.</string>
+    <string name="scope_cover">Çalma listesi kapaklarını ayarlama</string>
+    <string name="edit_playlist">Düzenle</string>
+    <string name="save_playlist_failed">Değişiklikler kaydedilemedi. Bağlantını kontrol edip tekrar dene.</string>
+    <string name="suggested_songs">Önerilen şarkılar</string>
+    <string name="suggested_songs_note">Bu çalma listesindekilere göre</string>
+    <string name="refresh_suggestions">Yenile</string>
+    <string name="add_to_this_playlist">Bu çalma listesine ekle</string>
 </resources>

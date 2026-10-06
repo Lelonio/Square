@@ -496,4 +496,20 @@
     <string name="added_to_queue">कतार में जोड़ा गया: %s</string>
     <string name="videos">वीडियो</string>
     <string name="web_playback_on">Spotify इस खाते को गानों की कुंजियाँ नहीं दे रहा: उन्हें वेब प्लेयर की तरह चलाया जा रहा है। इस तरह Spotify Connect और डाउनलोड उपलब्ध नहीं हैं।</string>
+    <string name="playlist_description">विवरण (वैकल्पिक)</string>
+    <string name="choose_cover">कवर चुनें</string>
+    <string name="change_cover">कवर बदलें</string>
+    <string name="public_playlist">सार्वजनिक</string>
+    <string name="public_playlist_on">कोई भी इसे आपकी प्रोफ़ाइल पर देख सकता है</string>
+    <string name="public_playlist_off">केवल आप इसे देख सकते हैं</string>
+    <string name="create_playlist_failed">प्लेलिस्ट नहीं बन सकी। कनेक्शन जाँचें और फिर से कोशिश करें।</string>
+    <string name="cover_failed">प्लेलिस्ट बन गई, लेकिन उसका कवर सहेजा नहीं जा सका।</string>
+    <string name="cover_needs_permission">प्लेलिस्ट बिना कवर के बनी: कवर की अनुमति देने के लिए सेटिंग्स में अपना Spotify ऐप फिर से जोड़ें।</string>
+    <string name="scope_cover">प्लेलिस्ट कवर सेट करना</string>
+    <string name="edit_playlist">संपादित करें</string>
+    <string name="save_playlist_failed">बदलाव सहेजे नहीं जा सके। कनेक्शन जाँचें और फिर से कोशिश करें।</string>
+    <string name="suggested_songs">सुझाए गए गाने</string>
+    <string name="suggested_songs_note">इस प्लेलिस्ट में मौजूद गानों के आधार पर</string>
+    <string name="refresh_suggestions">रीफ़्रेश करें</string>
+    <string name="add_to_this_playlist">इस प्लेलिस्ट में जोड़ें</string>
 </resources>

@@ -481,4 +481,20 @@
     <string name="added_to_queue">Ajouté à la file d\'attente : %s</string>
     <string name="videos">Vidéos</string>
     <string name="web_playback_on">Spotify refuse à ce compte les clés des titres : ils sont lus comme dans le lecteur web. Spotify Connect et les téléchargements ne sont pas disponibles ainsi.</string>
+    <string name="playlist_description">Description (facultative)</string>
+    <string name="choose_cover">Choisir une pochette</string>
+    <string name="change_cover">Changer la pochette</string>
+    <string name="public_playlist">Publique</string>
+    <string name="public_playlist_on">Tout le monde peut la trouver sur ton profil</string>
+    <string name="public_playlist_off">Toi seul peux la voir</string>
+    <string name="create_playlist_failed">La playlist n\'a pas pu être créée. Vérifie ta connexion et réessaie.</string>
+    <string name="cover_failed">La playlist a été créée, mais sa pochette n\'a pas pu être enregistrée.</string>
+    <string name="cover_needs_permission">La playlist a été créée sans pochette : reconnecte ton app Spotify dans les Réglages pour autoriser les pochettes.</string>
+    <string name="scope_cover">Définir les pochettes des playlists</string>
+    <string name="edit_playlist">Modifier</string>
+    <string name="save_playlist_failed">Les modifications n\'ont pas pu être enregistrées. Vérifie ta connexion et réessaie.</string>
+    <string name="suggested_songs">Titres recommandés</string>
+    <string name="suggested_songs_note">D\'après ce que contient cette playlist</string>
+    <string name="refresh_suggestions">Actualiser</string>
+    <string name="add_to_this_playlist">Ajouter à cette playlist</string>
 </resources>

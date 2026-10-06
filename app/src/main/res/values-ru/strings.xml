@@ -508,4 +508,20 @@
     <string name="added_to_queue">Добавлено в очередь: %s</string>
     <string name="videos">Видео</string>
     <string name="web_playback_on">Spotify не выдаёт этому аккаунту ключи для треков: они воспроизводятся как в веб-плеере. Spotify Connect и загрузки так недоступны.</string>
+    <string name="playlist_description">Описание (необязательно)</string>
+    <string name="choose_cover">Выбрать обложку</string>
+    <string name="change_cover">Сменить обложку</string>
+    <string name="public_playlist">Публичный</string>
+    <string name="public_playlist_on">Любой может найти его в вашем профиле</string>
+    <string name="public_playlist_off">Видите только вы</string>
+    <string name="create_playlist_failed">Не удалось создать плейлист. Проверьте подключение и попробуйте ещё раз.</string>
+    <string name="cover_failed">Плейлист создан, но обложку сохранить не удалось.</string>
+    <string name="cover_needs_permission">Плейлист создан без обложки: снова подключите своё приложение Spotify в настройках, чтобы разрешить обложки.</string>
+    <string name="scope_cover">Устанавливать обложки плейлистов</string>
+    <string name="edit_playlist">Изменить</string>
+    <string name="save_playlist_failed">Не удалось сохранить изменения. Проверьте подключение и попробуйте ещё раз.</string>
+    <string name="suggested_songs">Рекомендуемые треки</string>
+    <string name="suggested_songs_note">На основе того, что есть в этом плейлисте</string>
+    <string name="refresh_suggestions">Обновить</string>
+    <string name="add_to_this_playlist">Добавить в этот плейлист</string>
 </resources>

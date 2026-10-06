@@ -487,4 +487,20 @@
     <string name="added_to_queue">Añadido a la cola: %s</string>
     <string name="videos">Vídeos</string>
     <string name="web_playback_on">Spotify niega a esta cuenta las claves de las canciones: se reproducen como en el reproductor web. Spotify Connect y las descargas no están disponibles así.</string>
+    <string name="playlist_description">Descripción (opcional)</string>
+    <string name="choose_cover">Elegir portada</string>
+    <string name="change_cover">Cambiar portada</string>
+    <string name="public_playlist">Pública</string>
+    <string name="public_playlist_on">Cualquiera puede encontrarla en tu perfil</string>
+    <string name="public_playlist_off">Solo tú puedes verla</string>
+    <string name="create_playlist_failed">No se pudo crear la playlist. Comprueba la conexión e inténtalo de nuevo.</string>
+    <string name="cover_failed">La playlist se creó, pero no se pudo guardar su portada.</string>
+    <string name="cover_needs_permission">La playlist se creó sin portada: vuelve a conectar tu app de Spotify en Ajustes para permitir portadas.</string>
+    <string name="scope_cover">Poner portadas a las playlists</string>
+    <string name="edit_playlist">Editar</string>
+    <string name="save_playlist_failed">No se pudieron guardar los cambios. Comprueba la conexión e inténtalo de nuevo.</string>
+    <string name="suggested_songs">Canciones recomendadas</string>
+    <string name="suggested_songs_note">Según lo que hay en esta playlist</string>
+    <string name="refresh_suggestions">Actualizar</string>
+    <string name="add_to_this_playlist">Añadir a esta playlist</string>
 </resources>

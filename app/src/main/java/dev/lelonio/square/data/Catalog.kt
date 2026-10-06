@@ -136,6 +136,11 @@ data class CatalogPlaylist(
      * portrait among square covers is how a shelf says "these are people".
      */
     val isArtist: Boolean = false,
+    /**
+     * Whether it is the account's own, where the account's index says: what
+     * decides if it can be edited. Null when nobody said.
+     */
+    val mine: Boolean? = null,
 )
 
 /** One credited artist: what to write, and where it leads. */
@@ -246,6 +251,11 @@ object Catalog {
     const val DJ_URI = "spotify:playlist:37i9dQZF1EYkqdzj48dyYq"
 
     /** The account's own playlists. */
+    /** Whether a playlist is the account's own, from the playlist service; see catalog.rs. */
+    suspend fun playlistMine(uri: String): Boolean? = withContext(Dispatchers.IO) {
+        runCatching { json.decodeFromString<Boolean?>(NativeBridge.playlistMine(uri)) }.getOrNull()
+    }
+
     suspend fun playlists(): List<CatalogPlaylist> = withContext(Dispatchers.IO) {
         json.decodeFromString<List<CatalogPlaylist>>(NativeBridge.rootlist())
             .filterNot { it.uri == DJ_URI }

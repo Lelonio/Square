@@ -481,4 +481,20 @@
     <string name="added_to_queue">Adicionado à fila: %s</string>
     <string name="videos">Vídeos</string>
     <string name="web_playback_on">O Spotify recusa a esta conta as chaves das músicas: elas tocam como no reprodutor web. Spotify Connect e downloads não estão disponíveis assim.</string>
+    <string name="playlist_description">Descrição (opcional)</string>
+    <string name="choose_cover">Escolher capa</string>
+    <string name="change_cover">Mudar capa</string>
+    <string name="public_playlist">Pública</string>
+    <string name="public_playlist_on">Qualquer pessoa pode encontrá-la no seu perfil</string>
+    <string name="public_playlist_off">Só você pode vê-la</string>
+    <string name="create_playlist_failed">Não foi possível criar a playlist. Verifique a conexão e tente novamente.</string>
+    <string name="cover_failed">A playlist foi criada, mas não foi possível salvar a capa.</string>
+    <string name="cover_needs_permission">A playlist foi criada sem capa: conecte seu app do Spotify novamente nas Configurações para permitir capas.</string>
+    <string name="scope_cover">Definir capas de playlists</string>
+    <string name="edit_playlist">Editar</string>
+    <string name="save_playlist_failed">Não foi possível salvar as alterações. Verifique a conexão e tente novamente.</string>
+    <string name="suggested_songs">Músicas recomendadas</string>
+    <string name="suggested_songs_note">Com base no que há nesta playlist</string>
+    <string name="refresh_suggestions">Atualizar</string>
+    <string name="add_to_this_playlist">Adicionar a esta playlist</string>
 </resources>

@@ -1,5 +1,6 @@
 package dev.lelonio.square.backend
 
+import okhttp3.RequestBody.Companion.toRequestBody
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import dev.lelonio.square.SquareApplication
@@ -271,15 +272,55 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
     override val canEditPlaylists: Boolean
         get() = container.spotifySignedIn && container.webApi.isReady
 
-    override suspend fun createPlaylist(name: String): CatalogPlaylist {
+    override val describesPlaylists: Boolean get() = true
+
+    override suspend fun createPlaylist(name: String, description: String, public: Boolean): CatalogPlaylist {
         // The account's own id: Spotify creates a playlist under a user rather
         // than under "me", even though the token already says who that is.
         val userId = container.api.me().id
-        val created = container.api.createPlaylist(userId, PlaylistDetailsDto(name))
+        val created = container.api.createPlaylist(
+            userId,
+            // Sent even when empty: left out, Spotify stored the word "null"
+            // as the description, and every client showed it.
+            PlaylistDetailsDto(name, isPublic = public, description = description.trim()),
+        )
         return CatalogPlaylist(
             uri = created.uri,
             name = created.name,
             artworkUrl = created.images.firstOrNull()?.url,
+        )
+    }
+
+    override suspend fun setPlaylistCover(uri: String, jpeg: ByteArray) {
+        val body = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
+        container.api.uploadPlaylistCover(
+            uri.substringAfterLast(':'),
+            body.toRequestBody(null),
+        )
+    }
+
+    override suspend fun playlistDetails(uri: String): PlaylistDetails {
+        val dto = container.api.playlist(uri.substringAfterLast(':'), fields = "id,uri,name,description,public,images")
+        return PlaylistDetails(
+            name = dto.name,
+            // Spotify hands descriptions back HTML-escaped: an apostrophe
+            // arrives as &#x27;.
+            description = androidx.core.text.HtmlCompat
+                .fromHtml(dto.description.orEmpty(), androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY)
+                .toString()
+                // What a playlist made without one was given; saving the sheet
+                // as it opens clears it.
+                .takeUnless { it == "null" }
+                .orEmpty(),
+            public = dto.public ?: false,
+            artworkUrl = dto.images.firstOrNull()?.url,
+        )
+    }
+
+    override suspend fun updatePlaylist(uri: String, name: String, description: String, public: Boolean) {
+        container.api.updatePlaylistDetails(
+            uri.substringAfterLast(':'),
+            PlaylistDetailsDto(name, isPublic = public, description = description.trim()),
         )
     }
 

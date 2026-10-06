@@ -654,7 +654,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
     override val canEditPlaylists: Boolean
         get() = account.isSignedIn
 
-    override suspend fun createPlaylist(name: String): CatalogPlaylist =
+    override suspend fun createPlaylist(name: String, description: String, public: Boolean): CatalogPlaylist =
         withContext(Dispatchers.IO) {
             // Blocking upstream, deliberately not wrapped in runCatching there:
             // a failure has to reach the caller, which is a screen waiting to

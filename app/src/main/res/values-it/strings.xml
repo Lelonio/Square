@@ -516,4 +516,20 @@
     <string name="web_sdk_limits">Con questo player non sono disponibili dissolvenza incrociata, effetti audio, karaoke, scelta della qualità e download.</string>
     <string name="web_sdk_settings_open">Configura player web</string>
     <string name="web_sdk_authorized">Account Spotify autorizzato</string>
+    <string name="playlist_description">Descrizione (facoltativa)</string>
+    <string name="choose_cover">Scegli una copertina</string>
+    <string name="change_cover">Cambia copertina</string>
+    <string name="public_playlist">Pubblica</string>
+    <string name="public_playlist_on">Chiunque può trovarla sul tuo profilo</string>
+    <string name="public_playlist_off">Puoi vederla solo tu</string>
+    <string name="create_playlist_failed">Non è stato possibile creare la playlist. Controlla la connessione e riprova.</string>
+    <string name="cover_failed">La playlist è stata creata, ma non è stato possibile salvare la copertina.</string>
+    <string name="cover_needs_permission">La playlist è stata creata senza copertina: collega di nuovo la tua app Spotify nelle Impostazioni per consentire le copertine.</string>
+    <string name="scope_cover">Impostare le copertine delle playlist</string>
+    <string name="edit_playlist">Modifica</string>
+    <string name="save_playlist_failed">Non è stato possibile salvare le modifiche. Controlla la connessione e riprova.</string>
+    <string name="suggested_songs">Brani consigliati</string>
+    <string name="suggested_songs_note">In base a quello che c\'è in questa playlist</string>
+    <string name="refresh_suggestions">Aggiorna</string>
+    <string name="add_to_this_playlist">Aggiungi a questa playlist</string>
 </resources>

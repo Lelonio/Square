@@ -266,6 +266,18 @@ interface SpotifyApi {
         @Body request: PlaylistDetailsDto,
     ): PlaylistDto
 
+    /**
+     * Replaces a playlist's cover with a JPEG, sent as base64 text of at most
+     * 256 KB. Needs `ugc-image-upload`, which an application connected before
+     * Square asked for it does not have: that answers 401 or 403.
+     */
+    @PUT("v1/playlists/{id}/images")
+    @retrofit2.http.Headers("Content-Type: image/jpeg")
+    suspend fun uploadPlaylistCover(
+        @Path("id") playlistId: String,
+        @Body jpegBase64: okhttp3.RequestBody,
+    )
+
     /** Renames one; the same endpoint changes description and visibility. */
     @PUT("v1/playlists/{id}")
     suspend fun updatePlaylistDetails(
@@ -420,7 +432,14 @@ data class AddTracksRequestDto(val uris: List<String>)
 @Serializable
 data class PlaylistDetailsDto(
     val name: String,
-    @SerialName("public") val isPublic: Boolean = false,
+    /**
+     * Null to leave it as it is. Not a plain false: a value equal to its
+     * default is not written out, and Spotify reads a missing `public` on a
+     * new playlist as true, so "private" used to make a public one.
+     */
+    @SerialName("public") val isPublic: Boolean? = null,
+    /** Null to leave it as it is; empty to clear it. */
+    val description: String? = null,
 )
 
 @Serializable
@@ -593,6 +612,8 @@ data class PlaylistDto(
     val name: String,
     val description: String? = null,
     val images: List<ImageDto> = emptyList(),
+    /** Asked for only where it matters; see MusicBackend.playlistDetails. */
+    val public: Boolean? = null,
     val tracks: PlaylistTracksRefDto? = null,
     /**
      * Who made it. The one field that tells "This Is Fabri Fibra", which

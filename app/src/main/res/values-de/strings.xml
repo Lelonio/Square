@@ -481,4 +481,20 @@
     <string name="added_to_queue">Zur Warteschlange hinzugefügt: %s</string>
     <string name="videos">Videos</string>
     <string name="web_playback_on">Spotify verweigert diesem Konto die Schlüssel für die Songs: Sie werden wie im Webplayer abgespielt. Spotify Connect und Downloads sind so nicht verfügbar.</string>
+    <string name="playlist_description">Beschreibung (optional)</string>
+    <string name="choose_cover">Cover wählen</string>
+    <string name="change_cover">Cover ändern</string>
+    <string name="public_playlist">Öffentlich</string>
+    <string name="public_playlist_on">Jeder kann sie in deinem Profil finden</string>
+    <string name="public_playlist_off">Nur du kannst sie sehen</string>
+    <string name="create_playlist_failed">Die Playlist konnte nicht erstellt werden. Prüfe deine Verbindung und versuche es erneut.</string>
+    <string name="cover_failed">Die Playlist wurde erstellt, aber ihr Cover konnte nicht gespeichert werden.</string>
+    <string name="cover_needs_permission">Die Playlist wurde ohne Cover erstellt: Verbinde deine Spotify-App in den Einstellungen erneut, um Cover zu erlauben.</string>
+    <string name="scope_cover">Playlist-Cover festlegen</string>
+    <string name="edit_playlist">Bearbeiten</string>
+    <string name="save_playlist_failed">Die Änderungen konnten nicht gespeichert werden. Prüfe deine Verbindung und versuche es erneut.</string>
+    <string name="suggested_songs">Empfohlene Songs</string>
+    <string name="suggested_songs_note">Basierend auf dem, was in dieser Playlist ist</string>
+    <string name="refresh_suggestions">Aktualisieren</string>
+    <string name="add_to_this_playlist">Zu dieser Playlist hinzufügen</string>
 </resources>

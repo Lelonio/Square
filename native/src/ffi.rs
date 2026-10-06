@@ -444,6 +444,22 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRem
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlaylistMine(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+) -> jstring {
+    let uri = match read_string(&mut env, &uri) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "PlaylistMine", || catalog::playlist_mine(&uri))
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlaylistCover(
     mut env: JNIEnv,
     _class: JClass,

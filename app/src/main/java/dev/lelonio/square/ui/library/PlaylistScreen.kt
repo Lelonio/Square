@@ -14,6 +14,7 @@ import dev.lelonio.square.ui.player.GlassFilm
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -243,6 +244,11 @@ fun PlaylistScreen(
     onMenu: () -> Unit = {},
     /** Keeps the page in the library, or lets it go. */
     onToggleSaved: () -> Unit = {},
+    /** Songs offered for one of the account's own playlists; see MainViewModel.loadSuggestions. */
+    suggestions: List<CatalogTrack> = emptyList(),
+    suggestionsLoading: Boolean = false,
+    onAddSuggestion: (CatalogTrack) -> Unit = {},
+    onRefreshSuggestions: () -> Unit = {},
     /** The remembered track order, and where a change to it is stored. */
     storedSort: String? = null,
     onSortChange: (String) -> Unit = {},
@@ -963,6 +969,101 @@ fun PlaylistScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp),
                     )
+                }
+            }
+
+            // What could go in next, under a playlist of the account's own, as
+            // Spotify offers it: after the songs, once they are all in.
+            if (state.mine == true && query.isBlank() && !state.loadingMore &&
+                (suggestions.isNotEmpty() || suggestionsLoading)
+            ) {
+                item(contentType = "suggestionsHeader") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 24.dp, end = 12.dp, top = 28.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.suggested_songs),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                stringResource(R.string.suggested_songs_note),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (suggestionsLoading) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .padding(end = 12.dp)
+                                    .size(18.dp),
+                            )
+                        } else {
+                            Text(
+                                stringResource(R.string.refresh_suggestions),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable(onClick = onRefreshSuggestions)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+                }
+                items(suggestions, key = { "suggested:" + it.uri }, contentType = { "suggestion" }) { track ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onAddSuggestion(track) }
+                            .padding(start = 24.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Artwork(
+                            url = track.artworkUrl,
+                            title = track.name,
+                            modifier = Modifier.size(46.dp),
+                            corner = 8.dp,
+                            decodeSize = 46.dp,
+                        )
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .padding(start = 14.dp),
+                        ) {
+                            Text(
+                                track.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                track.artist,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        IconButton(onClick = { onAddSuggestion(track) }) {
+                            Icon(
+                                PhosphorIcons.Bold.Plus,
+                                contentDescription = stringResource(R.string.add_to_this_playlist),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
                 }
             }
 

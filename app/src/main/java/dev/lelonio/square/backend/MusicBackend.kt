@@ -87,6 +87,14 @@ data class HomeFeed(
  * throwing: no screen should have to know which backend is active to stay
  * usable.
  */
+/** A playlist as its edit sheet shows it. */
+data class PlaylistDetails(
+    val name: String,
+    val description: String,
+    val public: Boolean,
+    val artworkUrl: String?,
+)
+
 interface MusicBackend {
 
     val id: BackendId
@@ -174,8 +182,29 @@ interface MusicBackend {
     val canEditPlaylists: Boolean get() = false
 
     /** Creates an empty playlist and returns it, ready to be opened. */
-    suspend fun createPlaylist(name: String): CatalogPlaylist =
+    /**
+     * Makes a playlist. The description and the visibility are taken where
+     * the source keeps them; see [describesPlaylists].
+     */
+    suspend fun createPlaylist(
+        name: String,
+        description: String = "",
+        public: Boolean = false,
+    ): CatalogPlaylist = throw UnsupportedOperationException()
+
+    /** Whether a new playlist can be given a description, a visibility and a cover. */
+    val describesPlaylists: Boolean get() = false
+
+    /** Sets a playlist's cover from a JPEG; see [describesPlaylists]. */
+    suspend fun setPlaylistCover(uri: String, jpeg: ByteArray): Unit =
         throw UnsupportedOperationException()
+
+    /** What the edit sheet starts from; null where the source only names a playlist. */
+    suspend fun playlistDetails(uri: String): PlaylistDetails? = null
+
+    /** Changes what [describesPlaylists] covers, or only the name elsewhere. */
+    suspend fun updatePlaylist(uri: String, name: String, description: String, public: Boolean) =
+        renamePlaylist(uri, name)
 
     suspend fun renamePlaylist(uri: String, name: String): Unit =
         throw UnsupportedOperationException()

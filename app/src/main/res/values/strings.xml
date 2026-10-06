@@ -543,4 +543,20 @@
     <string name="web_sdk_limits">With this player, crossfade, audio effects, karaoke, sound quality and downloads are not available.</string>
     <string name="web_sdk_settings_open">Configure web player</string>
     <string name="web_sdk_authorized">Spotify account authorized</string>
+    <string name="playlist_description">Description (optional)</string>
+    <string name="choose_cover">Choose a cover</string>
+    <string name="change_cover">Change cover</string>
+    <string name="public_playlist">Public</string>
+    <string name="public_playlist_on">Anyone can find it on your profile</string>
+    <string name="public_playlist_off">Only you can see it</string>
+    <string name="create_playlist_failed">The playlist could not be created. Check your connection and try again.</string>
+    <string name="cover_failed">The playlist was created, but its cover could not be saved.</string>
+    <string name="cover_needs_permission">The playlist was created without its cover: connect your Spotify app again in Settings to allow covers.</string>
+    <string name="scope_cover">Set playlist covers</string>
+    <string name="edit_playlist">Edit</string>
+    <string name="save_playlist_failed">The changes could not be saved. Check your connection and try again.</string>
+    <string name="suggested_songs">Recommended songs</string>
+    <string name="suggested_songs_note">Based on what is in this playlist</string>
+    <string name="refresh_suggestions">Refresh</string>
+    <string name="add_to_this_playlist">Add to this playlist</string>
 </resources>

@@ -1742,7 +1742,12 @@ fun SquareApp(
                                 pinned = pinnedPlaylists,
                                 canEdit = viewModel.canEditPlaylists,
                                 onCreatePlaylist = { naming = NamingRequest(null) },
-                                onPlaylistMenu = { playlistMenu = it },
+                                onPlaylistMenu = {
+                                    // Whose it is, from the library's own index;
+                                    // unknown is still offered, as before.
+                                    playlistMenuMine = it.mine != false
+                                    playlistMenu = it
+                                },
                                 artists = followedArtists,
                                 albums = savedAlbums,
                                 onRetryOnline = viewModel::retryOnline,
@@ -1858,7 +1863,18 @@ fun SquareApp(
                             // callbacks: those are not composables.
                             val source = page.sourceLabel()
                             SquareTheme(seed = detailAccent) {
+                                val suggested by viewModel.suggestions.collectAsStateWithLifecycle()
+                                // Asked for once the page knows it is the
+                                // account's own and every song is in.
+                                LaunchedEffect(page.uri, page.mine, page.loadingMore) {
+                                    val uri = page.uri
+                                    if (uri != null && page.mine == true && !page.loadingMore) viewModel.loadSuggestions(uri)
+                                }
                                 PlaylistScreen(
+                                    suggestions = suggested.tracks.takeIf { suggested.playlistUri == page.uri }.orEmpty(),
+                                    suggestionsLoading = suggested.loading && suggested.playlistUri == page.uri,
+                                    onAddSuggestion = viewModel::addSuggestion,
+                                    onRefreshSuggestions = { page.uri?.let { viewModel.loadSuggestions(it, refresh = true) } },
                                     state = page,
                                     offline = offlineNow,
                                     // Read per row rather than handed over as a
@@ -3152,10 +3168,10 @@ fun SquareApp(
                         val editable = !shownPlaylist.uri.endsWith(":collection") &&
                             playlistMenuMine
                         if (editable) TrackSheetAction(
-                            stringResource(R.string.rename),
+                            stringResource(R.string.edit_playlist),
                             PhosphorIcons.Regular.PencilSimple,
                         ) {
-                            naming = NamingRequest(shownPlaylist)
+                            viewModel.openEditPlaylist(shownPlaylist)
                             playlistMenu = null
                         }
                         // The whole playlist in one link. yt-dlp and the apps
@@ -3278,22 +3294,51 @@ fun SquareApp(
                     )
                 }
 
-                naming?.let { request ->
-                    dev.lelonio.square.ui.components.NameDialog(
-                        title = stringResource(
-                            if (request.playlist == null) R.string.new_playlist else R.string.rename,
-                        ),
-                        initial = request.playlist?.name.orEmpty(),
-                        confirmLabel = stringResource(
-                            if (request.playlist == null) R.string.create else R.string.save,
-                        ),
-                        onConfirm = { name ->
-                            val playlist = request.playlist
-                            if (playlist == null) {
-                                viewModel.createPlaylist(name)
-                            } else {
-                                viewModel.renamePlaylist(playlist.uri, name)
+                val editing by viewModel.editingPlaylist.collectAsStateWithLifecycle()
+                editing?.let { edit ->
+                    dev.lelonio.square.ui.components.CreatePlaylistDialog(
+                        title = stringResource(R.string.edit_playlist),
+                        confirmLabel = stringResource(R.string.save),
+                        describes = viewModel.describesPlaylists,
+                        busy = edit.busy,
+                        error = edit.error,
+                        initial = edit.details,
+                        loading = edit.loading,
+                        onCreate = { name, description, public, cover ->
+                            viewModel.savePlaylist(name, description, public, cover)
+                        },
+                        onDismiss = viewModel::closeEditPlaylist,
+                    )
+                }
+
+                naming?.takeIf { it.playlist == null }?.let {
+                    val creating by viewModel.creatingPlaylist.collectAsStateWithLifecycle()
+                    dev.lelonio.square.ui.components.CreatePlaylistDialog(
+                        title = stringResource(R.string.new_playlist),
+                        confirmLabel = stringResource(R.string.create),
+                        describes = viewModel.describesPlaylists,
+                        busy = creating.busy,
+                        error = creating.error,
+                        onCreate = { name, description, public, cover ->
+                            viewModel.createPlaylist(name, description, public, cover) { created ->
+                                naming = null
+                                navController.openPlaylist(viewModel, created)
                             }
+                        },
+                        onDismiss = {
+                            viewModel.resetCreatePlaylist()
+                            naming = null
+                        },
+                    )
+                }
+
+                naming?.playlist?.let { playlist ->
+                    dev.lelonio.square.ui.components.NameDialog(
+                        title = stringResource(R.string.rename),
+                        initial = playlist.name,
+                        confirmLabel = stringResource(R.string.save),
+                        onConfirm = { name ->
+                            viewModel.renamePlaylist(playlist.uri, name)
                             naming = null
                         },
                         onDismiss = { naming = null },

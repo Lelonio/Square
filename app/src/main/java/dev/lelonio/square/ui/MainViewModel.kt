@@ -1701,6 +1701,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // 403 and the heart never fills.
                     "user-library-read",
                     "user-library-modify",
+                    // A new playlist's cover.
+                    "ugc-image-upload",
                 ),
             )
         }
@@ -2355,7 +2357,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun loadMissingCovers() = viewModelScope.launch {
         val ready = _state.value as? UiState.Ready ?: return@launch
-        val missing = ready.playlists.filter { it.artworkUrl == null }
+        // A content:// address is a picker's grant from an earlier run, long
+        // since unreadable; see fetchUploadedCover.
+        val missing = ready.playlists.filter { it.artworkUrl == null || it.artworkUrl.startsWith("content://") }
         if (missing.isEmpty()) return@launch
 
         missing.forEach { playlist ->
@@ -2383,6 +2387,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!container.webApi.isReady) return@launch
         runCatching { container.api.me() }
             .onSuccess { profile ->
+                // First, and whatever the screen is doing: it used to be set
+                // only once the library was on screen, so a profile that
+                // answered sooner left it unset for the whole run, every
+                // playlist's "mine" unknown, and what hangs on it hidden.
+                meId = profile.id
                 val ready = _state.value as? UiState.Ready ?: return@onSuccess
                 _state.value = ready.copy(
                     displayName = profile.displayName?.takeIf(String::isNotBlank)
@@ -2552,14 +2561,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun detailsOf(uri: String): PlaylistDetails? {
         if (!container.webApi.isReady || !uri.startsWith("spotify:playlist:")) return null
-        val dto = runCatching { container.api.playlist(uri.substringAfterLast(':')) }
+        // The owner asked for by name: the default fields leave it out, and
+        // without it no playlist was ever known to be the account's own.
+        val dto = runCatching {
+            container.api.playlist(
+                uri.substringAfterLast(':'),
+                fields = "id,uri,name,images,description,owner(id,display_name)",
+            )
+        }
             .onFailure { android.util.Log.w(TAG, "no details for $uri: ${describe(it)}") }
-            .getOrNull() ?: return null
+            .getOrNull()
+            // Spotify's own lists answer 404 to an application in development
+            // mode. Whose it is still matters — it is what hides "Edit" — and
+            // the playlist service says.
+            ?: return PlaylistDetails(description = null, mine = Catalog.playlistMine(uri), owner = null)
         val owner = dto.owner?.id
+        // Asked for here if the profile has not been read yet, rather than
+        // left unknown for the page.
+        val me = meId ?: runCatching { container.api.me().id }.getOrNull()?.also { meId = it }
         // Null rather than false when either side is missing: "not yours" hides
         // the actions, and hiding them because a request came back thin is
         // worse than the button that was there before.
-        val mine = if (owner == null || meId == null) null else owner == meId
+        val mine = if (owner == null || me == null) null else owner == me
         val text = dto.description
             ?.replace(Regex("<[^>]*>"), "")
             ?.replace("&amp;", "&")
@@ -2567,7 +2590,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?.replace("&#x27;", "'")
             ?.replace("&#39;", "'")
             ?.trim()
-            ?.takeIf { it.isNotEmpty() }
+            // The word a playlist made without a description was given.
+            ?.takeIf { it.isNotEmpty() && it != "null" }
         return PlaylistDetails(
             description = text,
             mine = mine,
@@ -4219,14 +4243,295 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * list a playlist it has just created, and a new playlist that does not
      * appear reads as the button having failed.
      */
-    fun createPlaylist(name: String) = viewModelScope.launch {
-        runCatching { container.activeBackend.createPlaylist(name.trim()) }
-            .onSuccess { created ->
-                val ready = _state.value as? UiState.Ready ?: return@onSuccess
-                _state.value = ready.copy(playlists = listOf(created) + ready.playlists)
-            }
-            .onFailure { android.util.Log.e(TAG, "create playlist failed: ${chain(it)}", it) }
+    /** The new-playlist sheet: whether it is waiting, and what went wrong. */
+    data class CreatePlaylistState(val busy: Boolean = false, val error: String? = null)
+
+    private val _creatingPlaylist = MutableStateFlow(CreatePlaylistState())
+    val creatingPlaylist: StateFlow<CreatePlaylistState> = _creatingPlaylist.asStateFlow()
+
+    fun resetCreatePlaylist() {
+        _creatingPlaylist.value = CreatePlaylistState()
     }
+
+    /** Whether the active source takes a description, a visibility and a cover. */
+    val describesPlaylists: Boolean get() = container.activeBackend.describesPlaylists
+
+    /**
+     * Makes a playlist, puts it at the top of the library and hands it to
+     * [onCreated], which opens it.
+     *
+     * The sheet stays up until the service answers: a playlist that might or
+     * might not exist is worse than a moment's wait, and a refusal is said on
+     * the sheet rather than in the log. The cover goes up after, and a cover
+     * that fails does not take the playlist with it: it is said in a toast,
+     * with what to do when the reason is a missing permission.
+     */
+    fun createPlaylist(
+        name: String,
+        description: String,
+        public: Boolean,
+        cover: android.net.Uri?,
+        onCreated: (CatalogPlaylist) -> Unit,
+    ) {
+        if (_creatingPlaylist.value.busy) return
+        _creatingPlaylist.value = CreatePlaylistState(busy = true)
+        viewModelScope.launch {
+            val backend = container.activeBackend
+            runCatching { backend.createPlaylist(name.trim(), description, public) }
+                .onSuccess { created ->
+                    (_state.value as? UiState.Ready)?.let { ready ->
+                        _state.value = ready.copy(playlists = listOf(created) + ready.playlists)
+                    }
+                    if (cover != null && backend.describesPlaylists) {
+                        runCatching {
+                            val jpeg = withContext(Dispatchers.Default) { coverJpeg(cover) }
+                            backend.setPlaylistCover(created.uri, jpeg)
+                        }.onSuccess {
+                            fetchUploadedCover(created.uri)
+                        }.onFailure {
+                            android.util.Log.e(TAG, "playlist cover failed: ${chain(it)}", it)
+                            val permission = describe(it).let { why -> "401" in why || "403" in why }
+                            android.widget.Toast.makeText(
+                                getApplication(),
+                                string(if (permission) R.string.cover_needs_permission else R.string.cover_failed),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
+                    _creatingPlaylist.value = CreatePlaylistState()
+                    onCreated(created)
+                }
+                .onFailure {
+                    android.util.Log.e(TAG, "create playlist failed: ${chain(it)}", it)
+                    _creatingPlaylist.value = CreatePlaylistState(error = string(R.string.create_playlist_failed))
+                }
+        }
+    }
+
+    /** Songs offered under one of the account's own playlists. */
+    data class SuggestionsState(
+        val playlistUri: String? = null,
+        val tracks: List<CatalogTrack> = emptyList(),
+        val loading: Boolean = false,
+    )
+
+    private val _suggestions = MutableStateFlow(SuggestionsState())
+    val suggestions: StateFlow<SuggestionsState> = _suggestions.asStateFlow()
+    private var suggestionsJob: Job? = null
+
+    /**
+     * Songs to add to a playlist of the account's own, as Spotify offers
+     * under one.
+     *
+     * Drawn from the stations of a couple of its songs, picked at random so
+     * that asking again brings different ones, or of liked songs while the
+     * playlist is still empty. Nothing already in it is offered.
+     */
+    fun loadSuggestions(playlistUri: String, refresh: Boolean = false) {
+        if (!playlistUri.startsWith("spotify:playlist:")) return
+        val current = _suggestions.value
+        if (!refresh && current.playlistUri == playlistUri && (current.loading || current.tracks.isNotEmpty())) return
+        suggestionsJob?.cancel()
+        _suggestions.value = SuggestionsState(playlistUri, loading = true)
+        suggestionsJob = viewModelScope.launch {
+            val present = _playlist.value.takeIf { it.uri == playlistUri }?.tracks.orEmpty()
+            val presentUris = present.mapTo(mutableSetOf()) { it.uri }
+            val seeds = present.map { it.uri }.filter { it.startsWith("spotify:track:") }
+                .ifEmpty { container.likedStore.likedTracks.value.toList() }
+                .shuffled()
+                .take(SUGGESTION_SEEDS)
+            val uris = seeds.flatMap { seed ->
+                runCatching { Catalog.contextTrackUris("spotify:station:track:${seed.substringAfterLast(':')}") }
+                    .getOrDefault(emptyList())
+            }
+                .filter { it.startsWith("spotify:track:") && it !in presentUris && it !in seeds }
+                .distinct()
+                .shuffled()
+                .take(SUGGESTION_COUNT)
+            val tracks = runCatching { Catalog.tracks(uris) }
+                .onFailure { android.util.Log.w(TAG, "suggestions unavailable: ${describe(it)}") }
+                .getOrDefault(emptyList())
+            if (_suggestions.value.playlistUri == playlistUri) {
+                _suggestions.value = SuggestionsState(playlistUri, tracks)
+            }
+        }
+    }
+
+    /**
+     * One of [suggestions], into the playlist on screen. At once on screen,
+     * and back among the suggestions if Spotify refuses it.
+     */
+    fun addSuggestion(track: CatalogTrack) {
+        val uri = _playlist.value.uri?.takeIf { it.startsWith("spotify:playlist:") } ?: return
+        _suggestions.value = _suggestions.value.copy(tracks = _suggestions.value.tracks.filterNot { it.uri == track.uri })
+        _playlist.value = _playlist.value.copy(tracks = _playlist.value.tracks + track)
+        invalidateContext(uri)
+        viewModelScope.launch {
+            runCatching { container.api.addToPlaylist(uri.substringAfterLast(':'), AddTracksRequestDto(listOf(track.uri))) }
+                .onFailure {
+                    android.util.Log.e(TAG, "add suggestion failed: ${chain(it)}", it)
+                    if (_playlist.value.uri == uri) {
+                        _playlist.value = _playlist.value.copy(tracks = _playlist.value.tracks.filterNot { it.uri == track.uri })
+                    }
+                    if (_suggestions.value.playlistUri == uri) {
+                        _suggestions.value = _suggestions.value.copy(tracks = listOf(track) + _suggestions.value.tracks)
+                    }
+                }
+        }
+    }
+
+    private val SUGGESTION_SEEDS = 2
+    private val SUGGESTION_COUNT = 10
+
+    /** The edit sheet of an existing playlist: what it shows and how it is going. */
+    data class EditPlaylistState(
+        val playlist: CatalogPlaylist,
+        val details: dev.lelonio.square.backend.PlaylistDetails? = null,
+        val loading: Boolean = false,
+        val busy: Boolean = false,
+        val error: String? = null,
+    )
+
+    private val _editingPlaylist = MutableStateFlow<EditPlaylistState?>(null)
+    val editingPlaylist: StateFlow<EditPlaylistState?> = _editingPlaylist.asStateFlow()
+
+    /** Opens the edit sheet, reading what the playlist has now where the source keeps it. */
+    fun openEditPlaylist(playlist: CatalogPlaylist) {
+        val backend = container.activeBackend
+        val plain = dev.lelonio.square.backend.PlaylistDetails(playlist.name, "", false, playlist.artworkUrl)
+        if (!backend.describesPlaylists) {
+            _editingPlaylist.value = EditPlaylistState(playlist, details = plain)
+            return
+        }
+        _editingPlaylist.value = EditPlaylistState(playlist, loading = true)
+        viewModelScope.launch {
+            val details = runCatching { backend.playlistDetails(playlist.uri) }
+                .onFailure { android.util.Log.w(TAG, "playlist details unavailable: ${describe(it)}") }
+                .getOrNull() ?: plain
+            _editingPlaylist.value = _editingPlaylist.value
+                ?.takeIf { it.playlist.uri == playlist.uri }
+                ?.copy(details = details, loading = false)
+        }
+    }
+
+    fun closeEditPlaylist() {
+        _editingPlaylist.value = null
+    }
+
+    /**
+     * Saves the edit sheet. The sheet waits for the service, as the new one
+     * does, and the cover follows as it does there: a cover that fails leaves
+     * the rest saved.
+     */
+    fun savePlaylist(name: String, description: String, public: Boolean, cover: android.net.Uri?) {
+        val editing = _editingPlaylist.value ?: return
+        if (editing.busy) return
+        val uri = editing.playlist.uri
+        val trimmed = name.trim()
+        _editingPlaylist.value = editing.copy(busy = true, error = null)
+        viewModelScope.launch {
+            val backend = container.activeBackend
+            runCatching { backend.updatePlaylist(uri, trimmed, description, public) }
+                .onSuccess {
+                    (_state.value as? UiState.Ready)?.let { ready ->
+                        _state.value = ready.copy(
+                            playlists = ready.playlists.map { if (it.uri == uri) it.copy(name = trimmed) else it },
+                        )
+                    }
+                    if (_playlist.value.uri == uri) {
+                        _playlist.value = _playlist.value.copy(name = trimmed, description = description.trim())
+                    }
+                    invalidateContext(uri)
+                    if (cover != null && backend.describesPlaylists) {
+                        runCatching {
+                            val jpeg = withContext(Dispatchers.Default) { coverJpeg(cover) }
+                            backend.setPlaylistCover(uri, jpeg)
+                        }.onSuccess {
+                            coverCache.remove(uri)
+                            fetchUploadedCover(uri)
+                        }.onFailure {
+                            android.util.Log.e(TAG, "playlist cover failed: ${chain(it)}", it)
+                            val permission = describe(it).let { why -> "401" in why || "403" in why }
+                            android.widget.Toast.makeText(
+                                getApplication(),
+                                string(if (permission) R.string.cover_needs_permission else R.string.cover_failed),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
+                    _editingPlaylist.value = null
+                }
+                .onFailure {
+                    android.util.Log.e(TAG, "edit playlist failed: ${chain(it)}", it)
+                    _editingPlaylist.value = _editingPlaylist.value?.copy(
+                        busy = false,
+                        error = string(R.string.save_playlist_failed),
+                    )
+                }
+        }
+    }
+
+    /**
+     * The cover Spotify made of an upload, put on the library's tile.
+     *
+     * The picker's own address for the picture is no use for this: it is
+     * readable only while the grant lasts, and a tile holding it stayed blank
+     * once it lapsed — and was never looked up again, since it was not empty.
+     * Spotify takes an upload and makes its sizes afterwards, so the cover is
+     * asked for a few times before giving up.
+     */
+    private fun fetchUploadedCover(uri: String) = viewModelScope.launch {
+        // A playlist that had a cover goes on answering with it until the new
+        // one is ready.
+        val previous = (_state.value as? UiState.Ready)?.playlists?.firstOrNull { it.uri == uri }?.artworkUrl
+        repeat(COVER_POLLS) {
+            delay(COVER_POLL_MS)
+            val url = Catalog.playlistCover(uri)?.takeIf { it.isNotEmpty() && it != previous } ?: return@repeat
+            coverCache[uri] = url
+            (_state.value as? UiState.Ready)?.let { ready ->
+                _state.value = ready.copy(
+                    playlists = ready.playlists.map { if (it.uri == uri) it.copy(artworkUrl = url) else it },
+                )
+            }
+            if (_playlist.value.uri == uri) _playlist.value = _playlist.value.copy(artworkUrl = url)
+            return@launch
+        }
+    }
+
+    private val COVER_POLLS = 6
+    private val COVER_POLL_MS = 1_500L
+
+    /**
+     * The picture as Spotify takes a cover: square, cut from the middle, at
+     * most 640 pixels a side, and a JPEG whose base64 fits in 256 KB.
+     */
+    private fun coverJpeg(uri: android.net.Uri): ByteArray {
+        val resolver = getApplication<android.app.Application>().contentResolver
+        val source = resolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it) }
+            ?: error("cannot read $uri")
+        val side = minOf(source.width, source.height)
+        val square = android.graphics.Bitmap.createBitmap(
+            source, (source.width - side) / 2, (source.height - side) / 2, side, side,
+        )
+        val scaled = if (side > COVER_SIDE) {
+            android.graphics.Bitmap.createScaledBitmap(square, COVER_SIDE, COVER_SIDE, true)
+        } else {
+            square
+        }
+        var quality = 90
+        while (true) {
+            val bytes = java.io.ByteArrayOutputStream().use { out ->
+                scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
+                out.toByteArray()
+            }
+            // Base64 is four characters for every three bytes.
+            if (bytes.size * 4 / 3 <= COVER_MAX_BASE64 || quality <= 30) return bytes
+            quality -= 10
+        }
+    }
+
+    private val COVER_SIDE = 640
+    private val COVER_MAX_BASE64 = 256 * 1024
 
     fun renamePlaylist(uri: String, name: String) = viewModelScope.launch {
         val trimmed = name.trim()

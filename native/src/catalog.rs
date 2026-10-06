@@ -49,6 +49,7 @@ pub fn rootlist() -> EngineResult<String> {
         let list = SelectedListContent::parse_from_bytes(&bytes)
             .map_err(|e| format!("rootlist was not a SelectedListContent: {e}"))?;
 
+        let me = session.username();
         let contents = list.contents;
         let playlists: Vec<Value> = contents
             .items
@@ -62,7 +63,14 @@ pub fn rootlist() -> EngineResult<String> {
                     .filter(|name| !name.is_empty())
                     .unwrap_or("Senza nome");
                 let artwork = meta.and_then(|meta| image_url(meta.attributes.picture()));
-                json!({ "uri": item.uri(), "name": name, "artworkUrl": artwork })
+                // Whose it is, from the index itself: the Web API answers 404
+                // for Spotify's own lists to an application in development
+                // mode, which left saved editorial playlists looking editable.
+                let mine = meta
+                    .map(|meta| meta.owner_username())
+                    .filter(|owner| !owner.is_empty())
+                    .map(|owner| owner == me);
+                json!({ "uri": item.uri(), "name": name, "artworkUrl": artwork, "mine": mine })
             })
             .collect();
 
@@ -917,5 +925,31 @@ pub fn remove_from_playlist(playlist_uri: &str, item_uri: &str) -> EngineResult<
             .await
             .map_err(|e| format!("playlist change refused: {e}"))?;
         Ok(())
+    })
+}
+
+/// Whether a playlist is the account's own, from the playlist service, or
+/// `null` when it does not say. For the lists the Web API will not describe.
+pub fn playlist_mine(uri: &str) -> EngineResult<String> {
+    let parsed = SpotifyUri::from_uri(uri).map_err(|e| format!("bad uri: {e}"))?;
+    let SpotifyUri::Playlist { id, .. } = parsed else {
+        return Ok("null".into());
+    };
+
+    let session = with_session(|s| s.clone())?;
+    block_on(async move {
+        let bytes = session
+            .spclient()
+            .get_playlist(&id)
+            .await
+            .map_err(|e| format!("playlist read failed: {e}"))?;
+        let list = SelectedListContent::parse_from_bytes(&bytes)
+            .map_err(|e| format!("playlist was not a SelectedListContent: {e}"))?;
+        let owner = list.owner_username();
+        Ok(if owner.is_empty() {
+            "null".into()
+        } else {
+            json!(owner == session.username()).to_string()
+        })
     })
 }

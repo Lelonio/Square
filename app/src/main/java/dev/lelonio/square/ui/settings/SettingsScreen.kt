@@ -1929,6 +1929,7 @@ private val SCOPES = listOf(
     "playlist-modify-private" to R.string.scope_private_playlists,
     "playlist-modify-public" to R.string.scope_public_playlists,
     "user-library-modify" to R.string.scope_library,
+    "ugc-image-upload" to R.string.scope_cover,
 )
 
 private val LICENCES = listOf(
