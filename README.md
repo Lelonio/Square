@@ -181,15 +181,19 @@ development on [Ko-fi](https://ko-fi.com/lelonio).
 
 | Project | Licence | How it is used |
 | --- | --- | --- |
-| [librespot](https://github.com/librespot-org/librespot) | MIT | The Spotify engine. `librespot-core` is vendored with local patches. |
+| [librespot](https://github.com/librespot-org/librespot) | MIT | The Spotify engine. `librespot-core`, `librespot-playback` and `librespot-connect` are vendored with local patches. |
+| [Spotify Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk) | Spotify Developer Terms | Playback for accounts Spotify refuses audio keys, through the listener's own developer app. |
 | [Metrolist](https://github.com/mostafaalagamy/Metrolist) | GPL-3.0 | Its InnerTube client, vendored as [`innertube/`](innertube/), because it is published nowhere else. Powers the signed-in YouTube Music library. |
 | [NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor) | GPL-3.0 | Anonymous YouTube Music search and stream URLs. |
 | [lossless.wtf](https://lossless.wtf) | n/a | Synced lyrics timed to the word, asked first on both sources. |
 | [LrcLib](https://lrclib.net) | n/a | Synced lyrics for the YouTube Music source, over its open API. |
+| [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) | AGPL-3.0 | The lyrics animation, ported to Compose by [@donutnotnut](https://github.com/donutnotnut) in [#50](https://github.com/Lelonio/Square/discussions/50). |
 | [Bungee](https://github.com/kupix/bungee) | MPL-2.0 | Time stretching, fetched at build time. |
 | [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) | Apache-2.0 | The glass material; the catalog components are copied with their notice. |
 | [Phosphor Icons](https://phosphoricons.com) | MIT | Every icon in the app. |
+| [ebur128](https://github.com/sdroege/ebur128) | MIT | Loudness of local files, so they play at the level of the streamed tracks. |
 | librespot-java | Apache-2.0 | The listening-event format, re-implemented from its `EventService` rather than copied. |
+| [go-librespot](https://github.com/devgianlu/go-librespot) and [go-librespot-termux](https://github.com/SEKY443/go-librespot-termux) | GPL-3.0 | The remote sleep timer's command and state fields, and the check on truncated audio keys, re-implemented from their findings rather than copied. |
 
 ## Building from source
 
@@ -199,3 +203,8 @@ in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+The lyrics view,
+[`LyricsView.kt`](app/src/main/java/dev/lelonio/square/ui/player/LyricsView.kt),
+is ported from Spicy Lyrics and stays under AGPL-3.0, combined with the rest as
+section 13 of both licences allows.
