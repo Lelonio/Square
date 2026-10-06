@@ -3856,6 +3856,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             val stamp = snapshotOf(playlist.uri) ?: return@launch
                             contextCache[playlist.uri] = entry.copy(snapshotId = stamp)
                             container.contextCache.write(playlist.uri, entry.tracks, stamp)
+                        } else if (entry != null && freshness == Freshness.SAME) launch {
+                            // Confirmed current, so it counts as just read.
+                            //
+                            // Only a full read used to date a copy. A playlist
+                            // that never changes was never read in full again,
+                            // so its copy kept the age of its first read: past
+                            // six hours one failed check had it read from the
+                            // top, past a week it expired, and as the oldest
+                            // file in the cache it was the first one dropped
+                            // to make room — the most used list, read again
+                            // most often.
+                            contextCache[playlist.uri] = entry.copy(savedAt = System.currentTimeMillis())
+                            container.contextCache.write(playlist.uri, entry.tracks, entry.snapshotId)
                         }
                     } else {
                         loadContextInto(base, playlist.uri, showProgress = cached.isEmpty())
