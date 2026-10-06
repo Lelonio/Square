@@ -302,21 +302,16 @@ fun BoxScope.GlassChoiceMenu(
             .offset { anchor },
     ) {
         val shape = RoundedCornerShape(20.dp)
-        // The bottom bar's material, from the same recipe and the same
-        // settings: liquidGlass with the listener's configuration, which paints
-        // the surface tint at the opacity they chose and lights the same rim.
-        // No film of its own on top — that was a dark card wearing glass, and
-        // the one surface in the app that ignored what the settings said.
-        //
-        // The single thing it chooses for itself is how far it blurs, which is
-        // what a pane is allowed to differ in: this one covers a page of covers
-        // rather than sitting in a pill, and the depth is what lifts its rows
-        // off them.
+        // Real glass, refracting the page it opens over, as the page's own
+        // controls do — but thick: blurred far enough that the titles below
+        // are colour and not words, and filmed in the app's own surface colour
+        // so the rows read the same on any cover. A flat opaque pane looked
+        // like a hole in the page rather than something above it.
         val config = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
         Box(
             Modifier
                 .width(CHOICE_MENU_WIDTH)
-                .softShadow(shape, elevation = 18.dp, spot = 0.3f)
+                .softShadow(shape, elevation = 22.dp, spot = 0.35f)
                 .liquidGlass(
                     config = config,
                     shape = shape,
@@ -324,13 +319,18 @@ fun BoxScope.GlassChoiceMenu(
                     highlightAlpha = 0.3f,
                     ownBackdrop = backdrop,
                 )
-                // Over the pane rather than under its rows: a background on the
-                // column only covers where the rows are, and the point of this
-                // is that the whole pane stops the page showing through.
-                .background(menuFilm(), shape)
+                .background(choiceFilm(), shape)
+                .border(1.dp, MenuEdge, shape)
                 .clip(shape),
         ) {
-            Column(Modifier.padding(vertical = 4.dp), content = content)
+            // The app's own ink: a playlist's page rebuilds the theme from its
+            // cover, and its ink — white on a dark red page — is not the ink
+            // for a pale pane.
+            androidx.compose.runtime.CompositionLocalProvider(
+                dev.lelonio.square.ui.theme.LocalInkOverride provides dev.lelonio.square.ui.theme.AppInk,
+            ) {
+                Column(Modifier.padding(vertical = 4.dp), content = content)
+            }
         }
     }
 }
@@ -366,6 +366,17 @@ fun Modifier.menuSkin(shape: androidx.compose.ui.graphics.Shape): Modifier =
         .background(MenuSurface)
         .background(menuFilm())
         .border(1.dp, MenuEdge, shape)
+
+/**
+ * The film of the in-page menu: the app's surface colour, thick enough that
+ * the titles of the songs under it do not show through its rows — at 0.72
+ * they did, sharp, over a playlist's own coloured page — and still short of
+ * opaque, so the glass's rim and the page's tint stay at its edges.
+ */
+@Composable
+private fun choiceFilm(): Color =
+    if (dev.lelonio.square.ui.theme.lightPage()) Color(0xFFF6F6FA).copy(alpha = 0.9f)
+    else Color(0xFF16161A).copy(alpha = 0.88f)
 
 @Composable
 private fun menuFilm(): Color {

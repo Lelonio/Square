@@ -176,6 +176,14 @@ private val LightInk = Color(0xFF15161A)
 val Ink: Color
     @Composable get() = LocalInkOverride.current ?: MaterialTheme.colorScheme.onSurface
 
+/**
+ * The app's own ink, whatever the page around it has done to the theme: for a
+ * surface that keeps the app's colours on a page coloured by its cover — a
+ * menu, which is a light pane on the light side and a dark one on the dark.
+ */
+val AppInk: Color
+    @Composable get() = if (lightPage()) LightInk else DarkInk
+
 /** The same, for what is said quietly. */
 val InkDim: Color
     @Composable get() = Ink.copy(alpha = 0.66f)

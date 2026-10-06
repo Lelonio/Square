@@ -102,6 +102,7 @@ import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberBackdropFreeze
 import dev.lelonio.square.ui.components.Artwork
 import dev.lelonio.square.ui.components.CHOICE_MENU_WIDTH
@@ -1402,7 +1403,10 @@ fun PlaylistScreen(
         GlassChoiceMenu(
             visible = sortOpen,
             anchor = sortAnchor.leftOf(density),
-            backdrop = listBackdrop,
+            // The page and the rows together, as the library's menu does: the
+            // rows' layer alone is transparent between them, and the glass had
+            // nothing but empty space to bend.
+            backdrop = rememberCombinedBackdrop(pageBackdrop, listBackdrop),
             onDismiss = { sortOpen = false },
         ) {
             TrackSort.entries.forEach { option ->
