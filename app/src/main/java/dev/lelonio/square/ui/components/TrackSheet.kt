@@ -1,5 +1,7 @@
 package dev.lelonio.square.ui.components
 
+import dev.lelonio.square.ui.player.GlassInk
+import dev.lelonio.square.ui.player.GlassInkDim
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -132,14 +134,14 @@ fun BoxScope.TrackSheet(
                         Text(
                             title,
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
+                            color = GlassInk,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             subtitle,
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.66f),
+                            color = GlassInkDim,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -152,7 +154,7 @@ fun BoxScope.TrackSheet(
                         .fillMaxWidth()
                         .padding(horizontal = 22.dp)
                         .size(width = 0.dp, height = 1.dp)
-                        .background(Color.White.copy(alpha = 0.12f)),
+                        .background(GlassInk.copy(alpha = 0.12f)),
                 )
 
                 actions()
@@ -168,7 +170,9 @@ fun TrackSheetAction(
     destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val tint = if (destructive) MaterialTheme.colorScheme.error else Color.White
+    // The app's ink, not white: on the light side the glass is pale, and
+    // white rows on it could not be read.
+    val tint = if (destructive) MaterialTheme.colorScheme.error else GlassInk
     Row(
         Modifier
             .fillMaxWidth()

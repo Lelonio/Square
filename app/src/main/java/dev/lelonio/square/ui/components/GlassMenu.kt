@@ -1,5 +1,6 @@
 package dev.lelonio.square.ui.components
 
+import dev.lelonio.square.ui.player.GlassInk
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -123,7 +124,9 @@ fun GlassMenuItem(
     destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val tint = if (destructive) MaterialTheme.colorScheme.error else Color.White
+    // The app's ink, not white: on the light side the menu is pale, and
+    // white rows on it could not be read.
+    val tint = if (destructive) MaterialTheme.colorScheme.error else GlassInk
     Row(
         Modifier
             .fillMaxWidth()
@@ -245,7 +248,7 @@ fun GlassIconMenuItem(
         Icon(
             icon,
             contentDescription = description,
-            tint = if (destructive) MaterialTheme.colorScheme.error else Color.White,
+            tint = if (destructive) MaterialTheme.colorScheme.error else GlassInk,
             modifier = Modifier.size(21.dp),
         )
     }
@@ -397,7 +400,7 @@ fun GlassMenuRule() {
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 5.dp)
             .height(1.dp)
-            .background(Color.White.copy(alpha = 0.10f)),
+            .background(GlassInk.copy(alpha = 0.10f)),
     )
 }
 
@@ -417,7 +420,7 @@ fun GlassChoiceItem(
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (selected) Color.White else Color.White.copy(alpha = 0.72f),
+            color = if (selected) GlassInk else GlassInk.copy(alpha = 0.72f),
             maxLines = 1,
             modifier = Modifier.weight(1f),
         )
@@ -427,7 +430,7 @@ fun GlassChoiceItem(
             Icon(
                 CheckIcon,
                 contentDescription = null,
-                tint = Color.White,
+                tint = GlassInk,
                 modifier = Modifier.size(15.dp),
             )
         }
