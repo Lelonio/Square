@@ -510,4 +510,12 @@
     <string name="suggested_songs_note">Bu çalma listesindekilere göre</string>
     <string name="refresh_suggestions">Yenile</string>
     <string name="add_to_this_playlist">Bu çalma listesine ekle</string>
+
+    <string name="followed_releases_empty">Takip ettiğin sanatçıların son on iki ayda yeni yayını yok.</string>
+    <string name="followed_releases_no_artists">Yeni albüm ve teklilerini burada görmek için sanatçıları takip et.</string>
+    <string name="followed_releases_partial">Bazı sanatçılar güncellenemedi. Tekrar deneyebilirsin.</string>
+    <string name="followed_releases_error">Yeni yayınlar yüklenemedi. Tekrar dene.</string>
+    <string name="followed_releases_connect">Takip ettiğin sanatçıların yayınlarını görmek için Ayarlar üzerinden Spotify bağlantısı kur.</string>
+    <string name="new_from_followed_artists">Sanatçılarından yeni yayınlar</string>
+    <string name="connected_device_label">Bağlı cihazı göster</string>
 </resources>

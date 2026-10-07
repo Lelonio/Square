@@ -478,6 +478,18 @@ fun SettingsScreen(
             CanvasSection(backdrop)
         }
 
+        if (shown == SettingsPage.Playback && showSpotify) item("connected-device-label") {
+            val enabled by app.preferences.showConnectedDevice.collectAsStateWithLifecycle()
+            Section(stringResource(R.string.connected_device_label)) {
+                DownloadSwitch(
+                    label = stringResource(R.string.connected_device_label),
+                    checked = enabled,
+                    onChange = app.preferences::setShowConnectedDevice,
+                    backdrop = backdrop,
+                )
+            }
+        }
+
         // The effects run on our own output, so this one holds for both backends.
         if (shown == SettingsPage.Playback && !sdkPlayback) item("effect-quality") {
             EffectQualitySection()

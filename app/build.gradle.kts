@@ -187,6 +187,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation(libs.timber)
     implementation(libs.androidx.core.ktx)
     // Installs baseline-prof.txt on first run, so the code the bar and the

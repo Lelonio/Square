@@ -524,4 +524,12 @@
     <string name="suggested_songs_note">На основе того, что есть в этом плейлисте</string>
     <string name="refresh_suggestions">Обновить</string>
     <string name="add_to_this_playlist">Добавить в этот плейлист</string>
+
+    <string name="followed_releases_empty">За последние двенадцать месяцев у исполнителей, на которых вы подписаны, нет новых релизов.</string>
+    <string name="followed_releases_no_artists">Подпишитесь на исполнителей, чтобы видеть здесь их новые альбомы и синглы.</string>
+    <string name="followed_releases_partial">Не удалось обновить некоторых исполнителей. Попробуйте ещё раз.</string>
+    <string name="followed_releases_error">Не удалось загрузить новые релизы. Попробуйте ещё раз.</string>
+    <string name="followed_releases_connect">Подключите Spotify в настройках, чтобы видеть релизы исполнителей, на которых вы подписаны.</string>
+    <string name="new_from_followed_artists">Новинки ваших исполнителей</string>
+    <string name="connected_device_label">Показывать подключённое устройство</string>
 </resources>

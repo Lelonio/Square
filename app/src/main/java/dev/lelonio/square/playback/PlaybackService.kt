@@ -1719,6 +1719,12 @@ class PlaybackService : MediaLibraryService() {
         // Saved first: this is the last chance to record where the track was,
         // and stopping is what makes the position worth having.
         runCatching { savePlayback() }
+        // Closing a controller must leave the other device playing. Media3's
+        // helper pauses every player, including our mirrored Connect player.
+        if (dev.lelonio.square.data.RemoteConnect.elsewhereActive.value) {
+            stopSelf()
+            return
+        }
         // Swiping the app away stops it. The service used to survive a swipe
         // while something was playing, on the grounds that killing audio
         // mid-track is rude, but a player that goes on after its app has been

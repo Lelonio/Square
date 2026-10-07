@@ -107,14 +107,31 @@ object LocalLibrary {
      * within a few seconds, so a song does not land on its live version.
      */
     fun match(entry: CatalogTrack, files: List<CatalogTrack>): CatalogTrack? {
-        fun close(file: CatalogTrack) = entry.durationMs <= 0 || file.durationMs <= 0 ||
-            kotlin.math.abs(file.durationMs - entry.durationMs) <= MATCH_SLACK_MS
-        val title = normal(entry.name)
-        val artist = normal(entry.artist)
-        val base = normal(bare(entry.name))
-        return files.firstOrNull { normal(it.name) == title && normal(it.artist) == artist && close(it) }
-            ?: files.firstOrNull { normal(it.name) == title && close(it) }
-            ?: files.firstOrNull { normal(bare(it.name)) == base && close(it) }
+        val parts = entry.uri.removePrefix(SPOTIFY_PREFIX).split(':')
+        fun part(index: Int): String = runCatching {
+            java.net.URLDecoder.decode(parts.getOrNull(index).orEmpty(), "UTF-8")
+        }.getOrDefault("")
+        val name = entry.name.ifBlank { part(2) }
+        val entryArtist = entry.artist.ifBlank { part(0) }
+        val entryAlbum = entry.album.ifBlank { part(1) }
+        val duration = entry.durationMs.takeIf { it > 0 }
+            ?: parts.getOrNull(3)?.toLongOrNull()?.times(1000) ?: 0L
+        fun close(file: CatalogTrack) = duration <= 0 || file.durationMs <= 0 ||
+            kotlin.math.abs(file.durationMs - duration) <= MATCH_SLACK_MS
+        val title = normal(name)
+        if (title.isEmpty()) return null
+        val artist = normal(entryArtist)
+        val album = normal(entryAlbum)
+        val base = normal(bare(name))
+        val candidates = files.filter { close(it) }
+        fun unique(matches: List<CatalogTrack>): CatalogTrack? =
+            matches.firstOrNull { artist.isNotEmpty() && album.isNotEmpty() &&
+                normal(it.artist) == artist && normal(it.album) == album }
+                ?: matches.singleOrNull()
+        val exact = candidates.filter { normal(it.name) == title }
+        return unique(exact.filter { artist.isNotEmpty() && normal(it.artist) == artist })
+            ?: unique(exact)
+            ?: unique(candidates.filter { base.isNotEmpty() && normal(bare(it.name)) == base })
     }
 
     /** Letters and digits only, without accents and case. */
@@ -167,9 +184,10 @@ object LocalLibrary {
             context.contentResolver.query(
                 collection(),
                 columns,
-                // Ringtones, notification sounds and voice recordings are all
-                // in here too, and none of them belong in a music library.
-                "${MediaStore.Audio.Media.IS_MUSIC} != 0",
+                // Downloaded MP3s are not always marked IS_MUSIC. Include indexed
+                // audio while excluding files assigned to system alerts.
+                "${MediaStore.Audio.Media.DURATION} > 0 AND ${MediaStore.Audio.Media.IS_RINGTONE} = 0 " +
+                    "AND ${MediaStore.Audio.Media.IS_NOTIFICATION} = 0 AND ${MediaStore.Audio.Media.IS_ALARM} = 0",
                 null,
                 "${MediaStore.Audio.Media.DATE_ADDED} DESC",
             )?.use { cursor ->

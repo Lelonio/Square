@@ -495,7 +495,46 @@ class LibrespotPlayer(
         kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
     )
 
+    // A fast Wi-Fi/cellular handover can invalidate Spirc without ever
+    // entering OfflineMode. Recover on the player looper, preserving the queue
+    // and position. Explicit pauses cancel the intent before a rebuild finishes.
+    private val sessionWatch = object : Runnable {
+        override fun run() {
+            if (released) return
+            if (!reconnecting && !OfflineMode.active.value) {
+                runCatching { dev.lelonio.square.data.RemoteConnect.refresh() }
+            }
+            if (!reconnecting && remote == null && !OfflineMode.active.value &&
+                (playWhenReady || wantPlay) && queue.items.isNotEmpty() && deviceGone
+            ) {
+                withDevice {
+                    if (deviceGone) return@withDevice
+                    engineQueueStale = true
+                    pushQueue(startPlaying = wantPlay || playWhenReady, positionMs = positionMs.toInt())
+                }
+            }
+            handler.postDelayed(this, 5_000L)
+        }
+    }
+
+    private val resumeHereHandler: (dev.lelonio.square.data.RemotePlayback) -> Unit = { target ->
+        handler.post {
+            if (!released && focus.requestFocus()) {
+                Thread({
+                    runCatching {
+                        NativeBridge.resumeHere(target.realContext.orEmpty(), target.uri, target.positionMs.toInt())
+                    }.onFailure {
+                        android.util.Log.e("SquarePlayer", "could not resume Connect playback here", it)
+                        handler.post { focus.abandonFocus() }
+                    }
+                }, "square-resume-here").start()
+            }
+        }
+    }
+
     init {
+        dev.lelonio.square.data.RemoteConnect.resumeHereHandler = resumeHereHandler
+        handler.postDelayed(sessionWatch, 2_000L)
         // Coming back online, the engine has to be given this queue again.
         //
         // Offline the tracks are loaded one at a time, straight into the
@@ -510,26 +549,15 @@ class LibrespotPlayer(
                 .distinctUntilChanged()
                 .collect { offline ->
                     if (offline) return@collect
-                    // On returning online, guarantee native session reconnection
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        runCatching { NativeBridge.reconnect() }
-                            .onFailure { android.util.Log.w("SquarePlayer", "auto-reconnect failed: ${it.message}") }
-                    }
                     handler.post {
                         if (released || queue.items.isEmpty()) return@post
-                        val shouldPlay = playWhenReady || wantPlay
-                        android.util.Log.i(
-                            "SquarePlayer",
-                            "back online: reconnected, restoring playback at ${positionMs}ms (shouldPlay=$shouldPlay)",
-                        )
-                        if (shouldPlay) {
-                            playbackState = Player.STATE_BUFFERING
+                        withDevice {
+                            val shouldPlay = playWhenReady || wantPlay
+                            if (shouldPlay) playbackState = Player.STATE_BUFFERING
+                            engineQueueStale = true
+                            pushQueue(startPlaying = shouldPlay, positionMs = positionMs.toInt())
                             invalidateState()
                         }
-                        // From where it is, playing if it was: this is a
-                        // handover, not a restart, and the listener should hear
-                        // the same second of the same song either side of it.
-                        pushQueue(startPlaying = shouldPlay, positionMs = positionMs.toInt())
                     }
                 }
         }
@@ -889,7 +917,7 @@ class LibrespotPlayer(
             // for a few seconds. A stopped player refuses "play" (it only logs
             // it), so the button spun forever; the track is loaded again where
             // it was paused instead.
-            if ((currentMediaItem == null || engineStopped) && queue.items.isNotEmpty()) {
+            if ((currentMediaItem == null || engineStopped || engineQueueStale) && queue.items.isNotEmpty()) {
                 engineStopped = false
                 playbackState = Player.STATE_BUFFERING
                 invalidateState()
@@ -1221,9 +1249,7 @@ class LibrespotPlayer(
         // done here at all when there is nothing to restore — activating on
         // launch would pull playback away from whatever the account is actually
         // playing on.
-        if (queue.items.isNotEmpty() && handOverNow) {
-            pushQueue(startPlaying = false, positionMs = positionMs.toInt())
-        }
+        engineQueueStale = true
         invalidateState()
     }
 
@@ -1247,7 +1273,11 @@ class LibrespotPlayer(
             return
         }
         playbackState = if (wantPlay) Player.STATE_BUFFERING else Player.STATE_READY
-        pushQueue(startPlaying = wantPlay, positionMs = positionMs.toInt())
+        engineQueueStale = true
+        // Restoring the screen must not activate this device. The initial
+        // Connect cluster may still be arriving, so an "elsewhere" guard is
+        // too early here. Only a Play pressed by the listener loads the queue.
+        if (wantPlay) pushQueue(startPlaying = true, positionMs = positionMs.toInt())
         invalidateState()
     }
 
@@ -1370,7 +1400,11 @@ class LibrespotPlayer(
 
     override fun handleRelease(): ListenableFuture<*> {
         released = true
+        if (dev.lelonio.square.data.RemoteConnect.resumeHereHandler === resumeHereHandler) {
+            dev.lelonio.square.data.RemoteConnect.resumeHereHandler = null
+        }
         watch.cancel()
+        handler.removeCallbacks(sessionWatch)
         handler.removeCallbacks(settleSkip)
         focus.release()
         engine("shutdown") { NativeBridge.shutdown() }
@@ -1603,6 +1637,7 @@ class LibrespotPlayer(
                 handler.removeCallbacks(stallWatch)
             }
             "playing" -> {
+                wantPlay = true
                 // A new track to watch, and one this side has not moved on
                 // from yet.
                 if (uri != advancedFrom) advancedFrom = null
@@ -1618,6 +1653,7 @@ class LibrespotPlayer(
                 onPlaybackActive(true)
             }
             "paused" -> {
+                if (!reconnecting && !deviceGone) wantPlay = false
                 playbackState = Player.STATE_READY
                 playWhenReady = false
                 // A pause is not a stall.
@@ -1650,6 +1686,7 @@ class LibrespotPlayer(
                 }
             }
             "stopped" -> {
+                if (!reconnecting && !deviceGone) wantPlay = false
                 playbackState = Player.STATE_IDLE
                 playWhenReady = false
                 engineStopped = true

@@ -314,12 +314,6 @@ private fun androidx.compose.foundation.layout.RowScope.BarTab(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    // The geometric bar draws the selected control once, outside the fixed
-    // tab strip, so it can travel without leaving a second icon behind.
-    if (dev.lelonio.square.ui.glass.floatingtabbar.LocalGeometricFloatingTabBar.current && selected) {
-        Spacer(Modifier.weight(1f))
-        return
-    }
     LiquidBottomTab(onClick = onClick, modifier = modifier) {
         Icon(
             icon,
@@ -462,8 +456,10 @@ fun SquareApp(
     val inPlaylists by viewModel.inPlaylists.collectAsStateWithLifecycle()
     val homeShelves by viewModel.homeShelves.collectAsStateWithLifecycle()
     val remote = elsewhere?.takeIf { elsewhereActive }
+    val showConnectedDevice by (context.applicationContext as dev.lelonio.square.SquareApplication)
+        .preferences.showConnectedDevice.collectAsStateWithLifecycle()
     val remoteLabel = stringResource(R.string.playing_on, remote?.deviceName.orEmpty())
-    val playback = remote?.asPlaybackState(remoteLabel) ?: local
+    val playback = remote?.asPlaybackState(if (showConnectedDevice) remoteLabel else "") ?: local
 
     // Commands to another device are HTTP requests, so none of them may run on
     // the main thread; the screen redraws when the cluster update comes back.
@@ -578,6 +574,7 @@ fun SquareApp(
      * Spotify's access point and means nothing on any other backend.
      */
     val newPage by viewModel.newPage.collectAsStateWithLifecycle()
+    val followedReleases by viewModel.followedReleases.collectAsStateWithLifecycle()
 
     LaunchedEffect(playback.mediaId, playback.title, playback.album, playback.artist) {
         viewModel.loadNowPlayingArt(
@@ -698,8 +695,7 @@ fun SquareApp(
 
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val addToPlaylist by viewModel.addToPlaylist.collectAsStateWithLifecycle()
-    val trackSort by viewModel.trackSort.collectAsStateWithLifecycle()
-    val trackSortDescending by viewModel.trackSortDescending.collectAsStateWithLifecycle()
+    val trackOrders by viewModel.trackOrders.collectAsStateWithLifecycle()
     val onboarded by viewModel.onboarded.collectAsStateWithLifecycle()
 
     // Asked for again from the settings, after it has already been finished.
@@ -1591,12 +1587,15 @@ fun SquareApp(
                                 )
                                 return@composable
                             }
-                            LaunchedEffect(Unit) {
+                            LaunchedEffect(webApi.connected) {
                                 viewModel.loadNewPage()
                                 viewModel.loadBrowse()
+                                viewModel.loadFollowedReleases()
                             }
                             NewScreen(
                                 page = newPage,
+                                followed = followedReleases,
+                                onRefreshFollowed = { viewModel.loadFollowedReleases(force = true) },
                                 shelves = newShelves,
                                 shelvesLoading = browseLoading,
                                 contentPadding = listPadding,
@@ -1946,10 +1945,10 @@ fun SquareApp(
                                                 viewModel.canRemoveFrom(page.uri),
                                         )
                                     },
-                                    storedSort = trackSort,
-                                    onSortChange = viewModel::setTrackSort,
-                                    storedSortDescending = trackSortDescending,
-                                    onSortDescendingChange = viewModel::setTrackSortDescending,
+                                    storedSort = trackOrders[page.uri]?.sort,
+                                    onSortChange = { viewModel.setTrackSort(page.uri, it) },
+                                    storedSortDescending = trackOrders[page.uri]?.descending ?: false,
+                                    onSortDescendingChange = { viewModel.setTrackSortDescending(page.uri, it) },
                                     onOpenItem = { item ->
                                         viewModel.openContext(
                                             item.uri,
@@ -2104,7 +2103,7 @@ fun SquareApp(
                             FloatingMiniPlayer(
                                 state = playback,
                                 positionMs = positionMs,
-                                remoteLabel = remote?.let { remoteLabel },
+                                remoteLabel = remote?.takeIf { showConnectedDevice }?.let { remoteLabel },
                                 modifier = accessoryModifier
                                     .fillMaxWidth()
                                     .then(pillGlass)
@@ -2398,6 +2397,7 @@ fun SquareApp(
                                 selectedTabIndex = selectedTabIndex,
                                 onTabSelected = { index ->
                                     viewModel.clearPageHistory()
+                                    if (tabRoutes[index] == Routes.SEARCH) searchOpen = true
                                     navController.switchTab(tabRoutes[index])
                                 },
                                 backdrop = pageBackdrop,
@@ -2417,7 +2417,7 @@ fun SquareApp(
                                 // Nothing is lit while the page on screen is not
                                 // one of these four; search is a place of its
                                 // own.
-                                indicatorVisible = activeTab in TAB_ROUTES,
+                                indicatorVisible = activeTab in tabRoutes,
                                 modifier = tabsModifier,
                                 drawContainer = !dev.lelonio.square.ui.glass.floatingtabbar.LocalGeometricFloatingTabBar.current,
                             ) {
@@ -2461,30 +2461,26 @@ fun SquareApp(
                                     viewModel.clearPageHistory()
                                     navController.switchTab(Routes.LIBRARY)
                                 }
-                                if (dev.lelonio.square.ui.glass.floatingtabbar.LocalGeometricFloatingTabBar.current) {
-                                    Spacer(Modifier.weight(1f))
-                                } else {
-                                    BarTab(
-                                        R.string.search,
-                                        // Heavy rather than solid: a filled
-                                        // magnifier reads as a blob at this size,
-                                        // and it is the one glyph here whose shape
-                                        // is the whole of its meaning.
-                                        PhosphorIcons.Bold.MagnifyingGlass,
-                                        activeTab == Routes.SEARCH,
-                                        tabAccent,
-                                        barInk,
-                                        // The circle and labelled tab share bounds,
-                                        // retaining their surfaces during the fold.
-                                        // The incoming tab inherits the capsule clip.
-                                        modifier = if (dev.lelonio.square.ui.glass.LocalLiquidBottomTabsReplica.current) {
-                                            Modifier
-                                        } else sharedSearchTab(tabsVisibility),
-                                    ) {
-                                        viewModel.clearPageHistory()
-                                        searchOpen = true
-                                        navController.switchTab(Routes.SEARCH)
-                                    }
+                                BarTab(
+                                    R.string.search,
+                                    // Heavy rather than solid: a filled
+                                    // magnifier reads as a blob at this size,
+                                    // and it is the one glyph here whose shape
+                                    // is the whole of its meaning.
+                                    PhosphorIcons.Bold.MagnifyingGlass,
+                                    activeTab == Routes.SEARCH,
+                                    tabAccent,
+                                    barInk,
+                                    // The circle and labelled tab share bounds,
+                                    // retaining their surfaces during the fold.
+                                    // The incoming tab inherits the capsule clip.
+                                    modifier = if (dev.lelonio.square.ui.glass.LocalLiquidBottomTabsReplica.current) {
+                                        Modifier
+                                    } else sharedSearchTab(tabsVisibility),
+                                ) {
+                                    viewModel.clearPageHistory()
+                                    searchOpen = true
+                                    navController.switchTab(Routes.SEARCH)
                                 }
                             }
                             }

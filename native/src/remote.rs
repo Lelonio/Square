@@ -42,6 +42,14 @@ pub fn clear() {
     WATCHING.store(false, Ordering::SeqCst);
 }
 
+/// Device registration returns a cluster even when playback has not changed.
+fn seed_initial_cluster() {
+    let Some(initial) = engine::connect_cluster() else { return; };
+    if let Ok(mut stored) = CLUSTER.lock() {
+        if stored.is_none() { *stored = Some(initial); }
+    }
+}
+
 /// Starts listening for cluster updates on `session`'s dealer.
 ///
 /// Runs for the life of the session. The stream ends when the dealer goes, which
@@ -130,6 +138,7 @@ pub fn elsewhere_active() -> bool {
 /// [`elsewhere_active`], for a caller that already knows this device's id and
 /// must not wait on the engine to be told it; see engine::elsewhere_active.
 pub fn elsewhere_active_for(own: &str) -> bool {
+    seed_initial_cluster();
     let Ok(guard) = CLUSTER.lock() else {
         return false;
     };
@@ -150,6 +159,7 @@ pub fn device_id() -> engine::EngineResult<String> {
 /// "playing here" and "playing there" are the same protocol and only the id
 /// tells them apart.
 pub fn state_json() -> String {
+    seed_initial_cluster();
     let Ok(guard) = CLUSTER.lock() else {
         return "{}".into();
     };
@@ -204,6 +214,7 @@ pub fn state_json() -> String {
 
 /// Every device the account can see, as a JSON array.
 pub fn devices_json() -> String {
+    seed_initial_cluster();
     let Ok(guard) = CLUSTER.lock() else {
         return "[]".into();
     };

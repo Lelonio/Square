@@ -159,6 +159,7 @@ interface SpotifyApi {
         @Query("include_groups") groups: String = "album,single",
         @Query("limit") limit: Int = 20,
         @Query("market") market: String? = null,
+        @Query("offset") offset: Int = 0,
     ): PageDto<AlbumDto>
 
     @GET("v1/artists/{id}/related-artists")
@@ -553,6 +554,7 @@ data class AlbumDto(
      * fills it, which is the one place it is needed.
      */
     @SerialName("album_group") val albumGroup: String? = null,
+    @SerialName("album_type") val albumType: String? = null,
     /** ISO date, and not always a full one — Spotify returns bare years too. */
     @SerialName("release_date") val releaseDate: String? = null,
     @SerialName("total_tracks") val totalTracks: Int = 0,

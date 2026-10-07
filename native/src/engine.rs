@@ -1978,6 +1978,12 @@ static LOCAL_PLAYING: AtomicBool = AtomicBool::new(false);
 ///
 /// The cluster is still the fallback, for the moment before there is a device
 /// at all.
+/// Initial Connect state before the dealer sends its first change.
+pub fn connect_cluster() -> Option<librespot_protocol::connect::Cluster> {
+    let guard = ENGINE.try_lock().ok()?;
+    guard.as_ref()?.bundle.as_ref()?.spirc().ok()?.cluster()
+}
+
 pub fn elsewhere_active() -> bool {
     // Sound coming out of this phone settles it.
     //

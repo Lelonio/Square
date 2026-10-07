@@ -263,6 +263,7 @@ class MainActivity : ComponentActivity() {
             getBooleanExtra(dev.lelonio.square.playback.EXTRA_OPEN_PLAYER, false)
 
     override fun onStart() {
+        dev.lelonio.square.data.RemoteConnect.onAppOpened()
         androidx.core.content.ContextCompat.registerReceiver(
             this,
             listenRequest,

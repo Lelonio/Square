@@ -497,4 +497,12 @@
     <string name="suggested_songs_note">Com base no que há nesta playlist</string>
     <string name="refresh_suggestions">Atualizar</string>
     <string name="add_to_this_playlist">Adicionar a esta playlist</string>
+
+    <string name="followed_releases_empty">Nenhum lançamento dos artistas que segues nos últimos doze meses.</string>
+    <string name="followed_releases_no_artists">Segue artistas para veres aqui os novos álbuns e singles.</string>
+    <string name="followed_releases_partial">Não foi possível atualizar alguns artistas. Podes tentar novamente.</string>
+    <string name="followed_releases_error">Não foi possível carregar os novos lançamentos. Tenta novamente.</string>
+    <string name="followed_releases_connect">Liga o Spotify nas definições para veres os lançamentos dos artistas que segues.</string>
+    <string name="new_from_followed_artists">Novidades dos teus artistas</string>
+    <string name="connected_device_label">Mostrar dispositivo conectado</string>
 </resources>

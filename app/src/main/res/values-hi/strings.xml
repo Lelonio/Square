@@ -512,4 +512,12 @@
     <string name="suggested_songs_note">इस प्लेलिस्ट में मौजूद गानों के आधार पर</string>
     <string name="refresh_suggestions">रीफ़्रेश करें</string>
     <string name="add_to_this_playlist">इस प्लेलिस्ट में जोड़ें</string>
+
+    <string name="followed_releases_empty">आप जिन कलाकारों को फ़ॉलो करते हैं, उनकी पिछले बारह महीनों में कोई नई रिलीज़ नहीं है।</string>
+    <string name="followed_releases_no_artists">कलाकारों को फ़ॉलो करें ताकि उनके नए एल्बम और सिंगल यहाँ दिखें।</string>
+    <string name="followed_releases_partial">कुछ कलाकारों को अपडेट नहीं किया जा सका। फिर से कोशिश करें।</string>
+    <string name="followed_releases_error">नई रिलीज़ लोड नहीं हो सकीं। फिर से कोशिश करें।</string>
+    <string name="followed_releases_connect">फ़ॉलो किए गए कलाकारों की रिलीज़ देखने के लिए सेटिंग में Spotify कनेक्ट करें।</string>
+    <string name="new_from_followed_artists">आपके कलाकारों की नई रिलीज़</string>
+    <string name="connected_device_label">कनेक्ट किया गया डिवाइस दिखाएँ</string>
 </resources>

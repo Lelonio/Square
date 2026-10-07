@@ -37,11 +37,15 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import kotlin.math.roundToInt
 import dev.lelonio.square.ui.glass.backdrop.BackdropEffectScope
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.platform.LocalDensity
@@ -72,6 +76,8 @@ import kotlin.math.sign
 
 // The tinted copy is a drawing source, not another shared-transition endpoint.
 internal val LocalLiquidBottomTabsReplica = staticCompositionLocalOf { false }
+// The geometric shell is a sibling, captured before the selector is drawn.
+internal val LocalLiquidBottomTabsSurfaceBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 @Composable
 fun LiquidBottomTabs(
@@ -119,6 +125,7 @@ fun LiquidBottomTabs(
     val isLightTheme = !isSystemInDarkTheme()
 
     val tabsBackdrop = rememberLayerBackdrop()
+    val surfaceBackdrop = LocalLiquidBottomTabsSurfaceBackdrop.current
 
     // LOCAL CHANGE: the width is read where it is used, not in composition.
     //
@@ -253,6 +260,8 @@ fun LiquidBottomTabs(
                         scaleY = scale
                     },
                 ) else Modifier)
+                // Clip the row's rectangular touch glow, not its selector siblings.
+                .clip(ContinuousCapsule())
                 .then(interactiveHighlight.modifier)
                 .height(height)
                 .fillMaxWidth()
@@ -284,7 +293,6 @@ fun LiquidBottomTabs(
                     .graphicsLayer {
                         translationX = panelOffset
                     }
-                    .then(interactiveHighlight.modifier)
                     .height(height - 8f.dp)
                     .fillMaxWidth()
                     .padding(horizontal = 4f.dp)
@@ -310,12 +318,23 @@ fun LiquidBottomTabs(
                     if (isLtr) dampedDragAnimation.value * tabWidth() + panelOffset
                     else size.width - (dampedDragAnimation.value + 1f) * tabWidth() + panelOffset
             }
-        val slotLayer: GraphicsLayerScope.() -> Unit = {
-            scaleX = dampedDragAnimation.scaleX
-            scaleY = dampedDragAnimation.scaleY
+        // Grow the sampling surface itself, rather than scaling a capture of
+        // the resting slot. Both selector layers keep the same centre and read
+        // the page at their actual expanded bounds.
+        val slotGrowth = Modifier.layout { measurable, constraints ->
             val velocity = dampedDragAnimation.velocity / 10f
-            scaleX /= 1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)
-            scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
+            val scaleX = dampedDragAnimation.scaleX /
+                (1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f))
+            val scaleY = dampedDragAnimation.scaleY *
+                (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
+            val width = constraints.maxWidth
+            val height = constraints.maxHeight
+            val expandedWidth = (width * scaleX).roundToInt().coerceAtLeast(1)
+            val expandedHeight = (height * scaleY).roundToInt().coerceAtLeast(1)
+            val child = measurable.measure(Constraints.fixed(expandedWidth, expandedHeight))
+            layout(width, height) {
+                child.placeRelative((width - expandedWidth) / 2, (height - expandedHeight) / 2)
+            }
         }
         val slotLens: BackdropEffectScope.() -> Unit = {
             val progress = dampedDragAnimation.pressProgress
@@ -326,18 +345,49 @@ fun LiquidBottomTabs(
             )
         }
 
+        val pressedBackdrop = remember(backdrop, surfaceBackdrop, dampedDragAnimation) {
+            object : Backdrop {
+                private val surfacePaint = androidx.compose.ui.graphics.Paint()
+                override val isCoordinatesDependent = true
+                override fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBackdrop(
+                    density: androidx.compose.ui.unit.Density,
+                    coordinates: androidx.compose.ui.layout.LayoutCoordinates?,
+                    layerBlock: (GraphicsLayerScope.() -> Unit)?,
+                ) {
+                    // Fade the actual shell in and out continuously. Selecting
+                    // it until progress reaches exactly zero stacked two films
+                    // on release, then removed one abruptly: a white flash.
+                    with(backdrop) { drawBackdrop(density, coordinates, layerBlock) }
+                    val progress = dampedDragAnimation.pressProgress.coerceIn(0f, 1f)
+                    if (surfaceBackdrop != null && progress > 0f) {
+                        surfacePaint.alpha = progress
+                        val canvas = drawContext.canvas
+                        canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), surfacePaint)
+                        try {
+                            with(surfaceBackdrop) { drawBackdrop(density, coordinates, layerBlock) }
+                        } finally {
+                            canvas.restore()
+                        }
+                    }
+                }
+            }
+        }
+
         // The slot: the page through it, frosted and filmed the way the tabs'
         // copy used to bring it, then the wash, the rim and the shadow.
         Box(
             slotPlacement
                 .then(interactiveHighlight.gestureModifier)
                 .then(dampedDragAnimation.modifier)
+                .height(height - 8f.dp)
+                .fillMaxWidth(1f / tabsCount)
+                .then(slotGrowth)
                 .drawBackdrop(
-                    backdrop = backdrop,
+                    backdrop = pressedBackdrop,
                     shape = { ContinuousCapsule() },
                     effects = {
                         vibrancy()
-                        blur(8f.dp.toPx())
+                        blur(8f.dp.toPx() * (1f - dampedDragAnimation.pressProgress.coerceIn(0f, 1f)))
                         slotLens()
                     },
                     highlight = {
@@ -355,10 +405,9 @@ fun LiquidBottomTabs(
                             alpha = progress
                         )
                     },
-                    layerBlock = slotLayer,
                     onDrawSurface = {
                         val progress = dampedDragAnimation.pressProgress
-                        drawRect(containerColor)
+                        drawRect(containerColor, alpha = 1f - progress)
                         drawRect(
                             indicatorColor ?: if (isLightTheme) Color.Black.copy(0.1f)
                             else Color.White.copy(0.1f),
@@ -367,8 +416,6 @@ fun LiquidBottomTabs(
                         drawRect(Color.Black.copy(alpha = 0.03f * progress))
                     }
                 )
-                .height(height - 8f.dp)
-                .fillMaxWidth(1f / tabsCount)
         )
 
         // LOCAL CHANGE: the lit tab, over its slot rather than under the wash.
@@ -379,16 +426,16 @@ fun LiquidBottomTabs(
         // here, so the slot underneath still gets them.
         Box(
             slotPlacement
+                .height(height - 8f.dp)
+                .fillMaxWidth(1f / tabsCount)
+                .then(slotGrowth)
                 .drawBackdrop(
                     backdrop = tabsBackdrop,
                     shape = { ContinuousCapsule() },
                     effects = slotLens,
                     highlight = null,
                     shadow = null,
-                    layerBlock = slotLayer,
                 )
-                .height(height - 8f.dp)
-                .fillMaxWidth(1f / tabsCount)
         )
     }
 }

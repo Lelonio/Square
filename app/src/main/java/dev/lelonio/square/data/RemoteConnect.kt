@@ -21,6 +21,14 @@ import org.json.JSONObject
  */
 object RemoteConnect {
 
+    private var playingAtOpen: Boolean? = null
+    internal var resumeHereHandler: ((RemotePlayback) -> Unit)? = null
+
+    /** Capture the choice once per foreground opening, before later pauses. */
+    fun onAppOpened() {
+        playingAtOpen = _playback.value?.playing
+    }
+
     /** This device's own id, read once the engine has a session. */
     private var ownId: String = ""
     private var sdkId: String? = null
@@ -108,7 +116,11 @@ object RemoteConnect {
         // the app believed the account and not its own ears.
         val elsewhere = NativeBridge.playbackElsewhere && active != sdkId
         _elsewhere.value = elsewhere
-        _playback.value = playback?.takeIf { elsewhere }
+        val remote = playback?.takeIf { elsewhere }
+        if (playingAtOpen == null && remote != null && remote.uri.isNotEmpty()) {
+            playingAtOpen = remote.playing
+        }
+        _playback.value = remote
         // The SDK adapter already owns its queue; it must not be adopted by librespot.
         _here.value = playback?.takeIf { !elsewhere && active.isNotEmpty() && active != sdkId }
     }
@@ -173,6 +185,7 @@ object RemoteConnect {
 
     /** Forgets everything. For a session ending, where none of it is true any more. */
     fun clear() {
+        playingAtOpen = null
         sdkId = null
         _elsewhere.value = false
         _playback.value = null
@@ -202,7 +215,17 @@ object RemoteConnect {
     // device on the other end is written to obey. Each one blocks on a request
     // to the access point, so none of them may be called from the main thread.
 
-    fun play(deviceId: String) = command(deviceId, "resume")
+    fun play(deviceId: String) {
+        val remote = _playback.value
+        if (playingAtOpen == false && remote?.deviceId == deviceId && !remote.playing) {
+            playingAtOpen = null
+            val handler = resumeHereHandler
+            if (handler != null) handler(remote)
+            else NativeBridge.resumeHere(remote.realContext.orEmpty(), remote.uri, remote.positionMs.toInt())
+            return
+        }
+        command(deviceId, "resume")
+    }
 
     fun pause(deviceId: String) = command(deviceId, "pause")
 

@@ -17,11 +17,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import dev.lelonio.square.ui.glass.LocalLiquidBottomTabsSurfaceBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -74,6 +80,7 @@ internal fun SharedTransitionScope.GeometricFloatingTabBar(
     val tabsCount = scope.tabs.size.coerceAtLeast(1)
     val ownsSelectedSlot = selected?.key == selectedTabKey
     val sharedScope = this
+    val surfaceBackdrop = rememberLayerBackdrop()
 
     // This visibility scope only satisfies the existing content contract. It
     // never changes visibility and does not participate in the fold.
@@ -83,7 +90,8 @@ internal fun SharedTransitionScope.GeometricFloatingTabBar(
             modifier = Modifier.fillMaxWidth(),
             content = {
                 // 0: the single navigation surface.
-                Box(Modifier.background(colors.backgroundColor, shapes.tabBarShape)
+                Box(Modifier.layerBackdrop(surfaceBackdrop)
+                    .background(colors.backgroundColor, shapes.tabBarShape)
                     .clip(shapes.tabBarShape).then(tabBarContentModifier))
                 // 1: resting-width tabs, fading into the selected icon.
                 Box(Modifier.graphicsLayer {
@@ -92,15 +100,27 @@ internal fun SharedTransitionScope.GeometricFloatingTabBar(
                     val p = fold.value
                     val width = lerp(lerp(size.width, size.height, search.value), size.height, p)
                     val contentScope = this
-                    clipRect(right = width) { contentScope.drawContent() }
+                    // At rest the pressed selector may protrude beyond the
+                    // capsule. Clip only while tabs disappear into the fold.
+                    if (p == 0f && search.value == 0f) {
+                        contentScope.drawContent()
+                    } else {
+                        val outline = Path().apply {
+                            addRoundRect(RoundRect(0f, 0f, width, size.height, CornerRadius(size.height / 2f)))
+                        }
+                        clipPath(outline) { contentScope.drawContent() }
+                    }
                 }.then(if (isInline || searchMode) Modifier.clearAndSetSemantics {} else Modifier)) {
-                    CompositionLocalProvider(LocalGeometricFloatingTabBar provides true) {
+                    CompositionLocalProvider(
+                        LocalGeometricFloatingTabBar provides true,
+                        LocalLiquidBottomTabsSurfaceBackdrop provides surfaceBackdrop,
+                    ) {
                         sharedScope.expandedTabs(Modifier.fillMaxWidth(), visibility)
                     }
                 }
-                // 2: one selected control, including its label at rest.
+                // 2: selected control only during the fold; resting tabs own their ink.
                 Box(Modifier.graphicsLayer {
-                    alpha = if (ownsSelectedSlot) 1f else maxOf(fold.value, search.value)
+                    alpha = maxOf(fold.value, search.value)
                 }.then(if (isInline || searchMode) Modifier.clickable {
                     if (isInline) onExpand() else selected?.onClick?.invoke()
                 } else Modifier).then(if (!ownsSelectedSlot && !isInline && !searchMode) Modifier.clearAndSetSemantics {} else Modifier)) {
@@ -114,9 +134,9 @@ internal fun SharedTransitionScope.GeometricFloatingTabBar(
                 Box(Modifier.graphicsLayer { alpha = maxOf(fold.value, search.value) }
                     .background(colors.backgroundColor, shapes.standaloneTabShape)
                     .clip(shapes.standaloneTabShape).then(tabBarContentModifier))
-                // 4: one magnifier and label, sharing the surface's geometry.
-                Box(Modifier.graphicsLayer { alpha = 1f - search.value * (1f - fold.value) }
-                    .clickable(enabled = !searchMode || isInline) { searchTab?.onClick?.invoke() }
+                // 4: detached search control. At rest the fifth tab owns taps and drags.
+                Box(Modifier.graphicsLayer { alpha = maxOf(fold.value, search.value) * (1f - search.value * (1f - fold.value)) }
+                    .then(if (isInline || searchMode) Modifier.clickable(enabled = !searchMode || isInline) { searchTab?.onClick?.invoke() } else Modifier)
                     .then(if (searchMode && !isInline) Modifier.clearAndSetSemantics {} else Modifier)) {
                     GeometricTabContent(
                         icon = { searchTab?.icon?.invoke() },

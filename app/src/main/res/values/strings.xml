@@ -559,4 +559,12 @@
     <string name="suggested_songs_note">Based on what is in this playlist</string>
     <string name="refresh_suggestions">Refresh</string>
     <string name="add_to_this_playlist">Add to this playlist</string>
+
+    <string name="followed_releases_empty">No releases in the last twelve months from the artists you follow.</string>
+    <string name="followed_releases_no_artists">Follow artists to see their new albums and singles here.</string>
+    <string name="followed_releases_partial">Some artists could not be updated. You can retry.</string>
+    <string name="followed_releases_error">Could not load new releases. Please retry.</string>
+    <string name="followed_releases_connect">Connect Spotify in Settings to see releases from artists you follow.</string>
+    <string name="new_from_followed_artists">New from Your Artists</string>
+    <string name="connected_device_label">Show connected device</string>
 </resources>

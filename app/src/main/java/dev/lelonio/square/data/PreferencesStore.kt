@@ -17,24 +17,36 @@ class PreferencesStore(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
 
-    private val _trackSort = MutableStateFlow(prefs.getString(KEY_TRACK_SORT, null))
+    data class TrackOrder(val sort: String? = null, val descending: Boolean = false)
 
-    /** How the detail screen's track list is ordered; null until first chosen. */
-    val trackSort: StateFlow<String?> = _trackSort.asStateFlow()
+    private val _trackOrders = MutableStateFlow(
+        prefs.all.keys.filter { it.startsWith("track_order:") }.associate { key ->
+            val uri = key.removePrefix("track_order:")
+            uri to TrackOrder(prefs.getString(key, null), prefs.getBoolean("track_direction:$uri", false))
+        },
+    )
+    val trackOrders = _trackOrders.asStateFlow()
 
-    fun setTrackSort(value: String) {
-        _trackSort.value = value
-        prefs.edit().putString(KEY_TRACK_SORT, value).apply()
+    fun setTrackSort(uri: String, value: String) {
+        val previous = _trackOrders.value[uri] ?: TrackOrder()
+        _trackOrders.value = _trackOrders.value + (uri to previous.copy(sort = value))
+        prefs.edit().putString("track_order:$uri", value).apply()
     }
 
-    private val _trackSortDescending = MutableStateFlow(prefs.getBoolean(KEY_TRACK_DESC, false))
+    fun setTrackSortDescending(uri: String, value: Boolean) {
+        val previous = _trackOrders.value[uri] ?: TrackOrder()
+        _trackOrders.value = _trackOrders.value + (uri to previous.copy(descending = value))
+        // Persist a sort key even when only the direction was changed.
+        prefs.edit().putString("track_order:$uri", previous.sort ?: "ORIGINAL")
+            .putBoolean("track_direction:$uri", value).apply()
+    }
 
-    /** Whether that order runs backwards; the direction is part of the sort. */
-    val trackSortDescending: StateFlow<Boolean> = _trackSortDescending.asStateFlow()
+    private val _showConnectedDevice = MutableStateFlow(prefs.getBoolean("show_connected_device", true))
+    val showConnectedDevice = _showConnectedDevice.asStateFlow()
 
-    fun setTrackSortDescending(value: Boolean) {
-        _trackSortDescending.value = value
-        prefs.edit().putBoolean(KEY_TRACK_DESC, value).apply()
+    fun setShowConnectedDevice(value: Boolean) {
+        _showConnectedDevice.value = value
+        prefs.edit().putBoolean("show_connected_device", value).apply()
     }
 
     /**

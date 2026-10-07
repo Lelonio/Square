@@ -26,19 +26,24 @@ internal object GatewayTracks {
      */
     private fun localTrack(data: JSONObject, addedAt: String?): CatalogTrack? {
         val uri = data.optString("uri").takeIf(LocalLibrary::isSpotifyLocal) ?: return null
+        val parts = uri.removePrefix(LocalLibrary.SPOTIFY_PREFIX).split(':')
+        fun tag(key: String, index: Int): String = data.optString(key)
+            .takeUnless { it.isBlank() || it == "null" }
+            ?: runCatching { java.net.URLDecoder.decode(parts.getOrNull(index).orEmpty(), "UTF-8") }.getOrDefault("")
         return CatalogTrack(
             uri = uri,
-            name = data.optString("name"),
-            artist = data.optString("artistName"),
-            album = data.optString("albumName"),
-            durationMs = data.optJSONObject("localTrackDuration")?.optLong("totalMilliseconds") ?: 0L,
+            name = tag("name", 2),
+            artist = tag("artistName", 0),
+            album = tag("albumName", 1),
+            durationMs = data.optJSONObject("localTrackDuration")?.optLong("totalMilliseconds")
+                ?.takeIf { it > 0 } ?: parts.getOrNull(3)?.toLongOrNull()?.times(1000) ?: 0L,
             addedAt = addedAt,
         )
     }
 
     fun track(data: JSONObject?, addedAt: String?): CatalogTrack? {
         if (data == null) return null
-        if (data.optString("__typename") == "LocalTrack") return localTrack(data, addedAt)
+        if (LocalLibrary.isSpotifyLocal(data.optString("uri"))) return localTrack(data, addedAt)
         val uri = data.optString("uri").takeIf { it.startsWith("spotify:track:") } ?: return null
         if (data.optJSONObject("playability")?.optBoolean("playable", true) == false) return null
 

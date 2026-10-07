@@ -65,6 +65,8 @@ import dev.lelonio.square.ui.theme.InkDim
 @Composable
 fun NewScreen(
     page: MainViewModel.NewPage,
+    followed: MainViewModel.FollowedReleaseState,
+    onRefreshFollowed: () -> Unit,
     /**
      * Spotify's own rows, as it lays them out for this account.
      *
@@ -82,23 +84,14 @@ fun NewScreen(
     /** The same menu every other list of songs in the app opens. */
     onSongMenu: (CatalogTrack) -> Unit,
 ) {
-    val empty = page.hero.isEmpty() && page.thisWeek.isEmpty() &&
-        page.recent.isEmpty() && shelves.isEmpty()
-    if (empty) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (page.loading) {
-                CircularProgressIndicator(strokeWidth = 2.dp)
-            } else {
-                Text(
-                    stringResource(R.string.nothing_here),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = InkDim,
-                )
-            }
+    if ((followed.loading && followed.albums.isEmpty()) ||
+        (page.loading && page.hero.isEmpty() && page.songs.isEmpty() && shelves.isEmpty() && followed.albums.isEmpty())
+    ) {
+        Box(Modifier.fillMaxSize().padding(contentPadding), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
         return
     }
-
     LazyColumn(
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding() + 8.dp,
@@ -123,6 +116,51 @@ fun NewScreen(
                 Heading(stringResource(R.string.new_songs), more = true)
             }
             item(contentType = "songs") { SongPages(page.songs, onSongMenu, onPlaySong) }
+        }
+
+        if (followed.albums.isNotEmpty() || followed.error != null || followed.loaded) {
+            item(key = "followedHeading", contentType = "shelfHeading") {
+                Heading(stringResource(R.string.new_from_followed_artists))
+            }
+            if (followed.albums.isNotEmpty()) {
+                item(key = "followedShelf", contentType = "shelfRow") {
+                    Shelf(
+                        followed.albums.map { album ->
+                            SearchItem(
+                                uri = album.uri ?: "spotify:album:${album.id}",
+                                title = album.name,
+                                subtitle = album.artists.joinToString(", ") { it.name },
+                                artworkUrl = album.images.firstOrNull()?.url,
+                            )
+                        },
+                        onOpen,
+                    )
+                }
+            }
+            if (followed.error != null || followed.failedArtists > 0 || followed.albums.isEmpty()) {
+                item(key = "followedStatus", contentType = "status") {
+                    Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                        Text(
+                            followed.error ?: stringResource(
+                                when {
+                                    followed.failedArtists > 0 -> R.string.followed_releases_partial
+                                    followed.artistCount == 0 -> R.string.followed_releases_no_artists
+                                    else -> R.string.followed_releases_empty
+                                },
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = InkDim,
+                        )
+                        if (followed.error != null || followed.failedArtists > 0) {
+                            Text(
+                                stringResource(R.string.retry),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.pressable(onRefreshFollowed).padding(vertical = 12.dp),
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         // The outline of what is coming, while it is coming.

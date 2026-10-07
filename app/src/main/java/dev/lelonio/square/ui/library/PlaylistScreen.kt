@@ -309,8 +309,11 @@ fun PlaylistScreen(
     // this sequence for this listener a minute ago, and sorting it by title
     // throws away the only thing that made it a radio rather than a bag of
     // songs. So the stored preference does not reach it.
+    val audioPermissionNeeded = state.tracks.any {
+        dev.lelonio.square.data.LocalLibrary.isSpotifyLocal(it.uri)
+    } && !dev.lelonio.square.data.LocalLibrary.granted(LocalContext.current)
     val isStation = state.uri?.startsWith("spotify:station:") == true
-    var sort by remember(storedSort, isStation) {
+    var sort by remember(state.uri, storedSort, isStation) {
         mutableStateOf(
             if (isStation) {
                 TrackSort.ORIGINAL
@@ -319,7 +322,7 @@ fun PlaylistScreen(
             },
         )
     }
-    var descending by remember(storedSortDescending) { mutableStateOf(storedSortDescending) }
+    var descending by remember(state.uri, storedSortDescending) { mutableStateOf(storedSortDescending) }
     var sortOpen by remember { mutableStateOf(false) }
 
     // Whether the rows on screen are the playlist itself, in its order. Sorting
@@ -843,6 +846,14 @@ fun PlaylistScreen(
                             }
                         },
                     )
+                }
+            }
+
+            if (audioPermissionNeeded) item(key = "localAudioPermission", contentType = "status") {
+                Column(Modifier.padding(horizontal = 24.dp, vertical = 16.dp)) {
+                    LiquidButton(onClick = onAskLocalPermission, backdrop = pageBackdrop, contentPadding = 18.dp) {
+                        Text(stringResource(R.string.local_files_allow))
+                    }
                 }
             }
 

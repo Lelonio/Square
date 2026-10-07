@@ -333,6 +333,59 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val newPage: StateFlow<NewPage> = _newPage.asStateFlow()
     private var newPageJob: Job? = null
 
+    data class FollowedReleaseState(
+        val albums: List<dev.lelonio.square.data.AlbumDto> = emptyList(),
+        val loading: Boolean = false,
+        val loaded: Boolean = false,
+        val artistCount: Int = 0,
+        val completed: Int = 0,
+        val failedArtists: Int = 0,
+        val error: String? = null,
+    )
+    private val followedReleaseRepository by lazy {
+        dev.lelonio.square.data.FollowedReleases(container.api, java.io.File(getApplication<SquareApplication>().cacheDir, "followed-releases"))
+    }
+    private val _followedReleases = MutableStateFlow(FollowedReleaseState())
+    val followedReleases = _followedReleases.asStateFlow()
+    private var followedReleaseJob: Job? = null
+    private var followedReleaseLoadedAt = 0L
+
+    fun loadFollowedReleases(force: Boolean = false) {
+        if (container.activeBackend.id != BackendId.SPOTIFY || followedReleaseJob?.isActive == true) return
+        if (!force && _followedReleases.value.loaded && System.currentTimeMillis() - followedReleaseLoadedAt < 15 * 60 * 1_000L) return
+        if (!container.webApi.isReady) {
+            _followedReleases.value = FollowedReleaseState(error = string(R.string.followed_releases_connect))
+            return
+        }
+        _followedReleases.value = _followedReleases.value.copy(loading = true, completed = 0, error = null)
+        followedReleaseJob = viewModelScope.launch {
+            try {
+                val result = followedReleaseRepository.load(force) { done, total ->
+                    _followedReleases.value = _followedReleases.value.copy(completed = done, artistCount = total)
+                }
+                _followedReleases.value = FollowedReleaseState(
+                    albums = result.albums, loaded = true, artistCount = result.artistCount,
+                    failedArtists = result.failedArtists,
+                )
+                followedReleaseLoadedAt = if (result.failedArtists == 0) System.currentTimeMillis() else 0L
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "followed releases unavailable: ${describe(e)}")
+                _followedReleases.value = _followedReleases.value.copy(loading = false, error = string(
+                    if (e is HttpException && e.code() in listOf(401, 403)) R.string.followed_releases_connect else R.string.followed_releases_error,
+                ))
+            }
+        }
+    }
+
+    private fun resetFollowedReleases() {
+        followedReleaseJob?.cancel()
+        followedReleaseJob = null
+        followedReleaseLoadedAt = 0L
+        _followedReleases.value = FollowedReleaseState()
+    }
+
     /**
      * Fills the new-releases tab, once.
      *
@@ -1727,6 +1780,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun disconnectWebApi() {
+        resetFollowedReleases()
         container.webApi.disconnect()
         _webApi.value = _webApi.value.copy(connected = false, error = null)
         // Not needsSetup: search comes from Spotify's own gateway now, and
@@ -2069,6 +2123,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         loginJob?.cancel()
         SpotifyOAuth.cancelActiveAuthorization()
         container.tokenStore.clear()
+        resetFollowedReleases()
         container.webApi.disconnect()
         container.spotifySdkAccount.disconnect()
         getApplication<android.app.Application>().getSharedPreferences("square_keys", android.content.Context.MODE_PRIVATE)
@@ -2097,6 +2152,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Starts over on the newly chosen source; see the note in `init`. */
     private fun reload() {
+        resetFollowedReleases()
         inFlight?.cancel()
         feedJob?.cancel()
         searchJob?.cancel()
@@ -2445,16 +2501,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** How the detail screen sorts its tracks; remembered between visits. */
-    val trackSort: StateFlow<String?> get() = container.preferences.trackSort
+    val trackOrders get() = container.preferences.trackOrders
 
-    fun setTrackSort(value: String) = container.preferences.setTrackSort(value)
+    fun setTrackSort(uri: String?, value: String) {
+        uri?.let { container.preferences.setTrackSort(it, value) }
+    }
 
-    val trackSortDescending: StateFlow<Boolean> get() = container.preferences.trackSortDescending
+    fun setTrackSortDescending(uri: String?, value: Boolean) {
+        uri?.let { container.preferences.setTrackSortDescending(it, value) }
+    }
 
-    fun setTrackSortDescending(value: Boolean) =
-        container.preferences.setTrackSortDescending(value)
-
-    /** False until the welcome tutorial has been finished once. */
     val onboarded: StateFlow<Boolean> get() = container.preferences.onboarded
 
     fun setOnboarded(value: Boolean) = container.preferences.setOnboarded(value)
@@ -4060,7 +4116,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Called once the listener has answered the system's permission dialog. */
     fun onLocalPermissionAnswered() {
         val open = _playlist.value
-        if (open.uri != LocalLibrary.CONTEXT_URI) return
+        if (open.uri != LocalLibrary.CONTEXT_URI) {
+            viewModelScope.launch {
+                deviceFiles = LocalLibrary.tracks(getApplication())
+                val current = _playlist.value
+                publishPlaylist(current)
+            }
+            return
+        }
         openLocalFiles(
             CatalogPlaylist(
                 uri = open.uri.orEmpty(),
@@ -5549,7 +5612,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // The other source follows through its own account.
         if (!uri.startsWith("spotify:")) {
             runCatching { container.activeBackend.setFollowing(uri, !was) }
-                .onSuccess { loadFollowedArtists() }
+                .onSuccess {
+                    resetFollowedReleases()
+                    loadFollowedArtists()
+                }
                 .onFailure {
                     android.util.Log.e(TAG, "follow failed: ${chain(it)}", it)
                     if (_playlist.value.uri == uri) {
@@ -5573,7 +5639,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         runCatching {
             if (was) container.api.unfollowArtists(ids = id) else container.api.followArtists(ids = id)
         }
-            .onSuccess { loadFollowedArtists() }
+            .onSuccess {
+                resetFollowedReleases()
+                loadFollowedArtists()
+            }
             .onFailure {
                 android.util.Log.e(TAG, "follow failed: ${chain(it)}", it)
                 if (_playlist.value.uri == uri) {
@@ -5649,23 +5718,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return@launch
         }
         runCatching {
-            val gathered = mutableListOf<SearchItem>()
-            var after: String? = null
-            // Cursor-paged, and an account can follow hundreds: walk it to the
-            // end rather than showing the first page and calling it the list.
-            while (true) {
-                val page = container.api.followedArtists(after = after).artists
-                gathered += page.items.mapNotNull { artist ->
-                    SearchItem(
-                        uri = artist.uri ?: return@mapNotNull null,
-                        title = artist.name,
-                        subtitle = "",
-                        artworkUrl = artist.images.firstOrNull()?.url,
-                    )
-                }
-                after = page.cursors?.after?.takeIf { page.items.isNotEmpty() } ?: break
-            }
-            gathered.distinctBy { it.uri }.sortedBy { it.title.lowercase() }
+            followedReleaseRepository.artists().mapNotNull { artist ->
+                SearchItem(
+                    uri = artist.uri ?: return@mapNotNull null,
+                    title = artist.name, subtitle = "",
+                    artworkUrl = artist.images.firstOrNull()?.url,
+                )
+            }.sortedBy { it.title.lowercase() }
         }
             .onSuccess { _followedArtists.value = it }
             .onFailure {

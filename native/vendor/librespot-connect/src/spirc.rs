@@ -78,6 +78,8 @@ struct SpircTask {
     active: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// LOCAL PATCH: kept in step with what this device is playing; see [`Spirc`].
     playing: std::sync::Arc<std::sync::Mutex<PlayingHere>>,
+    /// Latest cluster, including the initial device registration response.
+    cluster: std::sync::Arc<std::sync::Mutex<Option<Cluster>>>,
     connect_established: bool,
 
     play_request_id: Option<u64>,
@@ -184,6 +186,8 @@ pub struct Spirc {
     /// before. The owner of the handle needs the current answer to keep a
     /// queue of its own in step with the one being played.
     playing: std::sync::Arc<std::sync::Mutex<PlayingHere>>,
+    /// Latest cluster, including the initial device registration response.
+    cluster: std::sync::Arc<std::sync::Mutex<Option<Cluster>>>,
 }
 
 /// LOCAL PATCH: a snapshot of what the device is playing, for its owner.
@@ -210,6 +214,10 @@ pub struct PlayingHere {
 }
 
 impl Spirc {
+    pub fn cluster(&self) -> Option<Cluster> {
+        self.cluster.lock().ok().and_then(|cluster| cluster.clone())
+    }
+
     /// LOCAL PATCH: whether this device currently holds the account's playback.
     pub fn is_active(&self) -> bool {
         self.active.load(std::sync::atomic::Ordering::SeqCst)
@@ -335,6 +343,7 @@ impl Spirc {
             // LOCAL PATCH: replaced with the handle's own the moment it exists.
             active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             playing: std::sync::Arc::new(std::sync::Mutex::new(PlayingHere::default())),
+            cluster: std::sync::Arc::new(std::sync::Mutex::new(None)),
 
             spirc_id,
         };
@@ -344,10 +353,14 @@ impl Spirc {
         let playing = std::sync::Arc::new(std::sync::Mutex::new(PlayingHere::default()));
         task.playing = playing.clone();
 
+        let cluster = std::sync::Arc::new(std::sync::Mutex::new(None));
+        task.cluster = cluster.clone();
+
         let spirc = Spirc {
             commands: cmd_tx,
             active,
             playing,
+            cluster,
         };
 
         let initial_volume = task.connect_state.device_info().volume;
@@ -1107,6 +1120,9 @@ impl SpircTask {
             self.session.device_id()
         );
 
+        if let Ok(mut snapshot) = self.cluster.lock() {
+            *snapshot = Some(cluster.clone());
+        }
         self.connect_established = true;
 
         let same_session = cluster.player_state.session_id == self.session.session_id()
@@ -1196,6 +1212,9 @@ impl SpircTask {
         );
 
         if let Some(cluster) = cluster_update.cluster.take() {
+            if let Ok(mut snapshot) = self.cluster.lock() {
+                *snapshot = Some(cluster.clone());
+            }
             let became_inactive = self.connect_state.is_active()
                 && cluster.active_device_id != self.session.device_id();
             if became_inactive {

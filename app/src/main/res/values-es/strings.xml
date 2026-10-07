@@ -503,4 +503,12 @@
     <string name="suggested_songs_note">Según lo que hay en esta playlist</string>
     <string name="refresh_suggestions">Actualizar</string>
     <string name="add_to_this_playlist">Añadir a esta playlist</string>
+
+    <string name="followed_releases_empty">No hay lanzamientos de los artistas que sigues en los últimos doce meses.</string>
+    <string name="followed_releases_no_artists">Sigue a artistas para ver aquí sus nuevos álbumes y sencillos.</string>
+    <string name="followed_releases_partial">No se pudieron actualizar algunos artistas. Puedes reintentarlo.</string>
+    <string name="followed_releases_error">No se pudieron cargar los nuevos lanzamientos. Inténtalo de nuevo.</string>
+    <string name="followed_releases_connect">Conecta Spotify en Ajustes para ver los lanzamientos de los artistas que sigues.</string>
+    <string name="new_from_followed_artists">Novedades de tus artistas</string>
+    <string name="connected_device_label">Mostrar dispositivo conectado</string>
 </resources>
