@@ -2,7 +2,7 @@
   <img src="docs/square.png" width="112" alt="">
 </p>
 
-<h1 align="center">Square</h1>
+<h1 align="center">Square</h1
 
 <p align="center">
   An unofficial Android music client for Spotify Premium and YouTube Music,
@@ -105,6 +105,10 @@
   and Turkish, chosen independently of the phone's own.
 
 ## Download
+
+[![Get it on Orion Store](https://raw.githubusercontent.com/RookieEnough/Orion-Store/refs/heads/main/assets/orion-badge.png)](https://rookieenough.github.io/Orion-Data/redirect.html?id=square)
+
+Or
 
 Download the APK from the [latest release](https://github.com/Lelonio/Square/releases/latest)
 and install it. Square needs Android 8.0 or later.
