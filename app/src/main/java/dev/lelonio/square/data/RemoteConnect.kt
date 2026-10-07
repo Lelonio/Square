@@ -101,8 +101,21 @@ object RemoteConnect {
             android.util.Log.i(TAG, "this device is $ownId")
         }
 
-        _devices.value = runCatching { parseDevices(NativeBridge.remoteDevices()) }
+        val listed = runCatching { parseDevices(NativeBridge.remoteDevices()) }
             .getOrDefault(emptyList())
+        // The account's word on which device is active is the cluster's, and the
+        // account does not tell a device about its own playing: after playback
+        // is taken back here, the cluster goes on naming the device it came
+        // from. The list then showed that device as current, this phone could
+        // not be told it was, and tapping the other device did nothing because
+        // it was "already" playing there. When the engine is the one playing,
+        // this phone is the active device, whatever the cluster still says.
+        val playingHere = !NativeBridge.playbackElsewhere
+        _devices.value = if (playingHere && listed.any { it.active && !it.isThisPhone }) {
+            listed.map { it.copy(active = it.id == ownId) }
+        } else {
+            listed
+        }
 
         val state = runCatching { JSONObject(NativeBridge.remoteState()) }.getOrNull()
         val active = state?.optString("activeDevice").orEmpty()
@@ -142,6 +155,17 @@ object RemoteConnect {
             shuffle = state.optBoolean("shuffle"),
             repeatContext = state.optBoolean("repeatContext"),
             repeatTrack = state.optBoolean("repeatTrack"),
+            next = state.optJSONArray("next")?.let { array ->
+                (0 until array.length()).mapNotNull { index ->
+                    val track = array.optJSONObject(index) ?: return@mapNotNull null
+                    RemoteTrack(
+                        uri = track.optString("uri").ifEmpty { return@mapNotNull null },
+                        title = track.optString("title"),
+                        artist = track.optString("artist"),
+                        coverUri = track.optString("coverUri"),
+                    )
+                }
+            }.orEmpty(),
         )
     }
 
@@ -174,13 +198,28 @@ object RemoteConnect {
 
     /** What was learned about this track earlier, over what arrived now. */
     private fun RemotePlayback.filled(): RemotePlayback {
-        val earlier = known[uri] ?: return this
+        val upcoming = next.map { track -> knownNext[track.uri]?.let { track.filledFrom(it) } ?: track }
+        val earlier = known[uri] ?: return copy(next = upcoming)
         return copy(
             title = title.ifEmpty { earlier.title },
             artist = artist.ifEmpty { earlier.artist },
             album = album.ifEmpty { earlier.album },
             coverUri = coverUri.ifEmpty { earlier.coverUri },
+            next = upcoming,
         )
+    }
+
+    /** The upcoming tracks looked up so far, kept by uri like [known]. */
+    private val knownNext = mutableMapOf<String, RemoteTrack>()
+
+    /**
+     * What was looked up about the upcoming tracks, kept and put on the
+     * playback shown now; see [describe], which does the same for the current one.
+     */
+    fun describeNext(tracks: List<RemoteTrack>) {
+        tracks.forEach { knownNext[it.uri] = it }
+        val current = _playback.value ?: return
+        _playback.value = current.filled()
     }
 
     /** Forgets everything. For a session ending, where none of it is true any more. */
@@ -307,6 +346,8 @@ data class RemotePlayback(
     val shuffle: Boolean,
     val repeatContext: Boolean,
     val repeatTrack: Boolean,
+    /** What plays after it there, in that device's order; see remote.rs. */
+    val next: List<RemoteTrack> = emptyList(),
 ) {
     /**
      * The cover as something that can actually be fetched.
@@ -352,3 +393,25 @@ data class RemoteDevice(
     val active: Boolean,
     val isThisPhone: Boolean,
 )
+
+/** One of the tracks coming up on another device. */
+data class RemoteTrack(
+    val uri: String,
+    val title: String,
+    val artist: String,
+    val coverUri: String,
+) {
+    /** See [RemotePlayback.coverUrl]. */
+    val coverUrl: String
+        get() = when {
+            coverUri.isEmpty() -> ""
+            coverUri.startsWith("http") -> coverUri
+            else -> "https://i.scdn.co/image/${coverUri.substringAfterLast(':')}"
+        }
+
+    internal fun filledFrom(earlier: RemoteTrack) = copy(
+        title = title.ifEmpty { earlier.title },
+        artist = artist.ifEmpty { earlier.artist },
+        coverUri = coverUri.ifEmpty { earlier.coverUri },
+    )
+}

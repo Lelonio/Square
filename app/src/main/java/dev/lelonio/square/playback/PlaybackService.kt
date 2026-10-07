@@ -1067,6 +1067,40 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /** Upcoming tracks already asked about, so a run of updates asks once. */
+    private val askedNext = mutableSetOf<String>()
+
+    /**
+     * Names the tracks coming up on the other device that it did not name.
+     *
+     * The queue shown for another device is what it publishes as next, and a
+     * client that leaves the title off the current track leaves it off those
+     * too. One catalogue read for all of them; a local file is described by its
+     * own URI, which spells out its tags.
+     */
+    private suspend fun describeRemoteNext(playback: dev.lelonio.square.data.RemotePlayback) {
+        val unnamed = playback.next.filter { it.title.isEmpty() && it.uri !in askedNext }
+        if (unnamed.isEmpty()) return
+        askedNext += unnamed.map { it.uri }
+        val local = unnamed.filter { dev.lelonio.square.data.LocalLibrary.isSpotifyLocal(it.uri) }.map { track ->
+            val parts = track.uri.removePrefix(dev.lelonio.square.data.LocalLibrary.SPOTIFY_PREFIX).split(':')
+                .map { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
+            track.copy(artist = parts.getOrNull(0).orEmpty(), title = parts.getOrNull(2).orEmpty())
+        }
+        val catalogue = unnamed.map { it.uri }.filter { it.startsWith("spotify:track:") }
+        val read = if (catalogue.isEmpty()) emptyList() else {
+            runCatching { dev.lelonio.square.data.Catalog.tracks(catalogue) }
+                .onFailure { android.util.Log.w(TAG, "cannot read what comes next there: $it") }
+                .getOrDefault(emptyList())
+                .map { track ->
+                    dev.lelonio.square.data.RemoteTrack(track.uri, track.name, track.artist, track.artworkUrl.orEmpty())
+                }
+        }
+        if (local.isNotEmpty() || read.isNotEmpty()) {
+            dev.lelonio.square.data.RemoteConnect.describeNext(local + read)
+        }
+    }
+
     /**
      * Fills in what the other device did not say about its track.
      *
@@ -1078,6 +1112,7 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun describeRemote(
         playback: dev.lelonio.square.data.RemotePlayback,
     ): dev.lelonio.square.data.RemotePlayback {
+        describeRemoteNext(playback)
         if (playback.title.isNotEmpty() && playback.artist.isNotEmpty()) return playback
         val track = runCatching { container.activeBackend.tracksOf(playback.uri).firstOrNull() }
             .onFailure { android.util.Log.w(TAG, "cannot read ${playback.uri}: $it") }

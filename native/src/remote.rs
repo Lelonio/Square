@@ -188,12 +188,37 @@ pub fn state_json() -> String {
             .unwrap_or_default()
     };
 
+    // What comes next on that device, in its own order — shuffle and songs
+    // queued by hand included — so the queue shown here is the one playing
+    // there rather than the single track it used to be. Delimiters and the
+    // like are not songs, and fifty is more than a screen.
+    let next: Vec<serde_json::Value> = player
+        .next_tracks
+        .iter()
+        .filter(|track| {
+            track.uri.starts_with("spotify:track:")
+                || track.uri.starts_with("spotify:episode:")
+                || track.uri.starts_with("spotify:local:")
+        })
+        .take(50)
+        .map(|track| {
+            let meta = |key: &str| track.metadata.get(key).cloned().unwrap_or_default();
+            serde_json::json!({
+                "uri": track.uri,
+                "title": meta("title"),
+                "artist": meta("artist_name"),
+                "coverUri": meta("image_url"),
+            })
+        })
+        .collect();
+    let next = serde_json::to_string(&next).unwrap_or_else(|_| "[]".into());
+
     format!(
         concat!(
             "{{\"activeDevice\":{},\"deviceName\":{},\"uri\":{},\"title\":{},",
             "\"artist\":{},\"album\":{},\"coverUri\":{},\"contextUri\":{},\"positionMs\":{},",
             "\"durationMs\":{},\"playing\":{},\"shuffle\":{},\"repeatContext\":{},",
-            "\"repeatTrack\":{}}}"
+            "\"repeatTrack\":{},\"next\":{}}}"
         ),
         escape(&cluster.active_device_id),
         escape(device.map(|device| device.name.as_str()).unwrap_or("")),
@@ -209,6 +234,7 @@ pub fn state_json() -> String {
         player.options.shuffling_context,
         player.options.repeating_context,
         player.options.repeating_track,
+        next,
     )
 }
 

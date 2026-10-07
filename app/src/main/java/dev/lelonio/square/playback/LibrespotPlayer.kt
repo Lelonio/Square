@@ -277,7 +277,10 @@ class LibrespotPlayer(
         if (released) return
         val was = remote
         remote = playback
-        if (was?.uri != playback?.uri) cachedPlaylist = null
+        // Rebuilt when what it shows changes — the track, its names, what comes
+        // next — and not for the position, which moves every second.
+        val shown = { p: dev.lelonio.square.data.RemotePlayback? -> p?.copy(positionMs = 0, playing = false) }
+        if (shown(was) != shown(playback)) cachedPlaylist = null
         invalidateState()
     }
 
@@ -344,29 +347,35 @@ class LibrespotPlayer(
      * a queue this app cannot skip through anyway.
      */
     private fun remoteState(playback: dev.lelonio.square.data.RemotePlayback): State {
-        val item = cachedPlaylist?.firstOrNull() ?: MediaItemData.Builder(playback.uri)
-            .setMediaItem(
+        fun item(uid: String, uri: String, title: String, artist: String, album: String, cover: String) =
+            MediaItemData.Builder(uid).setMediaItem(
                 MediaItem.Builder()
-                    .setMediaId(playback.uri)
-                    .setUri(playback.uri)
+                    .setMediaId(uri)
+                    .setUri(uri)
                     .setMediaMetadata(
                         MediaMetadata.Builder()
-                            .setTitle(playback.title)
-                            .setArtist(playback.artist)
-                            .setAlbumTitle(playback.album)
-                            .setArtworkUri(
-                                playback.coverUrl.takeIf { it.isNotEmpty() }
-                                    ?.let(android.net.Uri::parse),
-                            )
+                            .setTitle(title)
+                            .setArtist(artist)
+                            .setAlbumTitle(album)
+                            .setArtworkUri(cover.takeIf { it.isNotEmpty() }?.let(android.net.Uri::parse))
                             .setIsBrowsable(false)
                             .setIsPlayable(true)
                             .build(),
                     )
                     .build(),
             )
-            .setDurationUs(playback.durationMs * 1000)
-            .build()
-            .also { cachedPlaylist = listOf(it) }
+        // The track and what comes after it on that device: its own queue,
+        // rather than one track and nothing after it.
+        val items = cachedPlaylist ?: buildList {
+            add(
+                item("remote:0", playback.uri, playback.title, playback.artist, playback.album, playback.coverUrl)
+                    .setDurationUs(playback.durationMs * 1000)
+                    .build(),
+            )
+            playback.next.forEachIndexed { index, track ->
+                add(item("remote:${index + 1}:${track.uri}", track.uri, track.title, track.artist, "", track.coverUrl).build())
+            }
+        }.also { cachedPlaylist = it }
 
         return State.Builder()
             .setAvailableCommands(COMMANDS)
@@ -381,7 +390,7 @@ class LibrespotPlayer(
                 },
             )
             .setShuffleModeEnabled(playback.shuffle)
-            .setPlaylist(listOf(item))
+            .setPlaylist(items)
             .setCurrentMediaItemIndex(0)
             .build()
     }

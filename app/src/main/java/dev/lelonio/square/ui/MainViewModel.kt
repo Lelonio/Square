@@ -1044,7 +1044,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }.onFailure { android.util.Log.w(TAG, "could not resume here: $it") }.isSuccess
         }
-        if (started) return@launch
+        if (started) {
+            // The account will not say this phone is active now; see
+            // RemoteConnect.refresh, which works it out from the engine.
+            withContext(Dispatchers.IO) { runCatching { dev.lelonio.square.data.RemoteConnect.refresh() } }
+            return@launch
+        }
 
         // The engine refused it. Fall back to opening the context the long way,
         // which is slower but asks nothing of the Connect layer.
