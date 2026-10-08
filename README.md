@@ -21,6 +21,7 @@
   <a href="#features"><b>Features</b></a> ·
   <a href="#first-launch"><b>First launch</b></a> ·
   <a href="#faq"><b>FAQ</b></a> ·
+  <a href="https://t.me/+-XDmbFwz7uBkMjc0"><b>Telegram community</b></a> ·
   <a href="docs/DEVELOPMENT.md"><b>Building</b></a>
 </p>
 
@@ -170,6 +171,8 @@ warranty of any kind; see the licence.
 
 ## Help and feedback
 
+- **Telegram community**: [join Square | Community](https://t.me/+-XDmbFwz7uBkMjc0) for questions, feedback, bug reports and feature requests.
+- **Release announcements**: [Square | Official](https://t.me/SquareAppOfficial) automatically shares new APKs and release notes from GitHub.
 - **Questions** (how something works, how to set it up): [Discussions, Q&A](https://github.com/Lelonio/Square/discussions/categories/q-a)
 - **Ideas and requests**: [Discussions, Ideas](https://github.com/Lelonio/Square/discussions/categories/ideas)
 - **Something broken**: [open an issue](https://github.com/Lelonio/Square/issues/new/choose). If the app closed or froze, attach a report from Settings → About → Save a report.
