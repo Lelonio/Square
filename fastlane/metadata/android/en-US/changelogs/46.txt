@@ -1,0 +1,1 @@
+New releases from artists you follow, per-playlist sorting and a connected-device display setting. Improved Spotify Connect queue and playback handoff, recovery after network changes, local-file matching and bottom-bar glass rendering.

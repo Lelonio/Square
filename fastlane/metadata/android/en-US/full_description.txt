@@ -1,0 +1,16 @@
+Square is a free, open-source Android music client for Spotify Premium and YouTube Music, with a Liquid Glass interface.
+
+• Synced lyrics and Canvas
+• Spotify Connect
+• Independent speed and pitch controls, reverb and effect presets
+• Local music files and playlist support
+• New releases from artists you follow
+• Per-playlist sorting
+• Sleep timer
+
+Spotify playback requires a Spotify Premium account. Setup instructions are included in the app. Some playback modes have different capabilities; audio effects are not available through Spotify Web Playback.
+
+Square uses proprietary Spotify and YouTube Music services. Optional Spotify Web Playback loads Spotify's official JavaScript SDK remotely in a WebView; it is not bundled in the APK. Square is not affiliated with Spotify or Google.
+
+Source, setup and feedback: https://github.com/Lelonio/Square
+Community: https://t.me/+-XDmbFwz7uBkMjc0
