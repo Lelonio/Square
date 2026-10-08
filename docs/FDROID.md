@@ -1,7 +1,9 @@
 # F-Droid submission preparation
 
-Status: upstream listing metadata prepared; inclusion and build recipe are not
-yet validated. No submission has been sent and no playback feature removed.
+Status: upstream listing metadata published; request for packaging submitted:
+https://gitlab.com/fdroid/rfp/-/work_items/4524
+Inclusion and the buildserver recipe are not yet validated. No playback
+feature has been removed.
 
 ## Listing
 
