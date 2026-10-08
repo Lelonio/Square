@@ -24,8 +24,27 @@ class ReleaseTests(unittest.TestCase):
         value = release()
         value['body'] = '🧪 test\n' * 3000
         chunks = module.messages(value)
-        self.assertTrue(all(len(c.encode('utf-16-le')) // 2 <= 3500 for c in chunks))
-        self.assertEqual(''.join(chunks), f"Square 2.4.5\n\n{value['html_url']}\n\n{value['body']}")
+        self.assertTrue(all(len(c['text'].encode('utf-16-le')) // 2 <= 3500 for c in chunks))
+        self.assertEqual(''.join(c['text'] for c in chunks), f"Square 2.4.5\n\nView release on GitHub\n\n{value['body']}")
+
+    def test_markdown_formats_headings_lists_links_and_code(self):
+        text, entities = module.formatted_markdown('## Fixed\n- **Playback** and `track.apk`\n[Release](https://github.com/Lelonio/Square)\n```sh\nadb shell cmd\n```\n')
+        self.assertEqual(text, 'Fixed\n• Playback and track.apk\nRelease\nadb shell cmd\n')
+        self.assertEqual({e['type'] for e in entities}, {'bold', 'code', 'text_link', 'pre'})
+        for entity in entities:
+            part = text.encode('utf-16-le')[entity['offset'] * 2:(entity['offset'] + entity['length']) * 2].decode('utf-16-le')
+            self.assertTrue(part)
+
+    def test_entities_remain_valid_across_long_unicode_messages(self):
+        value = release()
+        value['body'] = '- **🧪 Audio effects** work well.\n' * 400
+        for message in module.messages(value):
+            length = module.units(message['text'])
+            for entity in message['entities']:
+                self.assertGreater(entity['length'], 0)
+                self.assertLessEqual(entity['offset'] + entity['length'], length)
+                encoded = message['text'].encode('utf-16-le')
+                encoded[entity['offset'] * 2:(entity['offset'] + entity['length']) * 2].decode('utf-16-le')
 
     def test_all_three_apks_required(self):
         value = release()
@@ -63,6 +82,23 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'Only published'):
                     module.main()
                 network.assert_not_called()
+
+    def test_edit_updates_existing_notes_without_downloading_apks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'release.json'
+            path.write_text(json.dumps(release()))
+            with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN': 'test', 'TELEGRAM_EDIT_MESSAGES': '[5,23]'}, clear=True), \
+                 patch('sys.argv', ['telegram-release.py', str(path)]), \
+                 patch.object(module.request, 'urlopen') as network, \
+                 patch.object(module, 'telegram') as api, patch('builtins.print'):
+                module.main()
+                network.assert_not_called()
+                self.assertEqual(api.call_count, 2)
+                for call, message_id in zip(api.call_args_list, (5, 23)):
+                    self.assertEqual(call.args[1], 'editMessageText')
+                    self.assertEqual(call.args[2]['message_id'], message_id)
+                    self.assertTrue(call.args[2]['entities'])
+                    self.assertNotIn('##', call.args[2]['text'])
 
 
 if __name__ == '__main__':

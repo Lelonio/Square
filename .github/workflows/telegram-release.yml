@@ -9,6 +9,10 @@ on:
         description: Published release tag to announce
         required: true
         type: string
+      edit_messages:
+        description: Optional existing notes message IDs [channel, group]; edits notes only
+        default: ''
+        type: string
       dry_run:
         description: Preview without sending to Telegram
         default: true
@@ -41,5 +45,6 @@ jobs:
           TELEGRAM_CHANNEL: ${{ vars.TELEGRAM_CHANNEL || '@SquareAppOfficial' }}
           TELEGRAM_GROUP: ${{ vars.TELEGRAM_GROUP || '-1003964165935' }}
           TELEGRAM_THREAD_ID: ${{ vars.TELEGRAM_THREAD_ID }}
+          TELEGRAM_EDIT_MESSAGES: ${{ inputs.edit_messages }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: python3 scripts/telegram-release.py "$RUNNER_TEMP/telegram-release.json"
