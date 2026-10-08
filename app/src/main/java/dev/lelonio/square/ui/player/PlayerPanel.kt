@@ -62,6 +62,7 @@ import com.adamglin.phosphoricons.regular.VinylRecord
 import com.adamglin.phosphoricons.fill.Info
 import com.adamglin.phosphoricons.regular.Info
 import com.adamglin.phosphoricons.regular.X
+import com.adamglin.phosphoricons.regular.Sparkle
 import dev.lelonio.square.ui.glass.pressable
 
 /** Which panel is open below the transport controls. */
@@ -263,6 +264,7 @@ data class QueueEntry(
     val isCurrent: Boolean,
     /** Already heard: shown above the playing track, dimmed. */
     val played: Boolean = false,
+    val recommended: Boolean = false,
 )
 
 @Composable
@@ -332,6 +334,13 @@ internal fun QueueList(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (entry.recommended) Icon(
+                            PhosphorIcons.Regular.Sparkle,
+                            contentDescription = stringResource(R.string.smart_shuffle),
+                            tint = GlassInkDim,
+                            modifier = Modifier.padding(end = 4.dp).size(12.dp),
+                        )
                     Text(
                         entry.artist,
                         style = MaterialTheme.typography.bodySmall,
@@ -339,6 +348,7 @@ internal fun QueueList(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    }
                 }
 
                 // Not on the track being played: taking that one out is a

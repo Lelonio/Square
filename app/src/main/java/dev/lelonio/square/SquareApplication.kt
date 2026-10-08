@@ -146,6 +146,7 @@ class SquareApplication : Application(), ImageLoaderFactory {
         get() = tokenStore.isLoggedIn ||
             dev.lelonio.square.auth.EngineCredentials.exist(this)
     val recentStore: RecentStore by lazy { RecentStore(this) }
+    val listeningStore by lazy { dev.lelonio.square.data.ListeningStore(this) }
 
     /** Songs found by searching and then played; see [SearchHistoryStore]. */
     val searchHistory: dev.lelonio.square.data.SearchHistoryStore by lazy {

@@ -520,4 +520,16 @@
     <string name="followed_releases_connect">फ़ॉलो किए गए कलाकारों की रिलीज़ देखने के लिए सेटिंग में Spotify कनेक्ट करें।</string>
     <string name="new_from_followed_artists">आपके कलाकारों की नई रिलीज़</string>
     <string name="connected_device_label">कनेक्ट किया गया डिवाइस दिखाएँ</string>
+
+    <string name="recap_title">संगीत के साथ आपका महीना</string>
+    <string name="recap_plays">%1$d बार सुना</string>
+    <string name="recap_minutes">Square में %1$d मिनट</string>
+    <string name="recap_details">पसंदीदा देखें</string>
+    <string name="recap_hide">विवरण छिपाएँ</string>
+    <string name="recap_previous">पिछला महीना</string>
+    <string name="recap_next">अगला महीना</string>
+    <string name="recap_tracks">सबसे अधिक सुने गए गाने</string>
+    <string name="recap_artists">सबसे अधिक सुने गए कलाकार</string>
+    <string name="recap_partial">सहेजी गई सुनने की गतिविधि और Spotify का हाल का इतिहास शामिल है। पुरानी या सिंक नहीं हुई गतिविधि छूट सकती है। मिनट केवल Square में मापे जाते हैं।</string>
+    <string name="telegram_community">Telegram समुदाय</string>
 </resources>

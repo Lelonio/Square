@@ -61,12 +61,14 @@ class PlayQueue {
          * item it holds, and what it does not carry never reaches the player.
          */
         val explicit: Boolean = false,
+        val recommended: Boolean = false,
     )
 
     private val _items = mutableListOf<Track>()
     val items: List<Track> get() = _items
 
     var currentIndex: Int = 0
+    var smartShuffle: Boolean = false
 
     /** Unshuffled queue, kept so the order can be restored exactly. */
     private var originalOrder: List<Track>? = null
@@ -99,6 +101,7 @@ class PlayQueue {
     }
 
     fun replace(tracks: List<Track>, startIndex: Int) {
+        smartShuffle = false
         _items.clear()
         _items.addAll(tracks)
         currentIndex = startIndex.coerceIn(0, maxOf(0, _items.lastIndex))
@@ -134,6 +137,36 @@ class PlayQueue {
             _items.addAll(original)
             currentIndex = restored.coerceIn(0, maxOf(0, _items.lastIndex))
             clearShuffle()
+        }
+    }
+
+    fun enableSmartShuffle(recommendations: List<Track>) {
+        val excluded = items.mapTo(mutableSetOf()) { it.uri }
+        val candidates = recommendations.filter { it.uri !in excluded }.distinctBy { it.uri }
+        val points = dev.lelonio.square.data.SmartShuffle.insertionPoints(items.map { it.queued }, currentIndex, candidates.size)
+        points.zip(candidates).asReversed().forEach { (at, track) ->
+            add(at, listOf(track.copy(recommended = true, queued = false)))
+        }
+        smartShuffle = points.isNotEmpty()
+        if (smartShuffle) contextIsOrdered = false
+    }
+
+    fun disableSmartShuffle() {
+        val current = items.getOrNull(currentIndex)
+        val nextOriginal = items.drop(currentIndex + 1).firstOrNull { !it.recommended && !it.queued }
+        for (index in items.indices.reversed()) {
+            val track = items[index]
+            if (track.recommended && !track.queued && index != currentIndex) remove(index, index + 1)
+        }
+        smartShuffle = false
+        setShuffled(false)
+        // A recommended song already playing remains immediately before its successor.
+        if (current?.recommended == true && nextOriginal != null) {
+            val successor = items.indexOfFirst { it === nextOriginal }
+            if (successor >= 0 && successor != currentIndex) {
+                val target = if (currentIndex < successor) successor - 1 else successor
+                if (target != currentIndex) move(currentIndex, currentIndex + 1, target)
+            }
         }
     }
 
@@ -405,6 +438,7 @@ class PlayQueue {
             artworkUri = metadata.artworkUri,
             queued = metadata.extras?.getBoolean(EXTRA_PLAY_NEXT) == true,
             explicit = metadata.extras?.getBoolean(dev.lelonio.square.ui.EXTRA_EXPLICIT) == true,
+            recommended = metadata.extras?.getBoolean(dev.lelonio.square.data.SmartShuffle.RECOMMENDED) == true,
         )
     }
 }

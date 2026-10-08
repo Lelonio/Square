@@ -135,7 +135,10 @@ interface SpotifyApi {
      * Needs `user-read-recently-played`.
      */
     @GET("v1/me/player/recently-played")
-    suspend fun recentlyPlayed(@Query("limit") limit: Int = 30): PageDto<PlayHistoryDto>
+    suspend fun recentlyPlayed(
+        @Query("limit") limit: Int = 30,
+        @Query("before") before: Long? = null,
+    ): PageDto<PlayHistoryDto>
 
     /**
      * An artist's most-played tracks.

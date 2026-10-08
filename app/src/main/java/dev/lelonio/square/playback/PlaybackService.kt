@@ -285,6 +285,7 @@ class PlaybackService : MediaLibraryService() {
         crossfade = container.crossfade
 
         player = buildPlayer(container.preferences.backend.value)
+        startListeningRecorder()
         browseTree = MediaBrowseTree(this, scope, ::ensurePlayerFor)
         session = MediaLibrarySession.Builder(this, player, browseTree)
             // Without this the notification is inert to a tap: Media3 has no way
@@ -1484,6 +1485,7 @@ class PlaybackService : MediaLibraryService() {
             contextIsOrdered = saved.contextOrdered,
             contextLabel = saved.contextLabel,
             handOverNow = handOverNow,
+            smartShuffle = saved.smartShuffle,
         )
         android.util.Log.i(TAG, "restored ${saved.tracks.size} tracks at ${saved.index}")
     }
@@ -1524,6 +1526,64 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /** Measures only playback on this device, independently of the activity. */
+    private fun startListeningRecorder() {
+        val sampler = dev.lelonio.square.data.ListeningSampler()
+        scope.launch {
+            var owner: String? = null
+            var sampledPlayer: androidx.media3.common.Player? = null
+            var lastSaved = 0L
+            var previouslyPlaying = false
+            val listener = object : androidx.media3.common.Player.Listener {
+                override fun onMediaItemTransition(item: androidx.media3.common.MediaItem?, reason: Int) {
+                    sampler.sample(null, false, System.currentTimeMillis(), android.os.SystemClock.elapsedRealtime())?.let { event ->
+                        owner?.let { account -> scope.launch { container.listeningStore.record(event, account) } }
+                    }
+                }
+            }
+            try {
+                while (true) {
+                    val account = container.listeningStore.account
+                    if (account != owner) { sampler.reset(); owner = account }
+                    if (sampledPlayer !== player) {
+                        sampledPlayer?.removeListener(listener)
+                        sampledPlayer = player
+                        player.addListener(listener)
+                    }
+                    val spotify = container.preferences.backend.value == dev.lelonio.square.backend.BackendId.SPOTIFY
+                    val remote = (player as? LibrespotPlayer)?.isRemotePlayback == true
+                    val item = player.currentMediaItem
+                    val metadata = item?.mediaMetadata
+                    val track = if (spotify && !remote && account != null && item != null &&
+                        !metadata?.title.isNullOrBlank()) CatalogTrack(
+                        uri = item.mediaId,
+                        name = metadata?.title.toString(),
+                        artist = metadata?.artist?.toString().orEmpty(),
+                        artists = creditedArtists(metadata?.extras),
+                        album = metadata?.albumTitle?.toString().orEmpty(),
+                        albumUri = metadata?.extras?.getString(dev.lelonio.square.ui.EXTRA_ALBUM_URI),
+                        durationMs = metadata?.durationMs ?: player.duration.coerceAtLeast(0),
+                        artworkUrl = metadata?.artworkUri?.toString(),
+                    ) else null
+                    val tick = android.os.SystemClock.elapsedRealtime()
+                    val event = sampler.sample(track, player.isPlaying && !remote, System.currentTimeMillis(), tick)
+                    if (event != null && (tick - lastSaved >= 10_000 || previouslyPlaying != player.isPlaying || event.track.uri != track?.uri)) {
+                        account?.let { container.listeningStore.record(event, it) }
+                        lastSaved = tick
+                    }
+                    previouslyPlaying = player.isPlaying
+                    delay(1_000)
+                }
+            } finally {
+                sampledPlayer?.removeListener(listener)
+                val event = sampler.sample(null, false, System.currentTimeMillis(), android.os.SystemClock.elapsedRealtime())
+                if (event != null && owner != null) kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    container.listeningStore.record(event, owner!!)
+                }
+            }
+        }
+    }
+
     /**
      * Snapshots the queue.
      *
@@ -1546,6 +1606,7 @@ class PlaybackService : MediaLibraryService() {
             SavedPlayback(
                 tracks = queue.originalTracks.map(::toCatalogTrack),
                 shuffleOrder = queue.shuffleOrder,
+                smartShuffle = queue.smartShuffle,
                 index = queue.currentIndex,
                 positionMs = player.currentPosition.coerceAtLeast(0),
                 repeatMode = player.repeatMode,
@@ -1693,6 +1754,7 @@ class PlaybackService : MediaLibraryService() {
         artists = track.artists,
         durationMs = track.durationMs,
         artworkUrl = track.artworkUri?.toString(),
+        smartRecommended = track.recommended,
     )
 
     private fun toQueueTrack(track: CatalogTrack) = PlayQueue.Track(
@@ -1706,6 +1768,7 @@ class PlaybackService : MediaLibraryService() {
         durationMs = track.durationMs,
         artworkUri = track.artworkUrl?.let(android.net.Uri::parse),
         explicit = track.explicit,
+        recommended = track.smartRecommended,
     )
 
     /** The two parallel lists put back together; see EXTRA_ARTIST_NAMES. */

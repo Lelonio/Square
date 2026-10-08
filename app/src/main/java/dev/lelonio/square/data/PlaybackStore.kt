@@ -26,6 +26,7 @@ data class SavedPlayback(
     val contextOrdered: Boolean = false,
     /** What the player shows as the source: "Playlist · Estate 2025". */
     val contextLabel: String = "",
+    val smartShuffle: Boolean = false,
 )
 
 /**

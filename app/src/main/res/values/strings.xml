@@ -567,4 +567,18 @@
     <string name="followed_releases_connect">Connect Spotify in Settings to see releases from artists you follow.</string>
     <string name="new_from_followed_artists">New from Your Artists</string>
     <string name="connected_device_label">Show connected device</string>
+
+    <string name="recap_title">Your month in music</string>
+    <string name="recap_plays">%1$d plays</string>
+    <string name="recap_minutes">%1$d minutes in Square</string>
+    <string name="recap_details">See your favourites</string>
+    <string name="recap_hide">Hide details</string>
+    <string name="recap_previous">Previous month</string>
+    <string name="recap_next">Next month</string>
+    <string name="recap_tracks">Most played songs</string>
+    <string name="recap_artists">Most played artists</string>
+    <string name="recap_partial">Includes saved listens and recent Spotify history. Earlier or unsynced listens may be missing. Minutes are measured only in Square.</string>
+    <string name="smart_shuffle">Smart Shuffle</string>
+    <string name="smart_shuffle_unavailable">Smart Shuffle is not available for this playlist right now.</string>
+    <string name="telegram_community">Telegram community</string>
 </resources>

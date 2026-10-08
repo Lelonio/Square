@@ -540,4 +540,18 @@
     <string name="followed_releases_connect">Collega Spotify nelle impostazioni per vedere le uscite degli artisti che segui.</string>
     <string name="new_from_followed_artists">Novità dai tuoi artisti</string>
     <string name="connected_device_label">Mostra dispositivo connesso</string>
+
+    <string name="recap_title">Il tuo mese in musica</string>
+    <string name="recap_plays">%1$d ascolti</string>
+    <string name="recap_minutes">%1$d minuti in Square</string>
+    <string name="recap_details">Scopri i tuoi preferiti</string>
+    <string name="recap_hide">Nascondi dettagli</string>
+    <string name="recap_previous">Mese precedente</string>
+    <string name="recap_next">Mese successivo</string>
+    <string name="recap_tracks">Brani più ascoltati</string>
+    <string name="recap_artists">Artisti più ascoltati</string>
+    <string name="recap_partial">Include gli ascolti salvati e la cronologia recente di Spotify. Gli ascolti precedenti o non sincronizzati potrebbero mancare. I minuti sono misurati solo in Square.</string>
+    <string name="smart_shuffle">Smart Shuffle</string>
+    <string name="smart_shuffle_unavailable">Smart Shuffle non è disponibile per questa playlist al momento.</string>
+    <string name="telegram_community">Community Telegram</string>
 </resources>

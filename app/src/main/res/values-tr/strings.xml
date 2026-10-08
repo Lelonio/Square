@@ -518,4 +518,16 @@
     <string name="followed_releases_connect">Takip ettiğin sanatçıların yayınlarını görmek için Ayarlar üzerinden Spotify bağlantısı kur.</string>
     <string name="new_from_followed_artists">Sanatçılarından yeni yayınlar</string>
     <string name="connected_device_label">Bağlı cihazı göster</string>
+
+    <string name="recap_title">Müzikle geçen ayın</string>
+    <string name="recap_plays">%1$d dinleme</string>
+    <string name="recap_minutes">Square içinde %1$d dakika</string>
+    <string name="recap_details">Favorilerini gör</string>
+    <string name="recap_hide">Ayrıntıları gizle</string>
+    <string name="recap_previous">Önceki ay</string>
+    <string name="recap_next">Sonraki ay</string>
+    <string name="recap_tracks">En çok dinlenen şarkılar</string>
+    <string name="recap_artists">En çok dinlenen sanatçılar</string>
+    <string name="recap_partial">Kaydedilen dinlemeler ve yakın tarihli Spotify geçmişi dahildir. Eski veya eşitlenmemiş dinlemeler eksik olabilir. Dakikalar yalnızca Square içinde ölçülür.</string>
+    <string name="telegram_community">Telegram topluluğu</string>
 </resources>

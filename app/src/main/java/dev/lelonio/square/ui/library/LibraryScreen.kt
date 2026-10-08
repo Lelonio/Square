@@ -75,6 +75,7 @@ import com.adamglin.phosphoricons.fill.PushPin
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowsDownUp
 import com.adamglin.phosphoricons.regular.ListBullets
+import com.adamglin.phosphoricons.regular.ChartBar
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.SquaresFour
 
@@ -145,6 +146,7 @@ fun LibraryScreen(
     /** Signed out of Spotify: the other source, and the settings; see SignedOutOptions. */
     onUseYouTube: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    listeningEvents: List<dev.lelonio.square.data.ListeningEvent>? = null,
     backdrop: Backdrop,
 ) {
     when (state) {
@@ -197,6 +199,7 @@ fun LibraryScreen(
             }
             var filter by remember { mutableStateOf(Filter.ALL) }
             var sortOpen by remember { mutableStateOf(false) }
+            var recapOpen by remember { mutableStateOf(false) }
             // Recorded so the menu has the tiles behind it to blur, rather than
             // the page colour: over a flat fill glass has nothing to bend and
             // comes out looking like a hole. Safe to record — the menu is drawn
@@ -293,6 +296,7 @@ fun LibraryScreen(
                     onSortAnchor = { sortAnchor = it },
                     canEdit = canEdit,
                     onCreatePlaylist = onCreatePlaylist,
+                    onOpenRecap = if (listeningEvents != null) ({ recapOpen = true }) else null,
                 )
 
                 val listPadding = PaddingValues(
@@ -417,6 +421,10 @@ fun LibraryScreen(
                 }
             }
 
+            if (recapOpen && listeningEvents != null) {
+                MonthlyListeningDialog(listeningEvents, backdrop, onDismiss = { recapOpen = false })
+            }
+
             // The app's own menu rather than Material's card: see GlassMenu.
             // The same one the track sort on a playlist page opens, for the
             // same reason — a menu that arrives from another design system is
@@ -497,6 +505,7 @@ private fun Header(
     onSortAnchor: (androidx.compose.ui.unit.IntOffset) -> Unit,
     canEdit: Boolean,
     onCreatePlaylist: () -> Unit,
+    onOpenRecap: (() -> Unit)? = null,
 ) {
     Column(
         Modifier
@@ -519,6 +528,18 @@ private fun Header(
                     style = MaterialTheme.typography.bodySmall,
                     color = InkDim,
                 )
+            }
+
+            if (onOpenRecap != null) {
+                LiquidButton(
+                    onClick = onOpenRecap, backdrop = backdrop,
+                    modifier = Modifier.padding(end = 8.dp).size(42.dp),
+                    contentHeight = 42.dp, contentPadding = 0.dp,
+                ) {
+                    Icon(PhosphorIcons.Regular.ChartBar,
+                        contentDescription = stringResource(R.string.recap_title),
+                        tint = Ink, modifier = Modifier.size(20.dp))
+                }
             }
 
             // Only where a playlist can actually be made: on a source with no

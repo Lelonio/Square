@@ -505,4 +505,16 @@
     <string name="followed_releases_connect">Verbinde Spotify in den Einstellungen, um Veröffentlichungen deiner gefolgten Künstler zu sehen.</string>
     <string name="new_from_followed_artists">Neues von deinen Künstlern</string>
     <string name="connected_device_label">Verbundenes Gerät anzeigen</string>
+
+    <string name="recap_title">Dein Musikmonat</string>
+    <string name="recap_plays">%1$d Wiedergaben</string>
+    <string name="recap_minutes">%1$d Minuten in Square</string>
+    <string name="recap_details">Deine Favoriten ansehen</string>
+    <string name="recap_hide">Details ausblenden</string>
+    <string name="recap_previous">Vorheriger Monat</string>
+    <string name="recap_next">Nächster Monat</string>
+    <string name="recap_tracks">Meistgespielte Songs</string>
+    <string name="recap_artists">Meistgehörte Künstler</string>
+    <string name="recap_partial">Gespeicherte Wiedergaben und der aktuelle Spotify-Verlauf. Frühere oder nicht synchronisierte Wiedergaben können fehlen. Minuten werden nur in Square gemessen.</string>
+    <string name="telegram_community">Telegram-Community</string>
 </resources>

@@ -421,6 +421,13 @@ fun SquareApp(
     viewModel: MainViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val listeningEvents by viewModel.listeningEvents.collectAsStateWithLifecycle()
+    LaunchedEffect(state is MainViewModel.UiState.Ready) {
+        if (state is MainViewModel.UiState.Ready) while (true) {
+            viewModel.syncListeningHistory()
+            kotlinx.coroutines.delay(300_000)
+        }
+    }
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val takenOut by viewModel.takenOut.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -1553,6 +1560,13 @@ fun SquareApp(
                                 onLoadMoreYouTube = viewModel::loadMoreYouTubeHome,
                                 youtubeSignedIn = youtubeAccountName != null,
                                 onYouTubeSignIn = { showYouTubeLogin = true },
+                                onSwitchSource = {
+                                    preferences.setBackend(
+                                        if (backend == dev.lelonio.square.backend.BackendId.SPOTIFY)
+                                            dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC
+                                        else dev.lelonio.square.backend.BackendId.SPOTIFY,
+                                    )
+                                },
                                 onUseYouTube = {
                                     preferences.setBackend(dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC)
                                 },
@@ -1730,6 +1744,7 @@ fun SquareApp(
                         }
 
                         composable(Routes.LIBRARY) {
+                            LaunchedEffect(backend, state is MainViewModel.UiState.Ready) { viewModel.syncListeningHistory() }
                             LibraryScreen(
                                 state = state,
                                 contentPadding = listPadding,
@@ -1737,6 +1752,7 @@ fun SquareApp(
                                 onRetry = { viewModel.retryFailed() },
                                 onLogOut = viewModel::logOut,
                                 onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
+                                listeningEvents = if (backend == dev.lelonio.square.backend.BackendId.SPOTIFY) listeningEvents else null,
                                 playlistOrder = playlistOrder,
                                 pinned = pinnedPlaylists,
                                 canEdit = viewModel.canEditPlaylists,
@@ -2900,7 +2916,9 @@ fun SquareApp(
                                         val wanted = remote?.shuffle != true
                                         onRemote { id -> RemoteConnect.setShuffle(id, wanted) }
                                     } else {
-                                        player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+                                        if (backend == dev.lelonio.square.backend.BackendId.SPOTIFY && player is androidx.media3.session.MediaController) {
+                                            player.sendCustomCommand(androidx.media3.session.SessionCommand(dev.lelonio.square.data.SmartShuffle.COMMAND, android.os.Bundle.EMPTY), android.os.Bundle.EMPTY)
+                                        } else player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
                                     }
                                 },
                                 onCycleRepeat = {
@@ -3561,11 +3579,8 @@ fun SquareApp(
                     Box(
                         Modifier
                             .fillMaxSize()
-                            // A colour of its own: the theme's background is
-                            // transparent, because every page in this app is
-                            // drawn over the blurred artwork. A curtain has to
-                            // be opaque or it is not a curtain.
-                            .background(Color(0xFF0A0A0A)),
+                            // Opaque, using the same light/dark ground as the pages.
+                            .background(dev.lelonio.square.ui.theme.pageGround()),
                         contentAlignment = Alignment.Center,
                     ) {
                         Column(

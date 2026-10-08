@@ -54,6 +54,8 @@ data class PlaybackState(
     val hasNext: Boolean = false,
     val hasPrevious: Boolean = false,
     val shuffleEnabled: Boolean = false,
+    val smartShuffle: Boolean = false,
+    val smartRecommended: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     /** Tempo, 1.0 being the track as recorded. */
     val speed: Float = 1f,
@@ -212,6 +214,8 @@ fun rememberPlaybackState(
                 hasNext = player.hasNextMediaItem(),
                 hasPrevious = player.hasPreviousMediaItem(),
                 shuffleEnabled = player.shuffleModeEnabled,
+                smartShuffle = player.shuffleModeEnabled && player.currentMediaItem?.mediaMetadata?.extras?.getBoolean(dev.lelonio.square.data.SmartShuffle.MODE) == true,
+                smartRecommended = player.currentMediaItem?.mediaMetadata?.extras?.getBoolean(dev.lelonio.square.data.SmartShuffle.RECOMMENDED) == true,
                 repeatMode = player.repeatMode,
                 speed = player.playbackParameters.speed,
                 pitch = player.playbackParameters.pitch,
@@ -308,6 +312,7 @@ fun rememberQueue(player: Player?): State<List<QueueEntry>> {
                     artist = metadata.artist?.toString().orEmpty(),
                     isCurrent = index == current,
                     played = index < current,
+                    recommended = metadata.extras?.getBoolean(dev.lelonio.square.data.SmartShuffle.RECOMMENDED) == true,
                 )
             }
         }

@@ -171,6 +171,7 @@ class MediaBrowseTree(
         val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
             .buildUpon()
             .add(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
+            .add(SessionCommand(dev.lelonio.square.data.SmartShuffle.COMMAND, Bundle.EMPTY))
             .add(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
             .add(SessionCommand(CMD_RADIO, Bundle.EMPTY))
             .add(SessionCommand(CMD_LIKE, Bundle.EMPTY))
@@ -195,6 +196,20 @@ class MediaBrowseTree(
     ): ListenableFuture<SessionResult> {
         val player = session.player
         when (customCommand.customAction) {
+            dev.lelonio.square.data.SmartShuffle.COMMAND -> {
+                return scope.future {
+                    try {
+                        if (player is LibrespotPlayer) player.cycleShuffle()
+                        else player.shuffleModeEnabled = !player.shuffleModeEnabled
+                        SessionResult(SessionResult.RESULT_SUCCESS)
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        android.util.Log.w("SquareSmartShuffle", "cannot enable: ${e.message}")
+                        android.widget.Toast.makeText(app, R.string.smart_shuffle_unavailable, android.widget.Toast.LENGTH_LONG).show()
+                        SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED)
+                    }
+                }
+            }
             CMD_SHUFFLE -> player.shuffleModeEnabled = !player.shuffleModeEnabled
             CMD_REPEAT -> player.repeatMode = when (player.repeatMode) {
                 androidx.media3.common.Player.REPEAT_MODE_OFF ->

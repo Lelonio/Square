@@ -1,6 +1,7 @@
 package dev.lelonio.square.playback
 
 import android.os.Looper
+import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL
@@ -257,6 +258,7 @@ class LibrespotPlayer(
      * PlaybackService.
      */
     private var remote: dev.lelonio.square.data.RemotePlayback? = null
+    val isRemotePlayback: Boolean get() = remote != null
 
     /**
      * Called with a track the engine is playing that this queue does not hold.
@@ -1224,6 +1226,7 @@ class LibrespotPlayer(
          * back looking as though nothing had ever been playing.
          */
         handOverNow: Boolean = true,
+        smartShuffle: Boolean = false,
     ) {
         if (tracks.isEmpty()) return
 
@@ -1237,6 +1240,7 @@ class LibrespotPlayer(
         engineIndex = -1
         sounding = false
         shuffleOrder?.let(queue::applyShuffleOrder)
+        queue.smartShuffle = smartShuffle && shuffleOrder != null
         queue.currentIndex = index.coerceIn(0, queue.items.lastIndex)
 
         shuffleEnabled = shuffleOrder != null
@@ -1340,7 +1344,59 @@ class LibrespotPlayer(
     /**
      * Reorders the queue rather than only recording a flag; see [PlayQueue].
      */
+    private var smartLoading = false
+    private var smartUnavailableContext: String? = null
+
+    suspend fun cycleShuffle() {
+        if (smartLoading || released || isRemotePlayback) return
+        if (queue.smartShuffle) {
+            queue.disableSmartShuffle()
+            shuffleEnabled = false
+            onQueueChanged()
+            pushOrder()
+            invalidateState()
+            return
+        }
+        if (!shuffleEnabled) {
+            shuffleModeEnabled = true
+            return
+        }
+        val context = queue.contextUri
+        if (context != null && smartUnavailableContext == context) {
+            smartUnavailableContext = null
+            shuffleModeEnabled = false
+            return
+        }
+        if (context == null || !(context.startsWith("spotify:playlist:") || context.endsWith(":collection"))) {
+            shuffleModeEnabled = false
+            return
+        }
+        smartLoading = true
+        val initialTracks = queue.items.toList()
+        try {
+            val recommendations = dev.lelonio.square.data.SmartShuffle.recommendations(context, initialTracks.mapTo(mutableSetOf()) { it.uri })
+            // A new playlist, a reorder, a remote transfer or shuffle off cancels this result.
+            if (released || isRemotePlayback || queue.contextUri != context || queue.items != initialTracks || !shuffleEnabled) return
+            check(recommendations.isNotEmpty()) { "No enhanced recommendations returned" }
+            queue.enableSmartShuffle(recommendations.map { track -> PlayQueue.Track(
+                uri = track.uri, title = track.name, artist = track.artist,
+                artistUri = track.artistUri, artists = track.artists,
+                album = track.album, albumUri = track.albumUri,
+                durationMs = track.durationMs, artworkUri = track.artworkUrl?.let(Uri::parse),
+                explicit = track.explicit, recommended = true,
+            ) })
+            onQueueChanged()
+            pushOrder()
+            invalidateState()
+            android.util.Log.i("SquareSmartShuffle", "enabled, queue=${queue.items.size}")
+        } catch (e: Exception) {
+            if (e !is kotlinx.coroutines.CancellationException) smartUnavailableContext = context
+            throw e
+        } finally { smartLoading = false }
+    }
+
     override fun handleSetShuffleModeEnabled(shuffleModeEnabled: Boolean): ListenableFuture<*> {
+        if (queue.smartShuffle) queue.disableSmartShuffle()
         shuffleEnabled = shuffleModeEnabled
         queue.setShuffled(shuffleModeEnabled)
         onQueueChanged()
@@ -1779,7 +1835,7 @@ class LibrespotPlayer(
      *   "Duplicate MediaItemData UID in playlist".
      */
     private fun toMediaItemData(index: Int, track: PlayQueue.Track) =
-        MediaItemData.Builder("$index ${track.uri}")
+        MediaItemData.Builder("$index ${track.uri} smart=${queue.smartShuffle}")
             .setMediaItem(
                 MediaItem.Builder()
                     .setMediaId(track.uri)
@@ -1796,6 +1852,8 @@ class LibrespotPlayer(
                             // moment the queue was rebuilt.
                             .setExtras(
                                 android.os.Bundle().apply {
+                                    putBoolean(dev.lelonio.square.data.SmartShuffle.MODE, queue.smartShuffle)
+                                    putBoolean(dev.lelonio.square.data.SmartShuffle.RECOMMENDED, track.recommended)
                                     queue.contextLabel.takeIf { it.isNotEmpty() }?.let {
                                         putString(EXTRA_CONTEXT_LABEL, it)
                                     }

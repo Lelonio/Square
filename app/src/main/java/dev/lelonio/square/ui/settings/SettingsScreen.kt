@@ -91,6 +91,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import com.adamglin.phosphoricons.regular.Trash
 import com.adamglin.phosphoricons.regular.HandHeart
 import com.adamglin.phosphoricons.regular.ChatsCircle
+import com.adamglin.phosphoricons.regular.TelegramLogo
 import com.adamglin.phosphoricons.regular.Bug
 import dev.lelonio.square.R
 import dev.lelonio.square.data.AppLanguages
@@ -751,6 +752,12 @@ fun SettingsScreen(
         if (shown == SettingsPage.About) item("help") {
             val uriHandler = LocalUriHandler.current
             Section(stringResource(R.string.help_feedback)) {
+                ActionRow(
+                    stringResource(R.string.telegram_community),
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.TelegramLogo,
+                ) { uriHandler.openUri(TELEGRAM_COMMUNITY_URL) }
+                RowDivider()
                 ActionRow(
                     stringResource(R.string.help_discussions),
                     destructive = false,
@@ -1958,4 +1965,5 @@ private const val GITHUB_USER = "Lelonio"
 private const val GITHUB_URL = "https://github.com/Lelonio"
 private const val KOFI_URL = "https://ko-fi.com/lelonio"
 private const val DISCUSSIONS_URL = "https://github.com/Lelonio/Square/discussions"
+private const val TELEGRAM_COMMUNITY_URL = "https://t.me/+SAOhZ4HTFpMwNDJk"
 private const val NEW_ISSUE_URL = "https://github.com/Lelonio/Square/issues/new/choose"

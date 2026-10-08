@@ -532,4 +532,16 @@
     <string name="followed_releases_connect">Подключите Spotify в настройках, чтобы видеть релизы исполнителей, на которых вы подписаны.</string>
     <string name="new_from_followed_artists">Новинки ваших исполнителей</string>
     <string name="connected_device_label">Показывать подключённое устройство</string>
+
+    <string name="recap_title">Ваш музыкальный месяц</string>
+    <string name="recap_plays">%1$d прослушиваний</string>
+    <string name="recap_minutes">%1$d минут в Square</string>
+    <string name="recap_details">Посмотреть любимое</string>
+    <string name="recap_hide">Скрыть подробности</string>
+    <string name="recap_previous">Предыдущий месяц</string>
+    <string name="recap_next">Следующий месяц</string>
+    <string name="recap_tracks">Любимые песни</string>
+    <string name="recap_artists">Любимые исполнители</string>
+    <string name="recap_partial">Учитываются сохранённые прослушивания и недавняя история Spotify. Старые или несинхронизированные прослушивания могут отсутствовать. Минуты измеряются только в Square.</string>
+    <string name="telegram_community">Сообщество Telegram</string>
 </resources>

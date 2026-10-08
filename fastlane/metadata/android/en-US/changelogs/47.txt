@@ -1,0 +1,5 @@
+Spotify Smart Shuffle adds Spotify recommendations to your playlist, marked with sparkles in the queue and player.
+Monthly listening recap in Library: play counts, favourite tracks and artists, using Square listens and available Spotify recent history.
+Switch Spotify and YouTube Music from the Home header.
+Source-switching splash follows the app theme.
+Telegram community link in Settings > About.

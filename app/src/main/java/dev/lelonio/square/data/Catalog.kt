@@ -51,6 +51,7 @@ data class CatalogTrack(
     val year: String = "",
     val durationMs: Long = 0,
     val explicit: Boolean = false,
+    val smartRecommended: Boolean = false,
     val artworkUrl: String? = null,
     /**
      * When the track was added to the playlist it was read from, ISO-8601.

@@ -505,4 +505,16 @@
     <string name="followed_releases_connect">Connectez Spotify dans les paramètres pour voir les sorties des artistes suivis.</string>
     <string name="new_from_followed_artists">Nouveautés de vos artistes</string>
     <string name="connected_device_label">Afficher l’appareil connecté</string>
+
+    <string name="recap_title">Ton mois en musique</string>
+    <string name="recap_plays">%1$d écoutes</string>
+    <string name="recap_minutes">%1$d minutes dans Square</string>
+    <string name="recap_details">Voir tes favoris</string>
+    <string name="recap_hide">Masquer les détails</string>
+    <string name="recap_previous">Mois précédent</string>
+    <string name="recap_next">Mois suivant</string>
+    <string name="recap_tracks">Titres les plus écoutés</string>
+    <string name="recap_artists">Artistes les plus écoutés</string>
+    <string name="recap_partial">Inclut les écoutes enregistrées et le récent historique Spotify. Certaines écoutes anciennes ou non synchronisées peuvent manquer. Les minutes sont mesurées uniquement dans Square.</string>
+    <string name="telegram_community">Communauté Telegram</string>
 </resources>

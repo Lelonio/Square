@@ -132,6 +132,7 @@ import com.adamglin.phosphoricons.regular.Broadcast
 import com.adamglin.phosphoricons.regular.YoutubeLogo
 import com.adamglin.phosphoricons.regular.Repeat
 import com.adamglin.phosphoricons.regular.RepeatOnce
+import com.adamglin.phosphoricons.regular.Sparkle
 import com.adamglin.phosphoricons.regular.Shuffle
 import com.adamglin.phosphoricons.regular.TextAlignLeft
 import kotlin.math.abs
@@ -1926,6 +1927,15 @@ private fun TitleBlock(
             // track another device is playing, names a record this app has no
             // address for, and a title that looks like a link and does nothing
             // is worse than a caption.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (state.smartRecommended) {
+                    Icon(
+                        PhosphorIcons.Regular.Sparkle,
+                        contentDescription = stringResource(R.string.smart_shuffle),
+                        tint = GlassInk,
+                        modifier = Modifier.padding(end = 8.dp).size(20.dp),
+                    )
+                }
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
@@ -1937,6 +1947,7 @@ private fun TitleBlock(
                     Modifier
                 },
             )
+            }
             // The rating beside the names rather than on its own line: it is
             // about the song, and a line of its own would read as a warning.
             if (state.explicit) {
@@ -2056,8 +2067,9 @@ internal fun Controls(
     ) {
         ToggleIcon(
             icon = PhosphorIcons.Regular.Shuffle,
-            description = stringResource(R.string.shuffle_play),
+            description = stringResource(if (state.smartShuffle) R.string.smart_shuffle else R.string.shuffle_play),
             active = state.shuffleEnabled,
+            smart = state.smartShuffle,
             onClick = onToggleShuffle,
         )
 
@@ -2244,15 +2256,24 @@ private fun ToggleIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     active: Boolean,
+    smart: Boolean = false,
     onClick: () -> Unit,
 ) {
     IconButton(onClick = onClick) {
+        Box(Modifier.size(if (smart) 28.dp else 22.dp)) {
         Icon(
             icon,
             contentDescription = description,
             tint = if (active) GlassInk else GlassInkDim,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(22.dp).align(Alignment.BottomStart),
         )
+        if (smart) Icon(
+            PhosphorIcons.Regular.Sparkle,
+            contentDescription = null,
+            tint = if (active) GlassInk else GlassInkDim,
+            modifier = Modifier.size(10.dp).align(Alignment.TopEnd),
+        )
+        }
     }
 }
 

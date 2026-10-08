@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.Sparkle
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.fill.Devices
 import com.adamglin.phosphoricons.fill.Pause
@@ -200,6 +202,13 @@ fun FloatingMiniPlayer(
             Spacer(Modifier.width(androidx.compose.ui.unit.lerp(10.dp, 8.dp, fold)))
 
             Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (state.smartRecommended) Icon(
+                        PhosphorIcons.Regular.Sparkle,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.padding(end = 4.dp).size(14.dp),
+                    )
                 Text(
                     text = state.title,
                     style = androidx.compose.ui.text.lerp(
@@ -211,6 +220,7 @@ fun FloatingMiniPlayer(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (remoteLabel != null) {
                         Icon(

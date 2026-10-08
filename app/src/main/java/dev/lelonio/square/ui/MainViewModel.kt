@@ -1965,6 +1965,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _videoMode.value = !_videoMode.value && _videoFileId.value != null
     }
 
+    val listeningEvents = container.listeningStore.events
+    private var listeningSync: kotlinx.coroutines.Job? = null
+    private var lastListeningSync = 0L
+
+    fun syncListeningHistory() {
+        if (container.preferences.backend.value != dev.lelonio.square.backend.BackendId.SPOTIFY ||
+            listeningSync?.isActive == true || System.currentTimeMillis() - lastListeningSync < 60_000) return
+        listeningSync = viewModelScope.launch {
+            runCatching {
+                val owner = meId ?: runCatching { dev.lelonio.square.nativecore.NativeBridge.username() }
+                    .getOrNull()?.takeIf { it.isNotBlank() }
+                    ?: container.api.me().id.also { meId = it }
+                container.listeningStore.useAccount(owner)
+                var before: Long? = null
+                // Spotify exposes recent history, not a complete monthly archive.
+                // Preserve each import so the archive grows on later visits.
+                repeat(5) {
+                    val page = container.api.recentlyPlayed(50, before)
+                    val plays = page.items.mapNotNull { play ->
+                        val at = runCatching { java.time.Instant.parse(play.playedAt).toEpochMilli() }.getOrNull()
+                        at?.let { play.track.toCatalogTrack() to it }
+                    }
+                    container.listeningStore.import(plays, owner)
+                    val oldest = plays.minOfOrNull { it.second } ?: return@runCatching
+                    if (page.next == null || oldest == before) return@runCatching
+                    before = oldest
+                }
+            }.onSuccess { lastListeningSync = System.currentTimeMillis() }
+                .onFailure { android.util.Log.w(TAG, "listening history unavailable: ${describe(it)}") }
+        }
+    }
+
     val recent: StateFlow<List<CatalogTrack>> =
         combine(container.recentStore.tracks, container.preferences.backend) { tracks, _ ->
             // A nameless row is one that was recorded before the session had
@@ -2138,6 +2170,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // back in with it and signing out would mean nothing.
         dev.lelonio.square.auth.EngineCredentials.clear(getApplication())
         container.recentStore.clear()
+        listeningSync?.cancel()
+        lastListeningSync = 0L
+        viewModelScope.launch { container.listeningStore.clear() }
         container.playlistOrder.clear()
         // Somebody else's library must not be sitting in the cache when the
         // next account signs in.
@@ -2453,6 +2488,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // answered sooner left it unset for the whole run, every
                 // playlist's "mine" unknown, and what hangs on it hidden.
                 meId = profile.id
+                container.listeningStore.useAccount(profile.id)
                 val ready = _state.value as? UiState.Ready ?: return@onSuccess
                 _state.value = ready.copy(
                     displayName = profile.displayName?.takeIf(String::isNotBlank)
