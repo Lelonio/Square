@@ -5,6 +5,11 @@ https://gitlab.com/fdroid/rfp/-/work_items/4524
 Inclusion and the buildserver recipe are not yet validated. No playback
 feature has been removed.
 
+Local verification (2026-10-08): `./gradlew :app:assembleRelease --offline`
+completed successfully with JDK 21 and Rust 1.97.1. This used existing local
+dependency caches and native outputs; it is not a clean buildserver test or a
+reproducibility check. Docker and fdroidserver are not installed on this host.
+
 ## Listing
 
 English listing assets are in `fastlane/metadata/android/en-US`. The current
