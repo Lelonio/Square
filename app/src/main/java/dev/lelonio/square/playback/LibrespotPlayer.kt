@@ -399,7 +399,7 @@ class LibrespotPlayer(
 
     private fun playlistSnapshot(): List<MediaItemData> =
         cachedPlaylist ?: queue.items
-            .mapIndexed(::toMediaItemData)
+            .mapIndexed { index, track -> toMediaItemData(queue.idAt(index) ?: -1L, track) }
             .also { cachedPlaylist = it }
 
     /**
@@ -1080,7 +1080,7 @@ class LibrespotPlayer(
      * The next three exist because [Player.COMMAND_CHANGE_MEDIA_ITEMS] is
      * advertised. They only reorder the queue — the engine plays one track at a
      * time and is untouched unless the current track itself moved out from under
-     * it, which [PlayQueue] handles by index.
+     * it, which [PlayQueue] follows by entry rather than by index.
      */
     override fun handleAddMediaItems(
         index: Int,
@@ -1121,8 +1121,10 @@ class LibrespotPlayer(
         newIndex: Int,
     ): ListenableFuture<*> {
         queue.move(fromIndex, toIndex, newIndex)
-        engineQueueStale = true
         reapplyShuffle()
+        // Told now, as for an add or a remove: a track dragged to play next
+        // has to be what the engine plays next.
+        pushOrder()
         onQueueChanged()
         invalidateState()
         return Futures.immediateVoidFuture()
@@ -1829,13 +1831,15 @@ class LibrespotPlayer(
     }
 
     /**
-     * @param index part of the uid because Media3 requires uids to be unique
-     *   across the playlist, and a playlist may legitimately contain the same
-     *   track more than once — using the URI alone crashes with
-     *   "Duplicate MediaItemData UID in playlist".
+     * @param id the queue entry's own id, as the uid: unique even when the same
+     *   track is in the queue twice (the URI alone crashes with "Duplicate
+     *   MediaItemData UID in playlist"), and the same wherever the entry is
+     *   moved. The position used to be part of it, so a move gave every item
+     *   between the two places a new uid, and Media3 saw tracks replaced rather
+     *   than one track moved.
      */
-    private fun toMediaItemData(index: Int, track: PlayQueue.Track) =
-        MediaItemData.Builder("$index ${track.uri} smart=${queue.smartShuffle}")
+    private fun toMediaItemData(id: Long, track: PlayQueue.Track) =
+        MediaItemData.Builder("q$id smart=${queue.smartShuffle}")
             .setMediaItem(
                 MediaItem.Builder()
                     .setMediaId(track.uri)

@@ -19,6 +19,9 @@ import dev.lelonio.square.ui.EXTRA_PLAY_NEXT
  * walking the list linearly while end-of-track followed a shuffled order —
  * leaving the two disagreeing. Reordering the queue keeps one order for both.
  *
+ * Every place in it is an [Entry] with an id of its own, and every change is
+ * made to entries: see [Entry] for why not to indices.
+ *
  * Not thread-safe by design: only the player's application looper touches it.
  */
 class PlayQueue {
@@ -64,25 +67,77 @@ class PlayQueue {
         val recommended: Boolean = false,
     )
 
-    private val _items = mutableListOf<Track>()
-    val items: List<Track> get() = _items
+    /**
+     * One place in the queue: a track, and an id that is this place's alone.
+     *
+     * The id is what everything else holds on to. A track can sit in the queue
+     * twice, and an index stops meaning anything the moment something is added,
+     * taken out or dragged above it; the old queue followed its tracks by index
+     * and redid that arithmetic in every operation, for the list, the playing
+     * track and the shuffle each, and every mistake in it was a queue that
+     * rearranged itself.
+     */
+    class Entry(val id: Long, val track: Track)
 
+    private var nextId = 1L
+    private val _entries = mutableListOf<Entry>()
+    val entries: List<Entry> get() = _entries
+
+    private var cachedItems: List<Track>? = null
+
+    /** The tracks in the order they play. */
+    val items: List<Track>
+        get() = cachedItems ?: _entries.map { it.track }.also { cachedItems = it }
+
+    /**
+     * Where playback is in [items].
+     *
+     * Set freely from outside, as the engine moves on. Every change made here
+     * puts it back on the entry that was playing, wherever that entry went.
+     */
     var currentIndex: Int = 0
     var smartShuffle: Boolean = false
 
-    /** Unshuffled queue, kept so the order can be restored exactly. */
-    private var originalOrder: List<Track>? = null
+    /**
+     * The order shuffling was turned on in, by entry, or null when not shuffled.
+     *
+     * Nothing has to keep this in step. Entries taken out since are skipped when
+     * it is read, and entries put in since are not in it at all: they keep the
+     * place they were given relative to their neighbours, see [unshuffledOrder].
+     */
+    private var contextOrder: List<Long>? = null
 
-    /** For each current position, its index in [originalOrder]. */
-    private var originalIndices: List<Int>? = null
-
-    val isShuffled: Boolean get() = originalOrder != null
+    val isShuffled: Boolean get() = contextOrder != null
 
     /** The queue as it was before shuffling, which is what gets persisted. */
-    val originalTracks: List<Track> get() = originalOrder ?: _items
+    val originalTracks: List<Track> get() = unshuffledOrder().map { it.track }
 
-    /** The permutation currently applied, or null when not shuffled. */
-    val shuffleOrder: List<Int>? get() = originalIndices
+    /** For each place in [items], its index in [originalTracks]; null when not shuffled. */
+    val shuffleOrder: List<Int>?
+        get() {
+            if (contextOrder == null) return null
+            val at = unshuffledOrder().withIndex().associate { (index, entry) -> entry.id to index }
+            return _entries.map { at.getValue(it.id) }
+        }
+
+    fun idAt(index: Int): Long? = _entries.getOrNull(index)?.id
+
+    private fun entryOf(track: Track) = Entry(nextId++, track)
+
+    /**
+     * Runs a change and puts [currentIndex] back on the entry that was playing.
+     *
+     * When that entry is gone, playback stands where it was, at what moved up
+     * into its place.
+     */
+    private inline fun edit(change: () -> Unit) {
+        val playing = _entries.getOrNull(currentIndex)?.id
+        val was = currentIndex
+        change()
+        cachedItems = null
+        val found = playing?.let { id -> _entries.indexOfFirst { it.id == id } } ?: -1
+        currentIndex = (if (found >= 0) found else was).coerceIn(0, maxOf(0, _entries.lastIndex))
+    }
 
     /**
      * Re-applies a previously saved permutation.
@@ -91,21 +146,22 @@ class PlayQueue {
      * draw a *new* random order, and the queue the user left would be gone.
      */
     fun applyShuffleOrder(order: List<Int>) {
-        val original = _items.toList()
+        val original = _entries.toList()
         if (order.size != original.size || order.toSet() != original.indices.toSet()) return
-
-        _items.clear()
-        _items.addAll(order.map(original::get))
-        originalOrder = original
-        originalIndices = order
+        edit {
+            _entries.clear()
+            _entries.addAll(order.map(original::get))
+        }
+        contextOrder = original.map { it.id }
     }
 
     fun replace(tracks: List<Track>, startIndex: Int) {
         smartShuffle = false
-        _items.clear()
-        _items.addAll(tracks)
-        currentIndex = startIndex.coerceIn(0, maxOf(0, _items.lastIndex))
-        clearShuffle()
+        contextOrder = null
+        _entries.clear()
+        _entries.addAll(tracks.map(::entryOf))
+        cachedItems = null
+        currentIndex = startIndex.coerceIn(0, maxOf(0, _entries.lastIndex))
     }
 
     /**
@@ -113,31 +169,63 @@ class PlayQueue {
      *
      * The current track moves to the front rather than staying in place: it is
      * still playing, and anything before it in a freshly shuffled order would be
-     * a "previous" the listener never heard.
+     * a "previous" the listener never heard. Tracks queued by hand stay right
+     * after it either way: they were asked for next, and shuffle is about the
+     * playlist, not about them.
      */
     fun setShuffled(shuffled: Boolean) {
-        if (shuffled == isShuffled || _items.isEmpty()) return
-
+        if (shuffled == isShuffled || _entries.isEmpty()) return
         if (shuffled) {
-            val original = _items.toList()
-            val rest = original.indices.filter { it != currentIndex }.shuffled()
-            val order = listOf(currentIndex) + rest
-
-            _items.clear()
-            _items.addAll(order.map(original::get))
-            originalOrder = original
-            originalIndices = order
-            currentIndex = 0
+            val order = _entries.map { it.id }
+            val current = _entries[currentIndex.coerceIn(0, _entries.lastIndex)]
+            val queued = queuedRun()
+            val rest = _entries.filter { it !== current && it !in queued }.shuffled()
+            edit {
+                _entries.clear()
+                _entries.add(current)
+                _entries.addAll(queued)
+                _entries.addAll(rest)
+            }
+            contextOrder = order
         } else {
-            val original = originalOrder ?: return
-            // Index, not track identity: a playlist may hold the same track more
-            // than once, and searching would land on the wrong copy.
-            val restored = originalIndices?.getOrNull(currentIndex) ?: 0
-            _items.clear()
-            _items.addAll(original)
-            currentIndex = restored.coerceIn(0, maxOf(0, _items.lastIndex))
-            clearShuffle()
+            val restored = unshuffledOrder()
+            edit {
+                _entries.clear()
+                _entries.addAll(restored)
+            }
+            contextOrder = null
         }
+    }
+
+    /** The hand-queued entries right after the playing one. */
+    private fun queuedRun(): List<Entry> {
+        val run = mutableListOf<Entry>()
+        var at = currentIndex + 1
+        while (at < _entries.size && _entries[at].track.queued) run += _entries[at++]
+        return run
+    }
+
+    /**
+     * What turning shuffle off gives: the order shuffle was turned on in.
+     *
+     * Entries added while shuffled were not there then. Each follows whatever
+     * came before it in the shuffled order, so a track queued after the playing
+     * one is still right after it once the playlist is back in its own order.
+     */
+    private fun unshuffledOrder(): List<Entry> {
+        val order = contextOrder ?: return _entries.toList()
+        val present = _entries.associateBy { it.id }
+        val known = order.toSet()
+        val result = order.mapNotNullTo(mutableListOf()) { present[it] }
+        _entries.forEachIndexed { index, entry ->
+            if (entry.id in known) return@forEachIndexed
+            // After its predecessor, wherever that has gone; at the start when
+            // it has none.
+            val before = _entries.getOrNull(index - 1)
+            val at = if (before == null) 0 else result.indexOf(before) + 1
+            result.add(at, entry)
+        }
+        return result
     }
 
     fun enableSmartShuffle(recommendations: List<Track>) {
@@ -152,50 +240,25 @@ class PlayQueue {
     }
 
     fun disableSmartShuffle() {
-        val current = items.getOrNull(currentIndex)
-        val nextOriginal = items.drop(currentIndex + 1).firstOrNull { !it.recommended && !it.queued }
-        for (index in items.indices.reversed()) {
-            val track = items[index]
-            if (track.recommended && !track.queued && index != currentIndex) remove(index, index + 1)
+        val current = _entries.getOrNull(currentIndex)
+        val nextOriginal = _entries.drop(currentIndex + 1).firstOrNull { !it.track.recommended && !it.track.queued }
+        edit {
+            _entries.removeAll { it.track.recommended && !it.track.queued && it !== current }
         }
         smartShuffle = false
         setShuffled(false)
         // A recommended song already playing remains immediately before its successor.
-        if (current?.recommended == true && nextOriginal != null) {
-            val successor = items.indexOfFirst { it === nextOriginal }
-            if (successor >= 0 && successor != currentIndex) {
-                val target = if (currentIndex < successor) successor - 1 else successor
-                if (target != currentIndex) move(currentIndex, currentIndex + 1, target)
+        if (current?.track?.recommended == true && nextOriginal != null) {
+            edit {
+                _entries.remove(current)
+                _entries.add(_entries.indexOf(nextOriginal).coerceAtLeast(0), current)
             }
         }
-    }
-
-    private fun clearShuffle() {
-        originalOrder = null
-        originalIndices = null
     }
 
     fun add(index: Int, tracks: List<Track>) {
-        val at = index.coerceIn(0, _items.size)
-
-        // Added to both lists, so a shuffled queue keeps the order it has.
-        //
-        // As in [remove]: dropping the permutation here meant that queueing one
-        // song reshuffled everything after it. The new tracks go on the end of
-        // the pre-shuffle list and take their places in the permutation where
-        // the listener put them.
-        val order = originalIndices
-        if (order != null) {
-            val original = originalOrder.orEmpty()
-            originalOrder = original + tracks
-            originalIndices = order.toMutableList().apply {
-                addAll(at, tracks.indices.map { original.size + it })
-            }
-        }
-
-        _items.addAll(at, tracks)
-        if (at <= currentIndex) currentIndex += tracks.size
-        if (originalIndices?.size != _items.size) clearShuffle()
+        if (tracks.isEmpty()) return
+        edit { _entries.addAll(index.coerceIn(0, _entries.size), tracks.map(::entryOf)) }
     }
 
     /**
@@ -205,29 +268,11 @@ class PlayQueue {
      * queued, so the second goes *after* the first rather than in front of it:
      * the insertion point is the end of the run of already-queued tracks
      * following the current one, which is why [Track.queued] exists.
-     *
-     * Unlike [add] this keeps a shuffled queue shuffled. Dropping the
-     * permutation would make the caller re-shuffle, and the track just placed
-     * behind the current one would land somewhere random — the one thing the
-     * gesture promises not to do.
      */
     fun insertNext(tracks: List<Track>) {
         if (tracks.isEmpty()) return
-        val marked = tracks.map { it.copy(queued = true) }
         val at = nextInsertIndex()
-
-        val order = originalIndices
-        val original = originalOrder
-        if (order != null && original != null) {
-            // Appended to the pre-shuffle order rather than inserted into it:
-            // every existing index in the permutation then stays valid.
-            originalOrder = original + marked
-            originalIndices = order.toMutableList().apply {
-                addAll(at, (original.size until original.size + marked.size).toList())
-            }
-        }
-
-        _items.addAll(at, marked)
+        edit { _entries.addAll(at, tracks.map { entryOf(it.copy(queued = true)) }) }
 
         // The queue is no longer the context in its own order, so it must not
         // be handed to the engine as one: played that way Spotify supplies the
@@ -237,68 +282,37 @@ class PlayQueue {
 
     /** Just past the queued run that follows the current track. */
     fun nextInsertIndex(): Int {
-        if (_items.isEmpty()) return 0
-        var at = (currentIndex + 1).coerceAtMost(_items.size)
-        while (at < _items.size && _items[at].queued) at++
+        if (_entries.isEmpty()) return 0
+        var at = (currentIndex + 1).coerceAtMost(_entries.size)
+        while (at < _entries.size && _entries[at].track.queued) at++
         return at
     }
 
     fun remove(fromIndex: Int, toIndex: Int) {
-        val from = fromIndex.coerceIn(0, _items.size)
-        val to = toIndex.coerceIn(from, _items.size)
+        val from = fromIndex.coerceIn(0, _entries.size)
+        val to = toIndex.coerceIn(from, _entries.size)
         if (from == to) return
-
-        // The shuffled order survives, minus what was taken out.
-        //
-        // Throwing it away and letting shuffle be applied again drew a *new*
-        // random order for everything still to come: taking one song out of a
-        // shuffled queue looked like several disappearing, because the rest had
-        // been dealt out afresh. What has to go is those tracks' places in the
-        // permutation, not the permutation.
-        val removed = originalIndices?.subList(from, to)?.toSet()
-        if (removed != null) {
-            val kept = originalIndices?.filterIndexed { at, _ -> at < from || at >= to }.orEmpty()
-            val original = originalOrder.orEmpty()
-            val survivors = original.indices.filterNot { it in removed }
-            // The original list loses the same tracks, and every index left has
-            // to point at where its track sits in the shorter list.
-            val moved = survivors.withIndex().associate { (to, from) -> from to to }
-            originalOrder = survivors.map(original::get)
-            originalIndices = kept.mapNotNull(moved::get)
-        }
-
-        _items.subList(from, to).clear()
-        currentIndex = when {
-            currentIndex >= to -> currentIndex - (to - from)
-            currentIndex >= from -> from
-            else -> currentIndex
-        }.coerceIn(0, maxOf(0, _items.lastIndex))
-        if (originalIndices?.size != _items.size) clearShuffle()
+        edit { _entries.subList(from, to).clear() }
     }
 
+    /**
+     * Moves `[fromIndex, toIndex)` so that it starts at [newIndex] of the
+     * result, which is how Media3 counts it.
+     *
+     * Shuffled, the order shuffle will go back to is left alone: the drag
+     * placed a track in this shuffled order, not in the playlist's.
+     */
     fun move(fromIndex: Int, toIndex: Int, newIndex: Int) {
-        val from = fromIndex.coerceIn(0, _items.size)
-        val to = toIndex.coerceIn(from, _items.size)
+        val from = fromIndex.coerceIn(0, _entries.size)
+        val to = toIndex.coerceIn(from, _entries.size)
         if (from == to) return
-
-        val moved = ArrayList(_items.subList(from, to))
-        val target = newIndex.coerceIn(0, _items.size - moved.size)
-        val current = currentIndex
-
-        _items.subList(from, to).clear()
-        _items.addAll(target, moved)
-
-        // Recomputed arithmetically rather than by searching for the playing
-        // track: a playlist may hold the same track twice, and indexOf would
-        // latch onto the wrong copy.
-        currentIndex = if (current in from until to) {
-            target + (current - from)
-        } else {
-            var shifted = if (current >= to) current - moved.size else current
-            if (shifted >= target) shifted += moved.size
-            shifted
-        }.coerceIn(0, maxOf(0, _items.lastIndex))
-        clearShuffle()
+        edit {
+            val moved = ArrayList(_entries.subList(from, to))
+            _entries.subList(from, to).clear()
+            _entries.addAll(newIndex.coerceIn(0, _entries.size), moved)
+        }
+        // No longer the context in its own order; see [insertNext].
+        contextIsOrdered = false
     }
 
     /**
