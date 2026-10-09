@@ -544,4 +544,6 @@
     <string name="recap_artists">Любимые исполнители</string>
     <string name="recap_partial">Учитываются сохранённые прослушивания и недавняя история Spotify. Старые или несинхронизированные прослушивания могут отсутствовать. Минуты измеряются только в Square.</string>
     <string name="telegram_community">Сообщество Telegram</string>
+    <string name="login_in_progress">Вход в Spotify…</string>
+    <string name="login_channel">Вход</string>
 </resources>

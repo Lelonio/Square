@@ -153,9 +153,15 @@ object SpotifyOAuth {
             activeReceiver = receiver
         }
 
+        // Awake while the browser is up; see LoginKeepAlive. Started from
+        // here, while the app is still in the foreground the tap came from.
+        val appContext = context.applicationContext
+        LoginKeepAlive.start(appContext)
+
         // When the coroutine completes or is cancelled, immediately unblock accept() by closing the socket
         coroutineContext.job.invokeOnCompletion {
             receiver.close()
+            LoginKeepAlive.stop(appContext)
         }
 
         receiver.use {

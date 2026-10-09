@@ -125,6 +125,15 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!--
+          Held while the listener signs in to Spotify in the browser, so the
+          process is not frozen before the redirect to 127.0.0.1 arrives.
+        -->
+        <service
+            android:name=".auth.LoginKeepAlive"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <service
             android:name=".playback.PlaybackService"
             android:exported="true"

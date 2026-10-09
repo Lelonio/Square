@@ -530,4 +530,6 @@
     <string name="recap_artists">En çok dinlenen sanatçılar</string>
     <string name="recap_partial">Kaydedilen dinlemeler ve yakın tarihli Spotify geçmişi dahildir. Eski veya eşitlenmemiş dinlemeler eksik olabilir. Dakikalar yalnızca Square içinde ölçülür.</string>
     <string name="telegram_community">Telegram topluluğu</string>
+    <string name="login_in_progress">Spotify’da oturum açılıyor…</string>
+    <string name="login_channel">Oturum açma</string>
 </resources>

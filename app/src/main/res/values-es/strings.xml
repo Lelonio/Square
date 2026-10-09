@@ -523,4 +523,6 @@
     <string name="recap_artists">Artistas más escuchados</string>
     <string name="recap_partial">Incluye las escuchas guardadas y el historial reciente de Spotify. Pueden faltar escuchas anteriores o sin sincronizar. Los minutos solo se miden en Square.</string>
     <string name="telegram_community">Comunidad de Telegram</string>
+    <string name="login_in_progress">Iniciando sesión en Spotify…</string>
+    <string name="login_channel">Inicio de sesión</string>
 </resources>

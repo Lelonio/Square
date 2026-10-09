@@ -581,4 +581,6 @@
     <string name="smart_shuffle">Smart Shuffle</string>
     <string name="smart_shuffle_unavailable">Smart Shuffle is not available for this playlist right now.</string>
     <string name="telegram_community">Telegram community</string>
+    <string name="login_in_progress">Signing in to Spotify…</string>
+    <string name="login_channel">Signing in</string>
 </resources>

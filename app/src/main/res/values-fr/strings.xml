@@ -517,4 +517,6 @@
     <string name="recap_artists">Artistes les plus écoutés</string>
     <string name="recap_partial">Inclut les écoutes enregistrées et le récent historique Spotify. Certaines écoutes anciennes ou non synchronisées peuvent manquer. Les minutes sont mesurées uniquement dans Square.</string>
     <string name="telegram_community">Communauté Telegram</string>
+    <string name="login_in_progress">Connexion à Spotify en cours…</string>
+    <string name="login_channel">Connexion</string>
 </resources>
