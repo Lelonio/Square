@@ -570,4 +570,5 @@
         <item quantity="one">%1$d selezionato</item>
         <item quantity="other">%1$d selezionati</item>
     </plurals>
+    <string name="new_release_followed_tag">Dai tuoi artisti</string>
 </resources>

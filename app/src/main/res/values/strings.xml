@@ -597,4 +597,5 @@
         <item quantity="one">%1$d selected</item>
         <item quantity="other">%1$d selected</item>
     </plurals>
+    <string name="new_release_followed_tag">From your artists</string>
 </resources>

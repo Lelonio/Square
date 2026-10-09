@@ -84,14 +84,39 @@ fun NewScreen(
     /** The same menu every other list of songs in the app opens. */
     onSongMenu: (CatalogTrack) -> Unit,
 ) {
-    if ((followed.loading && followed.albums.isEmpty()) ||
-        (page.loading && page.hero.isEmpty() && page.songs.isEmpty() && shelves.isEmpty() && followed.albums.isEmpty())
-    ) {
+    // Not held for the followed artists: reading all of them takes seconds,
+    // and the whole page stood behind a spinner for the one row that needs it.
+    // That row has an outline of its own while it comes.
+    if (page.loading && page.hero.isEmpty() && page.songs.isEmpty() && shelves.isEmpty() && followed.albums.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(contentPadding), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
     }
+    // The big cards are the newest records by artists this listener follows.
+    // The catalogue's picks only fill the places those leave empty: an account
+    // that follows few artists, or the first visit, before they have been read.
+    // The ones up there leave the row below, so no cover is on screen twice.
+    val followedItems = remember(followed.albums) {
+        followed.albums.map { album ->
+            SearchItem(
+                uri = album.uri ?: "spotify:album:${album.id}",
+                title = album.name,
+                subtitle = album.artists.joinToString(", ") { it.name },
+                artworkUrl = album.images.firstOrNull()?.url,
+            )
+        }
+    }
+    val heroFollowed = remember(followedItems) { followedItems.take(HERO_CARDS) }
+    val heroItems = remember(heroFollowed, page.hero) {
+        val taken = heroFollowed.mapTo(mutableSetOf()) { it.uri }
+        heroFollowed + page.hero.filter { it.uri !in taken }.take(HERO_CARDS - heroFollowed.size)
+    }
+    val heroFollowedUris = remember(heroFollowed) { heroFollowed.mapTo(mutableSetOf()) { it.uri } }
+    val shelfFollowed = remember(followedItems, heroFollowedUris) {
+        followedItems.filter { it.uri !in heroFollowedUris }
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding() + 8.dp,
@@ -107,8 +132,8 @@ fun NewScreen(
             )
         }
 
-        if (page.hero.isNotEmpty()) {
-            item(contentType = "hero") { HeroPager(page.hero, onOpen) }
+        if (heroItems.isNotEmpty()) {
+            item(contentType = "hero") { HeroPager(heroItems, heroFollowedUris, onOpen) }
         }
 
         if (page.songs.isNotEmpty()) {
@@ -118,26 +143,18 @@ fun NewScreen(
             item(contentType = "songs") { SongPages(page.songs, onSongMenu, onPlaySong) }
         }
 
-        if (followed.albums.isNotEmpty() || followed.error != null || followed.loaded) {
+        if (followed.albums.isNotEmpty() || followed.error != null || followed.loaded || followed.loading) {
             item(key = "followedHeading", contentType = "shelfHeading") {
                 Heading(stringResource(R.string.new_from_followed_artists))
             }
-            if (followed.albums.isNotEmpty()) {
+            if (shelfFollowed.isNotEmpty()) {
                 item(key = "followedShelf", contentType = "shelfRow") {
-                    Shelf(
-                        followed.albums.map { album ->
-                            SearchItem(
-                                uri = album.uri ?: "spotify:album:${album.id}",
-                                title = album.name,
-                                subtitle = album.artists.joinToString(", ") { it.name },
-                                artworkUrl = album.images.firstOrNull()?.url,
-                            )
-                        },
-                        onOpen,
-                    )
+                    Shelf(shelfFollowed, onOpen)
                 }
+            } else if (followed.loading && followed.albums.isEmpty()) {
+                item(key = "followedSkeleton", contentType = "skeleton") { SkeletonRow() }
             }
-            if (followed.error != null || followed.failedArtists > 0 || followed.albums.isEmpty()) {
+            if (followed.error != null || followed.failedArtists > 0 || (followed.loaded && followed.albums.isEmpty())) {
                 item(key = "followedStatus", contentType = "status") {
                     Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
                         Text(
@@ -223,6 +240,9 @@ fun NewScreen(
 /** How many outlines stand in for the rows that are coming. */
 private const val SKELETON_ROWS = 3
 
+/** How many big cards the page leads with. */
+private const val HERO_CARDS = 9
+
 /**
  * The records the page is leading with, one screen at a time.
  *
@@ -234,7 +254,12 @@ private const val SKELETON_ROWS = 3
  * somebody having chosen it.
  */
 @Composable
-private fun HeroPager(items: List<SearchItem>, onOpen: (SearchItem) -> Unit) {
+private fun HeroPager(
+    items: List<SearchItem>,
+    /** The cards that are there because the listener follows the artist. */
+    followed: Set<String>,
+    onOpen: (SearchItem) -> Unit,
+) {
     BoxWithConstraints {
         // Almost the whole width, with the next card showing at the edge: the
         // peek is what says the row can be moved.
@@ -244,18 +269,18 @@ private fun HeroPager(items: List<SearchItem>, onOpen: (SearchItem) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(items, key = { it.uri }) { item ->
-                HeroCard(item, cardWidth) { onOpen(item) }
+                HeroCard(item, cardWidth, fromFollowed = item.uri in followed) { onOpen(item) }
             }
         }
     }
 }
 
 @Composable
-private fun HeroCard(item: SearchItem, width: Dp, onClick: () -> Unit) {
+private fun HeroCard(item: SearchItem, width: Dp, fromFollowed: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Column(Modifier.width(width)) {
         Text(
-            stringResource(R.string.new_release_tag).uppercase(),
+            stringResource(if (fromFollowed) R.string.new_release_followed_tag else R.string.new_release_tag).uppercase(),
             style = MaterialTheme.typography.labelSmall,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,

@@ -533,4 +533,5 @@
         <item quantity="one">%1$d selecionada</item>
         <item quantity="other">%1$d selecionadas</item>
     </plurals>
+    <string name="new_release_followed_tag">Dos seus artistas</string>
 </resources>

@@ -548,4 +548,5 @@
         <item quantity="one">%1$d चुना गया</item>
         <item quantity="other">%1$d चुने गए</item>
     </plurals>
+    <string name="new_release_followed_tag">आपके कलाकारों से</string>
 </resources>

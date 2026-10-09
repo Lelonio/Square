@@ -360,6 +360,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _followedReleases.value = _followedReleases.value.copy(loading = true, completed = 0, error = null)
         followedReleaseJob = viewModelScope.launch {
             try {
+                // The last answer straight away, while this one is worked out:
+                // reading every followed artist takes seconds, and the row and
+                // the cards at the top waited on it with nothing to show.
+                if (_followedReleases.value.albums.isEmpty()) {
+                    followedReleaseRepository.saved()?.let { saved ->
+                        _followedReleases.value = _followedReleases.value.copy(
+                            albums = saved.albums, artistCount = saved.artistCount,
+                        )
+                    }
+                }
                 val result = followedReleaseRepository.load(force) { done, total ->
                     _followedReleases.value = _followedReleases.value.copy(completed = done, artistCount = total)
                 }

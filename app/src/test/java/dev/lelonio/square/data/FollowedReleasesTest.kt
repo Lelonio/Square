@@ -29,9 +29,9 @@ class FollowedReleasesTest {
         assertEquals(LocalDate.of(2026, 9, 1), releaseDay("2026-09"))
     }
 
-    @Test fun walksEveryFollowedArtistAndEveryAlbumPage() = runBlocking {
+    @Test fun walksEveryFollowedArtistAndEveryRecentAlbumPage() = runBlocking {
         var followPages = 0
-        val offsets = mutableListOf<Pair<String, Int>>()
+        val offsets = mutableListOf<Triple<String, String, Int>>()
         val api = api { name, args ->
             when (name) {
                 "followedArtists" -> {
@@ -44,10 +44,11 @@ class FollowedReleasesTest {
                 }
                 "artistAlbums" -> {
                     val id = args[0] as String
+                    val group = args[1] as String
                     val offset = args[4] as Int
-                    offsets += id to offset
-                    assertEquals("album,single", args[1])
-                    PageDto(listOf(album("${id}P$offset", LocalDate.now().toString())), total = 2, next = if (offset == 0) "next" else null)
+                    offsets += Triple(id, group, offset)
+                    assertTrue(group == "album" || group == "single")
+                    PageDto(listOf(album("${id}${group}P$offset", LocalDate.now().toString(), group)), total = 2, next = if (offset == 0) "next" else null)
                 }
                 else -> error(name)
             }
@@ -57,8 +58,11 @@ class FollowedReleasesTest {
             val result = FollowedReleases(api, dir).load()
             assertEquals(2, followPages)
             assertEquals(60, result.artistCount)
-            assertEquals(120, result.albums.size)
-            assertEquals(setOf(0, 1), offsets.filter { it.first == "A60" }.map { it.second }.toSet())
+            assertEquals(240, result.albums.size)
+            assertEquals(
+                setOf("album" to 0, "album" to 1, "single" to 0, "single" to 1),
+                offsets.filter { it.first == "A60" }.map { it.second to it.third }.toSet(),
+            )
             assertEquals(0, result.failedArtists)
         } finally { dir.deleteRecursively() }
     }
@@ -86,13 +90,40 @@ class FollowedReleasesTest {
             val repository = FollowedReleases(api, dir)
             val first = repository.load()
             assertEquals(first.albums, repository.load().albums)
-            assertEquals(1, albumRequests)
+            // One request for the albums, one for the singles.
+            assertEquals(2, albumRequests)
             assertEquals(2, followedRequests)
+            assertEquals(first.albums, repository.saved()?.albums)
             fail = true
             val failed = repository.load(force = true)
             assertEquals(first.albums, failed.albums)
             assertEquals(1, failed.failedArtists)
-            assertEquals(2, albumRequests)
+            assertEquals(3, albumRequests)
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun stopsReadingAGroupOnceItReachesBackAYear() = runBlocking {
+        val offsets = mutableListOf<Pair<String, Int>>()
+        val api = api { name, args ->
+            when (name) {
+                "followedArtists" -> FollowedArtistsDto(ArtistCursorPageDto(listOf(ArtistDto(id = "A1", name = "Artist"))))
+                "artistAlbums" -> {
+                    val group = args[1] as String
+                    val offset = args[4] as Int
+                    offsets += group to offset
+                    PageDto(
+                        listOf(album("new$group", LocalDate.now().toString(), group), album("old$group", "2019-05-01", group)),
+                        total = 400, next = "more",
+                    )
+                }
+                else -> error(name)
+            }
+        }
+        val dir = Files.createTempDirectory("followed-releases-test").toFile()
+        try {
+            val result = FollowedReleases(api, dir).load()
+            assertEquals(listOf("album" to 0, "single" to 0), offsets)
+            assertEquals(setOf("newalbum", "newsingle"), result.albums.map { it.id }.toSet())
         } finally { dir.deleteRecursively() }
     }
 

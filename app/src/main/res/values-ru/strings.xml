@@ -562,4 +562,5 @@
         <item quantity="many">Выбрано %1$d</item>
         <item quantity="other">Выбрано %1$d</item>
     </plurals>
+    <string name="new_release_followed_tag">От ваших исполнителей</string>
 </resources>
