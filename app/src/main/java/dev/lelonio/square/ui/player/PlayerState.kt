@@ -313,6 +313,8 @@ fun rememberQueue(player: Player?): State<List<QueueEntry>> {
                     isCurrent = index == current,
                     played = index < current,
                     recommended = metadata.extras?.getBoolean(dev.lelonio.square.data.SmartShuffle.RECOMMENDED) == true,
+                    queued = metadata.extras?.getBoolean(dev.lelonio.square.ui.EXTRA_PLAY_NEXT) == true,
+                    contextLabel = metadata.extras?.getString(dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL).orEmpty(),
                 )
             }
         }

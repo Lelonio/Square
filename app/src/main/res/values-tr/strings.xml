@@ -532,4 +532,18 @@
     <string name="telegram_community">Telegram topluluğu</string>
     <string name="login_in_progress">Spotify’da oturum açılıyor…</string>
     <string name="login_channel">Oturum açma</string>
+    <string name="queue_now_playing">Şimdi çalıyor</string>
+    <string name="queue_next_in_queue">Sıradaki</string>
+    <string name="queue_next_from">Sıradaki, şuradan: %1$s</string>
+    <string name="queue_next_up">Sıradaki</string>
+    <string name="queue_clear">Temizle</string>
+    <string name="queue_play_next">Sonra çal</string>
+    <string name="queue_remove">Kaldır</string>
+    <string name="queue_removed">Sıradan kaldırıldı</string>
+    <string name="queue_undo">Geri al</string>
+    <string name="queue_reorder">Sıralamak için sürükle</string>
+    <plurals name="queue_selected">
+        <item quantity="one">%1$d seçildi</item>
+        <item quantity="other">%1$d seçildi</item>
+    </plurals>
 </resources>

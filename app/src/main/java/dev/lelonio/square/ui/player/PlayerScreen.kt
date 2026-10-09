@@ -236,8 +236,8 @@ fun PlayerScreen(
     /** Asked for when the credits panel is opened, and not before. */
     onWantCredits: (String?) -> Unit,
     onPlayQueueItem: (Int) -> Unit,
-    /** Drops one track out of the queue, by index. */
-    onRemoveQueueItem: (Int) -> Unit,
+    /** Reordering, removing and the rest of what the queue sheet does. */
+    queueActions: QueueActions,
     /** The music video for this track, when the catalogue has one. */
     videoFileId: String? = null,
     /** Whether the listener has asked to watch rather than listen. */
@@ -1107,7 +1107,7 @@ fun PlayerScreen(
                                 }
 
                                 Stage.QUEUE -> Box(Modifier.fillMaxSize()) {
-                                    QueueList(queue, onPlayQueueItem, onRemoveQueueItem)
+                                    QueueList(queue, queueActions)
                                 }
 
                                 Stage.DEVICES -> Box(

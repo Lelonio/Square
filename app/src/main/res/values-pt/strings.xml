@@ -519,4 +519,18 @@
     <string name="telegram_community">Comunidade do Telegram</string>
     <string name="login_in_progress">Entrando no Spotify…</string>
     <string name="login_channel">Entrar</string>
+    <string name="queue_now_playing">Tocando agora</string>
+    <string name="queue_next_in_queue">Próximas na fila</string>
+    <string name="queue_next_from">A seguir de: %1$s</string>
+    <string name="queue_next_up">A seguir</string>
+    <string name="queue_clear">Limpar</string>
+    <string name="queue_play_next">Tocar em seguida</string>
+    <string name="queue_remove">Remover</string>
+    <string name="queue_removed">Removida da fila</string>
+    <string name="queue_undo">Desfazer</string>
+    <string name="queue_reorder">Arraste para reordenar</string>
+    <plurals name="queue_selected">
+        <item quantity="one">%1$d selecionada</item>
+        <item quantity="other">%1$d selecionadas</item>
+    </plurals>
 </resources>

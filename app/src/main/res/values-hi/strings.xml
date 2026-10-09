@@ -534,4 +534,18 @@
     <string name="telegram_community">Telegram समुदाय</string>
     <string name="login_in_progress">Spotify में साइन इन हो रहा है…</string>
     <string name="login_channel">साइन इन</string>
+    <string name="queue_now_playing">अभी चल रहा है</string>
+    <string name="queue_next_in_queue">कतार में आगे</string>
+    <string name="queue_next_from">आगे, यहाँ से: %1$s</string>
+    <string name="queue_next_up">आगे</string>
+    <string name="queue_clear">खाली करें</string>
+    <string name="queue_play_next">इसके बाद चलाएँ</string>
+    <string name="queue_remove">हटाएँ</string>
+    <string name="queue_removed">कतार से हटाया गया</string>
+    <string name="queue_undo">पूर्ववत करें</string>
+    <string name="queue_reorder">क्रम बदलने के लिए खींचें</string>
+    <plurals name="queue_selected">
+        <item quantity="one">%1$d चुना गया</item>
+        <item quantity="other">%1$d चुने गए</item>
+    </plurals>
 </resources>

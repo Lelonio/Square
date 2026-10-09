@@ -583,4 +583,18 @@
     <string name="telegram_community">Telegram community</string>
     <string name="login_in_progress">Signing in to Spotify…</string>
     <string name="login_channel">Signing in</string>
+    <string name="queue_now_playing">Now playing</string>
+    <string name="queue_next_in_queue">Next in queue</string>
+    <string name="queue_next_from">Next from: %1$s</string>
+    <string name="queue_next_up">Next up</string>
+    <string name="queue_clear">Clear</string>
+    <string name="queue_play_next">Play next</string>
+    <string name="queue_remove">Remove</string>
+    <string name="queue_removed">Removed from the queue</string>
+    <string name="queue_undo">Undo</string>
+    <string name="queue_reorder">Drag to reorder</string>
+    <plurals name="queue_selected">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
 </resources>

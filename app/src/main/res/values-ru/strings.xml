@@ -546,4 +546,20 @@
     <string name="telegram_community">Сообщество Telegram</string>
     <string name="login_in_progress">Вход в Spotify…</string>
     <string name="login_channel">Вход</string>
+    <string name="queue_now_playing">Сейчас играет</string>
+    <string name="queue_next_in_queue">Далее в очереди</string>
+    <string name="queue_next_from">Далее из: %1$s</string>
+    <string name="queue_next_up">Далее</string>
+    <string name="queue_clear">Очистить</string>
+    <string name="queue_play_next">Воспроизвести следующим</string>
+    <string name="queue_remove">Удалить</string>
+    <string name="queue_removed">Удалено из очереди</string>
+    <string name="queue_undo">Отменить</string>
+    <string name="queue_reorder">Перетащите, чтобы изменить порядок</string>
+    <plurals name="queue_selected">
+        <item quantity="one">Выбран %1$d</item>
+        <item quantity="few">Выбрано %1$d</item>
+        <item quantity="many">Выбрано %1$d</item>
+        <item quantity="other">Выбрано %1$d</item>
+    </plurals>
 </resources>

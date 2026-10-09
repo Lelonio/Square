@@ -524,6 +524,48 @@ fun SquareApp(
             player?.playbackParameters = params
         }
     }
+    // What was last taken out of the queue, each with the place it had, kept
+    // for a few seconds so it can be put back where it was.
+    var queueUndo by remember {
+        mutableStateOf<List<Pair<Int, androidx.media3.common.MediaItem>>?>(null)
+    }
+    LaunchedEffect(queueUndo) {
+        if (queueUndo != null) {
+            kotlinx.coroutines.delay(5_000)
+            queueUndo = null
+        }
+    }
+    val queueActions = dev.lelonio.square.ui.player.QueueActions(
+        onPlay = { player?.seekTo(it, 0L) },
+        onRemove = { indices ->
+            player?.let { p ->
+                // From the last up, so each index still points at its track.
+                val taken = indices.distinct().sortedDescending()
+                    .filter { it in 0 until p.mediaItemCount }
+                    .map { it to p.getMediaItemAt(it) }
+                taken.forEach { (at, _) -> p.removeMediaItem(at) }
+                if (taken.isNotEmpty()) queueUndo = taken.reversed()
+            }
+        },
+        onMove = { from, to -> player?.moveMediaItem(from, to) },
+        onPlayNext = { indices ->
+            player?.let { p ->
+                // In their order, each just after the one moved before it.
+                // Every one comes after the playing track, so moving one
+                // leaves the places of those still to move as they were.
+                val after = p.currentMediaItemIndex + 1
+                indices.distinct().sorted().forEachIndexed { k, at -> p.moveMediaItem(at, after + k) }
+            }
+        },
+        onUndo = queueUndo?.let { taken ->
+            {
+                // From the first down, so each goes back to the place it had.
+                player?.let { p -> taken.forEach { (at, item) -> p.addMediaItem(minOf(at, p.mediaItemCount), item) } }
+                queueUndo = null
+            }
+        },
+        editable = remote == null,
+    )
     // The playing record's own artwork, asked for once per track and cached.
     val nowPlayingArt by viewModel.nowPlayingArt.collectAsStateWithLifecycle()
     val nowPlayingArtPending by viewModel.nowPlayingArtPending.collectAsStateWithLifecycle()
@@ -2945,7 +2987,7 @@ fun SquareApp(
                                 creditsLoading = creditsLoading,
                                 onWantCredits = viewModel::loadCredits,
                                 onPlayQueueItem = { player?.seekTo(it, 0L) },
-                                onRemoveQueueItem = { player?.removeMediaItem(it) },
+                                queueActions = queueActions,
                                 reverb = reverb,
                                 // Speed and pitch are set as a pair because
                                 // PlaybackParameters carries both; changing one

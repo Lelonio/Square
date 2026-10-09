@@ -3,6 +3,10 @@ package dev.lelonio.square.ui.player
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -32,7 +36,8 @@ import androidx.compose.ui.unit.dp
  * child fight over the same vertical axis; nested scroll gives a defined order —
  * the list gets the drag first, and only what it cannot use reaches this. So a
  * downward drag scrolls the content until it hits the top, and from there the
- * same continuous movement closes the screen. The pointer input below covers the
+ * same continuous movement used to close the screen; now only a drag that starts
+ * at the top does, see onPostScroll. The pointer input below covers the
  * parts that do not scroll at all.
  */
 @Composable
@@ -49,14 +54,16 @@ fun DismissibleScreen(
     // Plain vars in a remembered holder rather than state: nothing recomposes on
     // them, they only have to survive between drag events.
     val travel = remember { Travel() }
+    val lock = remember { mutableStateOf(false) }
 
     fun reset() {
         travel.distance = 0f
         travel.fired = false
+        travel.scrolled = null
     }
 
     fun drag(amount: Float) {
-        if (travel.fired) return
+        if (travel.fired || lock.value) return
         // Upward movement gives the accumulated distance back instead of going
         // negative, so a drag that wanders up and down does not close the player
         // on its total rather than its extent.
@@ -82,7 +89,14 @@ fun DismissibleScreen(
             ): Offset {
                 // Only what the content could not use: at the top of the scroll
                 // this is the whole drag, anywhere else it is nothing.
-                if (available.y > 0) {
+                // Decided on the gesture's first movement: if that moved the
+                // content, the gesture is a scroll to the end, and reaching the
+                // top does not turn it into a close. Scrolling up the queue to
+                // what was already played closed the player as soon as the list
+                // ran out, in the same movement. Only a drag that starts with
+                // the content already at the top closes it.
+                if (travel.scrolled == null) travel.scrolled = consumed.y != 0f
+                if (available.y > 0 && !lock.value && travel.scrolled == false) {
                     drag(available.y)
                     return Offset(0f, available.y)
                 }
@@ -110,13 +124,21 @@ fun DismissibleScreen(
                 }
             },
     ) {
-        content()
+        CompositionLocalProvider(LocalDismissLock provides lock) { content() }
     }
 }
+
+/**
+ * Set by whatever inside takes a downward drag for its own, such as a queue row
+ * being moved by its handle: while it holds, dragging down does not close.
+ */
+val LocalDismissLock = staticCompositionLocalOf<MutableState<Boolean>> { mutableStateOf(false) }
 
 private class Travel {
     var distance = 0f
     var fired = false
+    /** Whether this gesture began by scrolling the content; null before it moves. */
+    var scrolled: Boolean? = null
 }
 
 private val DISMISS_THRESHOLD = 110.dp

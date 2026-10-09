@@ -265,110 +265,11 @@ data class QueueEntry(
     /** Already heard: shown above the playing track, dimmed. */
     val played: Boolean = false,
     val recommended: Boolean = false,
+    /** Put in the queue by hand, as "play next": the "Next in queue" section. */
+    val queued: Boolean = false,
+    /** The playlist or album it came from, for the "Next from" heading. */
+    val contextLabel: String = "",
 )
-
-@Composable
-internal fun QueueList(
-    queue: List<QueueEntry>,
-    onPlay: (Int) -> Unit,
-    /** Takes a track out of the queue; absent for the one playing. */
-    onRemove: (Int) -> Unit,
-) {
-    if (queue.isEmpty()) {
-        EmptyPanel(stringResource(R.string.queue_empty))
-        return
-    }
-
-    // Opens on the playing track, with what was heard above it out of view:
-    // history for whoever scrolls up, and the next songs where they always
-    // were for everyone else. Back to it on every change of song, as the list
-    // used to start there by having nothing before it.
-    val heard = queue.count { it.played }
-    val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = if (heard > 0) heard + 1 else 0,
-    )
-    val playingUri = queue.firstOrNull { it.isCurrent }?.uri
-    LaunchedEffect(playingUri, heard) {
-        listState.scrollToItem(if (heard > 0) heard + 1 else 0)
-    }
-
-    LazyColumn(Modifier.padding(vertical = 8.dp), state = listState) {
-        if (heard > 0) {
-            item(key = "history-heading") {
-                Text(
-                    stringResource(R.string.queue_history),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = GlassInkDim,
-                    modifier = Modifier.padding(start = 18.dp, top = 6.dp, bottom = 4.dp),
-                )
-            }
-        }
-        // Keyed on the track, not on where it sits.
-        //
-        // With the index as the key, taking one out renumbered every row below
-        // it — as far as the list is concerned each of those became a different
-        // item, so nothing could be animated and the queue jumped. Keyed on the
-        // track itself, the row that went is the only one that changes and the
-        // rest slide up into the gap.
-        itemsIndexed(
-            queue,
-            key = { at, entry -> "${entry.uri}-$at-${entry.title}" },
-        ) { _, entry ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .animateItem()
-                    .clickable { onPlay(entry.index) }
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        entry.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = when {
-                            entry.isCurrent -> GlassInk
-                            entry.played -> GlassInk.copy(alpha = 0.45f)
-                            else -> GlassInk.copy(alpha = 0.85f)
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (entry.recommended) Icon(
-                            PhosphorIcons.Regular.Sparkle,
-                            contentDescription = stringResource(R.string.smart_shuffle),
-                            tint = GlassInkDim,
-                            modifier = Modifier.padding(end = 4.dp).size(12.dp),
-                        )
-                    Text(
-                        entry.artist,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = GlassInkDim,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    }
-                }
-
-                // Not on the track being played: taking that one out is a
-                // different act — it is a skip — and it already has a button.
-                if (!entry.isCurrent && !entry.played) {
-                    Icon(
-                        PhosphorIcons.Regular.X,
-                        contentDescription = stringResource(R.string.remove_from_queue),
-                        tint = GlassInkDim,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .pressable({ onRemove(entry.index) }, pressedScale = 0.86f)
-                            .padding(10.dp)
-                            .size(16.dp),
-                    )
-                }
-            }
-        }
-    }
-}
 
 /**
  * Tempo, pitch and reverb.

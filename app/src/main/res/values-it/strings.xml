@@ -556,4 +556,18 @@
     <string name="telegram_community">Community Telegram</string>
     <string name="login_in_progress">Accesso a Spotify in corso…</string>
     <string name="login_channel">Accesso</string>
+    <string name="queue_now_playing">In riproduzione</string>
+    <string name="queue_next_in_queue">Prossimi in coda</string>
+    <string name="queue_next_from">Successivi da: %1$s</string>
+    <string name="queue_next_up">Successivi</string>
+    <string name="queue_clear">Svuota</string>
+    <string name="queue_play_next">Riproduci dopo</string>
+    <string name="queue_remove">Rimuovi</string>
+    <string name="queue_removed">Rimosso dalla coda</string>
+    <string name="queue_undo">Annulla</string>
+    <string name="queue_reorder">Trascina per riordinare</string>
+    <plurals name="queue_selected">
+        <item quantity="one">%1$d selezionato</item>
+        <item quantity="other">%1$d selezionati</item>
+    </plurals>
 </resources>
