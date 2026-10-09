@@ -1157,7 +1157,23 @@ fun PlayerScreen(
                         }
                         }
 
-                        Spacer(Modifier.height(20.dp))
+                        // With a panel open the room below the stage goes to
+                        // the panel: lyrics, queue and effects ran out a video
+                        // row and a gap short of the title, over empty glass.
+                        // What the stage gains the row gives up, so the title
+                        // and the controls stay where they are.
+                        val panelOpen = panel != PlayerPanel.NONE
+                        val gapBelowStage by androidx.compose.animation.core.animateDpAsState(
+                            if (panelOpen) 12.dp else 20.dp,
+                            tween(STAGE_FADE_MS * 2),
+                            label = "gapBelowStage",
+                        )
+                        val videoRowHeight by androidx.compose.animation.core.animateDpAsState(
+                            if (panelOpen) 0.dp else VIDEO_ROW_HEIGHT,
+                            tween(STAGE_FADE_MS * 2),
+                            label = "videoRowHeight",
+                        )
+                        Spacer(Modifier.height(gapBelowStage))
 
                         // Only for the few tracks that have a video, and above
                         // the title because that is where the official client
@@ -1181,11 +1197,11 @@ fun PlayerScreen(
                         Box(
                             Modifier
                                 .align(Alignment.CenterHorizontally)
-                                .height(VIDEO_ROW_HEIGHT),
+                                .height(videoRowHeight),
                             contentAlignment = Alignment.Center,
                         ) {
                         androidx.compose.animation.AnimatedVisibility(
-                            visible = videoFileId != null,
+                            visible = videoFileId != null && !panelOpen,
                             enter = fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.9f),
                             exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.92f),
                         ) {
