@@ -1,0 +1,6 @@
+Edit the queue: drag to reorder, swipe to remove with undo, select several to play next or remove.
+Reordering keeps your shuffle; the queue no longer reshuffles itself.
+New from your artists leads the New page and loads much faster.
+Your month in music is now a Library page, and counts YouTube Music too.
+Lyrics, queue and effects use the full height of the player.
+Fixed Spotify sign-in getting stuck in the browser on some phones.
