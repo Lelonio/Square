@@ -1961,9 +1961,9 @@ fun SquareApp(
                                                 viewModel.canRemoveFrom(page.uri),
                                         )
                                     },
-                                    storedSort = trackOrders[page.uri]?.sort,
+                                    storedSort = (trackOrders[page.uri] ?: viewModel.defaultTrackOrder).sort,
                                     onSortChange = { viewModel.setTrackSort(page.uri, it) },
-                                    storedSortDescending = trackOrders[page.uri]?.descending ?: false,
+                                    storedSortDescending = (trackOrders[page.uri] ?: viewModel.defaultTrackOrder).descending,
                                     onSortDescendingChange = { viewModel.setTrackSortDescending(page.uri, it) },
                                     onOpenItem = { item ->
                                         viewModel.openContext(

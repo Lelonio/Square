@@ -211,12 +211,15 @@ object RemoteConnect {
 
     /** The upcoming tracks looked up so far, kept by uri like [known]. */
     private val knownNext = mutableMapOf<String, RemoteTrack>()
+    private const val KNOWN_LIMIT = 500
 
     /**
      * What was looked up about the upcoming tracks, kept and put on the
      * playback shown now; see [describe], which does the same for the current one.
      */
     fun describeNext(tracks: List<RemoteTrack>) {
+        // Bounded, like the service's own record of what it asked.
+        if (knownNext.size > KNOWN_LIMIT) knownNext.clear()
         tracks.forEach { knownNext[it.uri] = it }
         val current = _playback.value ?: return
         _playback.value = current.filled()
@@ -224,6 +227,8 @@ object RemoteConnect {
 
     /** Forgets everything. For a session ending, where none of it is true any more. */
     fun clear() {
+        known.clear()
+        knownNext.clear()
         playingAtOpen = null
         sdkId = null
         _elsewhere.value = false

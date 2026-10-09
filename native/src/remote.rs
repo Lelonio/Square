@@ -43,7 +43,12 @@ pub fn clear() {
 }
 
 /// Device registration returns a cluster even when playback has not changed.
+/// Asked only while nothing is stored: every poll used to lock the engine and
+/// copy the whole cluster, only to throw the copy away.
 fn seed_initial_cluster() {
+    if CLUSTER.lock().map(|stored| stored.is_some()).unwrap_or(true) {
+        return;
+    }
     let Some(initial) = engine::connect_cluster() else { return; };
     if let Ok(mut stored) = CLUSTER.lock() {
         if stored.is_none() { *stored = Some(initial); }

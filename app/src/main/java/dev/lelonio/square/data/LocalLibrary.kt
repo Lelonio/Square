@@ -185,9 +185,21 @@ object LocalLibrary {
                 collection(),
                 columns,
                 // Downloaded MP3s are not always marked IS_MUSIC. Include indexed
-                // audio while excluding files assigned to system alerts.
-                "${MediaStore.Audio.Media.DURATION} > 0 AND ${MediaStore.Audio.Media.IS_RINGTONE} = 0 " +
-                    "AND ${MediaStore.Audio.Media.IS_NOTIFICATION} = 0 AND ${MediaStore.Audio.Media.IS_ALARM} = 0",
+                // audio while excluding files assigned to system alerts — and
+                // what is plainly not music either: podcasts, audiobooks and,
+                // where Android marks them, voice recordings, which would
+                // otherwise have put someone's memos in their music library.
+                buildString {
+                    append("${MediaStore.Audio.Media.DURATION} > 0 AND ${MediaStore.Audio.Media.IS_RINGTONE} = 0 ")
+                    append("AND ${MediaStore.Audio.Media.IS_NOTIFICATION} = 0 AND ${MediaStore.Audio.Media.IS_ALARM} = 0 ")
+                    append("AND ${MediaStore.Audio.Media.IS_PODCAST} = 0")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        append(" AND ${MediaStore.Audio.Media.IS_AUDIOBOOK} = 0")
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        append(" AND ${MediaStore.Audio.Media.IS_RECORDING} = 0")
+                    }
+                },
                 null,
                 "${MediaStore.Audio.Media.DATE_ADDED} DESC",
             )?.use { cursor ->

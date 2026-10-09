@@ -2543,6 +2543,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** How the detail screen sorts its tracks; remembered between visits. */
     val trackOrders get() = container.preferences.trackOrders
+    val defaultTrackOrder get() = container.preferences.defaultTrackOrder
 
     fun setTrackSort(uri: String?, value: String) {
         uri?.let { container.preferences.setTrackSort(it, value) }

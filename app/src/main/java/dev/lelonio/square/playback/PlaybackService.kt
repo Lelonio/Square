@@ -1070,6 +1070,7 @@ class PlaybackService : MediaLibraryService() {
 
     /** Upcoming tracks already asked about, so a run of updates asks once. */
     private val askedNext = mutableSetOf<String>()
+    private val ASKED_NEXT_LIMIT = 500
 
     /**
      * Names the tracks coming up on the other device that it did not name.
@@ -1082,7 +1083,9 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun describeRemoteNext(playback: dev.lelonio.square.data.RemotePlayback) {
         val unnamed = playback.next.filter { it.title.isEmpty() && it.uri !in askedNext }
         if (unnamed.isEmpty()) return
-        askedNext += unnamed.map { it.uri }
+        // Bounded: a day of following another device's queue is a lot of
+        // tracks, and an answer already given is kept by RemoteConnect.
+        if (askedNext.size > ASKED_NEXT_LIMIT) askedNext.clear()
         val local = unnamed.filter { dev.lelonio.square.data.LocalLibrary.isSpotifyLocal(it.uri) }.map { track ->
             val parts = track.uri.removePrefix(dev.lelonio.square.data.LocalLibrary.SPOTIFY_PREFIX).split(':')
                 .map { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
@@ -1097,6 +1100,10 @@ class PlaybackService : MediaLibraryService() {
                     dev.lelonio.square.data.RemoteTrack(track.uri, track.name, track.artist, track.artworkUrl.orEmpty())
                 }
         }
+        // Only what was answered counts as asked: a read that failed on a
+        // dropped connection is tried again with the next update, rather than
+        // leaving those tracks without a name for the rest of the session.
+        askedNext += local.map { it.uri } + read.map { it.uri }
         if (local.isNotEmpty() || read.isNotEmpty()) {
             dev.lelonio.square.data.RemoteConnect.describeNext(local + read)
         }

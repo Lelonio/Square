@@ -27,6 +27,13 @@ class PreferencesStore(context: Context) {
     )
     val trackOrders = _trackOrders.asStateFlow()
 
+    /**
+     * The one order every playlist shared before each kept its own, for the
+     * playlists that have not been given one yet: without it an update put
+     * every list back in playlist order.
+     */
+    val defaultTrackOrder = TrackOrder(prefs.getString(KEY_TRACK_SORT, null), prefs.getBoolean(KEY_TRACK_DESC, false))
+
     fun setTrackSort(uri: String, value: String) {
         val previous = _trackOrders.value[uri] ?: TrackOrder()
         _trackOrders.value = _trackOrders.value + (uri to previous.copy(sort = value))
