@@ -534,4 +534,9 @@
         <item quantity="other">%1$d ausgewählt</item>
     </plurals>
     <string name="new_release_followed_tag">Von deinen Künstlern</string>
+    <string name="recap_song_of_month">Song des Monats</string>
+    <string name="recap_stat_plays">Wiedergaben</string>
+    <string name="recap_stat_minutes">Minuten in Square</string>
+    <string name="recap_empty">Diesen Monat noch nichts gehört.</string>
+    <string name="recap_partial_youtube">Enthält, was du in Square hörst, und, solange Square geöffnet ist, deinen YouTube-Music-Verlauf. Wiedergaben aus anderen Apps und auf anderen Geräten sind ungefähr: YouTube nennt nur den Tag, nicht die Uhrzeit.</string>
 </resources>

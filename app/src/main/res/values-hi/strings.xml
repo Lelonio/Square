@@ -549,4 +549,9 @@
         <item quantity="other">%1$d चुने गए</item>
     </plurals>
     <string name="new_release_followed_tag">आपके कलाकारों से</string>
+    <string name="recap_song_of_month">महीने का गाना</string>
+    <string name="recap_stat_plays">बार सुना</string>
+    <string name="recap_stat_minutes">Square में मिनट</string>
+    <string name="recap_empty">इस महीने अभी तक कुछ नहीं सुना।</string>
+    <string name="recap_partial_youtube">इसमें Square में सुने गए गाने और, जब तक Square खुला है, आपका YouTube Music इतिहास शामिल है। दूसरे ऐप और डिवाइस पर सुने गए गाने अनुमानित हैं: YouTube समय नहीं, सिर्फ़ दिन बताता है।</string>
 </resources>

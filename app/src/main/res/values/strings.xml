@@ -598,4 +598,9 @@
         <item quantity="other">%1$d selected</item>
     </plurals>
     <string name="new_release_followed_tag">From your artists</string>
+    <string name="recap_song_of_month">Song of the month</string>
+    <string name="recap_stat_plays">plays</string>
+    <string name="recap_stat_minutes">minutes in Square</string>
+    <string name="recap_empty">No listens this month yet.</string>
+    <string name="recap_partial_youtube">Includes what you play in Square and, while Square is open, your YouTube Music history. Plays from other apps and devices are approximate: YouTube does not say when, only the day.</string>
 </resources>

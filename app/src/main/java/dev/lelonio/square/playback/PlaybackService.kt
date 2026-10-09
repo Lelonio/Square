@@ -1550,18 +1550,23 @@ class PlaybackService : MediaLibraryService() {
             }
             try {
                 while (true) {
-                    val account = container.listeningStore.account
+                    // Filed under the source it was played from: Spotify's
+                    // account, or YouTube Music's history on this phone.
+                    val source = when (container.preferences.backend.value) {
+                        dev.lelonio.square.backend.BackendId.SPOTIFY -> dev.lelonio.square.data.ListeningStore.Source.SPOTIFY
+                        dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC -> dev.lelonio.square.data.ListeningStore.Source.YOUTUBE_MUSIC
+                    }
+                    val account = container.listeningStore.ownerOf(source)
                     if (account != owner) { sampler.reset(); owner = account }
                     if (sampledPlayer !== player) {
                         sampledPlayer?.removeListener(listener)
                         sampledPlayer = player
                         player.addListener(listener)
                     }
-                    val spotify = container.preferences.backend.value == dev.lelonio.square.backend.BackendId.SPOTIFY
                     val remote = (player as? LibrespotPlayer)?.isRemotePlayback == true
                     val item = player.currentMediaItem
                     val metadata = item?.mediaMetadata
-                    val track = if (spotify && !remote && account != null && item != null &&
+                    val track = if (!remote && account != null && item != null &&
                         !metadata?.title.isNullOrBlank()) CatalogTrack(
                         uri = item.mediaId,
                         name = metadata?.title.toString(),

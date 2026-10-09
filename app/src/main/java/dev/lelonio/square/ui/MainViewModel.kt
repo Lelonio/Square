@@ -1976,12 +1976,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     val listeningEvents = container.listeningStore.events
+
+    init {
+        // The month in music is the one of the source in use.
+        viewModelScope.launch {
+            container.preferences.backend.collect { backend ->
+                container.listeningStore.show(
+                    when (backend) {
+                        BackendId.SPOTIFY -> dev.lelonio.square.data.ListeningStore.Source.SPOTIFY
+                        BackendId.YOUTUBE_MUSIC -> dev.lelonio.square.data.ListeningStore.Source.YOUTUBE_MUSIC
+                    },
+                )
+            }
+        }
+    }
     private var listeningSync: kotlinx.coroutines.Job? = null
     private var lastListeningSync = 0L
 
     fun syncListeningHistory() {
-        if (container.preferences.backend.value != dev.lelonio.square.backend.BackendId.SPOTIFY ||
-            listeningSync?.isActive == true || System.currentTimeMillis() - lastListeningSync < 60_000) return
+        if (listeningSync?.isActive == true || System.currentTimeMillis() - lastListeningSync < 60_000) return
+        if (container.preferences.backend.value == dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC) {
+            syncYouTubeListening()
+            return
+        }
         listeningSync = viewModelScope.launch {
             runCatching {
                 val owner = meId ?: runCatching { dev.lelonio.square.nativecore.NativeBridge.username() }
@@ -2004,6 +2021,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }.onSuccess { lastListeningSync = System.currentTimeMillis() }
                 .onFailure { android.util.Log.w(TAG, "listening history unavailable: ${describe(it)}") }
+        }
+    }
+
+    /**
+     * Reads the account's YouTube Music history into the month in music.
+     *
+     * Only while the app is open, as Spotify's is: every few minutes, from the
+     * loop in SquareApp. Between two readings a song played again goes back to
+     * the top of the page, and that is what is counted; see YouTubeListening.
+     */
+    private fun syncYouTubeListening() {
+        val store = container.listeningStore
+        listeningSync = viewModelScope.launch {
+            runCatching {
+                val sections = container.youtubeBackend.listeningHistory() ?: return@runCatching
+                val now = System.currentTimeMillis()
+                val last = store.youtubeReading()
+                val plays = dev.lelonio.square.data.YouTubeListening.plays(
+                    sections = sections,
+                    previous = last?.first,
+                    previousAt = last?.second ?: now,
+                    now = now,
+                )
+                store.importRemote(plays, dev.lelonio.square.data.ListeningStore.YOUTUBE_OWNER)
+                store.keepYoutubeReading(sections.flatMap { it.second }.map { it.uri }, now)
+                android.util.Log.i(TAG, "youtube history: ${sections.map { it.first }}, ${plays.size} plays filed")
+            }.onSuccess { lastListeningSync = System.currentTimeMillis() }
+                .onFailure { android.util.Log.w(TAG, "youtube history unavailable: ${describe(it)}") }
         }
     }
 

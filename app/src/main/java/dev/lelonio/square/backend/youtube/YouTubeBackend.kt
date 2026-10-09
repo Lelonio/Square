@@ -426,6 +426,29 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         artworkUrl = item.thumbnail,
     )
 
+    /**
+     * The account's YouTube Music history: sections, newest first, each with
+     * its songs, newest first. Null when no account is signed in.
+     *
+     * Asked for in English whatever the phone reads, because the section
+     * titles are the only dates the page has ("Today", "Last week", a month)
+     * and they have to be read back into days; see YouTubeListening. The
+     * language is swapped under the same lock as the country in [wherever].
+     */
+    suspend fun listeningHistory(): List<Pair<String, List<CatalogTrack>>>? = withContext(Dispatchers.IO) {
+        if (!account.isSignedIn) return@withContext null
+        val page = regionLock.withLock {
+            val kept = YouTube.locale
+            YouTube.locale = kept.copy(hl = "en")
+            try {
+                YouTube.musicHistory()
+            } finally {
+                YouTube.locale = kept
+            }
+        }.getOrThrow()
+        page.sections.orEmpty().map { section -> section.title to section.songs.map(::toCatalogTrack) }
+    }
+
     private fun toCatalogTrack(item: SongItem): CatalogTrack {
         // Every name its own way in, and the record too: what makes the lines
         // under the title in the player lead somewhere, as they do for Spotify.

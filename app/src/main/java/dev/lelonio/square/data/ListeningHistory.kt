@@ -54,6 +54,23 @@ object ListeningHistory {
         } else events + ListeningEvent("spotify:$at:${track.uri}", track, at, qualified = true, spotifyAt = at)
     }
 
+    /**
+     * A play read from an account that keeps no times; see [YouTubeListening].
+     *
+     * Square's own measurement of the same song inside [window] is that play,
+     * once: it is marked as seen by the account and nothing is added. Otherwise
+     * the play is added at [at].
+     */
+    fun mergeRemote(events: List<ListeningEvent>, track: CatalogTrack, at: Long, window: LongRange): List<ListeningEvent> {
+        val match = events.filter {
+            it.spotifyAt == null && it.id.startsWith("local:") && it.qualified &&
+                it.track.uri == track.uri && it.startedAt in window
+        }.minByOrNull { it.startedAt }
+        return if (match != null) events.map {
+            if (it.id == match.id) it.copy(spotifyAt = it.startedAt) else it
+        } else events + ListeningEvent("remote:$at:${track.uri}", track, at, qualified = true, spotifyAt = at)
+    }
+
     fun summarize(events: List<ListeningEvent>, month: YearMonth, zone: ZoneId = ZoneId.systemDefault()): MonthlyListening {
         val start = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
         val end = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()

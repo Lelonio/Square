@@ -534,4 +534,9 @@
         <item quantity="other">%1$d selecionadas</item>
     </plurals>
     <string name="new_release_followed_tag">Dos seus artistas</string>
+    <string name="recap_song_of_month">Música do mês</string>
+    <string name="recap_stat_plays">reproduções</string>
+    <string name="recap_stat_minutes">minutos no Square</string>
+    <string name="recap_empty">Nenhuma reprodução neste mês ainda.</string>
+    <string name="recap_partial_youtube">Inclui o que você ouve no Square e, enquanto o Square está aberto, seu histórico do YouTube Music. Reproduções em outros apps e dispositivos são aproximadas: o YouTube não informa a hora, só o dia.</string>
 </resources>

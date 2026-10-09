@@ -547,4 +547,9 @@
         <item quantity="other">%1$d seçildi</item>
     </plurals>
     <string name="new_release_followed_tag">Sanatçılarından</string>
+    <string name="recap_song_of_month">Ayın şarkısı</string>
+    <string name="recap_stat_plays">dinleme</string>
+    <string name="recap_stat_minutes">Square’de dakika</string>
+    <string name="recap_empty">Bu ay henüz dinleme yok.</string>
+    <string name="recap_partial_youtube">Square’de dinlediklerini ve Square açıkken YouTube Music geçmişini içerir. Diğer uygulama ve cihazlardaki dinlemeler yaklaşıktır: YouTube saati değil, yalnızca günü verir.</string>
 </resources>

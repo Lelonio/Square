@@ -571,4 +571,9 @@
         <item quantity="other">%1$d selezionati</item>
     </plurals>
     <string name="new_release_followed_tag">Dai tuoi artisti</string>
+    <string name="recap_song_of_month">Brano del mese</string>
+    <string name="recap_stat_plays">ascolti</string>
+    <string name="recap_stat_minutes">minuti in Square</string>
+    <string name="recap_empty">Ancora nessun ascolto questo mese.</string>
+    <string name="recap_partial_youtube">Include quello che ascolti in Square e, mentre Square è aperta, la cronologia di YouTube Music. Gli ascolti da altre app e dispositivi sono approssimativi: YouTube non dice l’ora, solo il giorno.</string>
 </resources>

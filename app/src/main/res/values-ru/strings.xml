@@ -563,4 +563,9 @@
         <item quantity="other">Выбрано %1$d</item>
     </plurals>
     <string name="new_release_followed_tag">От ваших исполнителей</string>
+    <string name="recap_song_of_month">Трек месяца</string>
+    <string name="recap_stat_plays">прослушиваний</string>
+    <string name="recap_stat_minutes">минут в Square</string>
+    <string name="recap_empty">В этом месяце пока ничего не прослушано.</string>
+    <string name="recap_partial_youtube">Учитывается то, что вы слушаете в Square, и, пока Square открыт, история YouTube Music. Прослушивания в других приложениях и на других устройствах приблизительны: YouTube сообщает только день, а не время.</string>
 </resources>

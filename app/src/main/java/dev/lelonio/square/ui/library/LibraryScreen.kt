@@ -2,6 +2,11 @@ package dev.lelonio.square.ui.library
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -147,6 +152,8 @@ fun LibraryScreen(
     onUseYouTube: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     listeningEvents: List<dev.lelonio.square.data.ListeningEvent>? = null,
+    /** Whether those were played from Spotify, rather than YouTube Music. */
+    listeningFromSpotify: Boolean = true,
     backdrop: Backdrop,
 ) {
     when (state) {
@@ -277,6 +284,23 @@ fun LibraryScreen(
                     .distinctBy { it.uri }
             }
 
+            // The month in music takes the library's place while it is open,
+            // and gives it back as it was: the scroll positions and choices
+            // above are held outside this.
+            AnimatedContent(
+                targetState = recapOpen && listeningEvents != null,
+                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
+                label = "libraryRecap",
+            ) { showRecap ->
+            if (showRecap) {
+                MonthlyListeningPage(
+                    events = listeningEvents.orEmpty(),
+                    fromSpotify = listeningFromSpotify,
+                    backdrop = backdrop,
+                    contentPadding = contentPadding,
+                    onBack = { recapOpen = false },
+                )
+            } else {
             Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
                 Header(
@@ -421,9 +445,6 @@ fun LibraryScreen(
                 }
             }
 
-            if (recapOpen && listeningEvents != null) {
-                MonthlyListeningDialog(listeningEvents, backdrop, onDismiss = { recapOpen = false })
-            }
 
             // The app's own menu rather than Material's card: see GlassMenu.
             // The same one the track sort on a playlist page opens, for the
@@ -456,6 +477,8 @@ fun LibraryScreen(
                     descending = !descending
                     view.descending = descending
                 }
+            }
+            }
             }
             }
         }
