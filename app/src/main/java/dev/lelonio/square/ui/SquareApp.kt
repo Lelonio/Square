@@ -4132,6 +4132,21 @@ private fun BarSearchField(
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
+    // Held as a value with a selection, so a field that opens on words already
+    // typed puts the cursor after them, where the listener carries on typing;
+    // a plain string put it before the first letter. Kept in step with the
+    // query from outside, which the cross and a search from history change.
+    var field by remember {
+        mutableStateOf(
+            androidx.compose.ui.text.input.TextFieldValue(query, androidx.compose.ui.text.TextRange(query.length)),
+        )
+    }
+    LaunchedEffect(query) {
+        if (field.text != query) {
+            field = androidx.compose.ui.text.input.TextFieldValue(query, androidx.compose.ui.text.TextRange(query.length))
+        }
+    }
+
     Row(
         modifier.padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -4143,8 +4158,11 @@ private fun BarSearchField(
             modifier = Modifier.size(20.dp),
         )
         BasicTextField(
-            value = query,
-            onValueChange = onQuery,
+            value = field,
+            onValueChange = {
+                field = it
+                if (it.text != query) onQuery(it.text)
+            },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = ink),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(ink),
