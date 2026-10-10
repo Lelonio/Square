@@ -574,4 +574,6 @@
     <string name="animated_cover_source">Источник</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="font_title">Шрифт</string>
+    <string name="font_system">Использовать шрифт телефона</string>
 </resources>

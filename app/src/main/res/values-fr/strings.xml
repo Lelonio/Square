@@ -545,4 +545,6 @@
     <string name="animated_cover_source">Source</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="font_title">Police</string>
+    <string name="font_system">Utiliser la police du téléphone</string>
 </resources>

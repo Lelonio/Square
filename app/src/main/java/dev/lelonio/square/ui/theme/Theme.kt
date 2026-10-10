@@ -5,6 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -142,7 +144,17 @@ fun SquareTheme(
     }
 
     CompositionLocalProvider(LocalLightTheme provides !darkTheme) {
-        MaterialTheme(colorScheme = scheme, typography = SpotTypography, content = content)
+        // The listener's choice of face; see PreferencesStore.systemFont.
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val systemFont by remember(context) {
+            (context.applicationContext as? dev.lelonio.square.SquareApplication)?.preferences?.systemFont
+                ?: kotlinx.coroutines.flow.MutableStateFlow(false)
+        }.collectAsState()
+        MaterialTheme(
+            colorScheme = scheme,
+            typography = if (systemFont) SystemTypography else SpotTypography,
+            content = content,
+        )
     }
 }
 
@@ -254,24 +266,33 @@ fun Modifier.softShadow(
  * against small wide-tracked labels. The contrast between the two is what makes
  * a screen read as designed instead of as a list of controls.
  */
-private val SpotTypography = Typography(
+private fun spotTypography(family: FontFamily, tracking: Float) = Typography(
     displayLarge = TextStyle(
-        fontFamily = Inter,
+        fontFamily = family,
         fontSize = 34.sp,
         lineHeight = 38.sp,
         fontWeight = FontWeight.Bold,
-        letterSpacing = (-1.2).sp,
+        letterSpacing = (-1.2 * tracking).sp,
     ),
     headlineLarge = TextStyle(
-        fontFamily = Inter,
+        fontFamily = family,
         fontSize = 27.sp,
         lineHeight = 31.sp,
         fontWeight = FontWeight.Bold,
-        letterSpacing = (-0.8).sp,
+        letterSpacing = (-0.8 * tracking).sp,
     ),
-    titleLarge = TextStyle(fontFamily = Inter, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp),
-    titleMedium = TextStyle(fontFamily = Inter, fontSize = 15.5.sp, fontWeight = FontWeight.Medium, letterSpacing = (-0.1).sp),
-    bodyMedium = TextStyle(fontFamily = Inter, fontSize = 13.5.sp, fontWeight = FontWeight.Normal),
-    bodySmall = TextStyle(fontFamily = Inter, fontSize = 12.sp, fontWeight = FontWeight.Normal),
-    labelLarge = TextStyle(fontFamily = Inter, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp),
+    titleLarge = TextStyle(fontFamily = family, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3 * tracking).sp),
+    titleMedium = TextStyle(fontFamily = family, fontSize = 15.5.sp, fontWeight = FontWeight.Medium, letterSpacing = (-0.1 * tracking).sp),
+    bodyMedium = TextStyle(fontFamily = family, fontSize = 13.5.sp, fontWeight = FontWeight.Normal),
+    bodySmall = TextStyle(fontFamily = family, fontSize = 12.sp, fontWeight = FontWeight.Normal),
+    labelLarge = TextStyle(fontFamily = family, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp),
 )
+
+private val SpotTypography = spotTypography(Inter, tracking = 1f)
+
+/**
+ * The same scale in the phone's own face. Tracked half as tight: the negative
+ * spacing was set for Inter's shapes, and on a wider system face it crowded
+ * the letters of a large title together.
+ */
+private val SystemTypography = spotTypography(FontFamily.Default, tracking = 0.5f)

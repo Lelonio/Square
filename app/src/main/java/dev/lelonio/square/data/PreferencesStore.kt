@@ -104,6 +104,21 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_CANVAS, value).apply()
     }
 
+    private val _systemFont = MutableStateFlow(prefs.getBoolean(KEY_SYSTEM_FONT, false))
+
+    /**
+     * The phone's own typeface instead of Inter.
+     *
+     * Asked for by listeners whose phones set a face of their own (HyperOS,
+     * One UI), next to which the app's thinner type read as out of place.
+     */
+    val systemFont: StateFlow<Boolean> = _systemFont.asStateFlow()
+
+    fun setSystemFont(value: Boolean) {
+        _systemFont.value = value
+        prefs.edit().putBoolean(KEY_SYSTEM_FONT, value).apply()
+    }
+
     /** Where the moving covers come from; see [animatedCoverSource]. */
     enum class CoverSource { SPOTIFY, APPLE_MUSIC }
 
@@ -299,6 +314,7 @@ class PreferencesStore(context: Context) {
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_CANVAS = "canvas_enabled"
         const val KEY_COVER_SOURCE = "animated_cover_source"
+        const val KEY_SYSTEM_FONT = "system_font"
         const val KEY_KEEP_PLAYING = "keep_playing_on_close"
         const val KEY_SPONSOR_BLOCK = "sponsor_block"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"

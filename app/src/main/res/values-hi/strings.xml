@@ -560,4 +560,6 @@
     <string name="animated_cover_source">स्रोत</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="font_title">फ़ॉन्ट</string>
+    <string name="font_system">फ़ोन का फ़ॉन्ट इस्तेमाल करें</string>
 </resources>

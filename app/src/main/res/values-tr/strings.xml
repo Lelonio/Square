@@ -558,4 +558,6 @@
     <string name="animated_cover_source">Kaynak</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="font_title">Yazı tipi</string>
+    <string name="font_system">Telefonun yazı tipini kullan</string>
 </resources>

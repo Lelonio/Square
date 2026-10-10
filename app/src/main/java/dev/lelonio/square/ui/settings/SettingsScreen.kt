@@ -47,6 +47,7 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowLeft
 import com.adamglin.phosphoricons.regular.Check
+import com.adamglin.phosphoricons.regular.TextAa
 import com.adamglin.phosphoricons.regular.ArrowUpRight
 import com.adamglin.phosphoricons.regular.CaretDown
 import com.adamglin.phosphoricons.regular.CaretRight
@@ -581,6 +582,23 @@ fun SettingsScreen(
         // The two settings that are Android's rather than the app's, and the
         // two people are sent to when the music stops in the background or a
         // notification never arrives.
+        // The face the app is set in: its own, or the phone's.
+        if (shown == SettingsPage.App) item("font") {
+            val store = remember(context) {
+                (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+            }
+            val systemFont by store.systemFont.collectAsStateWithLifecycle()
+            Section(stringResource(R.string.font_title)) {
+                DownloadSwitch(
+                    label = stringResource(R.string.font_system),
+                    checked = systemFont,
+                    backdrop = backdrop,
+                    icon = PhosphorIcons.Regular.TextAa,
+                    onChange = store::setSystemFont,
+                )
+            }
+        }
+
         if (shown == SettingsPage.App) item("system") {
             Section(stringResource(R.string.page_app_system)) {
                 ActionRow(
