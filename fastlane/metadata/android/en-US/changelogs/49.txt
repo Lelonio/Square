@@ -1,0 +1,6 @@
+Home-screen widget in glass, from two by two to full size, with your recent playlists.
+Animated covers: one switch, with Spotify Canvas or Apple Music as the source; lighter and smoother.
+Option to use the phone's own font. New launcher icon. Korean.
+YouTube Music: choose audio quality, better-sounding effects, working heart in the notification.
+Square now appears among the phone's media players.
+Fixed Spotify's home turning into the fallback page after a few seconds.
