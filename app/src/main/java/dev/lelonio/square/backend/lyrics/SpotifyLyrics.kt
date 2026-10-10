@@ -27,11 +27,6 @@ object SpotifyLyrics {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    private class Cached(val lyrics: Lyrics?)
-
-    /** Fast session cache so repeat views or replay during playback cost 0ms and 0 network. */
-    private val sessionCache = object : android.util.LruCache<String, Cached>(64) {}
-
     /**
      * @param allowNetwork false offline, where the only lyrics are the kept ones.
      */
@@ -42,23 +37,17 @@ object SpotifyLyrics {
         durationMs: Long,
         allowNetwork: Boolean = true,
     ): Lyrics? {
-        if (!allowNetwork) return kept(uri)
+        // Offline: the copy beside a download, or words this phone has shown
+        // before, which LyricsLibrary kept.
+        if (!allowNetwork) return kept(uri) ?: LyricsLibrary.cachedLyrics(uri)
 
-        sessionCache.get(uri)?.let { return it.lyrics }
+        // Repeat views cost nothing: LyricsLibrary keeps its answers in memory
+        // as well as on disk, and a source picked by the listener with them.
+        kept(uri)?.let { return it }
 
-        kept(uri)?.let {
-            sessionCache.put(uri, Cached(it))
-            return it
-        }
-
-        val found = Amll.lyrics(uri)
-            ?: Lossless.lyrics(title, artist, durationMs)
-            ?: Catalog.lyrics(uri)
-            ?: LrcLib.lyrics(title, artist, durationMs)
-            ?: NetEase.lyrics(title, artist, durationMs)
-            ?: LyricsOvh.lyrics(title, artist, durationMs)
-
-        sessionCache.put(uri, Cached(found))
+        // The order, and every source in it, lives in LyricsLibrary, which
+        // also keeps what it found and the source the listener chose.
+        val found = LyricsLibrary.lyrics(LyricsQuery(uri, title, artist, durationMs))
 
         return withContext(Dispatchers.IO) {
             // Nothing found is an answer worth keeping too, so a downloaded

@@ -1119,6 +1119,18 @@ fun SquareApp(
         }
     }
 
+    // Better words found after a song was shown some: word-timed lyrics from a
+    // source further down the order. Swapped in if that song is still on.
+    val playingUri by rememberUpdatedState(playback.mediaId)
+    LaunchedEffect(Unit) {
+        dev.lelonio.square.backend.lyrics.LyricsLibrary.upgrades.collect { (uri, better) ->
+            if (uri == playingUri) {
+                lyrics = better
+                lyricsFor = uri
+            }
+        }
+    }
+
     // The language the app is read in. Changing it re-creates the activity,
     // which is the only way a Compose tree already built out of one set of
     // resources can be rebuilt out of another.

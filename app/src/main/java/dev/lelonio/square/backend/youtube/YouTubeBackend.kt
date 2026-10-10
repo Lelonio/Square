@@ -664,9 +664,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
             runCatching { lyricsJson.decodeFromString<Lyrics>(raw) }.getOrNull()?.let { return it }
         }
 
-        val found = Lossless.lyrics(title, artist, durationMs)
-            ?: LrcLib.lyrics(title, artist, durationMs)
-            ?: LyricsOvh.lyrics(title, artist, durationMs)
+        val found = dev.lelonio.square.backend.lyrics.LyricsLibrary.lyrics(
+            dev.lelonio.square.backend.lyrics.LyricsQuery(uri, title, artist, durationMs),
+        )
 
         if (found != null) {
             runCatching { DownloadExtras.rememberLyrics(uri, lyricsJson.encodeToString(found)) }

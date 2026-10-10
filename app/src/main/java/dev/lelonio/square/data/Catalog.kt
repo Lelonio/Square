@@ -106,7 +106,12 @@ data class LyricLine(
 data class LyricWord(val startMs: Long, val endMs: Long, val text: String)
 
 @Serializable
-data class Lyrics(val lines: List<LyricLine>, val synced: Boolean)
+data class Lyrics(
+    val lines: List<LyricLine>,
+    val synced: Boolean,
+    /** The LyricsSource it came from, by name; null for words kept before this was recorded. */
+    val source: String? = null,
+)
 
 /**
  * A track's Canvas.

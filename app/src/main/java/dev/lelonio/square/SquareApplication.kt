@@ -66,6 +66,7 @@ class SquareApplication : Application(), ImageLoaderFactory {
         // the difference between a page that opens on the right picture and one
         // that opens on Spotify's and changes it a second later.
         dev.lelonio.square.data.AppleCatalog.attach(this)
+        dev.lelonio.square.backend.lyrics.LyricsLibrary.attach(this)
 
         // Two things feed the offline state, and one thing reads it out to the
         // engine. The switch below is the listener's; the watch is the network
