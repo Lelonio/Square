@@ -465,8 +465,8 @@
     <string name="daylist_schedule">Wird alle paar Stunden aktualisiert</string>
     <string name="daily_mix_schedule">Wird täglich aktualisiert</string>
     <string name="weekly_schedule">Wird wöchentlich aktualisiert</string>
-    <string name="canvas">Canvas</string>
-    <string name="canvas_show">Loop-Clips zeigen</string>
+    <string name="canvas">Animierte Cover</string>
+    <string name="canvas_show">Animierte Cover anzeigen</string>
     <string name="canvas_note">Das kurze Video, das manche Titel mitbringen. Aus wird es auch nicht geladen.</string>
     <string name="show_all">Alle anzeigen</string>
     <string name="show_less">Weniger anzeigen</string>
@@ -542,4 +542,7 @@
     <string name="widget_description">Aktuelle Wiedergabe, Steuerung und deine letzten Playlists</string>
     <string name="widget_nothing_playing">Es läuft nichts</string>
     <string name="widget_open_app">Square öffnen</string>
+    <string name="animated_cover_source">Quelle</string>
+    <string name="animated_cover_spotify">Spotify (Canvas)</string>
+    <string name="animated_cover_apple">Apple Music</string>
 </resources>

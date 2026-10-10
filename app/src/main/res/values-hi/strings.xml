@@ -480,8 +480,8 @@
     <string name="daylist_schedule">हर कुछ घंटों में अपडेट होता है</string>
     <string name="daily_mix_schedule">रोजाना अपडेट होता है</string>
     <string name="weekly_schedule">हर हफ्ते अपडेट होता है</string>
-    <string name="canvas">Canvas</string>
-    <string name="canvas_show">लूप क्लिप दिखाएँ</string>
+    <string name="canvas">एनिमेटेड कवर</string>
+    <string name="canvas_show">एनिमेटेड कवर दिखाएँ</string>
     <string name="canvas_note">कुछ गानों के साथ आने वाला छोटा वीडियो. बंद होने पर डाउनलोड भी नहीं होता.</string>
     <string name="show_all">सभी दिखाएँ</string>
     <string name="show_less">कम दिखाएँ</string>
@@ -557,4 +557,7 @@
     <string name="widget_description">अभी चल रहा गाना, उसके कंट्रोल और आपकी हाल की प्लेलिस्ट</string>
     <string name="widget_nothing_playing">कुछ नहीं चल रहा</string>
     <string name="widget_open_app">Square खोलें</string>
+    <string name="animated_cover_source">स्रोत</string>
+    <string name="animated_cover_spotify">Spotify (Canvas)</string>
+    <string name="animated_cover_apple">Apple Music</string>
 </resources>

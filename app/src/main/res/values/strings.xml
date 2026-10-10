@@ -486,8 +486,8 @@
     <string name="daylist_schedule">Updates every few hours</string>
     <string name="daily_mix_schedule">Updates daily</string>
     <string name="weekly_schedule">Updates weekly</string>
-    <string name="canvas">Canvas</string>
-    <string name="canvas_show">Show looping clips</string>
+    <string name="canvas">Animated covers</string>
+    <string name="canvas_show">Show animated covers</string>
     <string name="canvas_note">The short video some tracks come with. Off, none is downloaded either.</string>
     <string name="show_all">Show all</string>
     <string name="show_less">Show less</string>
@@ -606,4 +606,7 @@
     <string name="widget_description">Now playing, its controls and your recent playlists</string>
     <string name="widget_nothing_playing">Nothing playing</string>
     <string name="widget_open_app">Open Square</string>
+    <string name="animated_cover_source">Source</string>
+    <string name="animated_cover_spotify">Spotify (Canvas)</string>
+    <string name="animated_cover_apple">Apple Music</string>
 </resources>

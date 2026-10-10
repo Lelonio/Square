@@ -1018,8 +1018,9 @@ fun SquareApp(
     // Turned off, no clip is ever asked for — which is the point of the switch:
     // it saves the video as well as hiding it.
     val canvasEnabled by preferences.canvasEnabled.collectAsStateWithLifecycle()
+    val coverSource by preferences.animatedCoverSource.collectAsStateWithLifecycle()
 
-    LaunchedEffect(playback.mediaId, backend, canvasEnabled, offlineNow) {
+    LaunchedEffect(playback.mediaId, backend, canvasEnabled, coverSource, offlineNow) {
         val uri = playback.mediaId
         canvas = null
         // Offline means offline, including for the things that are only
@@ -1028,6 +1029,7 @@ fun SquareApp(
         // that came down with the download.
         if (uri != null &&
             canvasEnabled &&
+            coverSource == dev.lelonio.square.data.PreferencesStore.CoverSource.SPOTIFY &&
             backend == dev.lelonio.square.backend.BackendId.SPOTIFY
         ) {
             // After the song, not beside it: a Canvas is a video, and fetching
@@ -3038,7 +3040,12 @@ fun SquareApp(
                                 catalogPalette = nowPlayingArt?.inkPalette.orEmpty(),
                                 onClipColumns = { clipColumns = it },
                                 coverHeroUrl = nowPlayingArt?.heroUrl,
-                                coverMotionUrl = nowPlayingArt?.motionUrl,
+                                // Apple's moving cover only when that is the
+                                // source chosen, and moving covers are on.
+                                coverMotionUrl = nowPlayingArt?.motionUrl.takeIf {
+                                    canvasEnabled &&
+                                        coverSource == dev.lelonio.square.data.PreferencesStore.CoverSource.APPLE_MUSIC
+                                },
                                 coverSquareUrl = nowPlayingArt?.coverUrl,
                                 // Spotify's cover is the fallback, not the
                                 // first draft: while the catalogue is still

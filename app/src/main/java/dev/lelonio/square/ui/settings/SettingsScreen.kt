@@ -475,7 +475,8 @@ fun SettingsScreen(
 
         // Spotify's own, served by its access point: on another source there is
         // no clip to ask for and nothing this switch could turn off.
-        if (shown == SettingsPage.Playback && showSpotify) item("canvas") {
+        // On either source: Apple's moving covers play over YouTube Music too.
+        if (shown == SettingsPage.Playback) item("canvas") {
             CanvasSection(backdrop)
         }
 
@@ -1302,6 +1303,7 @@ private fun CanvasSection(backdrop: Backdrop) {
         (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
     }
     val enabled by store.canvasEnabled.collectAsStateWithLifecycle()
+    val source by store.animatedCoverSource.collectAsStateWithLifecycle()
 
     Section(stringResource(R.string.canvas)) {
         DownloadSwitch(

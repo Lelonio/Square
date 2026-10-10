@@ -89,18 +89,39 @@ class PreferencesStore(context: Context) {
     private val _canvasEnabled = MutableStateFlow(prefs.getBoolean(KEY_CANVAS, true))
 
     /**
-     * Whether a track's looping clip is fetched and played at all.
+     * Whether covers move at all, from either source; see [animatedCoverSource].
      *
      * On by default: it is the thing the player is built around. Off is for the
-     * listener who wants the artwork and nothing moving — and it is not only a
+     * listener who wants the artwork and nothing moving, and it is not only a
      * drawing decision, since with this off no clip is asked for and the data
-     * is not spent either.
+     * is not spent either. Kept under its old key: whoever had Canvas off has
+     * every moving cover off now, which is what they were asking for.
      */
     val canvasEnabled: StateFlow<Boolean> = _canvasEnabled.asStateFlow()
 
     fun setCanvasEnabled(value: Boolean) {
         _canvasEnabled.value = value
         prefs.edit().putBoolean(KEY_CANVAS, value).apply()
+    }
+
+    /** Where the moving covers come from; see [animatedCoverSource]. */
+    enum class CoverSource { SPOTIFY, APPLE_MUSIC }
+
+    private val _animatedCoverSource = MutableStateFlow(
+        CoverSource.entries.firstOrNull { it.name == prefs.getString(KEY_COVER_SOURCE, null) } ?: CoverSource.SPOTIFY,
+    )
+
+    /**
+     * Which catalogue's moving covers are shown: Spotify's Canvas clips or
+     * Apple Music's animated artwork. One or the other, so turning Canvas
+     * off no longer left some records moving anyway, as Apple's motion did
+     * whenever there was no clip.
+     */
+    val animatedCoverSource: StateFlow<CoverSource> = _animatedCoverSource.asStateFlow()
+
+    fun setAnimatedCoverSource(value: CoverSource) {
+        _animatedCoverSource.value = value
+        prefs.edit().putString(KEY_COVER_SOURCE, value.name).apply()
     }
 
     private val _keepPlayingOnClose = MutableStateFlow(prefs.getBoolean(KEY_KEEP_PLAYING, false))
@@ -277,6 +298,7 @@ class PreferencesStore(context: Context) {
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_CANVAS = "canvas_enabled"
+        const val KEY_COVER_SOURCE = "animated_cover_source"
         const val KEY_KEEP_PLAYING = "keep_playing_on_close"
         const val KEY_SPONSOR_BLOCK = "sponsor_block"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"

@@ -465,8 +465,8 @@
     <string name="daylist_schedule">Atualiza a cada poucas horas</string>
     <string name="daily_mix_schedule">Atualiza diariamente</string>
     <string name="weekly_schedule">Atualiza semanalmente</string>
-    <string name="canvas">Canvas</string>
-    <string name="canvas_show">Mostrar clipes em loop</string>
+    <string name="canvas">Capas animadas</string>
+    <string name="canvas_show">Mostrar capas animadas</string>
     <string name="canvas_note">O vídeo curto que algumas faixas trazem. Desligado, também não é baixado.</string>
     <string name="show_all">Mostrar tudo</string>
     <string name="show_less">Mostrar menos</string>
@@ -542,4 +542,7 @@
     <string name="widget_description">O que está tocando, os controles e suas playlists recentes</string>
     <string name="widget_nothing_playing">Nada tocando</string>
     <string name="widget_open_app">Abrir o Square</string>
+    <string name="animated_cover_source">Fonte</string>
+    <string name="animated_cover_spotify">Spotify (Canvas)</string>
+    <string name="animated_cover_apple">Apple Music</string>
 </resources>

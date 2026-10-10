@@ -478,8 +478,8 @@
     <string name="daylist_schedule">Birkaç saatte bir güncellenir</string>
     <string name="daily_mix_schedule">Günlük güncellenir</string>
     <string name="weekly_schedule">Haftalık güncellenir</string>
-    <string name="canvas">Canvas</string>
-    <string name="canvas_show">Döngü kliplerini göster</string>
+    <string name="canvas">Hareketli kapaklar</string>
+    <string name="canvas_show">Hareketli kapakları göster</string>
     <string name="canvas_note">Bazı şarkıların getirdiği kısa video. Kapalıyken indirilmez de.</string>
     <string name="show_all">Tümünü göster</string>
     <string name="show_less">Daha az göster</string>
@@ -555,4 +555,7 @@
     <string name="widget_description">Çalan şarkı, kontrolleri ve son çalma listelerin</string>
     <string name="widget_nothing_playing">Hiçbir şey çalmıyor</string>
     <string name="widget_open_app">Square’i aç</string>
+    <string name="animated_cover_source">Kaynak</string>
+    <string name="animated_cover_spotify">Spotify (Canvas)</string>
+    <string name="animated_cover_apple">Apple Music</string>
 </resources>

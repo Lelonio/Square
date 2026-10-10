@@ -486,8 +486,8 @@
     <string name="daylist_schedule">Обновляется каждые несколько часов</string>
     <string name="daily_mix_schedule">Обновляется ежедневно</string>
     <string name="weekly_schedule">Обновляется еженедельно</string>
-    <string name="canvas">Canvas</string>
-    <string name="canvas_show">Показывать зацикленные клипы</string>
+    <string name="canvas">Анимированные обложки</string>
+    <string name="canvas_show">Показывать анимированные обложки</string>
     <string name="canvas_note">Короткое видео, которое есть у некоторых треков. Если выключено, оно и не скачивается.</string>
     <string name="show_all">Показать все</string>
     <string name="show_less">Свернуть</string>
@@ -571,4 +571,7 @@
     <string name="widget_description">Что играет, управление и ваши недавние плейлисты</string>
     <string name="widget_nothing_playing">Ничего не играет</string>
     <string name="widget_open_app">Открыть Square</string>
+    <string name="animated_cover_source">Источник</string>
+    <string name="animated_cover_spotify">Spotify (Canvas)</string>
+    <string name="animated_cover_apple">Apple Music</string>
 </resources>

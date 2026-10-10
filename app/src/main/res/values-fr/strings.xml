@@ -465,8 +465,8 @@
     <string name="daylist_schedule">Mise à jour toutes les quelques heures</string>
     <string name="daily_mix_schedule">Mise à jour quotidienne</string>
     <string name="weekly_schedule">Mise à jour hebdomadaire</string>
-    <string name="canvas">Canvas</string>
-    <string name="canvas_show">Afficher les clips en boucle</string>
+    <string name="canvas">Pochettes animées</string>
+    <string name="canvas_show">Afficher les pochettes animées</string>
     <string name="canvas_note">La courte vidéo que portent certains titres. Désactivé, elle n\'est pas téléchargée non plus.</string>
     <string name="show_all">Tout afficher</string>
     <string name="show_less">Afficher moins</string>
@@ -542,4 +542,7 @@
     <string name="widget_description">En cours de lecture, les commandes et tes playlists récentes</string>
     <string name="widget_nothing_playing">Rien en cours de lecture</string>
     <string name="widget_open_app">Ouvrir Square</string>
+    <string name="animated_cover_source">Source</string>
+    <string name="animated_cover_spotify">Spotify (Canvas)</string>
+    <string name="animated_cover_apple">Apple Music</string>
 </resources>
