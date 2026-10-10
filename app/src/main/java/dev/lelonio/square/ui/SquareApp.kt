@@ -1376,7 +1376,14 @@ fun SquareApp(
                 // whatever was on screen.
                 LaunchedEffect(link) {
                     val uri = link?.uri ?: return@LaunchedEffect
-                    if (uri.startsWith("spotify:track:")) {
+                    if (link?.fromWidget == true) {
+                        viewModel.openPlaylist(
+                            dev.lelonio.square.data.CatalogPlaylist(uri = uri, name = link?.name.orEmpty(), artworkUrl = link?.artworkUrl),
+                        )
+                        if (navController.currentDestination?.route != Routes.PLAYLIST) {
+                            navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                        }
+                    } else if (uri.startsWith("spotify:track:")) {
                         sharedTrack = viewModel.resolveTrack(uri)
                     } else {
                         viewModel.openLink(uri)

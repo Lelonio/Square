@@ -145,6 +145,32 @@
             </intent-filter>
         </receiver>
 
+        <!-- The two-by-two square, the same widget offered at that size. -->
+        <receiver
+            android:name=".widget.SquareWidget$Tile"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/square_widget_tile_info" />
+        </receiver>
+
+        <!-- The home-screen widget; see widget/SquareWidget. -->
+        <receiver
+            android:name=".widget.SquareWidget"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/square_widget_info" />
+        </receiver>
+
         <service
             android:name=".auth.LoginKeepAlive"
             android:exported="false"

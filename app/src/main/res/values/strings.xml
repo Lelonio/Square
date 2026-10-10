@@ -603,4 +603,7 @@
     <string name="recap_stat_minutes">minutes in Square</string>
     <string name="recap_empty">No listens this month yet.</string>
     <string name="recap_partial_youtube">Includes what you play in Square and, while Square is open, your YouTube Music history. Plays from other apps and devices are approximate: YouTube does not say when, only the day.</string>
+    <string name="widget_description">Now playing, its controls and your recent playlists</string>
+    <string name="widget_nothing_playing">Nothing playing</string>
+    <string name="widget_open_app">Open Square</string>
 </resources>

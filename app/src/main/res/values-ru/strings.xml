@@ -568,4 +568,7 @@
     <string name="recap_stat_minutes">минут в Square</string>
     <string name="recap_empty">В этом месяце пока ничего не прослушано.</string>
     <string name="recap_partial_youtube">Учитывается то, что вы слушаете в Square, и, пока Square открыт, история YouTube Music. Прослушивания в других приложениях и на других устройствах приблизительны: YouTube сообщает только день, а не время.</string>
+    <string name="widget_description">Что играет, управление и ваши недавние плейлисты</string>
+    <string name="widget_nothing_playing">Ничего не играет</string>
+    <string name="widget_open_app">Открыть Square</string>
 </resources>

@@ -539,4 +539,7 @@
     <string name="recap_stat_minutes">Minuten in Square</string>
     <string name="recap_empty">Diesen Monat noch nichts gehört.</string>
     <string name="recap_partial_youtube">Enthält, was du in Square hörst, und, solange Square geöffnet ist, deinen YouTube-Music-Verlauf. Wiedergaben aus anderen Apps und auf anderen Geräten sind ungefähr: YouTube nennt nur den Tag, nicht die Uhrzeit.</string>
+    <string name="widget_description">Aktuelle Wiedergabe, Steuerung und deine letzten Playlists</string>
+    <string name="widget_nothing_playing">Es läuft nichts</string>
+    <string name="widget_open_app">Square öffnen</string>
 </resources>

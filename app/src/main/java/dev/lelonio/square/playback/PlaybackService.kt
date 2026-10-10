@@ -286,6 +286,7 @@ class PlaybackService : MediaLibraryService() {
 
         player = buildPlayer(container.preferences.backend.value)
         startListeningRecorder()
+        startWidgetUpdates()
         browseTree = MediaBrowseTree(this, scope, ::ensurePlayerFor, ::resumption)
         session = MediaLibrarySession.Builder(this, player, browseTree)
             // Without this the notification is inert to a tap: Media3 has no way
@@ -1552,6 +1553,35 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
+    /**
+     * Keeps the home-screen widget on the song and the state playing.
+     *
+     * Read once a second rather than from listener events: the player is
+     * swapped whole when the source changes, and the widget only redraws when
+     * what it shows has actually changed; see SquareWidget.publish.
+     */
+    private fun startWidgetUpdates() {
+        scope.launch {
+            while (true) {
+                val item = player.currentMediaItem
+                val metadata = item?.mediaMetadata
+                val title = metadata?.title?.toString()
+                if (!title.isNullOrBlank()) {
+                    dev.lelonio.square.widget.SquareWidget.publish(
+                        this@PlaybackService,
+                        dev.lelonio.square.widget.SquareWidget.NowPlaying(
+                            title = title,
+                            artist = metadata.artist?.toString().orEmpty(),
+                            artworkUri = metadata.artworkUri?.toString(),
+                            playing = player.isPlaying,
+                        ),
+                    )
+                }
+                delay(1_000)
+            }
+        }
+    }
+
     /** Measures only playback on this device, independently of the activity. */
     private fun startListeningRecorder() {
         val sampler = dev.lelonio.square.data.ListeningSampler()
@@ -1878,6 +1908,20 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         // Before cancelling the scope: the last position is the one worth having.
         runCatching { savePlayback() }
+        // Nothing plays once the service is gone, whatever the widget last heard.
+        runCatching {
+            player.currentMediaItem?.mediaMetadata?.let { metadata ->
+                dev.lelonio.square.widget.SquareWidget.publish(
+                    this,
+                    dev.lelonio.square.widget.SquareWidget.NowPlaying(
+                        title = metadata.title?.toString().orEmpty(),
+                        artist = metadata.artist?.toString().orEmpty(),
+                        artworkUri = metadata.artworkUri?.toString(),
+                        playing = false,
+                    ),
+                )
+            }
+        }
         scope.cancel()
         session?.run {
             player.release()

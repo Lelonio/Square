@@ -545,4 +545,7 @@
     <string name="recap_stat_minutes">minutos en Square</string>
     <string name="recap_empty">Aún no hay escuchas este mes.</string>
     <string name="recap_partial_youtube">Incluye lo que escuchas en Square y, mientras Square está abierta, tu historial de YouTube Music. Las escuchas en otras apps y dispositivos son aproximadas: YouTube no da la hora, solo el día.</string>
+    <string name="widget_description">Lo que suena, sus controles y tus playlists recientes</string>
+    <string name="widget_nothing_playing">No suena nada</string>
+    <string name="widget_open_app">Abrir Square</string>
 </resources>

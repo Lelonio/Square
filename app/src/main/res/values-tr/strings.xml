@@ -552,4 +552,7 @@
     <string name="recap_stat_minutes">Square’de dakika</string>
     <string name="recap_empty">Bu ay henüz dinleme yok.</string>
     <string name="recap_partial_youtube">Square’de dinlediklerini ve Square açıkken YouTube Music geçmişini içerir. Diğer uygulama ve cihazlardaki dinlemeler yaklaşıktır: YouTube saati değil, yalnızca günü verir.</string>
+    <string name="widget_description">Çalan şarkı, kontrolleri ve son çalma listelerin</string>
+    <string name="widget_nothing_playing">Hiçbir şey çalmıyor</string>
+    <string name="widget_open_app">Square’i aç</string>
 </resources>

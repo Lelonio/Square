@@ -253,6 +253,19 @@ class MainActivity : ComponentActivity() {
      * than a new instance, so both ways in lead here.
      */
     private fun takeLink(intent: android.content.Intent) {
+        // A playlist tapped on the home-screen widget, with what is needed to
+        // show it before it has loaded.
+        if (intent.action == dev.lelonio.square.widget.SquareWidget.ACTION_OPEN_PLAYLIST) {
+            val uri = intent.getStringExtra(dev.lelonio.square.widget.SquareWidget.EXTRA_URI) ?: return
+            link = LinkRequest(
+                uri = uri,
+                n = (link?.n ?: 0) + 1,
+                name = intent.getStringExtra(dev.lelonio.square.widget.SquareWidget.EXTRA_NAME).orEmpty(),
+                artworkUrl = intent.getStringExtra(dev.lelonio.square.widget.SquareWidget.EXTRA_ARTWORK),
+                fromWidget = true,
+            )
+            return
+        }
         if (intent.action != android.content.Intent.ACTION_VIEW) return
         val uri = dev.lelonio.square.data.SpotifyLink.parse(intent.data) ?: return
         link = LinkRequest(uri, (link?.n ?: 0) + 1)
@@ -489,7 +502,14 @@ class MainActivity : ComponentActivity() {
 }
 
 /** A `spotify:` URI the app was opened with, and which opening it was. */
-data class LinkRequest(val uri: String, val n: Int)
+data class LinkRequest(
+    val uri: String,
+    val n: Int,
+    val name: String = "",
+    val artworkUrl: String? = null,
+    /** A playlist of the current source, from the widget, rather than a Spotify link. */
+    val fromWidget: Boolean = false,
+)
 
 /** Key for the context URI carried in a media item's metadata extras. */
 const val EXTRA_CONTEXT_URI = "dev.lelonio.square.CONTEXT_URI"

@@ -3786,6 +3786,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Reopening one counts as opening it, and that is exactly the playlist
         // the home page should keep at the front.
         container.playlistOrder.record(playlist.uri)
+        container.widgetPlaylists.record(playlist.uri, playlist.name, playlist.artworkUrl, container.activeBackend.id)
+        dev.lelonio.square.widget.SquareWidget.refresh(getApplication())
 
         if (playlist.uri == LocalLibrary.CONTEXT_URI) {
             openLocalFiles(playlist)
@@ -5799,6 +5801,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private val _savedAlbums = MutableStateFlow<List<CatalogPlaylist>>(emptyList())
+
+    init {
+        // The widget's playlists, from the library's own recency and the
+        // library's names and covers; see WidgetPlaylists.fill.
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(_state, container.playlistOrder.order, _savedAlbums) { state, order, albums ->
+                Triple(state, order, albums)
+            }.collect { (state, order, albums) ->
+                val ready = state as? UiState.Ready ?: return@collect
+                val changed = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    container.widgetPlaylists.fill(order, ready.playlists + albums, container.activeBackend.id)
+                }
+                if (changed) dev.lelonio.square.widget.SquareWidget.refresh(getApplication())
+            }
+        }
+    }
 
     /**
      * The albums the account has saved, for the library's own shelf of them.
