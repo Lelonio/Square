@@ -5206,10 +5206,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // lands, which cancels this job where it stands. The wait is only
             // for the songs that never get one — a local file, a stream — and
             // those go on to the search below as they did before.
-            if (album.isBlank()) delay(ALBUM_WAIT_MS)
+            // Asked for, where the catalogue can say. A queue put back after a
+            // restart can carry a song with no record's name, and waiting for
+            // one to arrive meant the moving cover came several seconds late, or
+            // not at all to whoever looked before it did.
+            //
+            // Asked more than once: right after a restart the session is still
+            // coming up, the first answer is a failure, and the record's name
+            // never arrived by any other way for the song that was put back.
+            var record = album
+            if (record.isBlank() && uri != null) {
+                for (wait in ALBUM_ASK_MS) {
+                    delay(wait)
+                    record = withContext(Dispatchers.IO) {
+                        runCatching { container.activeBackend.tracksOf(uri).firstOrNull()?.album }.getOrNull()
+                    }.orEmpty()
+                    if (record.isNotBlank()) break
+                }
+                android.util.Log.i(TAG, "art: record for $uri ${if (record.isBlank()) "not found" else "is '$record'"}")
+            }
+            if (record.isBlank()) delay(ALBUM_WAIT_MS)
 
-            val found = dev.lelonio.square.data.AppleCatalog.album(album, artist)
-                .takeIf { album.isNotBlank() }
+            val found = dev.lelonio.square.data.AppleCatalog.album(record, artist)
+                .takeIf { record.isNotBlank() }
             _nowPlayingArt.value = found
 
             // No record found, or one with no sleeve of its own: ask for the
@@ -5218,7 +5237,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // falling back to a soft picture — where Apple keeps a song's
             // artwork at several thousand.
             if (found?.coverUrl == null && title.isNotBlank()) {
-                val fromSong = dev.lelonio.square.data.AppleCatalog.song(title, artist, album)
+                val fromSong = dev.lelonio.square.data.AppleCatalog.song(title, artist, record)
                 if (fromSong != null) {
                     _nowPlayingArt.value = (found ?: dev.lelonio.square.data.AppleCatalog.Album(
                         heroUrl = null,
