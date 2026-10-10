@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-  The artwork is the supplied icon, scaled into the adaptive icon's safe zone.
+  The wave alone in front, its glow included, and the plate's own shading as the
+  background, filling the whole shape.
 
-  A launcher shows 72 of the 108 units and guarantees only the middle 66, so the
-  plate is drawn at 66 and the background colour — sampled from the plate itself
-  — fills the rest. Whatever mask the launcher applies then cuts into a field of
-  the same colour rather than into the wave.
+  The front used to carry the round plate itself, drawn inside the safe zone on
+  a field of its colour. On a launcher whose mask is not a circle (HyperOS's
+  squircle, for one) that showed as a circle inside the icon. Split this way,
+  whatever mask the launcher applies cuts the plate, never a plate within it.
 
-  The night qualifier picks the dark plate; see mipmap-night-*.
+  Both layers come from app/icon-src/icona.png: the wave separated from the
+  plate (icon-src/wave-glow.png) and the plate's light extended to the edges.
 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
+    <background android:drawable="@mipmap/ic_launcher_background" />
     <foreground android:drawable="@mipmap/ic_launcher_foreground" />
     <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>
