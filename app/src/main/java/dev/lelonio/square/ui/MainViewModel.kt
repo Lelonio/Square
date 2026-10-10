@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
@@ -847,12 +848,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             dev.lelonio.square.playback.OfflineMode.active
                 .drop(1)
                 .distinctUntilChanged()
-                .collect { offline ->
+                .collectLatest { offline ->
+                    if (offline) {
+                        // Only an offline that lasts. The session drops for a
+                        // moment often enough, on starting up or changing
+                        // network, and taking Spotify's own shelves off the home
+                        // page for it showed them for a few seconds and then the
+                        // app's fallback page in their place. Back within this,
+                        // nothing here runs: collectLatest drops it.
+                        kotlinx.coroutines.delay(OFFLINE_SETTLE_MS)
+                    }
                     android.util.Log.i(TAG, "offline changed to $offline: rebuilding")
                     if (offline) {
                         // What needed a connection goes now rather than staying
-                        // as rows that answer nothing when tapped.
+                        // as rows that answer nothing when tapped. The shelves
+                        // are kept aside, to come back if they cannot be asked
+                        // for again.
                         _feed.value = FeedState()
+                        if (_homeShelves.value.isNotEmpty()) shelvesBeforeOffline = _homeShelves.value
                         _homeShelves.value = emptyList()
                         _friends.value = emptyList()
                     }
@@ -3068,10 +3081,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_homeShelves.value.isEmpty()) loadHomeShelves()
     }
 
-    private fun loadHomeShelves() = viewModelScope.launch {
+    /** Spotify's shelves as they were when the app went offline; see the offline handler. */
+    private var shelvesBeforeOffline: List<HomeShelf> = emptyList()
+
+    private var homeShelvesJob: Job? = null
+
+    private fun loadHomeShelves() {
+        if (homeShelvesJob?.isActive == true) return
+        homeShelvesJob = viewModelScope.launch { loadHomeShelvesNow() }
+    }
+
+    /**
+     * Asked again a couple of times before giving up, and on giving up the
+     * shelves from before an offline spell are put back rather than leaving
+     * the app's fallback page: one failed answer, often just the session still
+     * coming up, used to be the end of Spotify's home for the session.
+     */
+    private suspend fun loadHomeShelvesNow() {
+        var shelves = emptyList<HomeShelf>()
+        for (wait in HOME_RETRY_MS) {
+            kotlinx.coroutines.delay(wait)
+            shelves = fetchHomeShelves()
+            if (shelves.isNotEmpty() || dev.lelonio.square.playback.OfflineMode.active.value) break
+        }
+        if (shelves.isEmpty() && _homeShelves.value.isEmpty() && shelvesBeforeOffline.isNotEmpty() &&
+            !dev.lelonio.square.playback.OfflineMode.active.value
+        ) {
+            android.util.Log.i(TAG, "home: kept the shelves from before going offline")
+            _homeShelves.value = shelvesBeforeOffline
+            return
+        }
+        if (shelves.isNotEmpty()) {
+            shelvesBeforeOffline = emptyList()
+            android.util.Log.i(TAG, "home: ${shelves.size} shelves from the gateway")
+            _homeShelves.value = shelves
+            // The browse pages as well: part of Home is on them; see loadBrowse.
+            loadBrowse()
+        }
+    }
+
+    private suspend fun fetchHomeShelves(): List<HomeShelf> {
         val keys = container.pathfinderKeys
         keys.refresh()
-        val shelves = withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             runCatching {
                 SpotifyHome.parse(
                     NativeBridge.homeFeed(
@@ -3084,12 +3136,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
                 .onFailure { android.util.Log.i(TAG, "no personalised home: ${describe(it)}") }
                 .getOrDefault(emptyList())
-        }
-        if (shelves.isNotEmpty()) {
-            android.util.Log.i(TAG, "home: ${shelves.size} shelves from the gateway")
-            _homeShelves.value = shelves
-            // The browse pages as well: part of Home is on them; see loadBrowse.
-            loadBrowse()
         }
     }
 
@@ -5896,6 +5942,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private companion object {
+        /** How long the app has to stay offline before what needs a connection goes. */
+        const val OFFLINE_SETTLE_MS = 4_000L
+
+        /** The waits before each time a song's record is asked for; see loadNowPlayingArt. */
+        val ALBUM_ASK_MS = listOf(0L, 1_500L, 3_000L, 5_000L)
+
+        /** The waits before each try at Spotify's home shelves. */
+        val HOME_RETRY_MS = listOf(0L, 2_000L, 6_000L)
+
         const val TAG = "SquareUi"
 
         /** Artists asked for new records on the home page; one request each. */
