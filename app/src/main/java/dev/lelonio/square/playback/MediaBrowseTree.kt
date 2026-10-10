@@ -65,7 +65,28 @@ class MediaBrowseTree(
      * player than either streaming service. See PlaybackService.ensurePlayerFor.
      */
     private val ensurePlayerFor: suspend (String?) -> Unit = {},
+    /**
+     * What to play when something asks to resume with nothing loaded: a media
+     * button, a headset, the system's media controls after a restart. Null when
+     * there is nothing saved either.
+     */
+    private val resumption: () -> MediaSession.MediaItemsWithStartPosition? = { null },
 ) : MediaLibrarySession.Callback {
+
+    /**
+     * Play pressed on a player with nothing in it.
+     *
+     * Without an answer here Media3 has nothing to start, and a service it has
+     * already brought to the foreground for the button has to show a playing
+     * notification within seconds or Android ends the app. The answer is the
+     * session last saved, which is also what the app itself opens on.
+     */
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
+        resumption()?.let { Futures.immediateFuture(it) }
+            ?: Futures.immediateFailedFuture(UnsupportedOperationException("nothing to resume"))
 
     private val app = context.applicationContext as SquareApplication
 

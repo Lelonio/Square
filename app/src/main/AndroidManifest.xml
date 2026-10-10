@@ -71,6 +71,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <!-- A music player, for whatever lists the phone's music apps. -->
+                <category android:name="android.intent.category.APP_MUSIC" />
             </intent-filter>
 
             <!--
@@ -129,6 +131,20 @@
           Held while the listener signs in to Spotify in the browser, so the
           process is not frozen before the redirect to 127.0.0.1 arrives.
         -->
+        <!--
+          Media buttons with the app closed: a headset, a car, the system's own
+          media controls. Also what apps such as Good Lock's Sound Assist read
+          to list the phone's media players; without it Square was not among
+          them. Handed to PlaybackService, which resumes the saved session.
+        -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".auth.LoginKeepAlive"
             android:exported="false"

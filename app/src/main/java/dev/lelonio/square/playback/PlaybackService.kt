@@ -286,7 +286,7 @@ class PlaybackService : MediaLibraryService() {
 
         player = buildPlayer(container.preferences.backend.value)
         startListeningRecorder()
-        browseTree = MediaBrowseTree(this, scope, ::ensurePlayerFor)
+        browseTree = MediaBrowseTree(this, scope, ::ensurePlayerFor, ::resumption)
         session = MediaLibrarySession.Builder(this, player, browseTree)
             // Without this the notification is inert to a tap: Media3 has no way
             // to know which activity owns the session. `SINGLE_TOP` so an app
@@ -1531,6 +1531,25 @@ class PlaybackService : MediaLibraryService() {
                 if (player.isPlaying) savePlayback()
             }
         }
+    }
+
+    /**
+     * The queue to resume from a media button; see MediaBrowseTree.onPlaybackResumption.
+     *
+     * Whatever the player already holds, which is the saved session put back
+     * when the service started; failing that, the saved session itself.
+     */
+    private fun resumption(): MediaSession.MediaItemsWithStartPosition? {
+        if (player.mediaItemCount == 0) {
+            runCatching { restoreTimeline(container.preferences.backend.value) }
+        }
+        val count = player.mediaItemCount
+        if (count == 0) return null
+        return MediaSession.MediaItemsWithStartPosition(
+            (0 until count).map(player::getMediaItemAt),
+            player.currentMediaItemIndex.coerceIn(0, count - 1),
+            player.currentPosition.coerceAtLeast(0),
+        )
     }
 
     /** Measures only playback on this device, independently of the activity. */
