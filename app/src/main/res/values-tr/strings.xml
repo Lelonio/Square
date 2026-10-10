@@ -560,4 +560,8 @@
     <string name="animated_cover_apple">Apple Music</string>
     <string name="font_title">Yazı tipi</string>
     <string name="font_system">Telefonun yazı tipini kullan</string>
+    <string name="youtube_quality_auto">Otomatik: Wi-Fi’da yüksek, mobil veride düşük</string>
+    <string name="youtube_quality_high">Yüksek (yaklaşık 128 kbps)</string>
+    <string name="youtube_quality_low">Düşük, veri tasarrufu (yaklaşık 48 kbps)</string>
+    <string name="youtube_quality_note">Bir sonraki şarkıdan itibaren geçerli olur. İndirmeler her zaman en yüksek kalitede kalır.</string>
 </resources>

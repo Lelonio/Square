@@ -425,6 +425,11 @@ fun SettingsScreen(
         // Crossfade: mixed by the engine on Spotify, volume-shaped on YouTube Music.
         // What happens when the app is swiped away, which is a playback
         // decision rather than an app one; asked for in #27.
+        // YouTube Music's own, in the place Spotify's quality has.
+        if (shown == SettingsPage.Playback && !showSpotify) item("youtube-quality") {
+            YouTubeQualitySection()
+        }
+
         if (shown == SettingsPage.Playback) item("keep-playing") {
             val prefs = remember(context) {
                 (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
@@ -1332,6 +1337,23 @@ private fun CanvasSection(backdrop: Backdrop) {
             onChange = store::setCanvasEnabled,
         )
     }
+    // Only with them on: off, nothing moves whichever it would have been.
+    if (enabled) {
+        Section(stringResource(R.string.animated_cover_source)) {
+            dev.lelonio.square.data.PreferencesStore.CoverSource.entries.forEachIndexed { index, choice ->
+                if (index > 0) RowDivider()
+                ChoiceRow(
+                    label = stringResource(
+                        when (choice) {
+                            dev.lelonio.square.data.PreferencesStore.CoverSource.SPOTIFY -> R.string.animated_cover_spotify
+                            dev.lelonio.square.data.PreferencesStore.CoverSource.APPLE_MUSIC -> R.string.animated_cover_apple
+                        },
+                    ),
+                    selected = choice == source,
+                ) { store.setAnimatedCoverSource(choice) }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1467,6 +1489,37 @@ private fun QualitySection() {
         RowDivider()
         Text(
             stringResource(R.string.quality_restarts),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+        )
+    }
+}
+
+@Composable
+private fun YouTubeQualitySection() {
+    val context = LocalContext.current
+    val store = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+    }
+    val chosen by store.youtubeQuality.collectAsStateWithLifecycle()
+    Section(stringResource(R.string.quality)) {
+        dev.lelonio.square.data.PreferencesStore.YouTubeQuality.entries.forEachIndexed { index, quality ->
+            if (index > 0) RowDivider()
+            ChoiceRow(
+                label = stringResource(
+                    when (quality) {
+                        dev.lelonio.square.data.PreferencesStore.YouTubeQuality.AUTO -> R.string.youtube_quality_auto
+                        dev.lelonio.square.data.PreferencesStore.YouTubeQuality.HIGH -> R.string.youtube_quality_high
+                        dev.lelonio.square.data.PreferencesStore.YouTubeQuality.LOW -> R.string.youtube_quality_low
+                    },
+                ),
+                selected = quality == chosen,
+            ) { store.setYoutubeQuality(quality) }
+        }
+        RowDivider()
+        Text(
+            stringResource(R.string.youtube_quality_note),
             style = MaterialTheme.typography.bodySmall,
             color = InkDim,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),

@@ -364,18 +364,33 @@ private class YouTubeStreamResolver(
             // AAC before Opus, even at a lower rate: the app decodes AAC itself
             // (FFmpeg, see renderers), while Opus goes to the platform decoder,
             // whose release aborts the app on this hardware.
+            //
+            // At the rate the listener asked for: the highest, the lowest, or
+            // the highest on Wi-Fi and the lowest on a metered connection.
             ?: info.audioStreams
                 .filter { !it.content.isNullOrEmpty() }
                 .sortedWith(
                     compareByDescending<org.schabi.newpipe.extractor.stream.AudioStream> {
                         it.format == org.schabi.newpipe.extractor.MediaFormat.M4A
-                    }.thenByDescending { it.averageBitrate },
+                    }.thenBy { if (wantsLowRate()) it.averageBitrate else -it.averageBitrate },
                 )
                 .firstOrNull()
                 ?.content
             ?: error("nessuna traccia audio per $videoId")
 
         return dataSpec.withUri(android.net.Uri.parse(url))
+    }
+
+    /** Whether the lower rate is wanted now; see PreferencesStore.youtubeQuality. */
+    private fun wantsLowRate(): Boolean {
+        val chosen = (context.applicationContext as? dev.lelonio.square.SquareApplication)
+            ?.preferences?.youtubeQuality?.value
+        return when (chosen) {
+            dev.lelonio.square.data.PreferencesStore.YouTubeQuality.LOW -> true
+            dev.lelonio.square.data.PreferencesStore.YouTubeQuality.HIGH -> false
+            else -> context.getSystemService(android.net.ConnectivityManager::class.java)
+                ?.isActiveNetworkMetered == true
+        }
     }
 
 }

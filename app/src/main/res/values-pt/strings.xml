@@ -547,4 +547,8 @@
     <string name="animated_cover_apple">Apple Music</string>
     <string name="font_title">Fonte</string>
     <string name="font_system">Usar a fonte do telefone</string>
+    <string name="youtube_quality_auto">Automática: alta no Wi-Fi, baixa nos dados móveis</string>
+    <string name="youtube_quality_high">Alta (cerca de 128 kbps)</string>
+    <string name="youtube_quality_low">Baixa, economiza dados (cerca de 48 kbps)</string>
+    <string name="youtube_quality_note">Vale a partir da próxima música. Os downloads mantêm sempre a qualidade mais alta.</string>
 </resources>

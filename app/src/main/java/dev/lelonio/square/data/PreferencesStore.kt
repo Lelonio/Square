@@ -104,6 +104,25 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_CANVAS, value).apply()
     }
 
+    /** How YouTube Music's sound is chosen; see [youtubeQuality]. */
+    enum class YouTubeQuality { AUTO, HIGH, LOW }
+
+    private val _youtubeQuality = MutableStateFlow(
+        YouTubeQuality.entries.firstOrNull { it.name == prefs.getString(KEY_YOUTUBE_QUALITY, null) } ?: YouTubeQuality.AUTO,
+    )
+
+    /**
+     * The stream YouTube Music plays from: the highest rate, the lowest, or
+     * the highest on Wi-Fi and the lowest on a metered connection. Read when a
+     * track is resolved, so a change applies from the next one.
+     */
+    val youtubeQuality: StateFlow<YouTubeQuality> = _youtubeQuality.asStateFlow()
+
+    fun setYoutubeQuality(value: YouTubeQuality) {
+        _youtubeQuality.value = value
+        prefs.edit().putString(KEY_YOUTUBE_QUALITY, value.name).apply()
+    }
+
     private val _systemFont = MutableStateFlow(prefs.getBoolean(KEY_SYSTEM_FONT, false))
 
     /**
@@ -315,6 +334,7 @@ class PreferencesStore(context: Context) {
         const val KEY_CANVAS = "canvas_enabled"
         const val KEY_COVER_SOURCE = "animated_cover_source"
         const val KEY_SYSTEM_FONT = "system_font"
+        const val KEY_YOUTUBE_QUALITY = "youtube_quality"
         const val KEY_KEEP_PLAYING = "keep_playing_on_close"
         const val KEY_SPONSOR_BLOCK = "sponsor_block"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"

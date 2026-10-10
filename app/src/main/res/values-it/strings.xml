@@ -584,4 +584,8 @@
     <string name="animated_cover_apple">Apple Music</string>
     <string name="font_title">Carattere</string>
     <string name="font_system">Usa il carattere del telefono</string>
+    <string name="youtube_quality_auto">Automatica: alta su Wi-Fi, bassa con i dati mobili</string>
+    <string name="youtube_quality_high">Alta (circa 128 kbps)</string>
+    <string name="youtube_quality_low">Bassa, risparmia dati (circa 48 kbps)</string>
+    <string name="youtube_quality_note">Vale dal brano successivo. I download restano sempre alla qualità più alta.</string>
 </resources>

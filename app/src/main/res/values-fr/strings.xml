@@ -547,4 +547,8 @@
     <string name="animated_cover_apple">Apple Music</string>
     <string name="font_title">Police</string>
     <string name="font_system">Utiliser la police du téléphone</string>
+    <string name="youtube_quality_auto">Automatique : haute en Wi-Fi, basse en données mobiles</string>
+    <string name="youtube_quality_high">Haute (environ 128 kb/s)</string>
+    <string name="youtube_quality_low">Basse, économise les données (environ 48 kb/s)</string>
+    <string name="youtube_quality_note">S’applique à partir du titre suivant. Les téléchargements gardent toujours la meilleure qualité.</string>
 </resources>

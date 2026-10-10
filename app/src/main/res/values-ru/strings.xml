@@ -576,4 +576,8 @@
     <string name="animated_cover_apple">Apple Music</string>
     <string name="font_title">Шрифт</string>
     <string name="font_system">Использовать шрифт телефона</string>
+    <string name="youtube_quality_auto">Автоматически: высокое по Wi-Fi, низкое по мобильной сети</string>
+    <string name="youtube_quality_high">Высокое (около 128 кбит/с)</string>
+    <string name="youtube_quality_low">Низкое, экономит трафик (около 48 кбит/с)</string>
+    <string name="youtube_quality_note">Применяется со следующего трека. Загрузки всегда сохраняют максимальное качество.</string>
 </resources>
