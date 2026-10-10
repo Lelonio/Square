@@ -169,21 +169,30 @@ class MediaBrowseTree(
 
         val currentUri = player.currentMediaItem?.mediaId
         val liked = isLiked ?: app.likedStore.isLiked(currentUri)
-        return ImmutableList.of(
-            shuffle,
-            CommandButton.Builder()
-                .setIconResId(if (liked) R.drawable.ic_heart_filled else R.drawable.ic_heart_outline)
-                .setSessionCommand(SessionCommand(CMD_LIKE, Bundle.EMPTY))
-                .setDisplayName(
-                    strings.getString(if (liked) R.string.remove_from_liked else R.string.liked_songs),
-                )
-                .build(),
-            CommandButton.Builder(CommandButton.ICON_RADIO)
-                .setSessionCommand(SessionCommand(CMD_RADIO, Bundle.EMPTY))
-                .setDisplayName(strings.getString(R.string.radio))
-                .build(),
-        )
+        val heart = CommandButton.Builder()
+            .setIconResId(if (liked) R.drawable.ic_heart_filled else R.drawable.ic_heart_outline)
+            .setSessionCommand(SessionCommand(CMD_LIKE, Bundle.EMPTY))
+            .setDisplayName(
+                strings.getString(if (liked) R.string.remove_from_liked else R.string.liked_songs),
+            )
+            .build()
+        val radio = CommandButton.Builder(CommandButton.ICON_RADIO)
+            .setSessionCommand(SessionCommand(CMD_RADIO, Bundle.EMPTY))
+            .setDisplayName(strings.getString(R.string.radio))
+            .build()
+        // The heart only where it can do something: a button that did nothing
+        // was what a YouTube Music listener with no account found here.
+        return if (likeable(currentUri)) ImmutableList.of(shuffle, heart, radio) else ImmutableList.of(shuffle, radio)
     }
+
+    /**
+     * Whether the song can be liked from here: any Spotify track, and a YouTube
+     * Music one when an account is signed in to keep it in.
+     */
+    private fun likeable(uri: String?): Boolean = uri != null && (
+        uri.startsWith("spotify:track:") ||
+            (uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX) && app.youtubeAccount.isSignedIn)
+        )
 
     override fun onConnect(
         session: MediaSession,
@@ -268,7 +277,8 @@ class MediaBrowseTree(
     private fun toggleLike(session: MediaSession) {
         val player = session.player
         val uri = player.currentMediaItem?.mediaId ?: return
-        if (!uri.startsWith("spotify:track:")) return
+        if (!likeable(uri)) return
+        val youtube = uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX)
 
         val nowLiked = app.likedStore.toggle(uri)
         val id = uri.substringAfterLast(':')
@@ -287,7 +297,13 @@ class MediaBrowseTree(
 
         scope.launch {
             val callResult = runCatching {
-                if (nowLiked) {
+                // YouTube Music keeps liked songs as a list of its own, and
+                // liking is adding to it, as the app's own plus does.
+                if (youtube) {
+                    val liked = dev.lelonio.square.backend.youtube.YouTubeBackend.LIKED_MUSIC_URI
+                    if (nowLiked) app.youtubeBackend.addToPlaylist(liked, uri)
+                    else app.youtubeBackend.removeFromPlaylist(liked, uri)
+                } else if (nowLiked) {
                     app.api.saveToLibrary("spotify:track:$id", dev.lelonio.square.data.SpotifyApi.EMPTY_BODY)
                 } else {
                     app.api.removeFromLibrary("spotify:track:$id")

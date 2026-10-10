@@ -40,6 +40,19 @@ class LikedStore(context: Context) {
         }
     }
 
+    /**
+     * The whole set for one source, as that source has it now: the songs under
+     * [prefix] become exactly [uris], and the other source's are left alone.
+     * Unlike [seed] this also takes back a heart removed somewhere else.
+     */
+    fun replaceSource(prefix: String, uris: Collection<String>) {
+        val updated = _liked.value.filterNot { it.startsWith(prefix) }.toSet() + uris.filter { it.startsWith(prefix) }
+        if (updated != _liked.value) {
+            _liked.value = updated
+            save(updated)
+        }
+    }
+
     fun add(uri: String) {
         if (uri in _liked.value) return
         val updated = _liked.value + uri

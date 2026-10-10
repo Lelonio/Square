@@ -811,6 +811,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         /** YouTube Music's own id for the account's liked songs. */
         private const val LIKED_MUSIC_ID = "LM"
 
+        /** The account's liked songs as a playlist address; what a heart adds to. */
+        const val LIKED_MUSIC_URI = "${PLAYLIST_PREFIX}LM"
+
         /** How many moods, and how many genres, the Radio tab reads. */
         private const val RADIO_PER_GROUP = 5
 

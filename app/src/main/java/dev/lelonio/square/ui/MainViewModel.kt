@@ -2058,6 +2058,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     now = now,
                 )
                 store.importRemote(plays, dev.lelonio.square.data.ListeningStore.YOUTUBE_OWNER)
+                // And which songs already have a heart: the account's liked
+                // list, so the heart in the notification starts right.
+                runCatching {
+                    val liked = container.youtubeBackend.tracksOf(
+                        dev.lelonio.square.backend.youtube.YouTubeBackend.LIKED_MUSIC_URI,
+                    )
+                    container.likedStore.replaceSource(
+                        dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX,
+                        liked.map { it.uri },
+                    )
+                }.onFailure { android.util.Log.w(TAG, "youtube likes unavailable: ${describe(it)}") }
                 store.keepYoutubeReading(sections.flatMap { it.second }.map { it.uri }, now)
                 android.util.Log.i(TAG, "youtube history: ${sections.map { it.first }}, ${plays.size} plays filed")
             }.onSuccess { lastListeningSync = System.currentTimeMillis() }
@@ -2587,6 +2598,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Playlists in the order this device last opened them; see [PlaylistOrderStore]. */
     val playlistOrder: StateFlow<List<String>> get() = container.playlistOrder.order
+
 
     /** Pinned playlists, in the order they were pinned. */
     val pinnedPlaylists: StateFlow<List<String>> get() = container.pinnedPlaylists.pinned
