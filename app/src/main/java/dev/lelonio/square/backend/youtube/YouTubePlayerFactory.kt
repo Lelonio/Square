@@ -255,13 +255,16 @@ object YouTubePlayerFactory {
                 // processor of this app's, and a chain that does not list it
                 // does not run it. Before the stretcher, because it works on
                 // what the two channels share and a stretched pair shares less.
+                //
+                // Speed and pitch by the app's own vocoder, as on Spotify and
+                // for the phone's own files. The default chain left them to
+                // Sonic, which was built for speech: on music it smears the
+                // attacks and adds a metallic edge, and the same effect sounded
+                // plainly worse on a YouTube song. See BungeeAudioProcessor.
                 .setAudioProcessorChain(
-                    // Every stream at the mixer's rate, so a 44.1 kHz song and
-                    // a 48 kHz one can be summed; see MixerRateProcessor.
-                    androidx.media3.exoplayer.audio.DefaultAudioSink.DefaultAudioProcessorChain(
-                        dev.lelonio.square.playback.VocalAudioProcessor(),
-                        MixerRateProcessor(),
-                    ),
+                    // Then every stream at the mixer's rate, so a 44.1 kHz song
+                    // and a 48 kHz one can be summed; see MixerRateProcessor.
+                    dev.lelonio.square.playback.BungeeProcessorChain(after = arrayOf(MixerRateProcessor())),
                 )
                 .build()
         }

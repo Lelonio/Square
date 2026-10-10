@@ -193,13 +193,15 @@ class VocalAudioProcessor : BaseAudioProcessor() {
 @OptIn(UnstableApi::class)
 class BungeeProcessorChain(
     private val bungee: BungeeAudioProcessor = BungeeAudioProcessor(),
+    /** Run after the vocoder, at speed one: YouTube Music's resampling to its mixer. */
+    private val after: Array<AudioProcessor> = emptyArray(),
 ) : DefaultAudioSink.AudioProcessorChain {
 
     private var parameters = PlaybackParameters.DEFAULT
 
     private val vocals = VocalAudioProcessor()
 
-    override fun getAudioProcessors(): Array<AudioProcessor> = arrayOf(vocals, bungee)
+    override fun getAudioProcessors(): Array<AudioProcessor> = arrayOf(vocals, bungee, *after)
 
     override fun applyPlaybackParameters(
         playbackParameters: PlaybackParameters,
