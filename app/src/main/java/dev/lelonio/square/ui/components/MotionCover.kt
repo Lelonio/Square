@@ -7,6 +7,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -45,6 +48,13 @@ fun MotionCover(
      * above them. Null reads nothing.
      */
     onFrame: ((android.graphics.Bitmap) -> Unit)? = null,
+    /**
+     * False holds it on the frame it is at, rather than taking it away: behind
+     * a panel the cover stands still, and when the panel closes it carries on
+     * from there. Taken away and made again, it came back as a new video
+     * appearing at once over the still, with nothing in between.
+     */
+    playing: Boolean = true,
 ) {
     val context = LocalContext.current
     // The surface the frames are read from, once the view exists.
@@ -64,12 +74,34 @@ fun MotionCover(
 
     // Stopped while the app is away. A loop nobody is looking at is a radio
     // that costs battery and data for a picture on a screen that is off.
+    val wanted = rememberUpdatedState(playing)
+    LaunchedEffect(player, playing) { player.playWhenReady = playing }
+
+    // Faded in on its first frame rather than appearing in one: until then the
+    // still underneath is what shows, and the change from one to the other is
+    // the cover beginning to move, not a second picture arriving on top.
+    var firstFrame by remember(url) { mutableStateOf(false) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                firstFrame = true
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+    val appear by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (firstFrame) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(APPEAR_MS),
+        label = "motionAppear",
+    )
+
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, player) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> player.pause()
-                Lifecycle.Event.ON_START -> player.play()
+                Lifecycle.Event.ON_START -> if (wanted.value) player.play()
                 else -> Unit
             }
         }
@@ -141,16 +173,23 @@ fun MotionCover(
             it.player = null
             surface[0] = null
         },
-        modifier = modifier,
+        modifier = modifier.graphicsLayer { alpha = appear },
     )
 }
+
+/** How long a moving cover takes to come up over its still. */
+private const val APPEAR_MS = 450
 
 /**
  * How wide the copies of the frames are read, and how often.
  *
- * Small, because what is made of them is a blur and a band of colour, and a
- * read of a frame is a copy off the GPU. Often enough that the blur under a
- * cover in motion follows it rather than stepping after it.
+ * Small, because what is made of them is a blur and a band of colour. Not as
+ * small as it was: forty-eight across, stretched to the screen under the
+ * cover, showed as a grid of squares down the fade. And as often as the cover
+ * changes, about thirty times a second: read less often, the colours under it
+ * trailed the picture and stepped from one to the next. The cover only moves
+ * on the player's own screen (a panel stills it), so this is the one place it
+ * costs anything.
  */
-private const val FRAME_PX = 48
+private const val FRAME_PX = 96
 private const val FRAME_EVERY_MS = 66L

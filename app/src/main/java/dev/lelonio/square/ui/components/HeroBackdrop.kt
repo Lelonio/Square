@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -73,6 +74,8 @@ fun HeroBackdrop(
     modifier: Modifier = Modifier,
     /** The cover as a moving picture, where there is one; see [MotionCover]. */
     motionUrl: String? = null,
+    /** False holds the moving cover still where it is; see [MotionCover]'s playing. */
+    motionPlaying: Boolean = true,
     /**
      * Whether the picture is still being looked up.
      *
@@ -237,6 +240,7 @@ fun HeroBackdrop(
                         transformOrigin = TransformOrigin(0.5f, 0f)
                     },
                 onFrame = motion::take,
+                playing = motionPlaying,
             )
         }
 
@@ -248,35 +252,61 @@ fun HeroBackdrop(
                 modifier = Modifier.fillMaxSize(),
             ) { shown ->
             val blur = shown?.blur ?: return@Crossfade
+            val stops = if (fadeToPage) {
+                softening(softenFrom, softenTo, Color.Black)
+            } else if (extendPicture) {
+                softening(
+                    1f - SLOT_FADE - SLOT_BLUR_LEAD,
+                    1f - SLOT_FADE + SLOT_BLUR_TAIL,
+                    Color.Black,
+                )
+            } else {
+                softening(
+                    (softenFrom - 0.16f).coerceAtLeast(0f),
+                    softenFrom + 0.03f,
+                    Color.Black,
+                )
+            }
+            // Only the part the mask lets through is laid out and drawn.
+            //
+            // Above where the softening starts this copy is fully masked
+            // away, and drawing it there was work nobody saw: a moving cover
+            // redraws it with every frame, and the blur that smooths it is
+            // paid by the pixel. The box starts a little above the mask, by
+            // the blur's own reach, so the blur has the rows it reads from.
+            val shift = remember { floatArrayOf(0f) }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .layout { measurable, constraints ->
+                        val full = constraints.maxHeight
+                        val top = ((full * stops.first().first) - SMOOTH_PX * 2).toInt().coerceIn(0, full)
+                        shift[0] = top.toFloat()
+                        val placeable = measurable.measure(
+                            constraints.copy(minHeight = full - top, maxHeight = full - top),
+                        )
+                        layout(constraints.maxWidth, full) { placeable.place(0, top) }
+                    }
+                    .then(if (motionUrl != null) Modifier.smoothedUp() else Modifier)
                     // Compose the bitmap and its alpha mask in one shader:
                     // no header-sized offscreen render target on each redraw.
                     .drawWithCache {
                         val frame = motion.latest.value
-                        val stops = if (fadeToPage) {
-                            softening(softenFrom, softenTo, Color.Black)
-                        } else if (extendPicture) {
-                            softening(
-                                1f - SLOT_FADE - SLOT_BLUR_LEAD,
-                                1f - SLOT_FADE + SLOT_BLUR_TAIL,
-                                Color.Black,
-                            )
-                        } else {
-                            softening(
-                                (softenFrom - 0.16f).coerceAtLeast(0f),
-                                softenFrom + 0.03f,
-                                Color.Black,
-                            )
-                        }
+                        val top = shift[0]
+                        // Built for the whole height, as before, and drawn
+                        // moved up by what this box starts below the top.
+                        val whole = androidx.compose.ui.geometry.Size(size.width, size.height + top)
                         val brush = maskedPictureBrush(
                             frame?.soft ?: blur,
                             shown.zoom,
-                            size,
+                            whole,
                             stops,
                         )
-                        onDrawBehind { drawRect(brush = brush) }
+                        onDrawBehind {
+                            translate(top = -top) {
+                                drawRect(brush = brush, topLeft = androidx.compose.ui.geometry.Offset(0f, top), size = size)
+                            }
+                        }
                     },
             )
             }
@@ -505,8 +535,12 @@ private fun PictureExtension(
         val image = shown?.edge ?: return@Crossfade
         val imageZoom = shown.zoom
         val extension = remember { ExtensionPicture() }
+        // Whether the cover is moving, not each frame of it: read in
+        // composition, the frames themselves would recompose this every time.
+        val moving by remember(motion) { androidx.compose.runtime.derivedStateOf { motion.latest.value != null } }
         Box(
             Modifier
+                .then(if (moving) Modifier.smoothedUp() else Modifier)
                 .fillMaxSize()
                 .drawBehind {
                     // The slot, in this box's terms: across the top, as wide as
@@ -785,25 +819,28 @@ private class MotionFrames {
 
     /**
      * About as soft as the still's blurred copy: that one is blurred by ten
-     * pixels across two hundred and forty, and this is two passes of two
-     * across forty-eight.
+     * pixels across two hundred and forty, and this is two passes of four
+     * across ninety-six.
      */
     private fun softened(bitmap: android.graphics.Bitmap): android.graphics.Bitmap {
         val width = bitmap.width
         val height = bitmap.height
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        val scratch = IntArray(pixels.size)
+        val scratch = pixels.copyOf()
+        // Only the lower rows: this copy is shown under the cover's fade and
+        // masked away above it, so blurring the top was work nobody saw.
+        val firstRow = (height * SOFT_ROWS_FROM).toInt()
         repeat(2) {
-            boxBlur(pixels, scratch, width, height, horizontal = true)
-            boxBlur(scratch, pixels, width, height, horizontal = false)
+            boxBlur(pixels, scratch, width, height, horizontal = true, firstRow = firstRow)
+            boxBlur(scratch, pixels, width, height, horizontal = false, firstRow = firstRow)
         }
         return android.graphics.Bitmap.createBitmap(pixels, width, height, android.graphics.Bitmap.Config.ARGB_8888)
     }
 
-    private fun boxBlur(from: IntArray, to: IntArray, width: Int, height: Int, horizontal: Boolean) {
+    private fun boxBlur(from: IntArray, to: IntArray, width: Int, height: Int, horizontal: Boolean, firstRow: Int = 0) {
         val radius = FRAME_SOFTEN
-        for (y in 0 until height) {
+        for (y in firstRow until height) {
             for (x in 0 until width) {
                 var red = 0
                 var green = 0
@@ -825,11 +862,41 @@ private class MotionFrames {
     }
 }
 
-/** The radius of each pass of [MotionFrames]' blur, in the copy's pixels. */
-private const val FRAME_SOFTEN = 2
+/**
+ * A blur over what is drawn from [MotionFrames]' copies, on the GPU.
+ *
+ * Those copies are a few dozen pixels across and drawn the width of the
+ * screen, and stretched that far even a smooth picture shows the stretch: the
+ * shading between neighbouring pixels runs in straight lines, and where the
+ * lines meet the eye sees a grid of squares down the fade. Twice as many
+ * pixels only made the grid finer. Blurred by a little more than the grid's
+ * own size, the lines bend and the squares are gone. Android 12 and later;
+ * before that the copies are drawn as they are.
+ */
+private fun Modifier.smoothedUp(): Modifier =
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+        graphicsLayer {
+            renderEffect = androidx.compose.ui.graphics.BlurEffect(SMOOTH_PX, SMOOTH_PX, androidx.compose.ui.graphics.TileMode.Clamp)
+        }
+    } else {
+        this
+    }
 
-/** How far each copy of a frame moves [MotionFrames]' blend towards itself. */
-private const val FRAME_FOLLOW = 0.2f
+/** About one and a half of a copy's pixels, as drawn on a phone's screen. */
+private const val SMOOTH_PX = 20f
+
+/** Where in a frame [MotionFrames]' soft copy starts to be seen, with room to spare. */
+private const val SOFT_ROWS_FROM = 0.4f
+
+/** The radius of each pass of [MotionFrames]' blur, in the copy's pixels: as soft as before, at twice the width. */
+private const val FRAME_SOFTEN = 4
+
+/**
+ * How far each copy of a frame moves [MotionFrames]' blend towards itself: at
+ * thirty copies a second, a little each time, so the colours glide after the
+ * cover a fraction of a second behind instead of stepping.
+ */
+private const val FRAME_FOLLOW = 0.25f
 
 /** The same cropped picture and DstIn fade, without an intermediate surface. */
 private fun maskedPictureBrush(

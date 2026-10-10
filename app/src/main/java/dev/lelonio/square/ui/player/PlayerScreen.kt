@@ -66,6 +66,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -423,6 +424,26 @@ fun PlayerScreen(
     val canvasBackdrop = rememberLayerBackdrop()
     val glassBackdrop = rememberCombinedBackdrop(backdrop, canvasBackdrop)
 
+    // The panes below the clip only refract it when they are actually over it.
+    //
+    // The clip's layer covers the whole screen and is redrawn with every frame
+    // of the video, so every pane reading it redid its blur thirty times a
+    // second, including the title, the controls and the tabs, which on most
+    // phones sit below the clip, where the layer is empty. Measured rather
+    // than assumed: on a short screen the title does reach into the clip, and
+    // there it keeps refracting it.
+    var clipBottom by remember { mutableFloatStateOf(Float.MAX_VALUE) }
+    var lowerTop by remember { mutableFloatStateOf(0f) }
+    val lowerBackdrop = if (lowerTop >= clipBottom) backdrop else glassBackdrop
+
+    // The panes over a moving Apple cover read the page's own blurred ground
+    // instead of the cover. The cover is in the layer they refract, and every
+    // frame of it had that whole layer recorded again and every pane over it
+    // blurred again; behind this much glass the motion is only a shimmer, and
+    // it was costing the player half its frames.
+    val coverMoving = coverMotionUrl != null && canvas == null
+    val upperBackdrop = if (coverMoving) backdrop else glassBackdrop
+
     // Lyrics take over the middle of the screen rather than opening a panel at
     // the bottom, and the Canvas goes out of focus behind them: a clip is
     // motion, and reading over motion is the one thing that does not work. Blur
@@ -554,6 +575,9 @@ fun PlayerScreen(
                     // picture underneath is what the travel shows instead, and
                     // at that size and speed the swap is invisible.
                     motionUrl = coverMotionUrl.takeIf { LocalPlayerSettled.current },
+                    // And still behind a panel, as a Canvas is, where it stands
+                    // rather than taken away; see MotionCover's playing.
+                    motionPlaying = !panelOpen,
                     title = state.title,
                     pageColor = coverTone,
                     pending = coverPending,
@@ -687,6 +711,7 @@ fun PlayerScreen(
                     .fillMaxWidth()
                     .aspectRatio(DETAIL_ASPECT)
                     .align(Alignment.TopCenter)
+                    .onGloballyPositioned { clipBottom = it.boundsInWindow().bottom }
                     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                     .drawWithContent {
                         drawContent()
@@ -718,7 +743,13 @@ fun PlayerScreen(
                     // a black rectangle sliding down the screen is not.
                     clip.isVideo && LocalGlassEnabled.current -> CanvasSurface(
                         url = clip.url,
-                        isPlaying = state.isPlaying,
+                        // Still behind a panel. Out of focus and dimmed, the
+                        // motion is barely there, and it was the most costly
+                        // thing on the screen: every new frame of the clip had
+                        // the whole screen blurred again and every pane of
+                        // glass redrawn over it, which is what made the lyrics
+                        // stutter. A still frame is blurred once.
+                        isPlaying = state.isPlaying && !panelOpen,
                         onFirstFrame = { canvasReady = true },
                         // Only while this clip is still the one playing.
                         //
@@ -814,7 +845,7 @@ fun PlayerScreen(
                         .padding(horizontal = 20.dp),
                 ) {
                     TopBar(
-                        backdrop = glassBackdrop,
+                        backdrop = upperBackdrop,
                         panel = panel,
                         source = state.source,
                         onOpenSource = state.contextUri?.let { uri ->
@@ -939,7 +970,7 @@ fun PlayerScreen(
                                     .then(androidx.compose.ui.Modifier)
 
                             ) {
-                                KaraokeBadge(karaokeAmount, glassBackdrop) {
+                                KaraokeBadge(karaokeAmount, upperBackdrop) {
                                     panel = PlayerPanel.LYRICS
                                     karaokeExpand++
                                 }
@@ -1206,7 +1237,7 @@ fun PlayerScreen(
                             exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.92f),
                         ) {
                             GlassSurface(
-                                backdrop = glassBackdrop,
+                                backdrop = upperBackdrop,
                                 surfaceColor = LocalPlayerFilm.current,
                                 shape = RoundedCornerShape(50),
                                 // The gap to the title lives here rather than
@@ -1246,11 +1277,12 @@ fun PlayerScreen(
                         // Title and artist on their own capsule, with the two
                         // per-track actions on the right.
                         GlassSurface(
-                            backdrop = glassBackdrop,
+                            backdrop = lowerBackdrop,
                             surfaceColor = LocalPlayerFilm.current,
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .onGloballyPositioned { lowerTop = it.boundsInWindow().top }
                                 .sharedPill(sharedScope, animatedScope),
                         ) {
                             Row(
@@ -1270,7 +1302,7 @@ fun PlayerScreen(
                                 // official client's own radio button does it.
                                 if (onRadio != null) {
                                     RoundGlassButton(
-                                        backdrop = glassBackdrop,
+                                        backdrop = lowerBackdrop,
                                         size = 40.dp,
                                         onClick = onRadio,
                                     ) {
@@ -1288,7 +1320,7 @@ fun PlayerScreen(
                                 // it, which is why it sits here and not in the
                                 // segmented switch below.
                                 RoundGlassButton(
-                                    backdrop = glassBackdrop,
+                                    backdrop = lowerBackdrop,
                                     size = 40.dp,
                                     onClick = {
                                         panel = if (panel == PlayerPanel.QUEUE) {
@@ -1312,7 +1344,7 @@ fun PlayerScreen(
                                 if (playlistEditAvailable) {
                                 Spacer(Modifier.size(8.dp))
                                 RoundGlassButton(
-                                    backdrop = glassBackdrop,
+                                    backdrop = lowerBackdrop,
                                     size = 40.dp,
                                     onClick = {
                                         // A tick opens the lists, where it can
@@ -1391,7 +1423,7 @@ fun PlayerScreen(
 
                         Controls(
                             state = state,
-                            backdrop = glassBackdrop,
+                            backdrop = lowerBackdrop,
                             onTogglePlay = onTogglePlay,
                             onNext = onNext,
                             onPrevious = onPrevious,
@@ -1421,7 +1453,7 @@ fun PlayerScreen(
                             onApplyPreset = onApplyPreset,
                             onSavePreset = onSavePreset,
                             onDeletePreset = onDeletePreset,
-                            backdrop = glassBackdrop,
+                            backdrop = lowerBackdrop,
                         )
 
                         Spacer(Modifier.height(20.dp))
