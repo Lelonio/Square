@@ -580,4 +580,13 @@
     <string name="youtube_quality_high">Высокое (около 128 кбит/с)</string>
     <string name="youtube_quality_low">Низкое, экономит трафик (около 48 кбит/с)</string>
     <string name="youtube_quality_note">Применяется со следующего трека. Загрузки всегда сохраняют максимальное качество.</string>
+    <string name="lyrics_options">Текст</string>
+    <string name="lyrics_source_title">Источник</string>
+    <string name="lyrics_style_title">Стиль</string>
+    <string name="lyrics_style_animated">Анимированный</string>
+    <string name="lyrics_style_classic">Классический</string>
+    <string name="lyrics_word">По словам</string>
+    <string name="lyrics_line">По строкам</string>
+    <string name="lyrics_unsynced">Без синхронизации</string>
+    <string name="lyrics_nothing">Нет текста</string>
 </resources>

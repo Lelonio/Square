@@ -551,4 +551,13 @@
     <string name="youtube_quality_high">Alta (cerca de 128 kbps)</string>
     <string name="youtube_quality_low">Baixa, economiza dados (cerca de 48 kbps)</string>
     <string name="youtube_quality_note">Vale a partir da próxima música. Os downloads mantêm sempre a qualidade mais alta.</string>
+    <string name="lyrics_options">Letra</string>
+    <string name="lyrics_source_title">Fonte</string>
+    <string name="lyrics_style_title">Estilo</string>
+    <string name="lyrics_style_animated">Animado</string>
+    <string name="lyrics_style_classic">Clássico</string>
+    <string name="lyrics_word">Palavra por palavra</string>
+    <string name="lyrics_line">Por linha</string>
+    <string name="lyrics_unsynced">Não sincronizada</string>
+    <string name="lyrics_nothing">Sem letra</string>
 </resources>

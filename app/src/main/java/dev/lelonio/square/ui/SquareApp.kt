@@ -3000,6 +3000,20 @@ fun SquareApp(
                                 },
                                 queue = queue,
                                 lyrics = lyrics,
+                                lyricsQuery = playback.mediaId?.takeIf { playback.title.isNotBlank() }?.let { uri ->
+                                    dev.lelonio.square.backend.lyrics.LyricsQuery(
+                                        uri = uri,
+                                        title = playback.title,
+                                        artist = playback.artist,
+                                        durationMs = playback.durationMs,
+                                    )
+                                },
+                                // Shown at once; LyricsLibrary has already kept
+                                // it as this song's words from now on.
+                                onLyricsChosen = { chosen ->
+                                    lyrics = chosen
+                                    lyricsFor = playback.mediaId
+                                },
                                 // Loading until the answer in hand is this
                                 // track's, which covers the wait before the
                                 // fetch has even begun.

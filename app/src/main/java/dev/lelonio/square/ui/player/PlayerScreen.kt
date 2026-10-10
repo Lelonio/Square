@@ -231,6 +231,10 @@ fun PlayerScreen(
     queue: List<QueueEntry>,
     lyrics: dev.lelonio.square.data.Lyrics?,
     lyricsLoading: Boolean,
+    /** The song the lyrics are for, so the panel can ask every source about it. */
+    lyricsQuery: dev.lelonio.square.backend.lyrics.LyricsQuery? = null,
+    /** Words picked from another source in the panel. */
+    onLyricsChosen: (dev.lelonio.square.data.Lyrics) -> Unit = {},
     /** Who made the track, for the credits panel; null until it is asked for. */
     credits: dev.lelonio.square.backend.spotify.SpotifyCredits.Credits?,
     creditsLoading: Boolean,
@@ -1100,6 +1104,8 @@ fun PlayerScreen(
                                 Stage.LYRICS -> LyricsStage(
                                     lyrics = lyrics,
                                     loading = lyricsLoading,
+                                    query = lyricsQuery,
+                                    onChosen = onLyricsChosen,
                                     positionMs = positionMs,
                                     isPlaying = state.isPlaying,
                                     onSeek = onSeek,
@@ -2405,6 +2411,8 @@ private const val FILM_VALUE = 0.24f
 private fun LyricsStage(
     lyrics: dev.lelonio.square.data.Lyrics?,
     loading: Boolean,
+    query: dev.lelonio.square.backend.lyrics.LyricsQuery?,
+    onChosen: (dev.lelonio.square.data.Lyrics) -> Unit,
     positionMs: State<Long>,
     isPlaying: Boolean,
     onSeek: (Long) -> Unit,
@@ -2412,6 +2420,13 @@ private fun LyricsStage(
     /** Bumped when somebody arrives here asking for the karaoke control. */
     expandSignal: Int,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val preferences = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+    }
+    val style by preferences.lyricsStyle.collectAsStateWithLifecycle()
+    var optionsOpen by remember(query?.uri) { androidx.compose.runtime.mutableStateOf(false) }
+
     // Off when a song starts: turning it on is asking to read this one.
     var translated by androidx.compose.runtime.saveable.rememberSaveable(lyrics) {
         androidx.compose.runtime.mutableStateOf(false)
@@ -2419,7 +2434,6 @@ private fun LyricsStage(
 
     // The language the app itself is read in, which is the one to translate
     // into — not the phone's, when the two have been made to differ on purpose.
-    val context = androidx.compose.ui.platform.LocalContext.current
     val target = remember(context) {
         (context.applicationContext as dev.lelonio.square.SquareApplication)
             .language
@@ -2464,6 +2478,16 @@ private fun LyricsStage(
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         when {
+            optionsOpen && query != null -> LyricsOptionsPanel(
+                query = query,
+                current = lyrics?.source,
+                style = style,
+                onStyle = preferences::setLyricsStyle,
+                onChoose = onChosen,
+                onDismiss = { optionsOpen = false },
+                backdrop = backdrop,
+            )
+
             loading -> androidx.compose.material3.CircularProgressIndicator(
                 color = GlassInkDim,
                 strokeWidth = 2.dp,
@@ -2473,6 +2497,14 @@ private fun LyricsStage(
                 stringResource(R.string.no_lyrics),
                 style = MaterialTheme.typography.bodyMedium,
                 color = GlassInkDim,
+            )
+
+            style == dev.lelonio.square.data.PreferencesStore.LyricsStyle.CLASSIC -> ClassicLyricsView(
+                lyrics = shown ?: lyrics,
+                positionMs = positionMs,
+                showTranslation = translated,
+                onSeek = onSeek,
+                modifier = Modifier.fillMaxSize(),
             )
 
             else -> LyricsView(
@@ -2485,6 +2517,21 @@ private fun LyricsStage(
             )
         }
 
+        // Where the words came from, and the way to the other sources and
+        // to the other style: low on the left, across from the panel's other
+        // controls. Shown with no words as well, since another source may
+        // have what the usual order stopped short of.
+        if (query != null && !loading && !optionsOpen) {
+            LyricsSourceChip(
+                source = lyrics?.source,
+                backdrop = backdrop,
+                onClick = { optionsOpen = true },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 6.dp, bottom = 6.dp),
+            )
+        }
+
         // Beside the words rather than under them: a band across the panel took
         // the room the lyrics need, for a control touched once a song.
         val karaoke by dev.lelonio.square.playback.AudioEffects.karaoke
@@ -2492,7 +2539,7 @@ private fun LyricsStage(
         // Offered on every song with words. Where the document carries no
         // translation of its own the lines are put through a translator, so
         // there is always something behind the switch.
-        if (lyrics != null) {
+        if (lyrics != null && !optionsOpen) {
             TranslationToggle(
                 on = translated,
                 busy = translating,
@@ -2510,7 +2557,7 @@ private fun LyricsStage(
         // Not over the official SDK, whose audio never passes through the effect.
         val sdkPlayback by dev.lelonio.square.playback.websdk.WebSdkRecovery.inUse
             .collectAsStateWithLifecycle()
-        if (!sdkPlayback) KaraokeDial(
+        if (!sdkPlayback && !optionsOpen) KaraokeDial(
             amount = karaoke,
             onChange = dev.lelonio.square.playback.AudioEffects::setKaraoke,
             backdrop = backdrop,

@@ -575,4 +575,13 @@
     <plurals name="queue_selected">
         <item quantity="other">%1$d개 선택됨</item>
     </plurals>
+    <string name="lyrics_options">가사</string>
+    <string name="lyrics_source_title">소스</string>
+    <string name="lyrics_style_title">스타일</string>
+    <string name="lyrics_style_animated">애니메이션</string>
+    <string name="lyrics_style_classic">클래식</string>
+    <string name="lyrics_word">단어별</string>
+    <string name="lyrics_line">줄별</string>
+    <string name="lyrics_unsynced">동기화되지 않음</string>
+    <string name="lyrics_nothing">가사 없음</string>
 </resources>

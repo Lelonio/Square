@@ -566,4 +566,13 @@
     <string name="youtube_quality_high">ऊँची (लगभग 128 kbps)</string>
     <string name="youtube_quality_low">कम, डेटा बचाती है (लगभग 48 kbps)</string>
     <string name="youtube_quality_note">अगले गाने से लागू होगी। डाउनलोड हमेशा सबसे ऊँची क्वालिटी में रहते हैं।</string>
+    <string name="lyrics_options">बोल</string>
+    <string name="lyrics_source_title">स्रोत</string>
+    <string name="lyrics_style_title">शैली</string>
+    <string name="lyrics_style_animated">एनिमेटेड</string>
+    <string name="lyrics_style_classic">क्लासिक</string>
+    <string name="lyrics_word">शब्द-दर-शब्द</string>
+    <string name="lyrics_line">पंक्ति-दर-पंक्ति</string>
+    <string name="lyrics_unsynced">सिंक नहीं</string>
+    <string name="lyrics_nothing">कोई बोल नहीं</string>
 </resources>
