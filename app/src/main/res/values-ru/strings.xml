@@ -589,4 +589,6 @@
     <string name="lyrics_line">По строкам</string>
     <string name="lyrics_unsynced">Без синхронизации</string>
     <string name="lyrics_nothing">Нет текста</string>
+    <string name="connecting_slow">Долго? Пока слушайте то, что есть на телефоне.</string>
+    <string name="go_offline">Перейти в офлайн-режим</string>
 </resources>

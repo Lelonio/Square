@@ -624,4 +624,6 @@
     <string name="lyrics_line">By line</string>
     <string name="lyrics_unsynced">Not synced</string>
     <string name="lyrics_nothing">No lyrics</string>
+    <string name="connecting_slow">Taking long? Play what is on your phone in the meantime.</string>
+    <string name="go_offline">Switch to offline mode</string>
 </resources>

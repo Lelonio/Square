@@ -573,4 +573,6 @@
     <string name="lyrics_line">Satır satır</string>
     <string name="lyrics_unsynced">Senkronize değil</string>
     <string name="lyrics_nothing">Söz yok</string>
+    <string name="connecting_slow">Uzun mu sürüyor? Bu arada telefonundakileri dinle.</string>
+    <string name="go_offline">Çevrimdışı moda geç</string>
 </resources>

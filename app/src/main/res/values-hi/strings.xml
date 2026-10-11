@@ -575,4 +575,6 @@
     <string name="lyrics_line">पंक्ति-दर-पंक्ति</string>
     <string name="lyrics_unsynced">सिंक नहीं</string>
     <string name="lyrics_nothing">कोई बोल नहीं</string>
+    <string name="connecting_slow">ज़्यादा समय लग रहा है? तब तक फ़ोन पर मौजूद गाने सुनें।</string>
+    <string name="go_offline">ऑफ़लाइन मोड पर जाएँ</string>
 </resources>

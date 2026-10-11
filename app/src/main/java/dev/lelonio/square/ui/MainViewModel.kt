@@ -850,7 +850,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .drop(1)
                 .distinctUntilChanged()
                 .collectLatest { offline ->
-                    if (offline) {
+                    if (offline && dev.lelonio.square.playback.OfflineMode.reason.value != dev.lelonio.square.playback.OfflineMode.Reason.MANUAL) {
                         // Only an offline that lasts. The session drops for a
                         // moment often enough, on starting up or changing
                         // network, and taking Spotify's own shelves off the home
@@ -2985,6 +2985,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * is already saying the thing it would say — so this reports it by leaving
      * the app exactly as it was.
      */
+    /**
+     * The listener's own offline, chosen from the wait for Spotify: the
+     * switch in the settings turned on, and the library rebuilt from the
+     * downloads at once rather than after the wait it was chosen to cut short.
+     */
+    fun goOffline() {
+        container.downloadSettings.setOfflineMode(true)
+        dev.lelonio.square.playback.OfflineMode.setManual(true)
+        refresh(restart = true)
+    }
+
     suspend fun retryOnline(): Boolean {
         container.downloadSettings.setOfflineMode(false)
         withContext(Dispatchers.IO) {

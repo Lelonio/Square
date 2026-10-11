@@ -128,6 +128,8 @@ fun HomeScreen(
     contentPadding: PaddingValues,
     onLogIn: () -> Unit,
     onRetry: () -> Unit,
+    /** Off the network by choice, from the wait; see ConnectingState. */
+    onGoOffline: () -> Unit = {},
     onLogOut: () -> Unit,
     onOpenPlaylist: (CatalogPlaylist) -> Unit,
     /** URIs most recently opened first; see PlaylistOrderStore. */
@@ -213,9 +215,7 @@ fun HomeScreen(
 
         MainViewModel.UiState.Connecting,
         MainViewModel.UiState.Loading,
-        -> Centered {
-            CircularProgressIndicator(color = Ink, strokeWidth = 2.dp)
-        }
+        -> dev.lelonio.square.ui.components.ConnectingState(backdrop, onGoOffline)
 
         is MainViewModel.UiState.Failed -> Centered {
             Text(

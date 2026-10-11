@@ -560,4 +560,6 @@
     <string name="lyrics_line">Por linha</string>
     <string name="lyrics_unsynced">Não sincronizada</string>
     <string name="lyrics_nothing">Sem letra</string>
+    <string name="connecting_slow">Está demorando? Enquanto isso, ouça o que está no seu telefone.</string>
+    <string name="go_offline">Mudar para o modo offline</string>
 </resources>

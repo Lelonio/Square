@@ -566,4 +566,6 @@
     <string name="lyrics_line">Por línea</string>
     <string name="lyrics_unsynced">Sin sincronizar</string>
     <string name="lyrics_nothing">Sin letra</string>
+    <string name="connecting_slow">¿Tarda mucho? Mientras tanto, escucha lo que tienes en el teléfono.</string>
+    <string name="go_offline">Cambiar al modo sin conexión</string>
 </resources>
