@@ -62,6 +62,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.isActive
 import java.util.concurrent.ConcurrentHashMap
 
@@ -876,7 +877,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     // failed quietly, and were never tried again — which is why
                     // coming back online left the app's own shelves on the home
                     // page and none of Spotify's.
-                    refresh().join()
+                    refresh(restart = true).join()
                     if (!offline) {
                         loadFeed()
                         loadHomeShelves()
@@ -2257,6 +2258,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // next account signs in.
         contextCache.clear()
         viewModelScope.launch { container.contextCache.clear() }
+        librarySnapshotFile().delete()
         _playlist.value = PlaylistState()
         _feed.value = FeedState()
         // Signed out of Spotify while playing from somewhere else leaves that
@@ -2299,9 +2301,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refresh(): Job {
+    /**
+     * @param restart throws away a load already running rather than joining it.
+     *   A load waiting on a connection that has since come or gone is waiting
+     *   on the wrong thing: joined, it kept the library on the downloads after
+     *   the session was back, since every later call waited for the stuck one.
+     */
+    fun refresh(restart: Boolean = false): Job {
+        if (restart) inFlight?.cancel()
         inFlight?.takeIf { it.isActive }?.let { return it }
         return launchRefresh().also { inFlight = it }
+    }
+
+    /**
+     * The library as it was last read, kept on disk so the app opens on it.
+     *
+     * A start used to be a spinner until Spotify answered, and with signal but
+     * no data it never did. Now the page is the listener's own library from
+     * the first frame, and Spotify's answer, when it comes, replaces it.
+     */
+    @kotlinx.serialization.Serializable
+    private data class LibrarySnapshot(val displayName: String, val playlists: List<CatalogPlaylist>, val avatarUrl: String? = null)
+
+    private fun librarySnapshotFile() = java.io.File(getApplication<SquareApplication>().filesDir, "library-snapshot.json")
+
+    private suspend fun readLibrarySnapshot(): UiState.Ready? = withContext(Dispatchers.IO) {
+        runCatching {
+            val kept = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                .decodeFromString<LibrarySnapshot>(librarySnapshotFile().readText())
+            UiState.Ready(kept.displayName, withLocalFiles(kept.playlists), kept.avatarUrl)
+        }.getOrNull()
+    }
+
+    private suspend fun keepLibrarySnapshot(ready: UiState.Ready) = withContext(Dispatchers.IO) {
+        runCatching {
+            librarySnapshotFile().writeText(
+                kotlinx.serialization.json.Json.encodeToString(
+                    LibrarySnapshot.serializer(),
+                    LibrarySnapshot(ready.displayName, ready.playlists, ready.avatarUrl),
+                ),
+            )
+        }
     }
 
     private fun launchRefresh() = viewModelScope.launch {
@@ -2358,7 +2398,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        _state.value = UiState.Connecting
+        // The library last read, at once, while the session comes up; see
+        // LibrarySnapshot. Only online: offline the page is the downloads.
+        val snapshot = readLibrarySnapshot()
+        _state.value = snapshot ?: UiState.Connecting
         if (!awaitEngine()) {
             // A library with no session is not an empty library. Everything
             // that was downloaded is still here and still playable, and the
@@ -2375,10 +2418,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return@launch
         }
 
-        _state.value = UiState.Loading
-        runCatching { UiState.Ready(Catalog.username(), playlists()) }
+        if (snapshot == null) _state.value = UiState.Loading
+        // Bounded: with signal and no data these calls were left hanging, and
+        // the page with them, for as long as the app was open.
+        runCatching {
+            withTimeout(LIBRARY_TIMEOUT_MS) { UiState.Ready(Catalog.username(), playlists()) }
+        }
             .onSuccess {
                 _state.value = it
+                keepLibrarySnapshot(it)
                 loadProfile()
                 loadMissingCovers()
                 // Spotify's own shelves, once there is a session to ask with.
@@ -2392,10 +2440,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 catchUpDownloads()
             }
             .onFailure {
+                if (it is CancellationException && it !is kotlinx.coroutines.TimeoutCancellationException) throw it
                 android.util.Log.e(TAG, "library load failed: ${chain(it)}", it)
                 // The same fallback: the session came up but the catalogue
                 // could not be read, and the downloads are unaffected by that.
-                _state.value = offlineLibrary() ?: UiState.Failed(describe(it))
+                // The library last read stays if it is on screen, and the read
+                // is tried again in a while rather than never.
+                if (snapshot == null) _state.value = offlineLibrary() ?: UiState.Failed(describe(it))
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(LIBRARY_RETRY_MS)
+                    if (_state.value !is UiState.LoggedOut) refresh()
+                }
             }
     }
 
@@ -6058,6 +6113,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         const val ARTIST_WAIT_MS = 8_000L
 
         const val ENGINE_TIMEOUT_MS = 30_000L
+
+        /** How long the library is waited for once there is a session. */
+        const val LIBRARY_TIMEOUT_MS = 20_000L
+
+        /** And how long before it is asked again when it did not come. */
+        const val LIBRARY_RETRY_MS = 30_000L
         const val POLL_INTERVAL_MS = 250L
 
         /** Each track is its own access-point round trip. */
