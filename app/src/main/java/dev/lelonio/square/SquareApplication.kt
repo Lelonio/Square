@@ -75,6 +75,9 @@ class SquareApplication : Application(), ImageLoaderFactory {
         val offlineScope = kotlinx.coroutines.CoroutineScope(
             kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
         )
+        dev.lelonio.square.playback.SessionKeeper.attach(offlineScope) {
+            preferences.backend.value == dev.lelonio.square.backend.BackendId.SPOTIFY && spotifySignedIn
+        }
         dev.lelonio.square.playback.NetworkWatch(this, offlineScope).start()
         offlineScope.launch {
             dev.lelonio.square.playback.OfflineMode.active.collect { offline ->

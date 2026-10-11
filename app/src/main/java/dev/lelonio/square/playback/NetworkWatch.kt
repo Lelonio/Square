@@ -89,10 +89,15 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
         if (connected) {
             // Signal-strength updates do not prove that Spotify's session is
             // back. Only an actual network return starts a reconnection.
-            if (returned) OfflineMode.setNoSession(false)
+            // A network is not a session: the keeper reconnects the engine and
+            // ends offline once the engine itself has one. Declaring it back
+            // here was how the library stayed on the downloads after the
+            // signal returned.
+            if (returned) SessionKeeper.networkReturned()
             OfflineMode.setSlow(false)
             return
         }
+        SessionKeeper.networkGone()
         pending = scope.launch {
             delay(GRACE_MS)
             android.util.Log.i(TAG, "still gone: going offline")

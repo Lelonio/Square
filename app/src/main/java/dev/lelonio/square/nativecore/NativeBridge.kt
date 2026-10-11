@@ -259,8 +259,11 @@ object NativeBridge {
      */
     fun reconnect() {
         nativeReconnect()
-        // A successful call may have rebuilt the downloads-only player.
-        dev.lelonio.square.playback.OfflineMode.setNoSession(isOffline)
+        // Only a live session counts as one. The call returns as soon as it is
+        // done trying, and a try that got nowhere is not offline by the
+        // engine's own flag; read that way, a failed reconnection declared the
+        // session back.
+        dev.lelonio.square.playback.OfflineMode.setNoSession(isOffline || !isConnected)
     }
 
     // --- The account's other devices ---

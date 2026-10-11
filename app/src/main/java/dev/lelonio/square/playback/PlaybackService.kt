@@ -273,6 +273,9 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        // The keeper starts this engine again when its start failed; see
+        // SessionKeeper.engine.
+        SessionKeeper.engine = SessionKeeper.Engine(running = { engineStarted }, start = { connectEngine() })
         playbackStore = PlaybackStore(this)
         container = application as dev.lelonio.square.SquareApplication
         // The container's own store, not one of this service's making. Two
@@ -1429,6 +1432,11 @@ class PlaybackService : MediaLibraryService() {
         }.onFailure { error ->
             engineStarted = false
             android.util.Log.e(TAG, "engine start failed: $error", error)
+            // Not up at all, which on no data is ordinary: the keeper starts it
+            // again when there is a chance it works. A refused account below
+            // signs out, and the keeper then finds nothing wanted.
+            dev.lelonio.square.playback.OfflineMode.setNoSession(true)
+            SessionKeeper.sessionMissing()
             // Only a refused account ends the session here. Everything else the
             // handshake can fail with — no network, an access point that is
             // busy, a dealer that dropped — is temporary, and signing the user
@@ -1455,6 +1463,8 @@ class PlaybackService : MediaLibraryService() {
             val offline = runCatching { NativeBridge.isOffline }.getOrDefault(false)
             dev.lelonio.square.playback.OfflineMode.setNoSession(offline)
             android.util.Log.i(TAG, if (offline) "engine started offline" else "engine connected")
+            // Up with no session: try again for as long as there is a network.
+            if (offline) SessionKeeper.sessionMissing()
             if (restoreQueue) restoreQueue()
             observeForSaving()
         }
@@ -1906,6 +1916,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        SessionKeeper.engine = null
         // Before cancelling the scope: the last position is the one worth having.
         runCatching { savePlayback() }
         // Nothing plays once the service is gone, whatever the widget last heard.
