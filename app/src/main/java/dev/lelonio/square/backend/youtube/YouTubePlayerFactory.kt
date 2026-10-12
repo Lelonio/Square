@@ -77,6 +77,35 @@ object YouTubePlayerFactory {
 
         return buildPlayer(true, mainSlot).let { exo ->
                 exo.addAnalyticsListener(Diagnostics)
+                // A song YouTube plays only to an account, with none signed in:
+                // said, and passed over, rather than left at --:-- with no word
+                // of why. See SignedInStreams.
+                exo.addListener(object : Player.Listener {
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        // A signed-in address that failed is not handed out again.
+                        SignedInStreams.forget()
+                        val causes = generateSequence<Throwable>(error) { it.cause }.toList()
+                        val message = when {
+                            causes.any { it is SignedInStreams.SignInRequired } ->
+                                dev.lelonio.square.R.string.youtube_sign_in_required
+                            causes.any { it is SignedInStreams.Refused } ->
+                                dev.lelonio.square.R.string.youtube_signed_in_unplayable
+                            else -> return
+                        }
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            android.widget.Toast.makeText(
+                                host.context,
+                                host.context.getString(message),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                        if (exo.hasNextMediaItem()) {
+                            exo.seekToNextMediaItem()
+                            exo.prepare()
+                            exo.play()
+                        }
+                    }
+                })
                 // Video for a video, sound for a song, as the queue moves.
                 exo.addListener(object : Player.Listener {
                     override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
@@ -172,6 +201,10 @@ object YouTubePlayerFactory {
             parameters: androidx.media3.common.PlaybackParameters,
         ) {
             android.util.Log.w(TAG, "params speed=${parameters.speed} pitch=${parameters.pitch}")
+            // Saved here as on the Spotify path (see LibrespotPlayer): never
+            // saved for a YouTube song, the effects button went on reading the
+            // speed of the last Spotify one, lit after "Original".
+            dev.lelonio.square.playback.AudioEffects.rememberSpeedAndPitch(parameters.speed, parameters.pitch)
         }
 
         override fun onLoadError(
@@ -286,7 +319,33 @@ private class YouTubeStreamResolver(
     private val context: android.content.Context,
 ) : ResolvingDataSource.Resolver {
 
-    override fun resolveDataSpec(dataSpec: DataSpec): DataSpec {
+    /**
+     * Asked without an account, and again as the account where YouTube will
+     * only play the song to one; see SignedInStreams.
+     */
+    override fun resolveDataSpec(dataSpec: DataSpec): DataSpec = try {
+        resolveAnonymously(dataSpec)
+    } catch (error: Exception) {
+        if (!SignedInStreams.needsAccount(error)) throw error
+        val base = dataSpec.uri.toString().substringBefore('#')
+        val kind = when (dataSpec.uri.fragment) {
+            PART_VIDEO -> SignedInStreams.Kind.VIDEO
+            PART_AUDIO -> SignedInStreams.Kind.AUDIO
+            else -> if (YouTubeVideoMode.wantsVideo(base)) SignedInStreams.Kind.MUXED else SignedInStreams.Kind.AUDIO
+        }
+        val id = YouTubeBackend.videoIdOfUri(base)
+        val url = try {
+            SignedInStreams.url(context, id, kind, wantsLowRate())
+        } catch (refused: SignedInStreams.SignInRequired) {
+            throw refused
+        } catch (refused: Exception) {
+            android.util.Log.w("SquareYTSignedIn", "$id refused: ${refused.message}")
+            throw SignedInStreams.Refused(id, refused)
+        }
+        dataSpec.withUri(android.net.Uri.parse(url))
+    }
+
+    private fun resolveAnonymously(dataSpec: DataSpec): DataSpec {
         val uri = dataSpec.uri.toString()
         if (!uri.startsWith(YouTubeBackend.TRACK_PREFIX) && !uri.startsWith(YouTubeBackend.VIDEO_PREFIX)) {
             return dataSpec

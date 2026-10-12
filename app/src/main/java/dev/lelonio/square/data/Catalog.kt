@@ -111,6 +111,21 @@ data class Lyrics(
     val synced: Boolean,
     /** The LyricsSource it came from, by name; null for words kept before this was recorded. */
     val source: String? = null,
+    /** Who to credit under the words, where the source requires it; see LyricsCredit. */
+    val credit: LyricsCredit? = null,
+)
+
+/**
+ * The credit a source asks to be shown wherever its words are: its name, and
+ * for community syncs the person who uploaded them and the one who made them.
+ */
+@Serializable
+data class LyricsCredit(
+    val provider: String,
+    val uploader: String? = null,
+    val uploaderUrl: String? = null,
+    val maker: String? = null,
+    val makerUrl: String? = null,
 )
 
 /**

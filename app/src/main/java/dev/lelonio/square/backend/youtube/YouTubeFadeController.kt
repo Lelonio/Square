@@ -124,6 +124,10 @@ class YouTubeFadeController(
 
     private fun checkEnd() {
         if (changing || !player.isPlaying) return
+        // No crossfade while a sleep timer waits for the end of this song: the
+        // fade moved to the next song seconds early, the timer took that for
+        // a skip, and the music never paused. The song now plays to its end.
+        if (dev.lelonio.square.playback.SleepTimer.atTrackEnd.value) return
         val fadeMs = crossfadeStore?.durationMs() ?: 0
         if (fadeMs <= 0) {
             if (preparedItem != null) cancelOverlap()

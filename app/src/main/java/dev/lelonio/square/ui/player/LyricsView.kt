@@ -570,14 +570,27 @@ fun KaraokeWordItem(
     val jumpPadding = (12.dp * visualSettings.jumpStrength).coerceAtLeast(8.dp)
 
     if (isLetterGroup) {
-        KaraokeLetterGroup(
-            word = word,
-            charTimings = charTimings,
-            progressProvider = progressProvider,
-            jumpPadding = jumpPadding,
-            isBackground = isBackground,
-            modifier = modifier,
-        )
+        // The space after the word, kept as the plain word keeps it: the
+        // letters are timed from the word without it, and a long word drawn
+        // letter by letter used to run straight into the next one.
+        val space = remember(piece) { piece.substring(piece.trimEnd().length) }
+        Row(modifier = modifier.wrapContentWidth()) {
+            KaraokeLetterGroup(
+                word = word,
+                charTimings = charTimings,
+                progressProvider = progressProvider,
+                jumpPadding = jumpPadding,
+                isBackground = isBackground,
+            )
+            if (space.isNotEmpty()) {
+                Text(
+                    text = space,
+                    color = Color.Transparent,
+                    softWrap = false,
+                    style = lyicTextStyle(isBackground = isBackground),
+                )
+            }
+        }
     } else {
         KaraokePlainWord(
             word = word,

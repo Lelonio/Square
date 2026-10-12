@@ -177,6 +177,8 @@ fun HomeScreen(
      * cannot be reconstructed from the account's playlists.
      */
     shelves: List<dev.lelonio.square.data.HomeShelf> = emptyList(),
+    /** Spotify's shelves are on their way; their outline stands in until then. */
+    shelvesLoading: Boolean = false,
 ) {
     if (youtubeMode) {
         YouTubeHome(
@@ -341,7 +343,10 @@ fun HomeScreen(
                 // are a second, worse answer to the same question, printed
                 // underneath the first, so they stand in only while there is
                 // no real one; the chips are the real one's.
-                val ownFeed = shelves.isEmpty()
+                // Not while Spotify's are on their way: shown first and then
+                // replaced, the stand-in page was a page that changed under
+                // the listener a few seconds after opening.
+                val ownFeed = shelves.isEmpty() && !shelvesLoading
                 val showOwn = current == Feed.ALL && ownFeed
                 val showReleases = showOwn
                 val showArtists = showOwn
@@ -404,11 +409,26 @@ fun HomeScreen(
                 run {
                     val visible = if (filter == Feed.ALL) shelves
                     else shelves.filter { dev.lelonio.square.data.TabContents.chipOf(it) == filter.chip }
+                    // Their outline while they come, and a fade as they land
+                    // rather than the rows appearing in one frame.
+                    if (visible.isEmpty() && shelvesLoading && filter == Feed.ALL) {
+                        items(SHELF_OUTLINES, key = { "shelf-outline-$it" }, contentType = { "skeleton" }) {
+                            Box(Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = tween(200))) {
+                                SkeletonSection(tileWidth = 152.dp, tileHeight = 152.dp)
+                            }
+                        }
+                    }
                     visible.forEach { shelf ->
-                        item(contentType = "shelf") { Heading(shelf.title) }
-                        item(contentType = "shelf") {
-                            Carousel(shelf.items, key = { it.uri }) { entry ->
-                                PlaylistTile(entry) { onOpenPlaylist(entry) }
+                        item(key = "shelf-heading-${shelf.title}", contentType = "shelf") {
+                            Box(Modifier.animateItem(fadeInSpec = tween(320), placementSpec = null, fadeOutSpec = null)) {
+                                Heading(shelf.title)
+                            }
+                        }
+                        item(key = "shelf-${shelf.title}", contentType = "shelf") {
+                            Box(Modifier.animateItem(fadeInSpec = tween(320), placementSpec = null, fadeOutSpec = null)) {
+                                Carousel(shelf.items, key = { it.uri }) { entry ->
+                                    PlaylistTile(entry) { onOpenPlaylist(entry) }
+                                }
                             }
                         }
                     }
@@ -1579,6 +1599,9 @@ private fun Centered(content: @Composable () -> Unit) {
         ) { content() }
     }
 }
+
+/** How many shelves' outlines stand in while Spotify's are on their way. */
+private const val SHELF_OUTLINES = 4
 
 @StringRes
 private fun greeting(): Int = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {

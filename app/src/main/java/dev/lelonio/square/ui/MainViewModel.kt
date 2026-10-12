@@ -822,6 +822,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var devicesJob: Job? = null
 
     init {
+        followKeptYouTube()
         // A video in an open list, put right as its song is found; see
         // YouTubeBackend.asSongs, which opens the list without waiting for all.
         viewModelScope.launch {
@@ -1285,14 +1286,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     LocalLibrary.spotifyUri(file).also { uri ->
                         // Playable at once from the playlist, without waiting
                         // for its page to be matched again.
-                        file.localFile?.let { path ->
-                            engineLocalFiles[uri] = path
-                            runCatching {
-                                dev.lelonio.square.nativecore.NativeBridge.setLocalFiles(
-                                    org.json.JSONObject(engineLocalFiles.toMap()).toString(),
-                                )
-                            }
-                        }
+                        file.localFile?.let { path -> dev.lelonio.square.data.LocalFileBindings.bind(mapOf(uri to path)) }
                     }
                 }
                 withContext(Dispatchers.IO) {
@@ -2403,6 +2397,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val snapshot = readLibrarySnapshot()
         _state.value = snapshot ?: UiState.Connecting
         if (!awaitEngine()) {
+            // No session, so Spotify's shelves are not coming from this load.
+            homeShelvesSettled.value = true
             // A library with no session is not an empty library. Everything
             // that was downloaded is still here and still playable, and the
             // shelf for it is the one thing the listener came for.
@@ -2669,12 +2665,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * playing something the listener did not choose.
      */
     suspend fun radioFor(trackUri: String): List<CatalogTrack> {
+        if (isYouTubeSong(trackUri)) {
+            return runCatching { container.youtubeBackend.radio(trackUri) }
+                .onFailure { android.util.Log.w(TAG, "no radio for $trackUri: ${describe(it)}") }
+                .getOrDefault(emptyList())
+        }
         val id = trackUri.substringAfterLast(':')
         val station = "spotify:station:track:$id"
         return runCatching { Catalog.tracks(Catalog.contextTrackUris(station)) }
             .onFailure { android.util.Log.w(TAG, "no station for $trackUri: ${describe(it)}") }
             .getOrDefault(emptyList())
     }
+
+    /** The address of the station [radioFor] builds from [trackUri]: Spotify's, or YouTube's. */
+    fun stationFor(trackUri: String): String =
+        if (isYouTubeSong(trackUri)) {
+            dev.lelonio.square.backend.youtube.YouTubeBackend.stationUri(trackUri)
+        } else {
+            "spotify:station:track:" + trackUri.substringAfterLast(':')
+        }
+
+    /** Whether a song has a radio at all: Spotify's tracks and YouTube's songs and videos. */
+    fun hasRadio(trackUri: String): Boolean =
+        trackUri.startsWith("spotify:track:") || isYouTubeSong(trackUri)
+
+    private fun isYouTubeSong(uri: String) =
+        uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX) ||
+            uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.VIDEO_PREFIX)
 
     /** How the detail screen sorts its tracks; remembered between visits. */
     val trackOrders get() = container.preferences.trackOrders
@@ -3166,6 +3183,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadHomeShelves() {
         if (homeShelvesJob?.isActive == true) return
+        // On their way again, so their outline shows rather than the stand-in.
+        if (_homeShelves.value.isEmpty()) homeShelvesSettled.value = false
         homeShelvesJob = viewModelScope.launch { loadHomeShelvesNow() }
     }
 
@@ -3176,6 +3195,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * coming up, used to be the end of Spotify's home for the session.
      */
     private suspend fun loadHomeShelvesNow() {
+        try {
+            loadHomeShelvesTries()
+        } finally {
+            homeShelvesSettled.value = true
+        }
+    }
+
+    /**
+     * Whether Spotify's own shelves have been asked for and answered, either
+     * way. Until then the home page draws their outline rather than the app's
+     * own stand-in page, which used to show first and be swapped for Spotify's
+     * a few seconds later, all at once.
+     */
+    private val homeShelvesSettled = MutableStateFlow(false)
+
+    /** Spotify's shelves are on their way: online, on Spotify, not yet answered. */
+    val homeShelvesLoading: StateFlow<Boolean> = combine(
+        homeShelvesSettled,
+        dev.lelonio.square.playback.OfflineMode.active,
+        container.preferences.backend,
+    ) { settled, offline, backend ->
+        !settled && !offline && backend == BackendId.SPOTIFY && container.spotifySignedIn
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, container.spotifySignedIn)
+
+    private suspend fun loadHomeShelvesTries() {
         var shelves = emptyList<HomeShelf>()
         for (wait in HOME_RETRY_MS) {
             kotlinx.coroutines.delay(wait)
@@ -3626,6 +3670,56 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * A kept page brought in step with the page as it now reads.
+     *
+     * Downloading a playlist used to record its songs as they were that day
+     * and never look again: a song added afterwards, here or anywhere else,
+     * was in the list and not on the phone, and one taken out stayed on the
+     * phone. Every full read of a kept page now replaces what it wants, which
+     * fetches what is new and lets go of what is gone; the order is kept too,
+     * since it is the order the page shows offline.
+     *
+     * Only from a whole list read from the service: offline, or from a list
+     * that came back empty, there is nothing to say the playlist changed.
+     */
+    private fun followKept(uri: String, tracks: List<CatalogTrack>) {
+        val kept = container.downloads.owners.value[uri] ?: return
+        if (tracks.isEmpty() || dev.lelonio.square.playback.OfflineMode.active.value) return
+        val now = tracks.map { it.uri }
+        if (now == kept) return
+        viewModelScope.launch {
+            container.downloads.setOwner(uri, tracks, label = null)
+            val added = now.toSet() - kept.toSet()
+            val gone = kept.toSet() - now.toSet()
+            android.util.Log.i(TAG, "kept $uri followed: ${added.size} added, ${gone.size} gone")
+            if (gone.isNotEmpty()) sweepOrphans()
+            if (added.isNotEmpty()) DownloadService.start(getApplication())
+        }
+    }
+
+    /**
+     * Every kept list of YouTube Music's read again, once a run.
+     *
+     * A song added to a playlist from YouTube Music itself, or from another
+     * phone, would otherwise wait for the playlist to be opened here before
+     * it was downloaded. Spotify's are left to their next open: reading a
+     * long one in full is many requests, where YouTube answers in one.
+     */
+    private fun followKeptYouTube() = viewModelScope.launch {
+        delay(KEPT_SYNC_DELAY_MS)
+        container.downloads.ensureLoaded()
+        if (dev.lelonio.square.playback.OfflineMode.active.value) return@launch
+        val youtube = container.youtubeBackend
+        container.downloads.owners.value.keys
+            .filter { it.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.PLAYLIST_PREFIX) }
+            .forEach { uri ->
+                runCatching { youtube.tracksOf(uri) }
+                    .onSuccess { followKept(uri, it) }
+                    .onFailure { android.util.Log.w(TAG, "kept $uri not read: ${describe(it)}") }
+            }
+    }
+
+    /**
      * One track, kept on its own.
      *
      * Filed under a owner of its own so that the answer to "why is this here"
@@ -3810,22 +3904,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 artworkUrl = track.artworkUrl ?: file?.artworkUrl,
             )
         }
-        // Told to the engine as they are found, and kept: a queue started on
-        // one page plays on while another is open.
-        matched.forEach { track ->
-            val path = track.localFile ?: return@forEach
-            if (LocalLibrary.isSpotifyLocal(track.uri)) engineLocalFiles[track.uri] = path
-        }
-        runCatching {
-            dev.lelonio.square.nativecore.NativeBridge.setLocalFiles(
-                org.json.JSONObject(engineLocalFiles.toMap()).toString(),
-            )
-        }
+        // Told to the engine as they are found, and kept, on disk too: a queue
+        // started on one page plays on while another is open, and after the
+        // app is closed and opened again; see LocalFileBindings.
+        dev.lelonio.square.data.LocalFileBindings.bind(
+            matched.mapNotNull { track ->
+                track.localFile?.takeIf { LocalLibrary.isSpotifyLocal(track.uri) }?.let { track.uri to it }
+            }.toMap(),
+        )
         return matched
     }
 
-    /** Every local entry matched so far, as the engine is told them. */
-    private val engineLocalFiles = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     fun openPlaylist(playlist: CatalogPlaylist) {
         // Read again on every page: a file copied to the phone since the last
@@ -4080,6 +4169,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         return@launch
                     }
                     val tracks = container.activeBackend.tracksOf(playlist.uri)
+                    followKept(playlist.uri, tracks)
                     if (isActive && _playlist.value.uri == playlist.uri) {
                         publishPlaylist(base.copy(tracks = tracks, loading = false))
                     }
@@ -4152,6 +4242,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         if (isActive && _playlist.value.uri == playlist.uri) {
                             publishPlaylist(base.copy(tracks = cached, loadingMore = false))
                         }
+                        // The copy is the playlist as it is now, so a download
+                        // of it that is behind can catch up from it.
+                        followKept(playlist.uri, cached)
                         // A copy saved without a stamp is asked for one now, so
                         // the next open has a question to ask instead of a
                         // whole playlist to read.
@@ -4870,6 +4963,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun invalidateContext(uri: String) {
         contextCache.remove(uri)
         viewModelScope.launch { container.contextCache.remove(uri) }
+        // A song just added to, or taken out of, a list that is kept: read
+        // again now rather than on the next open, so the download follows the
+        // change while the listener is still looking at it. Spotify's lists
+        // are read again on the next open, which the change above forces.
+        if (!uri.startsWith("spotify:") && container.downloads.owners.value.containsKey(uri)) {
+            viewModelScope.launch {
+                runCatching { container.activeBackend.tracksOf(uri) }
+                    .onSuccess { followKept(uri, it) }
+            }
+        }
     }
 
     /**
@@ -4924,6 +5027,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // Stamped with the version it was read from, so the next open can ask
         // one question instead of reading it all again. Without a stamp the
         // entry still saves — it just gets refreshed silently every time.
+        followKept(uri, tracks)
         val snapshotId = snapshotOf(uri)
         contextCache[uri] = ContextCacheStore.Entry(tracks, snapshotId)
         rememberMembership(uri, tracks)
@@ -6067,6 +6171,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val HOME_RETRY_MS = listOf(0L, 2_000L, 6_000L)
 
         const val TAG = "SquareUi"
+
+        /** After the start's own requests, which the listener is waiting on. */
+        const val KEPT_SYNC_DELAY_MS = 15_000L
 
         /** Artists asked for new records on the home page; one request each. */
         const val FRESH_ARTISTS = 14

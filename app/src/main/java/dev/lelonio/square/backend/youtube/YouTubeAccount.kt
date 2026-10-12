@@ -69,6 +69,12 @@ class YouTubeAccount(context: Context) {
         // Which of the account's channels is answering. Null is the personal
         // one, which is what the cookie alone reads as.
         YouTube.pageId = prefs.getString(KEY_PAGE_ID, null)
+        // Browsing as the account too, not only the library. InnerTube sends
+        // the cookie with a browse only when told to, and nothing told it: the
+        // home page was the one anybody in the country gets, with none of the
+        // account's own shelves (what it played lately, the mixes and albums
+        // made for it) that YouTube Music shows the same account.
+        YouTube.useLoginForBrowse = YouTube.cookie != null
     }
 
     /**

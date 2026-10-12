@@ -29,9 +29,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.lelonio.square.data.LyricLine
 import dev.lelonio.square.data.Lyrics
 import kotlin.math.abs
 
@@ -40,9 +45,10 @@ import kotlin.math.abs
  * quieter, and nothing else moving.
  *
  * The other style, [LyricsView], is the animated one ported from Spicy Lyrics,
- * with words lighting up as they are sung. This is for whoever prefers to read
- * them still, and for phones the animation is heavy on: a line changing colour
- * is all that is drawn when the song moves on.
+ * with words that glow and lift as they are sung. This is for whoever prefers
+ * to read them still, and for phones the animation is heavy on: the words of
+ * the line being sung take the ink in turn, where the source times them, and
+ * nothing else moves.
  */
 @Composable
 fun ClassicLyricsView(
@@ -110,14 +116,25 @@ fun ClassicLyricsView(
                     .clickable(enabled = line.startTimeMs != null) { line.startTimeMs?.let(onSeek) }
                     .padding(horizontal = 24.dp, vertical = 2.dp),
             ) {
+                // The line being sung, word by word where the source times
+                // its words: what has been sung in full ink, the word being
+                // sung brightening as it goes, the rest as quiet as the
+                // lines around it. Only this line reads the position, so
+                // only it redraws as the song moves.
+                val timed = lyrics.synced && index == activeLine && line.words.isNotEmpty()
+                val ranges = remember(line) { wordRanges(line) }
                 Text(
-                    line.text.ifBlank { "♪" },
+                    if (timed) {
+                        sungSoFar(line, ranges, positionMs.value, GlassInk, GlassInk.copy(alpha = 0.38f))
+                    } else {
+                        AnnotatedString(line.text.ifBlank { "♪" })
+                    },
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontSize = 24.sp,
                         lineHeight = 31.sp,
                         fontWeight = FontWeight.Bold,
                     ),
-                    color = ink,
+                    color = if (timed) GlassInk.copy(alpha = 0.38f) else ink,
                 )
                 val translation = line.translation.takeIf { showTranslation && !it.isNullOrBlank() }
                 if (translation != null) {
@@ -132,3 +149,43 @@ fun ClassicLyricsView(
         }
     }
 }
+
+/** Where each timed word sits in the line's text, found in order; null for one not found. */
+private fun wordRanges(line: LyricLine): List<IntRange?> {
+    var cursor = 0
+    return line.words.map { word ->
+        val at = line.text.indexOf(word.text, cursor)
+        if (at < 0) {
+            null
+        } else {
+            cursor = at + word.text.length
+            at until cursor
+        }
+    }
+}
+
+/** The line, coloured as far as it has been sung at [positionMs]. */
+private fun sungSoFar(
+    line: LyricLine,
+    ranges: List<IntRange?>,
+    positionMs: Long,
+    sung: Color,
+    quiet: Color,
+): AnnotatedString =
+    buildAnnotatedString {
+        append(line.text)
+        // Everything up to the end of the last word sung, the spaces too.
+        val sungEnd = line.words.indices
+            .lastOrNull { line.words[it].endMs <= positionMs && ranges[it] != null }
+            ?.let { ranges[it]!!.last + 1 } ?: 0
+        if (sungEnd > 0) addStyle(SpanStyle(color = sung), 0, sungEnd)
+        val singing = line.words.indices.firstOrNull {
+            val word = line.words[it]
+            positionMs in word.startMs until word.endMs && ranges[it] != null
+        } ?: return@buildAnnotatedString
+        val word = line.words[singing]
+        val range = ranges[singing]!!
+        val progress = ((positionMs - word.startMs).toFloat() / (word.endMs - word.startMs).coerceAtLeast(1))
+            .coerceIn(0f, 1f)
+        addStyle(SpanStyle(color = lerp(quiet, sung, progress)), range.first, range.last + 1)
+    }

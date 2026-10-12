@@ -354,18 +354,22 @@ class MediaBrowseTree(
     /**
      * A station from what is playing, without a screen to ask anything of.
      *
-     * The same list the player's own radio button builds: Spotify assembles it
+     * The same list the player's own radio button builds: the service assembles it
      * and this asks for it. If it will not, the queue is left alone rather than
      * replaced with something nobody chose.
      */
     private fun startRadio(session: MediaSession) {
         val player = session.player
         val uri = player.currentMediaItem?.mediaId ?: return
-        if (!uri.startsWith("spotify:track:")) return
+        val youtube = uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX) ||
+            uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.VIDEO_PREFIX)
+        if (!uri.startsWith("spotify:track:") && !youtube) return
 
         scope.launch {
             val station = "spotify:station:track:${uri.substringAfterLast(':')}"
-            val tracks = runCatching { Catalog.tracks(Catalog.contextTrackUris(station)) }
+            val tracks = runCatching {
+                if (youtube) app.youtubeBackend.radio(uri) else Catalog.tracks(Catalog.contextTrackUris(station))
+            }
                 .onFailure { android.util.Log.w(TAG, "no station for $uri: $it") }
                 .getOrDefault(emptyList())
             if (tracks.isEmpty()) return@launch

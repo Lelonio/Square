@@ -665,9 +665,18 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /**
+     * The ExoPlayer behind [player], if there is one. The YouTube player is
+     * an ExoPlayer inside SkipFadePlayer: asked only for an ExoPlayer, its
+     * songs never got the room.
+     */
+    private fun exoOf(player: androidx.media3.common.Player?): androidx.media3.exoplayer.ExoPlayer? =
+        player as? androidx.media3.exoplayer.ExoPlayer
+            ?: (player as? androidx.media3.common.ForwardingPlayer)?.wrappedPlayer as? androidx.media3.exoplayer.ExoPlayer
+
     /** Puts the room on the player in front, or takes it off the one leaving. */
     private fun followReverb() {
-        val exo = player as? androidx.media3.exoplayer.ExoPlayer ?: return
+        val exo = exoOf(player) ?: return
         exoReverb.apply(exo, AudioEffects.reverb.value)
     }
 
@@ -937,7 +946,7 @@ class PlaybackService : MediaLibraryService() {
         // command answered "engine not started". Parked, it keeps the session
         // alive behind the local player and is picked up again on the way back,
         // already configured.
-        (player as? androidx.media3.exoplayer.ExoPlayer)?.let(exoReverb::release)
+        exoOf(player)?.let(exoReverb::release)
 
         // The video is the same case as a local file: the session plays
         // something else for a while, and the engine has to be there when the
@@ -1463,11 +1472,36 @@ class PlaybackService : MediaLibraryService() {
             val offline = runCatching { NativeBridge.isOffline }.getOrDefault(false)
             dev.lelonio.square.playback.OfflineMode.setNoSession(offline)
             android.util.Log.i(TAG, if (offline) "engine started offline" else "engine connected")
+            // Before the queue is handed over: a local song that was playing
+            // when the app closed is only playable once the engine knows its
+            // file; see LocalFileBindings. Entries of the saved queue never
+            // matched yet (saved by an older build, or never shown on a page
+            // since) are matched here, against the phone's own music, rather
+            // than left silent until their playlist is opened.
+            runCatching { bindSavedLocalEntries() }
+                .onFailure { android.util.Log.w(TAG, "local files not matched: $it") }
+            dev.lelonio.square.data.LocalFileBindings.push()
             // Up with no session: try again for as long as there is a network.
             if (offline) SessionKeeper.sessionMissing()
             if (restoreQueue) restoreQueue()
             observeForSaving()
         }
+    }
+
+    /** See the note where it is called, as the engine starts. */
+    private suspend fun bindSavedLocalEntries() {
+        val saved = playbackStore.load() ?: return
+        val unmatched = saved.tracks.filter {
+            dev.lelonio.square.data.LocalLibrary.isSpotifyLocal(it.uri) &&
+                !dev.lelonio.square.data.LocalFileBindings.has(it.uri)
+        }
+        if (unmatched.isEmpty()) return
+        val files = dev.lelonio.square.data.LocalLibrary.tracks(this)
+        val found = unmatched.mapNotNull { entry ->
+            dev.lelonio.square.data.LocalLibrary.match(entry, files)?.localFile?.let { entry.uri to it }
+        }.toMap()
+        android.util.Log.i(TAG, "matched ${found.size} of ${unmatched.size} local entries of the saved queue")
+        dev.lelonio.square.data.LocalFileBindings.bind(found)
     }
 
     /**

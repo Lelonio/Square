@@ -33,6 +33,21 @@ class PlayerReverb {
      */
     private var watched: ExoPlayer? = null
     private val level = object : androidx.media3.common.Player.Listener {
+        /**
+         * Off on pause and fresh on play, as on the Spotify path (see
+         * AudioOutput.setPlaybackActive). Left on through a pause, the room
+         * rang on for a moment, was cut off when the system stopped feeding
+         * it, and played the rest of that old tail over the next play.
+         */
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            val player = watched ?: return
+            if (playWhenReady) {
+                if (amount > 0f && effect == null) apply(player, amount)
+            } else {
+                drop(player)
+            }
+        }
+
         override fun onVolumeChanged(volume: Float) {
             val player = watched ?: return
             val room = amount
@@ -68,6 +83,9 @@ class PlayerReverb {
             watched = player
             runCatching { player.addListener(this.level) }
         }
+
+        // Built on play: a paused player gets its room when it starts.
+        if (!player.playWhenReady) return
 
         val existing = effect
         val reverb = existing ?: runCatching {
@@ -107,6 +125,14 @@ class PlayerReverb {
             runCatching { player.removeListener(level) }
             watched = null
         }
+        drop(player)
+    }
+
+    /**
+     * Takes the room off [player] and throws it away, with whatever is still
+     * ringing inside it; released rather than disabled, see AudioOutput.
+     */
+    private fun drop(player: ExoPlayer) {
         runCatching {
             player.setAuxEffectInfo(AuxEffectInfo(AuxEffectInfo.NO_AUX_EFFECT_ID, 0f))
         }

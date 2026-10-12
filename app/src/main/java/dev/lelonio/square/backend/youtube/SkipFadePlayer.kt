@@ -30,16 +30,50 @@ class SkipFadePlayer(
     override fun addMediaItem(mediaItem: MediaItem) = addMediaItems(mutableListOf(mediaItem))
 
     override fun addMediaItems(mediaItems: MutableList<MediaItem>) {
-        val at = if (mediaItems.isNotEmpty() && mediaItems.all(::isQueued)) queueEnd() else mediaItemCount
+        val queued = mediaItems.isNotEmpty() && mediaItems.all(::isQueued)
+        val at = if (queued) queueEnd() else mediaItemCount
         super.addMediaItems(at, mediaItems)
+        if (queued) playNextInShuffle(at, mediaItems.size)
     }
 
     override fun addMediaItem(index: Int, mediaItem: MediaItem) = addMediaItems(index, mutableListOf(mediaItem))
 
     override fun addMediaItems(index: Int, mediaItems: MutableList<MediaItem>) {
         // The controller asks for the end; the queue knows better where that is.
-        val at = if (mediaItems.isNotEmpty() && mediaItems.all(::isQueued)) queueEnd() else index
+        val queued = mediaItems.isNotEmpty() && mediaItems.all(::isQueued)
+        val at = if (queued) queueEnd() else index
         super.addMediaItems(at, mediaItems)
+        if (queued) playNextInShuffle(at, mediaItems.size)
+    }
+
+    /**
+     * Shuffled, the songs just queued are played next too.
+     *
+     * Placing them after the song playing in the list is not enough with
+     * shuffle on: ExoPlayer plays its own shuffled order, and gave the new
+     * songs a random place in it, so "play next" played a random song next.
+     * The order is rewritten with them right after the song playing and after
+     * anything queued before them, and everything else as it was.
+     */
+    private fun playNextInShuffle(at: Int, count: Int) {
+        val exo = wrappedPlayer as? androidx.media3.exoplayer.ExoPlayer ?: return
+        if (!shuffleModeEnabled || count <= 0) return
+        val timeline = currentTimeline
+        if (timeline.isEmpty) return
+        val added = (at until at + count).toSet()
+        val order = mutableListOf<Int>()
+        var index = timeline.getFirstWindowIndex(true)
+        while (index != androidx.media3.common.C.INDEX_UNSET && order.size < timeline.windowCount) {
+            order += index
+            index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, true)
+        }
+        order.removeAll(added)
+        var place = order.indexOf(currentMediaItemIndex) + 1
+        while (place in order.indices && isQueued(getMediaItemAt(order[place]))) place++
+        order.addAll(place.coerceIn(0, order.size), (at until at + count).toList())
+        exo.setShuffleOrder(
+            androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder(order.toIntArray(), System.nanoTime()),
+        )
     }
 
     private fun isQueued(item: MediaItem) =

@@ -104,6 +104,29 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_CANVAS, value).apply()
     }
 
+    private val _spicyLyricsKey = MutableStateFlow(prefs.getString(KEY_SPICY_LYRICS, null).orEmpty())
+
+    /** The listener's own Spicy Lyrics key; blank leaves that source out. */
+    val spicyLyricsKey: StateFlow<String> = _spicyLyricsKey.asStateFlow()
+
+    fun setSpicyLyricsKey(value: String) {
+        _spicyLyricsKey.value = value.trim()
+        prefs.edit().putString(KEY_SPICY_LYRICS, value.trim()).apply()
+    }
+
+    private val _preferredLyricsSource = MutableStateFlow(prefs.getString(KEY_PREFERRED_LYRICS, null).orEmpty())
+
+    /**
+     * The lyrics source to show whenever it has words for the song, by its
+     * LyricsSource name; blank for the best of them, which is the default.
+     */
+    val preferredLyricsSource: StateFlow<String> = _preferredLyricsSource.asStateFlow()
+
+    fun setPreferredLyricsSource(value: String) {
+        _preferredLyricsSource.value = value
+        prefs.edit().putString(KEY_PREFERRED_LYRICS, value).apply()
+    }
+
     /** How the lyrics are drawn: animated word by word, or as plain lines. */
     enum class LyricsStyle { ANIMATED, CLASSIC }
 
@@ -349,6 +372,8 @@ class PreferencesStore(context: Context) {
         const val KEY_SYSTEM_FONT = "system_font"
         const val KEY_YOUTUBE_QUALITY = "youtube_quality"
         const val KEY_LYRICS_STYLE = "lyrics_style"
+        const val KEY_SPICY_LYRICS = "spicy_lyrics_key"
+        const val KEY_PREFERRED_LYRICS = "preferred_lyrics_source"
         const val KEY_KEEP_PLAYING = "keep_playing_on_close"
         const val KEY_SPONSOR_BLOCK = "sponsor_block"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"

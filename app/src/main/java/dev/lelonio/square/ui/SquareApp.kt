@@ -462,6 +462,7 @@ fun SquareApp(
         .collectAsStateWithLifecycle()
     val inPlaylists by viewModel.inPlaylists.collectAsStateWithLifecycle()
     val homeShelves by viewModel.homeShelves.collectAsStateWithLifecycle()
+    val homeShelvesLoading by viewModel.homeShelvesLoading.collectAsStateWithLifecycle()
     val remote = elsewhere?.takeIf { elsewhereActive }
     val showConnectedDevice by (context.applicationContext as dev.lelonio.square.SquareApplication)
         .preferences.showConnectedDevice.collectAsStateWithLifecycle()
@@ -825,11 +826,17 @@ fun SquareApp(
     // and the glass, which still reads it, always takes its dark film.
     val playerInk = Color(0xFFF7F8FA)
 
+    // The cover's colour, except while a video plays: the picture on screen is
+    // the video, not the sleeve, and glass tinted after a record nobody is
+    // looking at clashes with it. The plain glass instead, until the video
+    // is put away.
+    val glassAccent = accent.takeUnless { videoOn || spotifyVideoOn }
+
     // And the film on its glass: still dark, and now the record's own dark.
     // The song's colour at the depth the grey film sat at, see playerFilmTint,
     // eased from one song to the next rather than cut, like the field under it.
     val playerFilm by animateColorAsState(
-        targetValue = accent?.let { dev.lelonio.square.ui.player.playerFilmTint(it) }
+        targetValue = glassAccent?.let { dev.lelonio.square.ui.player.playerFilmTint(it) }
             ?: Color(0xFF23232A),
         animationSpec = tween(PLAYER_FILM_FADE_MS),
         label = "playerFilm",
@@ -1083,17 +1090,23 @@ fun SquareApp(
         // Lyrics are lightweight text — fetch them immediately without delay.
         // Wait until title and artist metadata have arrived to avoid fetching
         // with empty strings and polluting the session cache with false nulls.
-        val currentTitle = if (isRemote) playback.title else localState.value.title.ifBlank { playback.title }
-        val currentArtist = if (isRemote) playback.artist else localState.value.artist.ifBlank { playback.artist }
+        // The player's own names only while they are this song's: read a
+        // moment after a skip they can still be the last song's, and asking
+        // under them found that song's words and kept them as this one's.
+        val own = localState.value.takeIf { !isRemote && it.mediaId == uri }
+        val currentTitle = own?.title?.ifBlank { null } ?: playback.title
+        val currentArtist = own?.artist?.ifBlank { null } ?: playback.artist
         val currentDuration = if (isRemote && playback.durationMs > 0) {
             playback.durationMs
         } else {
-            localState.value.durationMs.takeIf { it > 0 } ?: playback.durationMs
+            own?.durationMs?.takeIf { it > 0 } ?: playback.durationMs
         }
 
         if (currentTitle.isBlank()) return@LaunchedEffect
 
-        if (lyricsFor != uri) {
+        // Asked again for the same song (its title or artist arrived late)
+        // with nothing to show yet: loading, not "no lyrics", until it answers.
+        if (lyricsFor != uri || lyrics == null) {
             lyrics = null
             lyricsFor = null
         }
@@ -1169,7 +1182,7 @@ fun SquareApp(
     // a tab bar and a player's worth of controls into a thumbnail, none of it
     // legible and none of it reachable — the system owns the gestures there.
     if (inPip) {
-        SquareTheme(seed = accent) {
+        SquareTheme(seed = glassAccent) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -1215,7 +1228,7 @@ fun SquareApp(
         }
     }
     if (landscape && (videoOn || spotifyVideoOn) && player != null) {
-        SquareTheme(seed = accent) {
+        SquareTheme(seed = glassAccent) {
             dev.lelonio.square.ui.player.FullScreenVideo(
                 player = player,
                 attachKey = spotifyVideoGeneration,
@@ -1260,7 +1273,7 @@ fun SquareApp(
     androidx.compose.runtime.CompositionLocalProvider(
         dev.lelonio.square.ui.glass.LocalBackdropLuminance provides backdropLuminance,
     ) {
-    SquareTheme(seed = accent) {
+    SquareTheme(seed = glassAccent) {
         // Material's default content colour is black, and it used to arrive from
         // the Surface that wrapped this tree. That Surface is gone — it painted
         // an opaque page over the backdrop — so the colour has to be provided
@@ -1617,6 +1630,7 @@ fun SquareApp(
                                 onRetryOnline = viewModel::retryOnline,
                                 youtubeHome = youtubeHome,
                                 shelves = homeShelves,
+                                shelvesLoading = homeShelvesLoading,
                                 onPlayTrending = { tracks, index ->
                                     onPlay(tracks, index, null, false, trendingLabel, 0L)
                                 },
@@ -1736,8 +1750,7 @@ fun SquareApp(
                                         runCatching {
                                         val tracks = viewModel.radioFor(seed.uri)
                                         if (tracks.isEmpty()) return@launch
-                                        val station = "spotify:station:track:" +
-                                            seed.uri.substringAfterLast(':')
+                                        val station = viewModel.stationFor(seed.uri)
                                         val name = radioOfTemplate.format(seed.artist)
                                         // The station as a page and then as a
                                         // queue, in that order: what the tab
@@ -3096,13 +3109,14 @@ fun SquareApp(
                                         ),
                                 inLikedSongs = playback.mediaId != null &&
                                     playback.mediaId in likedTracks,
-                                // Spotify's own radio, and only where Spotify
-                                // can answer: the station is a context on its
-                                // access point and means nothing anywhere else.
+                                // The song's own radio, from the service it
+                                // came from: Spotify's station or YouTube
+                                // Music's, each meaningless to the other.
                                 onRadio = playback.mediaId
                                     ?.takeIf {
-                                        it.startsWith("spotify:track:") &&
-                                            backend == dev.lelonio.square.backend.BackendId.SPOTIFY
+                                        (it.startsWith("spotify:track:") &&
+                                            backend == dev.lelonio.square.backend.BackendId.SPOTIFY) ||
+                                            (!it.startsWith("spotify:") && viewModel.hasRadio(it))
                                     }
                                     ?.let { uri ->
                                         {
@@ -3110,9 +3124,7 @@ fun SquareApp(
                                                 runCatching {
                                                     val tracks = viewModel.radioFor(uri)
                                                     if (tracks.isEmpty()) return@launch
-                                                    val station =
-                                                        "spotify:station:track:" +
-                                                            uri.substringAfterLast(':')
+                                                    val station = viewModel.stationFor(uri)
                                                     val name = radioOf(playback.title)
                                                     viewModel.showStation(
                                                         uri = station,
@@ -3533,14 +3545,14 @@ fun SquareApp(
                                 viewModel.toggleTrackDownload(menu.track)
                             }
                         }
-                        TrackSheetAction(stringResource(R.string.radio), PhosphorIcons.Regular.Broadcast) {
+                        if (viewModel.hasRadio(menu.track.uri)) TrackSheetAction(stringResource(R.string.radio), PhosphorIcons.Regular.Broadcast) {
                             val track = menu.track
                             trackMenu = null
                             scope.launch {
                                 runCatching {
                                     val tracks = viewModel.radioFor(track.uri)
                                     if (tracks.isEmpty()) return@launch
-                                    val station = "spotify:station:track:" + track.uri.substringAfterLast(':')
+                                    val station = viewModel.stationFor(track.uri)
                                     val name = radioOf(track.name)
                                     viewModel.showStation(
                                         uri = station,

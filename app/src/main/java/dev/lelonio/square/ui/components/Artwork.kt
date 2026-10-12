@@ -9,6 +9,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import dev.lelonio.square.ui.theme.Ink
+import androidx.compose.animation.core.snap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -59,14 +61,14 @@ fun Artwork(
      */
     decodeSize: Dp = 0.dp,
     /**
-     * How long a new picture takes to replace the one before it.
+     * How long a picture takes to come up once it has loaded.
      *
-     * Zero in lists, and deliberately: a crossfade animates every row that
-     * scrolls into view, which is exactly when frames are scarcest. Somewhere
-     * that shows one picture the size of the screen, and sometimes replaces it
-     * with a better copy of the same thing, wants the opposite.
+     * Only for a picture that had to be fetched or read from disk: one already
+     * in memory, a row scrolled back into view, is drawn at once, so scrolling
+     * animates nothing. Before this was zero in lists, which made every new
+     * page arrive as a grid of covers popping in one frame each.
      */
-    crossfadeMs: Int = 0,
+    crossfadeMs: Int = ARTWORK_APPEAR_MS,
     /**
      * Whether a missing picture is worth drawing a stand-in for.
      *
@@ -122,14 +124,21 @@ fun Artwork(
 
             var arrived by remember(source) { mutableStateOf(false) }
             var failed by remember(source) { mutableStateOf(false) }
+            // Drawn at once when it came out of memory; faded up otherwise.
+            var instant by remember(source) { mutableStateOf(false) }
             val appear by animateFloatAsState(
                 targetValue = if (arrived || crossfadeMs <= 0) 1f else 0f,
-                animationSpec = tween(crossfadeMs),
+                animationSpec = if (instant) snap() else tween(crossfadeMs),
                 label = "artwork",
             )
 
             if (fallback && failed) {
                 GeneratedCover(title, corner)
+            }
+            // A quiet tile of the same shape while it loads, so a row has its
+            // picture's place from the start rather than a hole that fills.
+            if (fallback && !arrived && !failed) {
+                Box(Modifier.fillMaxSize().background(Ink.copy(alpha = 0.07f)))
             }
 
             AsyncImage(
@@ -139,6 +148,7 @@ fun Artwork(
                 onState = { state ->
                     when (state) {
                         is coil.compose.AsyncImagePainter.State.Success -> {
+                            instant = state.result.dataSource == coil.decode.DataSource.MEMORY_CACHE
                             arrived = true
                             failed = false
                         }
@@ -184,6 +194,9 @@ fun Artwork(
  * thumbnail to the top of a page, where a bitmap would either be soft or be
  * three bitmaps. A folder because that is what it is.
  */
+/** How long a newly loaded picture takes to come up. */
+const val ARTWORK_APPEAR_MS = 220
+
 @Composable
 private fun LocalFilesCover() {
     Box(

@@ -188,6 +188,8 @@ android {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    // The real org.json for the JVM tests: android.jar carries only stubs.
+    testImplementation("org.json:json:20240303")
     implementation(libs.timber)
     implementation(libs.androidx.core.ktx)
     // Installs baseline-prof.txt on first run, so the code the bar and the
@@ -195,6 +197,9 @@ dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.browser)
+    // An isolated JavaScript engine, no page around it: runs the challenge
+    // solver YouTube's signed-in streams need; see PlayerChallenges.
+    implementation(libs.androidx.javascriptengine)
     implementation(libs.reorderable)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.lifecycle.runtime.compose)

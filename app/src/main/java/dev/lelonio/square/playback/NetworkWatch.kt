@@ -34,13 +34,35 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
     /** A second look, because the first one races the system's own bookkeeping. */
     private var settle: Job? = null
 
+    /**
+     * The default network as the callbacks name it, and what it can do.
+     *
+     * Not `activeNetwork`: that answers null to an app in the background
+     * whose network access the system is holding back (an app on standby, or
+     * one it has frozen), Wi-Fi up and working all the while. Read from there,
+     * leaving the app for a minute was the network going, and offline after
+     * it. The callbacks say which network is the default whatever the app is
+     * doing; it is gone when they say it is lost.
+     */
+    @Volatile
+    private var current: Pair<Network, NetworkCapabilities?>? = null
+
     private val callback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = recheck()
-        override fun onLost(network: Network) = recheck()
+        override fun onAvailable(network: Network) {
+            if (current?.first != network) current = network to connectivity?.getNetworkCapabilities(network)
+            recheck()
+        }
+        override fun onLost(network: Network) {
+            if (current?.first == network) current = null
+            recheck()
+        }
         override fun onCapabilitiesChanged(
             network: Network,
             capabilities: NetworkCapabilities,
-        ) = recheck()
+        ) {
+            current = network to capabilities
+            recheck()
+        }
     }
 
     fun start() {
@@ -93,7 +115,7 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
             // ends offline once the engine itself has one. Declaring it back
             // here was how the library stayed on the downloads after the
             // signal returned.
-            if (returned) SessionKeeper.networkReturned()
+            SessionKeeper.networkUp(returned)
             OfflineMode.setSlow(false)
             return
         }
@@ -113,10 +135,13 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
      * (Google 204 probe) frequently fails or is blocked on local/regional networks
      * despite having working internet.
      */
+    /** The default network's capabilities: from the callbacks, or asked before the first one. */
+    private fun capabilities(): NetworkCapabilities? =
+        current?.let { (network, known) -> known ?: connectivity?.getNetworkCapabilities(network) }
+            ?: connectivity?.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
+
     private fun describe(): String {
-        val network = connectivity?.activeNetwork ?: return "no active network"
-        val capabilities = connectivity.getNetworkCapabilities(network)
-            ?: return "active network with no capabilities"
+        val capabilities = capabilities() ?: return "no default network"
         val transports = listOfNotNull(
             "wifi".takeIf { capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) },
             "cellular".takeIf { capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) },
@@ -131,8 +156,7 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
     }
 
     private fun connected(): Boolean {
-        val network = connectivity?.activeNetwork ?: return false
-        val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
+        val capabilities = capabilities() ?: return false
         val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         val isWifi = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
         val isEthernet = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)

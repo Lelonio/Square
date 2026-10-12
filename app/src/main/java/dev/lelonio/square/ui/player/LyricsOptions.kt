@@ -1,6 +1,13 @@
 package dev.lelonio.square.ui.player
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,15 +27,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
@@ -50,7 +62,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LyricsSourceChip(source: String?, backdrop: Backdrop, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val label = LyricsSource.entries.firstOrNull { it.name == source }?.label
-        ?: stringResource(R.string.lyrics_options)
+        ?: stringResource(R.string.lyrics_sources)
     GlassSurface(
         backdrop = backdrop,
         shape = RoundedCornerShape(50),
@@ -90,15 +102,16 @@ fun LyricsOptionsPanel(
     backdrop: Backdrop,
 ) {
     BackHandler(onBack = onDismiss)
-    val sources = remember(query.uri) { LyricsLibrary.sourcesFor(query.uri) }
+    val sources = remember(query.uri) { LyricsLibrary.survey(query).keys.toList() }
     // Absent: still asking. Present and null: asked, and it has nothing.
     val answers = remember(query) { mutableStateMapOf<LyricsSource, Lyrics?>() }
     val asked = remember(query) { mutableStateMapOf<LyricsSource, Boolean>() }
+    // The song's own survey: what has answered already is there at once, and
+    // only what is still on its way is waited for.
     LaunchedEffect(query) {
-        sources.forEach { source ->
+        LyricsLibrary.survey(query).forEach { (source, answer) ->
             launch {
-                val found = kotlinx.coroutines.withTimeoutOrNull(12_000) { LyricsLibrary.fetch(source, query) }
-                answers[source] = found
+                answers[source] = runCatching { answer.await() }.getOrNull()
                 asked[source] = true
             }
         }
@@ -138,7 +151,11 @@ fun LyricsOptionsPanel(
                     .padding(vertical = 10.dp),
             ) {
                 Heading(stringResource(R.string.lyrics_source_title))
-                sources.forEach { source ->
+                // What has words for this song, in the order they are tried;
+                // the rest, still asking or with nothing, folded away under
+                // one row, so the choice is between real answers. A source
+                // that answers moves up as it does.
+                val row: @Composable (LyricsSource) -> Unit = { source ->
                     val done = asked[source] == true
                     val found = answers[source]
                     SourceRow(
@@ -159,6 +176,55 @@ fun LyricsOptionsPanel(
                             onChoose(chosen)
                             onDismiss()
                         }
+                    }
+                }
+                sources.forEach { source ->
+                    AnimatedVisibility(
+                        visible = answers[source] != null,
+                        enter = fadeIn(tween(220)) + expandVertically(tween(220)),
+                        exit = fadeOut(tween(160)) + shrinkVertically(tween(160)),
+                    ) { row(source) }
+                }
+                val others = sources.filter { answers[it] == null }
+                if (others.isNotEmpty()) {
+                    var expanded by remember(query.uri) { mutableStateOf(false) }
+                    val turn by animateFloatAsState(if (expanded) 180f else 0f, tween(220), label = "caret")
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .pressable({ expanded = !expanded })
+                            .padding(horizontal = 22.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.lyrics_more_sources),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = GlassInkDim,
+                            modifier = Modifier.weight(1f),
+                        )
+                        // Said while any of them is still asking: one may yet
+                        // move up into the list.
+                        if (!expanded && others.any { asked[it] != true }) {
+                            CircularProgressIndicator(
+                                color = GlassInkDim,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                        Icon(
+                            PhosphorIcons.Regular.CaretDown,
+                            contentDescription = null,
+                            tint = GlassInkDim,
+                            modifier = Modifier.size(18.dp).rotate(turn),
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = expanded,
+                        enter = fadeIn(tween(220)) + expandVertically(tween(220)),
+                        exit = fadeOut(tween(160)) + shrinkVertically(tween(160)),
+                    ) {
+                        Column { others.forEach { row(it) } }
                     }
                 }
                 Heading(stringResource(R.string.lyrics_style_title), top = 10.dp)
@@ -240,4 +306,47 @@ private fun SourceRow(name: String, status: String?, selected: Boolean, enabled:
             )
         }
     }
+}
+
+/**
+ * "Lyrics from Spicy Lyrics · uploaded by …, made by …", each name a link to
+ * the person's page, as the source asks; the names only when it gives them.
+ */
+@Composable
+fun LyricsCreditLine(credit: dev.lelonio.square.data.LyricsCredit, modifier: Modifier = Modifier) {
+    val from = stringResource(R.string.lyrics_from, credit.provider)
+    val uploadedBy = stringResource(R.string.lyrics_uploaded_by)
+    val madeBy = stringResource(R.string.lyrics_made_by)
+    val text = androidx.compose.ui.text.buildAnnotatedString {
+        append(from)
+        fun person(label: String, name: String?, url: String?) {
+            if (name == null) return
+            append(" · ")
+            append(label)
+            append(" ")
+            if (url != null) {
+                withLink(
+                    androidx.compose.ui.text.LinkAnnotation.Url(
+                        url,
+                        androidx.compose.ui.text.TextLinkStyles(
+                            androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.SemiBold),
+                        ),
+                    ),
+                ) { append(name) }
+            } else {
+                append(name)
+            }
+        }
+        person(uploadedBy, credit.uploader, credit.uploaderUrl)
+        person(madeBy, credit.maker, credit.makerUrl)
+    }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = GlassInkDim,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        modifier = modifier,
+    )
 }

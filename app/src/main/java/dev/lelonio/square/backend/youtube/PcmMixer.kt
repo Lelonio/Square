@@ -95,6 +95,21 @@ class PcmMixer {
 
     val audioSessionId: Int get() = track.audioSessionId
 
+    /**
+     * The room's send, on the one track every player is heard through; see
+     * PlayerReverb. Each player asks its own output for the room, and every
+     * output here is a channel into this track: ignored, as it was, the reverb
+     * slider did nothing to a YouTube song.
+     */
+    internal fun attachAuxEffect(effectId: Int) {
+        runCatching { track.attachAuxEffect(effectId) }
+            .onFailure { android.util.Log.w(TAG, "reverb not attached: ${it.message}") }
+    }
+
+    internal fun setAuxEffectSendLevel(level: Float) {
+        runCatching { track.setAuxEffectSendLevel(level) }
+    }
+
     internal fun add(channel: MixerChannel) = synchronized(lock) {
         channels += channel
         lock.notifyAll()
@@ -495,7 +510,13 @@ class MixerChannel internal constructor(
                 lastStampUs = presentationTimeUs
                 while (stamps.size > MAX_STAMPS) stamps.removeFirst()
             }
-            val frames = min(available, capacity - queued)
+            // Only a held slot piles up the whole ring: it needs the pile to be
+            // lined up in (see handOver). A live one is kept a moment ahead,
+            // since everything it holds has already been through speed, pitch
+            // and karaoke: filled to two seconds, an effect was heard two
+            // seconds after it was set.
+            val room = (if (slot.held) capacity else LIVE_FRAMES) - queued
+            val frames = min(available, max(0, room))
             val data = buffer.duplicate().order(ByteOrder.nativeOrder())
             var write = (readIndex + queued) % capacity
             for (f in 0 until frames) {
@@ -662,11 +683,14 @@ class MixerChannel internal constructor(
     override fun setPlaybackParameters(playbackParams: PlaybackParameters) = Unit
     override fun setOffloadDelayPadding(delayInFrames: Int, paddingInFrames: Int) = Unit
     override fun setOffloadEndOfStream() = Unit
-    override fun attachAuxEffect(effectId: Int) = Unit
-    override fun setAuxEffectSendLevel(level: Float) = Unit
+    override fun attachAuxEffect(effectId: Int) = mixer.attachAuxEffect(effectId)
+    override fun setAuxEffectSendLevel(level: Float) = mixer.setAuxEffectSendLevel(level)
     override fun setPreferredDevice(preferredDevice: AudioDeviceInfo?) = Unit
 
     private companion object {
+        /** How far ahead a playing channel is filled: a quarter of a second. */
+        const val LIVE_FRAMES = PcmMixer.RATE / 4
+
         /** About two seconds of blocks: far more than the track ever holds unplayed. */
         const val MAX_BLOCKS = 200
 

@@ -2521,6 +2521,19 @@ private fun LyricsStage(
         // to the other style: low on the left, across from the panel's other
         // controls. Shown with no words as well, since another source may
         // have what the usual order stopped short of.
+        // The credit a source asks for, on screen with its words: Spicy Lyrics
+        // makes it a condition of using it. Across the top, clear of the
+        // controls below.
+        val credit = lyrics?.credit
+        if (credit != null && !optionsOpen && !loading) {
+            LyricsCreditLine(
+                credit = credit,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 24.dp, vertical = 4.dp),
+            )
+        }
+
         if (query != null && !loading && !optionsOpen) {
             LyricsSourceChip(
                 source = lyrics?.source,

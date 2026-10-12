@@ -325,6 +325,27 @@
     <string name="page_app">アプリ</string>
     <string name="page_account_summary">アカウント、Web API用の開発者アプリ、ログアウト</string>
     <string name="page_playback_summary">再生サービス、音質、再生設定</string>
+    <string name="settings_group_sound">サウンド</string>
+    <string name="settings_group_listening">再生</string>
+    <string name="settings_group_lyrics">歌詞</string>
+    <string name="settings_group_covers">カバー</string>
+    <string name="settings_group_setup">セットアップ</string>
+    <string name="settings_group_appearance">外観</string>
+    <string name="settings_group_sound_summary">ソース、音質、エフェクト</string>
+    <string name="settings_group_listening_summary">クロスフェード、自動再生、アプリを閉じたとき</string>
+    <string name="settings_group_lyrics_summary">優先ソースと Spicy Lyrics</string>
+    <string name="settings_group_covers_summary">動くカバーとその提供元</string>
+    <string name="settings_group_setup_summary">Web API とセットアップガイド</string>
+    <string name="settings_group_downloads_summary">曲のダウンロード方法</string>
+    <string name="settings_group_cleanup_summary">保存したリストと一時ファイルを削除</string>
+    <string name="settings_group_language_summary">アプリの言語</string>
+    <string name="settings_group_appearance_summary">バーとフォント</string>
+    <string name="settings_group_system_summary">権限、バッテリー、リンク</string>
+    <string name="settings_group_about_summary">ライセンスとレポート</string>
+    <string name="settings_group_help_summary">コミュニティ、ディスカッション、問題</string>
+    <string name="settings_group_permissions_summary">アプリが Spotify に求めるもの</string>
+    <string name="youtube_sign_in_required">この曲は YouTube Music にログインしている場合のみ再生できます</string>
+    <string name="youtube_signed_in_unplayable">YouTube はこの曲をログイン中のアカウントにしか提供せず、Square はまだ読み込めません</string>
     <string name="page_app_summary">言語、下部バー、システム、リンク</string>
     <string name="page_downloads">ダウンロードとストレージ</string>
     <string name="storage_cleanup">クリーンアップ</string>
@@ -618,5 +639,18 @@
     <string name="lyrics_nothing">歌詞なし</string>
     <string name="connecting_slow">時間がかかっていますか？その間、端末に保存した曲を聴けます。</string>
     <string name="go_offline">オフラインモードに切り替え</string>
+    <string name="lyrics_from">歌詞提供：%1$s</string>
+    <string name="lyrics_uploaded_by">アップロード</string>
+    <string name="lyrics_made_by">作成</string>
+    <string name="spicy_lyrics_title">Spicy Lyrics</string>
+    <string name="spicy_lyrics_note">任意。自分のキーがあれば、Spicy Lyricsからも歌詞を取得します（音節単位で同期されていることが多いです）。キーはSpicy LyricsのSquareのページから取得できます。</string>
+    <string name="spicy_lyrics_key">Spicy Lyricsのキー</string>
+    <string name="spicy_lyrics_get_key">キーを取得</string>
+    <string name="spicy_lyrics_remove">キーを削除</string>
+    <string name="lyrics_more_sources">その他のソース</string>
+    <string name="lyrics_sources">ソース</string>
+    <string name="lyrics_preferred_title">歌詞のソース</string>
+    <string name="lyrics_preferred_auto">自動（最適なもの）</string>
+    <string name="lyrics_preferred_note">選んだソースの歌詞だけが表示されます。その曲の歌詞がなければ何も表示されません。自動では最適なソースが選ばれます。</string>
 </resources>
 

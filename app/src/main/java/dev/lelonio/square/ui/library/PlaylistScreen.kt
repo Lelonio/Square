@@ -312,7 +312,8 @@ fun PlaylistScreen(
     val audioPermissionNeeded = state.tracks.any {
         dev.lelonio.square.data.LocalLibrary.isSpotifyLocal(it.uri)
     } && !dev.lelonio.square.data.LocalLibrary.granted(LocalContext.current)
-    val isStation = state.uri?.startsWith("spotify:station:") == true
+    val isStation = state.uri?.startsWith("spotify:station:") == true ||
+        dev.lelonio.square.backend.youtube.YouTubeBackend.isStation(state.uri)
     var sort by remember(state.uri, storedSort, isStation) {
         mutableStateOf(
             if (isStation) {
@@ -858,8 +859,12 @@ fun PlaylistScreen(
             }
 
             when {
-                state.loading -> item(contentType = "status") {
-                    StatusBox { CircularProgressIndicator(strokeWidth = 2.dp) }
+                // The songs' outline while they come, rather than a spinner
+                // and then the whole list in one frame.
+                state.loading -> items(TRACK_OUTLINES, key = { "track-outline-$it" }, contentType = { "skeleton" }) {
+                    dev.lelonio.square.ui.browse.SkeletonTrackRow(
+                        Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = tween(160)),
+                    )
                 }
 
                 // The one empty list in the app that is a question rather than
@@ -924,6 +929,8 @@ fun PlaylistScreen(
                     key = { index, track -> "$index ${track.uri}" },
                     contentType = { _, _ -> "track" },
                 ) { index, track ->
+                    // Faded in as the list arrives; nothing moves after that.
+                    Box(Modifier.animateItem(fadeInSpec = tween(260), placementSpec = null, fadeOutSpec = null)) {
                     SwipeToQueue(onQueue = { onEnqueue(track) }) {
                         TrackRow(
                             track = track,
@@ -962,6 +969,7 @@ fun PlaylistScreen(
                                 trackDownload(track) !=
                                 dev.lelonio.square.data.DownloadState.Done,
                         )
+                    }
                     }
                 }
             }
@@ -2740,6 +2748,9 @@ private fun SectionHeader(
 
 /** How many songs an artist page opens on; the heading holds the rest. */
 private const val TOP_SONGS = 5
+
+/** How many song outlines stand in while a page's songs are loading. */
+private const val TRACK_OUTLINES = 8
 
 /** What the hero shrinks to: a bar, under the status bar's own inset. */
 private val COLLAPSED_BAR_HEIGHT = 56.dp

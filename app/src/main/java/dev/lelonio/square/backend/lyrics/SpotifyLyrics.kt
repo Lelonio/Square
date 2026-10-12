@@ -39,11 +39,21 @@ object SpotifyLyrics {
     ): Lyrics? {
         // Offline: the copy beside a download, or words this phone has shown
         // before, which LyricsLibrary kept.
-        if (!allowNetwork) return kept(uri) ?: LyricsLibrary.cachedLyrics(uri)
+        // Either only from the source the listener prefers, if they named one.
+        if (!allowNetwork) return kept(uri)?.takeIf { LyricsLibrary.shows(uri, it) } ?: LyricsLibrary.cachedLyrics(uri)
 
         // Repeat views cost nothing: LyricsLibrary keeps its answers in memory
         // as well as on disk, and a source picked by the listener with them.
-        kept(uri)?.let { return it }
+        kept(uri)?.takeIf { LyricsLibrary.shows(uri, it) }?.let { downloaded ->
+            // A download's own copy first, at once; and if it is not timed to
+            // the word, the sources are asked whether one is now.
+            // Asked too when it does not say which source it is; see
+            // LyricsLibrary.name.
+            if (LyricsLibrary.worthAskingAgain(uri, downloaded)) {
+                LyricsLibrary.improveLater(LyricsQuery(uri, title, artist, durationMs), downloaded)
+            }
+            return downloaded
+        }
 
         // The order, and every source in it, lives in LyricsLibrary, which
         // also keeps what it found and the source the listener chose.
@@ -57,7 +67,9 @@ object SpotifyLyrics {
                 DownloadExtras.note("lyrics", uri)
                 return@withContext null
             }
-            runCatching { DownloadExtras.rememberLyrics(uri, json.encodeToString(found)) }
+            if (LyricsLibrary.keptForGood(found)) {
+                runCatching { DownloadExtras.rememberLyrics(uri, json.encodeToString(found)) }
+            }
             found
         }
     }

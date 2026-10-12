@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -89,6 +90,52 @@ fun SkeletonRow(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * The shape of a song that has not arrived: the cover's square and two lines,
+ * at the sizes a song row draws them, breathing like the rows above.
+ */
+@Composable
+fun SkeletonTrackRow(modifier: Modifier = Modifier) {
+    val breath = rememberInfiniteTransition(label = "skeletonTrack")
+    val alpha by breath.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(BreathMs), repeatMode = RepeatMode.Reverse),
+        label = "skeletonTrackBreath",
+    )
+    Row(
+        modifier
+            .alpha(alpha)
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Bone),
+        )
+        Column(Modifier.padding(start = 14.dp).weight(1f)) {
+            Box(
+                Modifier
+                    .fillMaxWidth(0.62f)
+                    .height(13.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Bone),
+            )
+            Box(
+                Modifier
+                    .padding(top = 8.dp)
+                    .fillMaxWidth(0.36f)
+                    .height(11.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Bone),
+            )
         }
     }
 }

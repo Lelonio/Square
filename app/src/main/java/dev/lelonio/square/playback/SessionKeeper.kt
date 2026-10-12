@@ -50,8 +50,22 @@ object SessionKeeper {
         this.wanted = wanted
     }
 
-    /** The network came back after being gone. */
-    fun networkReturned() = start("network returned")
+    /**
+     * A network is up: after being gone, or, with [returned] false, as it was.
+     *
+     * With no Spotify session wanted (YouTube Music the source, or nobody
+     * signed in) there is no session to wait for, and a network is all
+     * offline was about: it ends here. Left to the tries below, which stop at
+     * once when the engine is not wanted, it never ended at all, and the
+     * library stayed greyed out on a phone with working Wi-Fi.
+     */
+    fun networkUp(returned: Boolean) {
+        if (!wanted()) {
+            OfflineMode.setNoSession(false)
+            return
+        }
+        if (returned) start("network returned")
+    }
 
     /** The network went; no point trying until it is back. */
     fun networkGone() {

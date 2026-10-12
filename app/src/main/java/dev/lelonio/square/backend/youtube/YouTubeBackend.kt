@@ -483,6 +483,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         when {
             uri.startsWith(TRACK_PREFIX) || uri.startsWith(VIDEO_PREFIX) -> emptyList()
 
+            // A song's radio, reopened: asked again, as there is no list to browse.
+            isStation(uri) -> radio("$TRACK_PREFIX${id.removePrefix(RADIO_LIST)}")
+
             // Videos stay videos: no swapping them for their songs here, which
             // is the whole reason somebody opened this list.
             uri.startsWith(VIDEOS_PREFIX) -> YouTube.playlist(id).getOrThrow().songs.map(::toVideoTrack)
@@ -527,6 +530,27 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                 songs.map(::toCatalogTrack)
             }
         }
+    }
+
+    /**
+     * A station built from one song, as YouTube Music's own "Start radio" does.
+     *
+     * The radio is a watch queue rather than a playlist that can be browsed:
+     * YouTube assembles it from `RDAMVM` and the song's id when the song is
+     * played with that list, so this asks for the queue that playing would
+     * bring, and once more for the page after it. The song itself comes first.
+     */
+    suspend fun radio(trackUri: String): List<CatalogTrack> = withContext(Dispatchers.IO) {
+        val id = videoIdOfUri(trackUri)
+        val first = YouTube.next(
+            com.metrolist.innertube.models.WatchEndpoint(videoId = id, playlistId = "$RADIO_LIST$id"),
+        ).getOrThrow()
+        val more = first.continuation
+            ?.let { runCatching { YouTube.next(first.endpoint, it).getOrThrow().items }.getOrNull() }
+            .orEmpty()
+        (first.items + more)
+            .distinctBy { it.id }
+            .map(::toCatalogTrack)
     }
 
     /** Conversions run on past the list that asked for them; see [asSongs]. */
@@ -661,7 +685,20 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         durationMs: Long,
     ): Lyrics? {
         DownloadExtras.lyrics(uri)?.let { raw ->
-            runCatching { lyricsJson.decodeFromString<Lyrics>(raw) }.getOrNull()?.let { return it }
+            runCatching { lyricsJson.decodeFromString<Lyrics>(raw) }.getOrNull()
+                ?.takeIf { dev.lelonio.square.backend.lyrics.LyricsLibrary.shows(uri, it) }
+                ?.let { downloaded ->
+                // As for Spotify's downloads: the sources asked whether one is
+                // timed to the word now, and which one this copy came from.
+                val library = dev.lelonio.square.backend.lyrics.LyricsLibrary
+                if (library.worthAskingAgain(uri, downloaded)) {
+                    library.improveLater(
+                        dev.lelonio.square.backend.lyrics.LyricsQuery(uri, title, artist, durationMs),
+                        downloaded,
+                    )
+                }
+                return downloaded
+            }
         }
 
         val found = dev.lelonio.square.backend.lyrics.LyricsLibrary.lyrics(
@@ -807,6 +844,14 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
         /** What the library puts in front of the artists it follows; see publicArtistId. */
         private const val LIBRARY_ARTIST_PREFIX = "MPLA"
+
+        /** What a song's radio is named after: this, then the song's id. */
+        private const val RADIO_LIST = "RDAMVM"
+
+        /** A song's radio as an address, for the page that shows it. */
+        fun stationUri(trackUri: String): String = "$PLAYLIST_PREFIX$RADIO_LIST${videoIdOfUri(trackUri)}"
+
+        fun isStation(uri: String?): Boolean = uri?.startsWith("$PLAYLIST_PREFIX$RADIO_LIST") == true
 
         /** YouTube Music's own id for the account's liked songs. */
         private const val LIKED_MUSIC_ID = "LM"
