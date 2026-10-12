@@ -426,7 +426,17 @@ fun PlayerScreen(
     // backdrop rather than replacing it, because with no Canvas this layer is
     // empty and the panes would have nothing to sample.
     val canvasBackdrop = rememberLayerBackdrop()
-    val glassBackdrop = rememberCombinedBackdrop(backdrop, canvasBackdrop)
+
+    // The video's light on the walls, in a layer of its own under the clip's.
+    // It is what the screen is coloured by while a video plays, and the panes
+    // that skip the clip's layer (below it, or over a moving cover) still have
+    // to see it: reading the app's backdrop alone, they refracted the sleeve's
+    // colours from under the light, and the glass came out the record's
+    // brown over a screen lit blue. This layer changes only as the light
+    // fades, not with every frame of the video.
+    val lightBackdrop = rememberLayerBackdrop()
+    val groundBackdrop = rememberCombinedBackdrop(backdrop, lightBackdrop)
+    val glassBackdrop = rememberCombinedBackdrop(backdrop, lightBackdrop, canvasBackdrop)
 
     // The panes below the clip only refract it when they are actually over it.
     //
@@ -438,7 +448,7 @@ fun PlayerScreen(
     // there it keeps refracting it.
     var clipBottom by remember { mutableFloatStateOf(Float.MAX_VALUE) }
     var lowerTop by remember { mutableFloatStateOf(0f) }
-    val lowerBackdrop = if (lowerTop >= clipBottom) backdrop else glassBackdrop
+    val lowerBackdrop = if (lowerTop >= clipBottom) groundBackdrop else glassBackdrop
 
     // The panes over a moving Apple cover read the page's own blurred ground
     // instead of the cover. The cover is in the layer they refract, and every
@@ -446,7 +456,7 @@ fun PlayerScreen(
     // blurred again; behind this much glass the motion is only a shimmer, and
     // it was costing the player half its frames.
     val coverMoving = coverMotionUrl != null && canvas == null
-    val upperBackdrop = if (coverMoving) backdrop else glassBackdrop
+    val upperBackdrop = if (coverMoving) groundBackdrop else glassBackdrop
 
     // Lyrics take over the middle of the screen rather than opening a panel at
     // the bottom, and the Canvas goes out of focus behind them: a clip is
@@ -512,6 +522,11 @@ fun PlayerScreen(
             .fillMaxSize()
             ,
     ) {
+        // Recorded for the glass above, so light drawn here is light the
+        // buttons and the panels refract; see lightBackdrop.
+        Box(Modifier.fillMaxSize().layerBackdrop(lightBackdrop)) {
+            AmbientLight(ambient)
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -533,15 +548,9 @@ fun PlayerScreen(
                 }
                 .layerBackdrop(canvasBackdrop),
         ) {
-            // Inside the recorded layer, and that is the point: the glass above
-            // samples this backdrop, so light drawn here is light the buttons
-            // and the panels refract. Drawn outside it they sat on top of the
-            // colour without ever picking any of it up.
-            AmbientLight(ambient)
-
             // The stand-in for a Canvas, for the tracks that have none, and
-            // only when it has been asked for. In the same layer as the light
-            // above and for the same reason.
+            // only when it has been asked for. Inside the recorded layer, so
+            // the glass above refracts it rather than sitting on top of it.
             // The stand-in is for a screen with nothing moving on it. With a
             // video playing there is something, and the glow above is taken
             // from its own frames: drawing the cover's aura over that would
