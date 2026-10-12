@@ -59,7 +59,14 @@ object SpicyLyrics {
                         null
                     }
                     !response.isSuccessful -> {
-                        if (response.code != 404) android.util.Log.w(TAG, "HTTP ${response.code} for $id")
+                        // The API says why in `error` (key_not_found,
+                        // origin_not_allowed, ...): logged, never the key.
+                        if (response.code != 404) {
+                            val reason = runCatching {
+                                JSONObject(response.body?.string().orEmpty()).optJSONObject("Body")?.optString("error")
+                            }.getOrNull()
+                            android.util.Log.w(TAG, "HTTP ${response.code} for $id: $reason")
+                        }
                         null
                     }
                     else -> response.body?.string()
@@ -69,7 +76,13 @@ object SpicyLyrics {
         runCatching { parse(JSONObject(body)) }.getOrNull()
     }
 
-    internal fun parse(json: JSONObject): Lyrics? {
+    /**
+     * The lyrics in an answer. They come inside an envelope, under `Body`
+     * beside `Status` and `Type`: read at the top, where `Type` is "object",
+     * every song came back with no lyrics.
+     */
+    internal fun parse(answer: JSONObject): Lyrics? {
+        val json = answer.optJSONObject("Body") ?: answer
         val credit = credit(json)
         val lines = when (json.optString("Type")) {
             "Syllable" -> json.optJSONArray("Content").objects().mapNotNull { vocal ->

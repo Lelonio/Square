@@ -33,6 +33,16 @@ class SpicyLyricsTest {
         assertNull(lyrics.credit?.maker)
     }
 
+    @Test fun theLyricsAreReadFromTheEnvelope() {
+        val lyrics = SpicyLyrics.parse(
+            JSONObject(
+                """{"Body":{"Type":"Line","source":"spicy_lyrics","Content":[{"Type":"Vocal","Text":"Wrapped","StartTime":1,"EndTime":2}]},"Status":200,"Type":"object"}""",
+            ),
+        )!!
+        assertEquals("Wrapped", lyrics.lines.single().text)
+        assertEquals(1000L, lyrics.lines.single().startTimeMs)
+    }
+
     @Test fun lineAndStaticLyrics() {
         val line = SpicyLyrics.parse(
             JSONObject("""{"Type":"Line","source":"apple_music","Content":[{"Type":"Vocal","Text":"A line","StartTime":4.25,"EndTime":6}]}"""),
