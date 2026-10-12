@@ -1,0 +1,5 @@
+YouTube Music: songs that need an account now play, song radio, personalised home, effects and reverb fixed.
+Lyrics: Better Lyrics, KuGou and Spicy Lyrics sources; choose source and style from the lyrics; preferred source in settings; word by word in the classic style.
+Settings grouped into collapsible sections.
+Spotify reconnects when the network returns; offline mode offered while it waits.
+Japanese.
