@@ -660,4 +660,6 @@
     <string name="lyrics_preferred_title">Lyrics source</string>
     <string name="lyrics_preferred_auto">Automatic (best available)</string>
     <string name="lyrics_preferred_note">Only lyrics from the chosen source are shown: if it has none for the song, no lyrics are shown. Automatic picks the best available.</string>
+    <string name="youtube_account_fallback_name">Google account</string>
+    <string name="youtube_sign_in_failed">Couldn\'t sign in to YouTube Music. Try again, and if it keeps happening, save a report in Settings → About.</string>
 </resources>

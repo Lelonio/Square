@@ -625,4 +625,6 @@
     <string name="lyrics_preferred_title">Источник текстов</string>
     <string name="lyrics_preferred_auto">Автоматически (лучший)</string>
     <string name="lyrics_preferred_note">Показываются только тексты из выбранного источника: если у него нет текста песни, ничего не показывается. Автоматически выбирается лучший из доступных.</string>
+    <string name="youtube_account_fallback_name">Аккаунт Google</string>
+    <string name="youtube_sign_in_failed">Не удалось войти в YouTube Music. Попробуйте ещё раз; если повторится, сохраните отчёт в Настройки → О приложении.</string>
 </resources>

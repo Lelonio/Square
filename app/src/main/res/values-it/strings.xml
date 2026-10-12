@@ -633,4 +633,6 @@
     <string name="lyrics_preferred_title">Fonte dei testi</string>
     <string name="lyrics_preferred_auto">Automatica (la migliore)</string>
     <string name="lyrics_preferred_note">Vengono mostrati solo i testi della fonte scelta: se non ha il testo del brano, non viene mostrato nulla. Automatica sceglie la migliore disponibile.</string>
+    <string name="youtube_account_fallback_name">Account Google</string>
+    <string name="youtube_sign_in_failed">Accesso a YouTube Music non riuscito. Riprova; se succede ancora, salva un report in Impostazioni → Informazioni.</string>
 </resources>

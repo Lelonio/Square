@@ -652,5 +652,7 @@
     <string name="lyrics_preferred_title">歌詞のソース</string>
     <string name="lyrics_preferred_auto">自動（最適なもの）</string>
     <string name="lyrics_preferred_note">選んだソースの歌詞だけが表示されます。その曲の歌詞がなければ何も表示されません。自動では最適なソースが選ばれます。</string>
+    <string name="youtube_account_fallback_name">Google アカウント</string>
+    <string name="youtube_sign_in_failed">YouTube Music にログインできませんでした。もう一度お試しください。繰り返す場合は 設定 → アプリについて からレポートを保存してください。</string>
 </resources>
 

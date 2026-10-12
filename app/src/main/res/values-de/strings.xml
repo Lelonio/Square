@@ -596,4 +596,6 @@
     <string name="lyrics_preferred_title">Songtext-Quelle</string>
     <string name="lyrics_preferred_auto">Automatisch (die beste)</string>
     <string name="lyrics_preferred_note">Es werden nur Songtexte der gewählten Quelle angezeigt: Hat sie keinen für den Song, wird keiner angezeigt. Automatisch wählt die beste verfügbare.</string>
+    <string name="youtube_account_fallback_name">Google-Konto</string>
+    <string name="youtube_sign_in_failed">Anmeldung bei YouTube Music fehlgeschlagen. Versuch es noch einmal; wenn es wieder passiert, speichere einen Bericht unter Einstellungen → Info.</string>
 </resources>

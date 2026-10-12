@@ -41,7 +41,8 @@ data class YouTubeClient(
             visitorData = visitorData
         ),
         user = Context.User(
-            onBehalfOfUser = if (loginSupported) dataSyncId else null
+            // Vendored: left out when there is none, rather than sent empty.
+            onBehalfOfUser = if (loginSupported) dataSyncId?.takeIf { it.isNotBlank() } else null
         ),
     )
 

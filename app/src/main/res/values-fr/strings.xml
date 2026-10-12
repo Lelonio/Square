@@ -596,4 +596,6 @@
     <string name="lyrics_preferred_title">Source des paroles</string>
     <string name="lyrics_preferred_auto">Automatique (la meilleure)</string>
     <string name="lyrics_preferred_note">Seules les paroles de la source choisie sont affichées : si elle n’en a pas pour le morceau, rien n’est affiché. Automatique choisit la meilleure disponible.</string>
+    <string name="youtube_account_fallback_name">Compte Google</string>
+    <string name="youtube_sign_in_failed">Impossible de se connecter à YouTube Music. Réessayez ; si cela se reproduit, enregistrez un rapport dans Réglages → À propos.</string>
 </resources>

@@ -150,6 +150,9 @@ class YouTubeAccount(context: Context) {
         applyToInnerTube()
     }
 
+    /** Hands the stored session back to InnerTube, after a sign-in that was not kept. */
+    fun reapply() = applyToInnerTube()
+
     fun save(cookie: String, visitorData: String, dataSyncId: String, name: String) {
         prefs.edit()
             .putString(KEY_COOKIE, cookie)

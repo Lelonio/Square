@@ -602,4 +602,6 @@
     <string name="lyrics_preferred_title">Fuente de letras</string>
     <string name="lyrics_preferred_auto">Automática (la mejor)</string>
     <string name="lyrics_preferred_note">Solo se muestran letras de la fuente elegida: si no tiene la de la canción, no se muestra ninguna. Automática elige la mejor disponible.</string>
+    <string name="youtube_account_fallback_name">Cuenta de Google</string>
+    <string name="youtube_sign_in_failed">No se pudo iniciar sesión en YouTube Music. Inténtalo de nuevo; si vuelve a pasar, guarda un informe en Ajustes → Información.</string>
 </resources>
