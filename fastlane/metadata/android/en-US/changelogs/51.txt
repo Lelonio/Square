@@ -1,0 +1,3 @@
+Lyrics on their own: while a song plays, the rest of the player steps aside after a few seconds and every line is sharp, as in Apple Music.
+The queue is now in the player's tabs.
+Fixed signing in to YouTube Music sending some people back signed out.
