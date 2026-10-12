@@ -84,6 +84,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
+import kotlin.math.roundToInt
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextAlign
@@ -128,7 +130,6 @@ import com.adamglin.phosphoricons.regular.Devices
 import com.adamglin.phosphoricons.regular.Heart
 import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.Plus
-import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.Broadcast
 import com.adamglin.phosphoricons.regular.YoutubeLogo
 import com.adamglin.phosphoricons.regular.Repeat
@@ -210,6 +211,85 @@ private const val STAGE_FADE_MS = 180
 
 /** And the whole of a change between the cover and a Canvas; see the use of it. */
 private const val CLIP_FADE_MS = 460
+
+/**
+ * The song, on one line across the top while its lyrics are read alone: the
+ * cover, the title and the artist, and a tap to go back to the cover.
+ */
+@Composable
+private fun NowReadingLine(
+    state: PlaybackState,
+    backdrop: Backdrop,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    GlassSurface(
+        backdrop = backdrop,
+        surfaceColor = LocalPlayerFilm.current,
+        shape = RoundedCornerShape(50),
+        modifier = modifier
+            .padding(vertical = 6.dp)
+            .fillMaxWidth()
+            .pressable(onClick = onClick),
+    ) {
+        Row(
+            Modifier.padding(start = 8.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            dev.lelonio.square.ui.components.Artwork(
+                url = state.artworkUrl,
+                title = state.title,
+                corner = 22.dp,
+                decodeSize = 44.dp,
+                modifier = Modifier.size(44.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    state.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = GlassInk,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    state.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = GlassInkDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** How long a song plays over its lyrics, untouched, before they are left alone. */
+private const val LYRICS_ALONE_AFTER_MS = 4_000L
+
+/** Slow on the way out, as a thing noticed late; quick back, as an answer to a touch. */
+private const val LYRICS_ALONE_LEAVE_MS = 700
+private const val LYRICS_ALONE_RETURN_MS = 300
+
+/**
+ * Shown to the extent of [shown], 0 to 1, in height as well as opacity, so
+ * what is below or above closes the gap as it goes. Kept in the composition
+ * rather than removed: the title pill is the one the mini player grows out
+ * of, and a pill that was not there could not be shared.
+ */
+private fun Modifier.retreat(shown: Float): Modifier = this
+    .graphicsLayer {
+        alpha = shown * shown
+        // Cut to what is left of it, for touches as much as for the eye: a
+        // pane folded away but still laid out over its neighbour took their
+        // presses. Not at rest, where the glass's shadow reaches past it.
+        clip = shown < 1f
+    }
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val height = (placeable.height * shown).roundToInt()
+        layout(placeable.width, height) { placeable.place(0, height - placeable.height) }
+    }
 
 private enum class Stage {
     COVER, LYRICS, EFFECTS, INFO, QUEUE, DEVICES, ADD_TO_PLAYLIST, CANVAS, VIDEO
@@ -466,6 +546,33 @@ fun PlayerScreen(
     // now, and reading a slider over a moving clip is no easier than reading a
     // lyric over one.
     val panelOpen = panel != PlayerPanel.NONE
+
+    // The words on their own, as Apple Music does it: while a song plays over
+    // its lyrics and nobody touches the screen, everything but the transport
+    // steps aside and the lyrics take the room, under a line with the song on
+    // it. A touch anywhere else brings it all back, and so does a pause; a
+    // touch on the lyrics does not, since scrolling through them is reading
+    // them. See retreat.
+    var lastTouch by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    // Set by the stage as a press arrives, read by the column after it.
+    var pressOnLyrics by remember { mutableStateOf(false) }
+    var lyricsAlone by remember { mutableStateOf(false) }
+    val lyricsReading = panel == PlayerPanel.LYRICS && lyrics != null && !lyricsLoading
+    // On wantsPlay, not isPlaying: a tap on a line seeks, the player stops for
+    // the moment it takes to load the new place, and on isPlaying that moment
+    // brought everything back and folded it away again four seconds later.
+    LaunchedEffect(lyricsReading, state.wantsPlay, lastTouch) {
+        lyricsAlone = false
+        if (!lyricsReading || !state.wantsPlay) return@LaunchedEffect
+        kotlinx.coroutines.delay(LYRICS_ALONE_AFTER_MS)
+        lyricsAlone = true
+    }
+    val chrome by animateFloatAsState(
+        targetValue = if (lyricsAlone) 0f else 1f,
+        animationSpec = tween(if (lyricsAlone) LYRICS_ALONE_LEAVE_MS else LYRICS_ALONE_RETURN_MS),
+        label = "chrome",
+    )
+
     val canvasBlur by animateDpAsState(
         targetValue = if (panelOpen) 26.dp else 0.dp,
         animationSpec = tween(320),
@@ -854,6 +961,23 @@ fun PlayerScreen(
                 Column(
                     Modifier
                         .fillMaxSize()
+                        // Watched, never consumed: the touch still does
+                        // whatever it was for, and the controls come back
+                        // while it does. On the way back up, so the stage has
+                        // said whether the press was on the lyrics.
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
+                                    if (event.type == androidx.compose.ui.input.pointer.PointerEventType.Press) {
+                                        if (!(lyricsAlone && pressOnLyrics)) {
+                                            lastTouch = android.os.SystemClock.uptimeMillis()
+                                        }
+                                        pressOnLyrics = false
+                                    }
+                                }
+                            }
+                        }
                         .systemBarsPadding()
                         .padding(horizontal = 20.dp),
                 ) {
@@ -880,6 +1004,20 @@ fun PlayerScreen(
                         onAnotherDevice = onAnotherDevice,
                         onWatchVideo = onWatchVideo,
                         videoOn = videoOn,
+                        modifier = Modifier.retreat(chrome),
+                    )
+
+                    // In its place while the lyrics are read alone: the song,
+                    // and the way back to its cover.
+                    NowReadingLine(
+                        state = state,
+                        // The ground, as the title pill reads it: over the
+                        // lyrics the clip is blurred on screen and not in its
+                        // own layer, and a pane refracting that layer showed
+                        // the moving cover sharp through frosted glass.
+                        backdrop = groundBackdrop,
+                        onClick = { panel = PlayerPanel.NONE },
+                        modifier = Modifier.retreat(1f - chrome),
                     )
 
                     // Everything sits at the bottom, as in the reference: the
@@ -962,7 +1100,22 @@ fun PlayerScreen(
                         val coverAlpha = (1f - phase * 2f).coerceIn(0f, 1f)
                         val panelAlpha = ((phase - 0.5f) * 2f).coerceIn(0f, 1f)
 
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .pointerInput(panel) {
+                                    if (panel != PlayerPanel.LYRICS) return@pointerInput
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                            if (event.type == androidx.compose.ui.input.pointer.PointerEventType.Press) {
+                                                pressOnLyrics = true
+                                            }
+                                        }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
                             // Says so in words, over whatever the slot is
                             // showing.
                             //
@@ -1120,6 +1273,7 @@ fun PlayerScreen(
                                     onSeek = onSeek,
                                     backdrop = glassBackdrop,
                                     expandSignal = karaokeExpand,
+                                    alone = lyricsAlone,
                                 )
 
                                 // Effects and the queue share the lyrics' space
@@ -1296,8 +1450,13 @@ fun PlayerScreen(
                             surfaceColor = LocalPlayerFilm.current,
                             shape = RoundedCornerShape(50),
                             modifier = Modifier
+                                .retreat(chrome)
                                 .fillMaxWidth()
-                                .onGloballyPositioned { lowerTop = it.boundsInWindow().top }
+                                // Measured at rest only. Folding away moves
+                                // the pill, and the transport, which reads
+                                // this to choose its backdrop, changed colour
+                                // as the lyrics opened out.
+                                .onGloballyPositioned { if (chrome == 1f) lowerTop = it.boundsInWindow().top }
                                 .sharedPill(sharedScope, animatedScope),
                         ) {
                             Row(
@@ -1328,33 +1487,6 @@ fun PlayerScreen(
                                             modifier = Modifier.size(20.dp),
                                         )
                                     }
-                                    Spacer(Modifier.size(8.dp))
-                                }
-                                // The queue's one control. It is a sheet that
-                                // opens over the player rather than a view of
-                                // it, which is why it sits here and not in the
-                                // segmented switch below.
-                                RoundGlassButton(
-                                    backdrop = lowerBackdrop,
-                                    size = 40.dp,
-                                    onClick = {
-                                        panel = if (panel == PlayerPanel.QUEUE) {
-                                            PlayerPanel.NONE
-                                        } else {
-                                            PlayerPanel.QUEUE
-                                        }
-                                    },
-                                ) {
-                                    Icon(
-                                        PhosphorIcons.Regular.Queue,
-                                        contentDescription = stringResource(R.string.queue),
-                                        // Coloured while its panel is the one
-                                        // open: these buttons stay on screen
-                                        // with the panel showing, and nothing
-                                        // else said which of them put it there.
-                                        tint = panelTint(panel == PlayerPanel.QUEUE),
-                                        modifier = Modifier.size(20.dp),
-                                    )
                                 }
                                 if (playlistEditAvailable) {
                                 Spacer(Modifier.size(8.dp))
@@ -1423,18 +1555,20 @@ fun PlayerScreen(
                             }
                         }
 
-                        Spacer(Modifier.height(18.dp))
+                        Column(Modifier.retreat(chrome)) {
+                            Spacer(Modifier.height(18.dp))
 
-                        GlassProgressBar(
-                            positionMs = positionMs,
-                            durationMs = state.durationMs,
-                            onSeek = onSeek,
-                            accentColor = GlassInk,
-                            trackColor = GlassInk.copy(alpha = 0.28f),
-                        )
-                        TimeRow(positionMs, state.durationMs)
+                            GlassProgressBar(
+                                positionMs = positionMs,
+                                durationMs = state.durationMs,
+                                onSeek = onSeek,
+                                accentColor = GlassInk,
+                                trackColor = GlassInk.copy(alpha = 0.28f),
+                            )
+                            TimeRow(positionMs, state.durationMs)
 
-                        Spacer(Modifier.height(14.dp))
+                            Spacer(Modifier.height(14.dp))
+                        }
 
                         Controls(
                             state = state,
@@ -1444,6 +1578,7 @@ fun PlayerScreen(
                             onPrevious = onPrevious,
                             onToggleShuffle = onToggleShuffle,
                             onCycleRepeat = onCycleRepeat,
+                            toggles = chrome,
                         )
 
                         Spacer(Modifier.height(14.dp))
@@ -1469,6 +1604,7 @@ fun PlayerScreen(
                             onSavePreset = onSavePreset,
                             onDeletePreset = onDeletePreset,
                             backdrop = lowerBackdrop,
+                            modifier = Modifier.retreat(chrome),
                         )
 
                         Spacer(Modifier.height(20.dp))
@@ -1784,9 +1920,10 @@ private fun TopBar(
     /** Null when the track has no video to watch. */
     onWatchVideo: (() -> Unit)?,
     videoOn: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -2122,19 +2259,29 @@ internal fun Controls(
     onPrevious: () -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    /**
+     * How much of shuffle and repeat is showing, 0 to 1: they step aside with
+     * the rest while the lyrics are read alone, and the three discs stay put.
+     */
+    toggles: Float = 1f,
 ) {
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        ToggleIcon(
-            icon = PhosphorIcons.Regular.Shuffle,
-            description = stringResource(if (state.smartShuffle) R.string.smart_shuffle else R.string.shuffle_play),
-            active = state.shuffleEnabled,
-            smart = state.smartShuffle,
-            onClick = onToggleShuffle,
-        )
+        // Their place is kept, so the discs do not slide; a press on the empty
+        // place does nothing but bring them back.
+        val togglesOn = toggles > 0.5f
+        Box(Modifier.graphicsLayer { alpha = toggles }) {
+            ToggleIcon(
+                icon = PhosphorIcons.Regular.Shuffle,
+                description = stringResource(if (state.smartShuffle) R.string.smart_shuffle else R.string.shuffle_play),
+                active = state.shuffleEnabled,
+                smart = state.smartShuffle,
+                onClick = { if (togglesOn) onToggleShuffle() },
+            )
+        }
 
         // Three discs of the same material, the middle one larger. The reference
         // gives the transport its own row of circles rather than icons on a bar,
@@ -2198,16 +2345,18 @@ internal fun Controls(
             )
         }
 
-        ToggleIcon(
-            icon = if (state.repeatMode == Player.REPEAT_MODE_ONE) {
-                PhosphorIcons.Regular.RepeatOnce
-            } else {
-                PhosphorIcons.Regular.Repeat
-            },
-            description = stringResource(R.string.repeat),
-            active = state.repeatMode != Player.REPEAT_MODE_OFF,
-            onClick = onCycleRepeat,
-        )
+        Box(Modifier.graphicsLayer { alpha = toggles }) {
+            ToggleIcon(
+                icon = if (state.repeatMode == Player.REPEAT_MODE_ONE) {
+                    PhosphorIcons.Regular.RepeatOnce
+                } else {
+                    PhosphorIcons.Regular.Repeat
+                },
+                description = stringResource(R.string.repeat),
+                active = state.repeatMode != Player.REPEAT_MODE_OFF,
+                onClick = { if (togglesOn) onCycleRepeat() },
+            )
+        }
     }
 }
 
@@ -2428,6 +2577,12 @@ private fun LyricsStage(
     backdrop: Backdrop,
     /** Bumped when somebody arrives here asking for the karaoke control. */
     expandSignal: Int,
+    /**
+     * Read alone, with the rest of the player folded away: every line sharp,
+     * so the ones around the sung line can be read as well. The blur is a
+     * depth effect for a lyric glanced at between the controls.
+     */
+    alone: Boolean = false,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val preferences = remember(context) {
@@ -2516,14 +2671,20 @@ private fun LyricsStage(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            else -> LyricsView(
-                lyrics = shown ?: lyrics,
-                positionMs = positionMs,
-                isPlaying = isPlaying,
-                showTranslation = translated,
-                onSeek = onSeek,
-                modifier = Modifier.fillMaxSize(),
-            )
+            else -> CompositionLocalProvider(
+                LocalLyricVisualSettings provides LocalLyricVisualSettings.current.let {
+                    if (alone) it.copy(inactiveBlur = 0f) else it
+                },
+            ) {
+                LyricsView(
+                    lyrics = shown ?: lyrics,
+                    positionMs = positionMs,
+                    isPlaying = isPlaying,
+                    showTranslation = translated,
+                    onSeek = onSeek,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
 
         // Where the words came from, and the way to the other sources and

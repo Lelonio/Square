@@ -54,10 +54,12 @@ import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.Plus
 import com.adamglin.phosphoricons.regular.SlidersHorizontal
-import com.adamglin.phosphoricons.regular.TextAlignLeft
+import com.adamglin.phosphoricons.regular.TextAa
 import com.adamglin.phosphoricons.fill.SlidersHorizontal
-import com.adamglin.phosphoricons.fill.TextAlignLeft
+import com.adamglin.phosphoricons.fill.TextAa
+import com.adamglin.phosphoricons.fill.Queue
 import com.adamglin.phosphoricons.fill.VinylRecord
+import com.adamglin.phosphoricons.regular.Queue
 import com.adamglin.phosphoricons.regular.VinylRecord
 import com.adamglin.phosphoricons.fill.Info
 import com.adamglin.phosphoricons.regular.Info
@@ -109,9 +111,10 @@ fun PlayerPanelSection(
     onDeletePreset: (String) -> Unit,
     /** The layer the panel refracts; see the liquid-glass note in PlayerScreen. */
     backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        Modifier.fillMaxWidth(),
+        modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // The same segmented control the tab bar uses, because this is the same
@@ -119,9 +122,9 @@ fun PlayerPanelSection(
         // showing. Three separate toggles said "three independent switches",
         // which is not what cover, lyrics and effects are.
         //
-        // The queue is deliberately not in here — it is a sheet that opens over
-        // the player rather than a view of it, and it has its own button beside
-        // the title.
+        // The queue in here too: it opens in the same middle of the screen as
+        // the others, and a button for it beside the title was one more
+        // control in a row that already had the radio and the heart.
         // Whether anything is being done to the sound right now.
         val speed by dev.lelonio.square.playback.AudioEffects.speed
             .collectAsStateWithLifecycle()
@@ -141,6 +144,7 @@ fun PlayerPanelSection(
             listOfNotNull(
                 PlayerPanel.NONE,
                 PlayerPanel.LYRICS,
+                PlayerPanel.QUEUE,
                 PlayerPanel.EFFECTS.takeUnless { sdkPlayback },
                 PlayerPanel.INFO,
             )
@@ -158,6 +162,10 @@ fun PlayerPanelSection(
             tabsCount = views.size,
             accentColor = GlassInk,
             containerColor = LocalPlayerFilm.current,
+            // Lit, whatever the phone's theme. The player's film is dark in
+            // both, and the default follows the theme: on a light phone it
+            // darkened a slot of an already dark bar and could hardly be seen.
+            indicatorColor = GlassInk.copy(alpha = 0.18f),
             // Slimmer than the tab bar, and icon-only. This one sits under the
             // transport rather than at the edge of the window, so it has to
             // read as a smaller thing than the app's own navigation.
@@ -166,7 +174,7 @@ fun PlayerPanelSection(
             // meets in the middle and draws a seam across the capsule.
             lensDepth = 12.dp,
             modifier = Modifier
-                .fillMaxWidth(0.72f)
+                .fillMaxWidth(0.84f)
                 .padding(top = 14.dp),
         ) {
             PanelTab(
@@ -176,14 +184,20 @@ fun PlayerPanelSection(
                 selected = selected == views.indexOf(PlayerPanel.NONE),
             ) { onSelect(PlayerPanel.NONE) }
             PanelTab(
-                icon = PhosphorIcons.Regular.TextAlignLeft,
-                activeIcon = PhosphorIcons.Fill.TextAlignLeft,
+                icon = PhosphorIcons.Regular.TextAa,
+                activeIcon = PhosphorIcons.Fill.TextAa,
                 label = stringResource(R.string.lyrics),
                 selected = selected == views.indexOf(PlayerPanel.LYRICS),
                 // The karaoke lives in this view and keeps working with the
                 // panel shut; see the same halo on the effects tab.
                 marked = karaokeOn,
             ) { onSelect(PlayerPanel.LYRICS) }
+            PanelTab(
+                icon = PhosphorIcons.Regular.Queue,
+                activeIcon = PhosphorIcons.Fill.Queue,
+                label = stringResource(R.string.queue),
+                selected = selected == views.indexOf(PlayerPanel.QUEUE),
+            ) { onSelect(PlayerPanel.QUEUE) }
             if (!sdkPlayback) PanelTab(
                 icon = PhosphorIcons.Regular.SlidersHorizontal,
                 activeIcon = PhosphorIcons.Fill.SlidersHorizontal,
