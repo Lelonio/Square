@@ -266,8 +266,8 @@ object Catalog {
      * Spotify's DJ, which is not a playlist.
      *
      * The access point lists it among them, but it is a generated stream: it has
-     * no track list to open, and opening it is the one thing a row in a library
-     * promises. The same id for every account.
+     * no track list to open, so it is played as a session rather than opened;
+     * see SpotifyDj. The same id for every account.
      */
     const val DJ_URI = "spotify:playlist:37i9dQZF1EYkqdzj48dyYq"
 
@@ -279,7 +279,8 @@ object Catalog {
 
     suspend fun playlists(): List<CatalogPlaylist> = withContext(Dispatchers.IO) {
         json.decodeFromString<List<CatalogPlaylist>>(NativeBridge.rootlist())
-            .filterNot { it.uri == DJ_URI }
+            // Kept out unless the DJ is on: played as a list, it has nothing in it.
+            .filterNot { it.uri == DJ_URI && !dev.lelonio.square.backend.spotify.SpotifyDj.enabled }
     }
 
     /**

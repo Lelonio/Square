@@ -132,7 +132,9 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
         likedSongs().let { liked ->
             listOfNotNull(liked) +
                 rootlist().filterNot {
-                    it.uri == liked?.uri || it.uri == Catalog.DJ_URI || it.uri.startsWith("spotify:station:")
+                    it.uri == liked?.uri ||
+                        (it.uri == Catalog.DJ_URI && !dev.lelonio.square.backend.spotify.SpotifyDj.enabled) ||
+                        it.uri.startsWith("spotify:station:")
                 }
         }
 

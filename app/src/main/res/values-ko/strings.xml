@@ -622,4 +622,8 @@
     <string name="lyrics_preferred_note">선택한 출처의 가사만 표시됩니다. 그 출처에 노래 가사가 없으면 아무것도 표시되지 않습니다. 자동은 가장 좋은 출처를 고릅니다.</string>
     <string name="youtube_account_fallback_name">Google 계정</string>
     <string name="youtube_sign_in_failed">YouTube Music에 로그인하지 못했습니다. 다시 시도해 보고, 계속되면 설정 → 정보에서 보고서를 저장하세요.</string>
+    <string name="spotify_dj_title">Spotify DJ, 목소리와 함께</string>
+    <string name="spotify_dj_starting">DJ가 준비 중입니다…</string>
+    <string name="spotify_dj_failed">지금은 DJ를 사용할 수 없습니다. 나중에 다시 시도하세요.</string>
+    <string name="spotify_dj_talking">이야기 중</string>
 </resources>

@@ -193,9 +193,12 @@ impl Sink for AndroidSink {
                 .map_err(|e| SinkError::OnWrite(e.to_string()))?
         };
 
+        // The DJ's voice goes to its own method, which keeps the music's
+        // effects off it; see `speaking` in the vendored player.
+        let method = if librespot_playback::player::speaking() { "writeVoice" } else { "write" };
         env.call_method(
             &output,
-            "write",
+            method,
             "(Ljava/nio/ByteBuffer;III)V",
             &[
                 JValue::Object(&buffer),

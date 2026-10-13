@@ -662,4 +662,9 @@
     <string name="lyrics_preferred_note">Only lyrics from the chosen source are shown: if it has none for the song, no lyrics are shown. Automatic picks the best available.</string>
     <string name="youtube_account_fallback_name">Google account</string>
     <string name="youtube_sign_in_failed">Couldn\'t sign in to YouTube Music. Try again, and if it keeps happening, save a report in Settings → About.</string>
+    <string name="spotify_dj" translatable="false">DJ</string>
+    <string name="spotify_dj_title">Spotify DJ, with its voice</string>
+    <string name="spotify_dj_starting">The DJ is getting ready…</string>
+    <string name="spotify_dj_failed">The DJ isn\'t available right now. Try again later.</string>
+    <string name="spotify_dj_talking">is talking</string>
 </resources>

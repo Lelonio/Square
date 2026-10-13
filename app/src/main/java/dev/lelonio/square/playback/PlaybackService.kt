@@ -159,6 +159,7 @@ class PlaybackService : MediaLibraryService() {
                 player.pause()
                 return
             }
+            noteDjJump(mediaItem, reason)
             maybeTriggerAutoplay(mediaItem)
         }
 
@@ -169,8 +170,79 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    /** Where the queue stood at the last change of song; see [noteDjJump]. */
+    private var lastItemIndex = -1
+
+    /**
+     * A song in the DJ's queue gone to directly, rather than reached by
+     * playing on or by a skip: the DJ has a line written for that. Told to the
+     * engine as soon as the queue moves, which is before the song has loaded
+     * and so before the line is chosen.
+     */
+    private fun noteDjJump(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+        val index = player.currentMediaItemIndex
+        val previous = lastItemIndex
+        lastItemIndex = index
+        if (reason != androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) return
+        if (previous < 0 || kotlin.math.abs(index - previous) == 1) return
+        val item = mediaItem ?: return
+        if (!dev.lelonio.square.backend.spotify.SpotifyDj.isDj(contextOf(item))) return
+        NativeBridge.djJumped(item.mediaId)
+    }
+
+    private fun contextOf(item: androidx.media3.common.MediaItem?): String? =
+        item?.mediaMetadata?.extras?.getString(dev.lelonio.square.ui.EXTRA_CONTEXT_URI)
+
+    private var djInFlight = false
+
+    /**
+     * Keeps the DJ's queue fed: its next page when two songs are left, the
+     * way autoplay keeps any other queue going. The DJ never runs out.
+     */
+    private fun maybeContinueDj(current: androidx.media3.common.MediaItem): Boolean {
+        if (!dev.lelonio.square.backend.spotify.SpotifyDj.isDj(contextOf(current))) return false
+        if (!dev.lelonio.square.backend.spotify.SpotifyDj.enabled) return true
+        val remaining = player.mediaItemCount - player.currentMediaItemIndex - 1
+        if (remaining > 2 || djInFlight) return true
+        djInFlight = true
+        scope.launch(Dispatchers.IO) {
+            try {
+                val more = dev.lelonio.square.backend.spotify.SpotifyDj.more(this@PlaybackService)
+                withContext(Dispatchers.Main) {
+                    val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
+                    val fresh = more.filter { it.uri !in queued }
+                    dev.lelonio.square.backend.spotify.SpotifyDj.prepare(this@PlaybackService, fresh)
+                    val items = fresh.map { track ->
+                        androidx.media3.common.MediaItem.Builder()
+                            .setMediaId(track.uri)
+                            .setUri(track.uri)
+                            .setMediaMetadata(
+                                androidx.media3.common.MediaMetadata.Builder()
+                                    .setTitle(track.name)
+                                    .setArtist(track.artist)
+                                    .setAlbumTitle(track.album)
+                                    .setDurationMs(track.durationMs.takeIf { it > 0 })
+                                    .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse))
+                                    .build(),
+                            )
+                            .build()
+                    }
+                    android.util.Log.i(TAG, "DJ: appending ${items.size} tracks")
+                    if (items.isNotEmpty()) player.addMediaItems(items)
+                }
+            } catch (t: Throwable) {
+                android.util.Log.w(TAG, "DJ: the next page failed", t)
+            } finally {
+                djInFlight = false
+            }
+        }
+        return true
+    }
+
     private fun maybeTriggerAutoplay(mediaItem: androidx.media3.common.MediaItem?) {
         if (!::container.isInitialized) return
+        // The DJ's queue is fed by the DJ, not by autoplay.
+        (mediaItem ?: player.currentMediaItem)?.let { if (maybeContinueDj(it)) return }
         if (!container.preferences.autoplayInfinite.value) return
         if (player.repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF) return
 

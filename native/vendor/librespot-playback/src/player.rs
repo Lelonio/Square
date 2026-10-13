@@ -42,6 +42,106 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::{NUM_CHANNELS, SAMPLE_RATE, SAMPLES_PER_SECOND};
 
+/// LOCAL PATCH: Spotify's DJ, talking around the tracks it plays.
+///
+/// A DJ session gives some tracks a line before them and some a line after,
+/// which the app has synthesised into audio by the time they play. The player
+/// is the only place that knows where one track's sound ends and the next
+/// one's begins, so this is where the lines are put: written to the sink
+/// before the track's first packet and after its last, one after the other,
+/// never mixed, as the official client does. The app says what to say; the
+/// player only asks it, at those two moments, through [`set_narration_provider`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NarrationMoment {
+    /// Before the track's first packet.
+    Before,
+    /// After its last, before its end is announced.
+    After,
+}
+
+/// What the app answers with: interleaved stereo at [`SAMPLE_RATE`], already
+/// at the level it should be heard at, or nothing to say.
+pub type NarrationProvider =
+    dyn Fn(&str, NarrationMoment) -> Option<Arc<Vec<f64>>> + Send + Sync;
+
+static NARRATION_PROVIDER: std::sync::OnceLock<Box<NarrationProvider>> = std::sync::OnceLock::new();
+
+/// Whether a line comes at the end of a track: its own closing one, or the
+/// opening one of the track after it. Asked without taking either.
+pub type NarrationFollows = dyn Fn(&str) -> bool + Send + Sync;
+
+static NARRATION_FOLLOWS: std::sync::OnceLock<Box<NarrationFollows>> = std::sync::OnceLock::new();
+
+/// Installs the question above. Once, like the provider.
+pub fn set_narration_follows(follows: Box<NarrationFollows>) {
+    let _ = NARRATION_FOLLOWS.set(follows);
+}
+
+/// Whether [track_id] ends in a line, so it must not dissolve into the next
+/// track: a crossfade would run the music under the DJ talking.
+fn narration_follows(track_id: &SpotifyUri) -> bool {
+    narrating()
+        && track_id
+            .to_uri()
+            .ok()
+            .zip(NARRATION_FOLLOWS.get())
+            .is_some_and(|(uri, follows)| follows(&uri))
+}
+
+/// Whether a narrated session is playing: the player asks for lines only then,
+/// and does not dissolve a track into the next where a line comes between
+/// them; see [`narration_follows`].
+static NARRATING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Installs where the lines come from. Once: the app has one.
+pub fn set_narration_provider(provider: Box<NarrationProvider>) {
+    let _ = NARRATION_PROVIDER.set(provider);
+}
+
+/// Turns the narrated session on or off; see [`NARRATING`].
+pub fn set_narrating(on: bool) {
+    NARRATING.store(on, Ordering::SeqCst);
+}
+
+fn narrating() -> bool {
+    NARRATING.load(Ordering::SeqCst)
+}
+
+/// True while the samples being written to the sink are a line rather than
+/// music: the sink hands them on separately, so the app's effects, made for
+/// the music, leave the voice alone.
+static SPEAKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the packet the sink is being given is the DJ's voice.
+pub fn speaking() -> bool {
+    SPEAKING.load(Ordering::SeqCst)
+}
+
+fn narration_for(track_id: &SpotifyUri, moment: NarrationMoment) -> Option<Arc<Vec<f64>>> {
+    if !narrating() {
+        return None;
+    }
+    let uri = track_id.to_uri().ok()?;
+    NARRATION_PROVIDER.get()?(&uri, moment).filter(|samples| !samples.is_empty())
+}
+
+/// LOCAL PATCH: a line being spoken, and how far into it.
+struct Narration {
+    samples: Arc<Vec<f64>>,
+    at: usize,
+    /// A closing line: the track's end is announced once it has been said.
+    then_end: bool,
+}
+
+/// LOCAL PATCH: how much of a line is written at a time, in interleaved
+/// samples: about a twentieth of a second, so a pause or a skip is answered
+/// between two of them.
+const NARRATION_CHUNK: usize = 4096;
+
+/// LOCAL PATCH: a track that starts further in than this was resumed, not
+/// arrived at, and is not introduced.
+const NARRATION_START_WINDOW_MS: u32 = 1500;
+
 /// LOCAL PATCH: how many times a failed load is tried again before the track is
 /// called unavailable, and how long the first wait is (it doubles each time).
 ///
@@ -164,6 +264,12 @@ struct PlayerInternal {
     /// branch of the loading state in `poll`.
     load_attempt: u8,
     load_position_ms: u32,
+    /// LOCAL PATCH: the DJ's line being spoken, if one is; see [`Narration`].
+    narration: Option<Narration>,
+    /// LOCAL PATCH: the play requests already asked for their opening and
+    /// closing lines, so each is asked once.
+    narrated_before: Option<u64>,
+    narrated_after: Option<u64>,
 }
 
 /// LOCAL PATCH: the outgoing half of a crossfade.
@@ -676,6 +782,9 @@ impl Player {
                 ended: None,
                 load_attempt: 0,
                 load_position_ms: 0,
+                narration: None,
+                narrated_before: None,
+                narrated_after: None,
                 normalisation_peaks: [0.0; 2],
                 normalisation_integrators: [0.0; 2],
                 normalisation_channel: 0,
@@ -2056,6 +2165,41 @@ impl Future for PlayerInternal {
             if self.state.is_playing() {
                 self.ensure_sink_running();
 
+                // LOCAL PATCH: the DJ's opening line, before the track's
+                // first packet, asked for once per play request.
+                let opening = match self.state {
+                    PlayerState::Playing {
+                        ref track_id,
+                        play_request_id,
+                        stream_position_ms,
+                        ..
+                    } if self.narrated_before != Some(play_request_id) => {
+                        Some((track_id.clone(), play_request_id, stream_position_ms))
+                    }
+                    _ => None,
+                };
+                if let Some((track_id, play_request_id, stream_position_ms)) = opening {
+                    {
+                        self.narrated_before = Some(play_request_id);
+                        if stream_position_ms < NARRATION_START_WINDOW_MS {
+                            if let Some(samples) = narration_for(&track_id, NarrationMoment::Before) {
+                                self.narration = Some(Narration {
+                                    samples,
+                                    at: 0,
+                                    then_end: false,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // LOCAL PATCH: a line being spoken is written instead of the
+                // track, a piece per round, so commands are still heard.
+                if self.narration.is_some() {
+                    self.pump_narration();
+                    continue;
+                }
+
                 if let PlayerState::Playing {
                     ref track_id,
                     play_request_id,
@@ -2225,7 +2369,7 @@ impl Future for PlayerInternal {
                 let crossfade_ms = self.config.crossfade_duration_ms as i64;
                 let position = stream_position_ms as i64;
                 let duration = duration_ms as i64;
-                if crossfade_ms > 0 && duration > crossfade_ms && !self.config.hold_end {
+                if crossfade_ms > 0 && duration > crossfade_ms && !self.config.hold_end && !narration_follows(&track_id) {
                     let silence_threshold_samples = (SAMPLE_RATE as usize * NUM_CHANNELS as usize * 350) / 1000;
                     let trailing_silence = self.config.trim_silence
                         && self.consecutive_silent_samples >= silence_threshold_samples
@@ -2320,6 +2464,45 @@ impl PlayerInternal {
                 }
             }
             SinkStatus::Closed => (),
+        }
+    }
+
+    /// LOCAL PATCH: writes the next piece of the line being spoken, at the
+    /// player's volume, dissolving out of a track still fading as music does.
+    fn pump_narration(&mut self) {
+        let Some(narration) = self.narration.as_mut() else {
+            return;
+        };
+        let end = (narration.at + NARRATION_CHUNK).min(narration.samples.len());
+        let mut data = narration.samples[narration.at..end].to_vec();
+        narration.at = end;
+        let finished = narration.at >= narration.samples.len();
+        let then_end = narration.then_end;
+        if finished {
+            self.narration = None;
+        }
+
+        let volume = self.volume_getter.attenuation_factor();
+        if volume < 1.0 {
+            for sample in data.iter_mut() {
+                *sample *= volume;
+            }
+        }
+        if self.fade_out.is_some() {
+            self.apply_fade(&mut data);
+        }
+        SPEAKING.store(true, Ordering::SeqCst);
+        let written = self.sink.write(AudioPacket::Samples(data), &mut self.converter);
+        SPEAKING.store(false, Ordering::SeqCst);
+        if let Err(e) = written {
+            error!("{e}");
+            self.narration = None;
+            self.handle_pause();
+            return;
+        }
+
+        if finished && then_end {
+            self.finish_track();
         }
     }
 
@@ -2583,6 +2766,8 @@ impl PlayerInternal {
     fn handle_player_stop(&mut self) {
         // LOCAL PATCH: nothing is being faded into any more.
         self.fade_out = None;
+        // LOCAL PATCH: nor said.
+        self.narration = None;
         match self.state {
             PlayerState::Playing {
                 ref track_id,
@@ -2863,20 +3048,51 @@ impl PlayerInternal {
                         return;
                     }
                 }
-                self.state.playing_to_end_of_track();
-                if let PlayerState::EndOfTrack {
-                    ref track_id,
-                    play_request_id,
-                    ..
-                } = self.state
-                {
-                    let track_id = track_id.clone();
-                    self.announce_end(track_id, play_request_id)
-                } else {
-                    error!("PlayerInternal handle_packet: Invalid PlayerState");
-                    exit(1);
+                // LOCAL PATCH: the DJ's closing line, before the end is
+                // announced; the end follows once it has been said.
+                let closing = match self.state {
+                    PlayerState::Playing {
+                        ref track_id,
+                        play_request_id,
+                        ..
+                    } if self.narrated_after != Some(play_request_id) => {
+                        Some((track_id.clone(), play_request_id))
+                    }
+                    _ => None,
+                };
+                if let Some((track_id, play_request_id)) = closing {
+                    {
+                        self.narrated_after = Some(play_request_id);
+                        if let Some(samples) = narration_for(&track_id, NarrationMoment::After) {
+                            self.narration = Some(Narration {
+                                samples,
+                                at: 0,
+                                then_end: true,
+                            });
+                            return;
+                        }
+                    }
                 }
+                self.finish_track();
             }
+        }
+    }
+
+    /// LOCAL PATCH: the end of the track, said; split out of `handle_packet`
+    /// so a closing line can say it once it is over.
+    fn finish_track(&mut self) {
+        self.state.playing_to_end_of_track();
+        if let PlayerState::EndOfTrack {
+            ref track_id,
+            play_request_id,
+            ..
+        } = self.state
+        {
+            let track_id = track_id.clone();
+            self.announce_end(track_id, play_request_id)
+        } else {
+            error!("PlayerInternal finish_track: Invalid PlayerState");
+            exit(1);
         }
     }
 
@@ -2972,6 +3188,9 @@ impl PlayerInternal {
     ) -> PlayerResult {
         let play_request_id =
             play_request_id_option.unwrap_or(self.play_request_id_generator.get());
+
+        // LOCAL PATCH: a line about the track being left goes with it.
+        self.narration = None;
 
         // LOCAL PATCH: whatever was playing is being replaced, so nothing more
         // is going to be said about it.
@@ -3267,6 +3486,18 @@ impl PlayerInternal {
     }
 
     fn handle_command_seek(&mut self, position_ms: u32) -> PlayerResult {
+        // LOCAL PATCH: a listener who moves through the track wants the
+        // music, not the rest of its introduction. A closing line still ends
+        // the track: there is no music left to want.
+        // Paused, it is simply dropped: the decoder is at the end, and the
+        // end is reached again as soon as the track plays.
+        if let Some(narration) = self.narration.take() {
+            if narration.then_end && self.state.is_playing() {
+                self.finish_track();
+                return Ok(());
+            }
+        }
+
         // When we are still loading, the user may immediately ask to
         // seek to another position yet the decoder won't be ready for
         // that. In this case just restart the loading process but

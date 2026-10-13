@@ -299,6 +299,11 @@ private enum class Stage {
 @Composable
 fun PlayerScreen(
     state: PlaybackState,
+    /**
+     * Spotify's DJ is talking: its lights take the place of the cover, since
+     * the song they would show has not started. See DjVoice.
+     */
+    djSpeaking: Boolean = false,
     /** Read only inside the waveform, to keep position updates off the rest. */
     positionMs: State<Long>,
     onCollapse: () -> Unit,
@@ -633,6 +638,15 @@ fun PlayerScreen(
         // buttons and the panels refract; see lightBackdrop.
         Box(Modifier.fillMaxSize().layerBackdrop(lightBackdrop)) {
             AmbientLight(ambient)
+            // In this layer so the glass refracts the DJ, not the cover under it.
+            val djShown by animateFloatAsState(
+                targetValue = if (djSpeaking) 1f else 0f,
+                animationSpec = tween(if (djSpeaking) 450 else 700),
+                label = "djShown",
+            )
+            if (djShown > 0f) {
+                DjVoice(Modifier.fillMaxSize().graphicsLayer { alpha = djShown })
+            }
         }
         Box(
             Modifier
@@ -954,6 +968,17 @@ fun PlayerScreen(
                         .background(Color.Black.copy(alpha = panelDim)),
                 )
             }
+
+            // The DJ over the cover it replaces while it talks: the cover is drawn
+            // in this layer, above the light one, and hid it there.
+            val djOver by animateFloatAsState(
+                targetValue = if (djSpeaking) 1f else 0f,
+                animationSpec = tween(if (djSpeaking) 450 else 700),
+                label = "djOver",
+            )
+            if (djOver > 0f) {
+                DjVoice(Modifier.fillMaxSize().graphicsLayer { alpha = djOver })
+            }
         }
 
         CompositionLocalProvider(LocalContentColor provides GlassInk) {
@@ -1005,6 +1030,7 @@ fun PlayerScreen(
                         onWatchVideo = onWatchVideo,
                         videoOn = videoOn,
                         modifier = Modifier.retreat(chrome),
+                        dj = isDjQueue(state.contextUri),
                     )
 
                     // In its place while the lyrics are read alone: the song,
@@ -1921,6 +1947,8 @@ private fun TopBar(
     onWatchVideo: (() -> Unit)?,
     videoOn: Boolean,
     modifier: Modifier = Modifier,
+    /** The DJ's queue: the source is marked as the DJ's; see DjMark. */
+    dj: Boolean = false,
 ) {
     Row(
         modifier
@@ -1966,7 +1994,13 @@ private fun TopBar(
             // dims a stopped clip was then darkening the very thing those
             // letters needed to be lighter than. A photograph has no side to
             // be on: what works over one is light type with a shadow under it.
-            Text(
+            if (dj && panel == PlayerPanel.NONE) {
+                // The DJ's queue: the mark alone says where the songs come
+                // from, and who is talking between them.
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    DjMark(color = Color.White, fontSize = 13.sp)
+                }
+            } else Text(
                 title,
                 style = MaterialTheme.typography.titleMedium.copy(
                     shadow = Shadow(

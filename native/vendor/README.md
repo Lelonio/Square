@@ -241,6 +241,30 @@ halves go on sharing one clock as before.
 
 Zero, the default, leaves every one of these paths as upstream has it.
 
+### The patch: the DJ talks between the tracks
+
+Spotify's DJ gives some tracks a line to say before them and some a line after,
+which the app has synthesised by the time they play (see `native/src/dj.rs`).
+The player is the only place that knows where one track's sound ends and the
+next one's begins, so that is where the lines go.
+
+`set_narration_provider` installs where they come from, and `set_narrating`
+turns them on for a DJ queue. When a track starts playing near its beginning
+the player asks for its opening line; when its decoder runs out, before the end
+is announced, for its closing one. A line is written to the sink a twentieth of
+a second at a time, so commands are still heard between pieces: a seek drops an
+opening line, a load drops whatever was being said, and a closing line ends the
+track once it has been said. Lines and music are never mixed, as in the
+official client.
+
+While a line is written `speaking()` is true, and the app's sink hands those
+packets to the output separately, past the effects that are the listener's
+choices about the music. And `set_narration_follows` says which tracks end in a
+line: those are not dissolved into the next, since the crossfade would run the
+music under the DJ talking. Every other track of a DJ queue crossfades as usual.
+
+Nothing changes while `set_narrating` is off, which is the default.
+
 ### Maintenance
 
 The markers are `LOCAL PATCH` in `src/player.rs` and `src/config.rs`.

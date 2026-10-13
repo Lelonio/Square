@@ -292,6 +292,10 @@ class AudioOutput {
     fun stop() {
         discarding = false
         playing = false
+        if (voice) {
+            voice = false
+            dev.lelonio.square.backend.spotify.SpotifyDj.setSpeaking(false)
+        }
         val output = synchronized(this) {
             track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
         }
@@ -517,6 +521,7 @@ class AudioOutput {
         if (discarding) return
 
         val output = synchronized(this) { ensureTrack(sampleRate, channels) } ?: return
+        if (voice) leaveVoice()
 
         val currentSpeed = speed
         val currentPitch = pitch
@@ -577,6 +582,56 @@ class AudioOutput {
             platformSpeed = wantedSpeed
             platformPitch = wantedPitch
         }.onFailure { android.util.Log.w(TAG, "the platform refused $wantedSpeed x: ${it.message}") }
+    }
+
+    /**
+     * Writes one packet of Spotify's DJ talking: as it is, past every effect.
+     *
+     * Speed, pitch, karaoke and the room are the listener's choices about the
+     * music, and the DJ is not the music: slowed and reverbed it was a voice
+     * nobody chose to hear that way, and the karaoke took its words out. The
+     * effects come back with the next packet of music. See `speaking` in the
+     * vendored player for how the engine tells the two apart.
+     */
+    @Suppress("unused")
+    fun writeVoice(data: ByteBuffer, sizeInBytes: Int, sampleRate: Int, channels: Int) {
+        if (discarding) return
+        val output = synchronized(this) { ensureTrack(sampleRate, channels) } ?: return
+        if (!voice) enterVoice(output)
+        dev.lelonio.square.backend.spotify.SpotifyDj.hear(data, sizeInBytes)
+        writeAll(output, data, sizeInBytes)
+    }
+
+    /** Whether the packets being written are the DJ's voice; see [writeVoice]. */
+    @Volatile
+    private var voice = false
+
+    private fun enterVoice(output: AudioTrack) {
+        voice = true
+        synchronized(this) {
+            // What the stretcher holds is music, and would be heard after the
+            // line; the room would ring with the voice.
+            stretcher?.release()
+            stretcher = null
+            suspendReverb()
+            if (platformSpeed != 1f || platformPitch != 1f) {
+                runCatching {
+                    output.playbackParams = output.playbackParams.setSpeed(1f).setPitch(1f)
+                    platformSpeed = 1f
+                    platformPitch = 1f
+                }
+            }
+        }
+        dev.lelonio.square.backend.spotify.SpotifyDj.setSpeaking(true)
+    }
+
+    private fun leaveVoice() {
+        voice = false
+        synchronized(this) {
+            if (reverbAmount > 0f) applyReverb()
+            if (lightEffects) applyPlatformRate()
+        }
+        dev.lelonio.square.backend.spotify.SpotifyDj.setSpeaking(false)
     }
 
     /** Takes the middle of the stage away; see [CentreExtractor]. */

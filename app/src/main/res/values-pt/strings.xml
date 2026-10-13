@@ -598,4 +598,8 @@
     <string name="lyrics_preferred_note">Só são mostradas letras da fonte escolhida: se ela não tiver a da música, nenhuma é mostrada. Automática escolhe a melhor disponível.</string>
     <string name="youtube_account_fallback_name">Conta Google</string>
     <string name="youtube_sign_in_failed">Não foi possível entrar no YouTube Music. Tente de novo; se continuar, salve um relatório em Configurações → Sobre.</string>
+    <string name="spotify_dj_title">DJ do Spotify, com a voz dele</string>
+    <string name="spotify_dj_starting">O DJ está se preparando…</string>
+    <string name="spotify_dj_failed">O DJ não está disponível agora. Tente mais tarde.</string>
+    <string name="spotify_dj_talking">está falando</string>
 </resources>

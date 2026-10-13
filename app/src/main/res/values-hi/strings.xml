@@ -613,4 +613,8 @@
     <string name="lyrics_preferred_note">सिर्फ़ चुने गए स्रोत के बोल दिखाए जाते हैं: अगर उसके पास गाने के बोल नहीं हैं, तो कुछ नहीं दिखेगा। स्वचालित सबसे अच्छा उपलब्ध स्रोत चुनता है।</string>
     <string name="youtube_account_fallback_name">Google खाता</string>
     <string name="youtube_sign_in_failed">YouTube Music में साइन इन नहीं हो सका। फिर से कोशिश करें; अगर फिर भी हो, तो सेटिंग → परिचय में रिपोर्ट सेव करें।</string>
+    <string name="spotify_dj_title">Spotify DJ, उसकी आवाज़ के साथ</string>
+    <string name="spotify_dj_starting">DJ तैयार हो रहा है…</string>
+    <string name="spotify_dj_failed">DJ अभी उपलब्ध नहीं है। बाद में फिर कोशिश करें।</string>
+    <string name="spotify_dj_talking">बोल रहा है</string>
 </resources>

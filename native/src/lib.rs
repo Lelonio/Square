@@ -6,6 +6,7 @@
 //! ownership to reason about.
 
 mod catalog;
+mod dj;
 mod downloads;
 mod engine;
 mod events;

@@ -72,7 +72,8 @@ object SpotifyBrowse {
      */
     private fun entry(item: JSONObject): CatalogPlaylist? {
         val uri = item.optString("uri")
-        if (uri.isEmpty() || uri == Catalog.DJ_URI) return null
+        if (uri.isEmpty()) return null
+        if (uri == Catalog.DJ_URI && !dev.lelonio.square.backend.spotify.SpotifyDj.enabled) return null
         val data = item.optJSONObject("content")?.optJSONObject("data") ?: return null
 
         return when (data.optString("__typename")) {

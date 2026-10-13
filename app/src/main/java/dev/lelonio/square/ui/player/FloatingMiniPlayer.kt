@@ -52,6 +52,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.adamglin.PhosphorIcons
@@ -94,6 +95,8 @@ fun FloatingMiniPlayer(
      * less than which room, and the screen was saying nothing about it at all.
      */
     remoteLabel: String? = null,
+    /** Spotify's DJ is talking: its lights in place of the cover; see DjVoice. */
+    djSpeaking: Boolean = false,
     /** Folded: the strip has room for the song and one button, nothing else. */
     inline: Boolean = false,
     collapseProgress: Float? = null,
@@ -191,7 +194,13 @@ fun FloatingMiniPlayer(
                     vertical = androidx.compose.ui.unit.lerp(8.dp, 6.dp, fold),
                 ),
         ) {
-            Artwork(
+            if (djSpeaking) {
+                DjVoice(
+                    Modifier
+                        .size(artSize)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(9.dp)),
+                )
+            } else Artwork(
                 url = state.artworkUrl,
                 title = state.title,
                 modifier = Modifier.size(artSize),
@@ -222,6 +231,14 @@ fun FloatingMiniPlayer(
                 )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The DJ choosing, and talking; see DjMark.
+                    if (remoteLabel == null && isDjQueue(state.contextUri)) {
+                        DjMark(
+                            color = contentColor,
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(end = 5.dp),
+                        )
+                    }
                     if (remoteLabel != null) {
                         Icon(
                             PhosphorIcons.Fill.Devices,

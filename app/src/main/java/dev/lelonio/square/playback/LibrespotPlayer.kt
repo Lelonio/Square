@@ -97,6 +97,11 @@ class LibrespotPlayer(
         handler.postDelayed(giveUpOnOwnQueue, OWN_QUEUE_MS)
         val index = queue.currentIndex
         val contextUri = queue.contextUri.orEmpty()
+        // The DJ's lines are said only over the DJ's own queue; see SpotifyDj.
+        NativeBridge.djSetActive(
+            dev.lelonio.square.backend.spotify.SpotifyDj.enabled &&
+                dev.lelonio.square.backend.spotify.SpotifyDj.isDj(contextUri),
+        )
         // Never as a context, whatever it is.
         //
         // Handing the engine a playlist URI asks Spotify to resolve the list

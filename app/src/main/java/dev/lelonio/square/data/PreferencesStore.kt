@@ -236,6 +236,19 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_AUTOPLAY_INFINITE, value).apply()
     }
 
+    private val _spotifyDj = MutableStateFlow(prefs.getBoolean(KEY_SPOTIFY_DJ, true))
+
+    /**
+     * Whether Spotify's DJ is offered: shown among the playlists, and played
+     * with its lines when opened. Off, it is kept out of sight as before.
+     */
+    val spotifyDj: StateFlow<Boolean> = _spotifyDj.asStateFlow()
+
+    fun setSpotifyDj(value: Boolean) {
+        _spotifyDj.value = value
+        prefs.edit().putBoolean(KEY_SPOTIFY_DJ, value).apply()
+    }
+
     private val _skipFade = MutableStateFlow(prefs.getBoolean(KEY_SKIP_FADE, true))
 
     /**
@@ -377,6 +390,7 @@ class PreferencesStore(context: Context) {
         const val KEY_KEEP_PLAYING = "keep_playing_on_close"
         const val KEY_SPONSOR_BLOCK = "sponsor_block"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"
+        const val KEY_SPOTIFY_DJ = "spotify_dj"
         const val KEY_TRIM_SILENCE = "trim_silence"
         const val KEY_SKIP_FADE = "skip_fade"
         const val KEY_PLAYER_OPEN = "player_open"

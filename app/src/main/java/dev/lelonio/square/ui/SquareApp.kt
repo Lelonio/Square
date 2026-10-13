@@ -727,11 +727,20 @@ fun SquareApp(
     LaunchedEffect(spotifyVideoOn, playback.hasNext, playback.hasPrevious) {
         if (!spotifyVideoOn) skipsBeforeVideo = playback.hasNext to playback.hasPrevious
     }
+    // While the DJ talks, the DJ is what is playing: the song after it has not
+    // started, and its cover and title would be a promise made too early.
+    val djTalking by dev.lelonio.square.backend.spotify.SpotifyDj.speaking.collectAsStateWithLifecycle()
+    val djSpeaking = djTalking && dev.lelonio.square.backend.spotify.SpotifyDj.isDj(playback.contextUri)
+    val djTalkingLabel = stringResource(R.string.spotify_dj_talking)
     val playerState = if (spotifyVideoOn) {
         playback.copy(
             hasNext = skipsBeforeVideo.first,
             hasPrevious = skipsBeforeVideo.second,
         )
+    } else if (djSpeaking) {
+        // The song's artists go too: the line under the title names them
+        // before the plain artist string.
+        playback.copy(title = DJ_LABEL, artist = djTalkingLabel, artists = emptyList(), artistUri = null)
     } else {
         playback
     }
@@ -929,6 +938,32 @@ fun SquareApp(
         derivedStateOf { expand.value > 0.999f && !expand.isRunning }
     }
     val scope = rememberCoroutineScope()
+
+    // Spotify's DJ is played, not opened: as a list it has nothing in it. Its
+    // first line takes a few seconds to be synthesised, so the listener is
+    // told it is coming rather than left with a tap that did nothing.
+    val djFailed = stringResource(R.string.spotify_dj_failed)
+    // The DJ coming on, shown over everything while its session is fetched
+    // and its first line synthesised; see DjStarting.
+    var djStarting by remember { mutableStateOf(false) }
+    fun startDj() {
+        if (djStarting) return
+        djStarting = true
+        scope.launch {
+            val tracks = runCatching { dev.lelonio.square.backend.spotify.SpotifyDj.start(context) }
+                .onFailure { android.util.Log.w("SquareDj", "dj session failed: ${it.message}") }
+                .getOrDefault(emptyList())
+            if (tracks.isEmpty()) {
+                djStarting = false
+                android.widget.Toast.makeText(context, djFailed, android.widget.Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            onPlay(tracks, 0, dev.lelonio.square.data.Catalog.DJ_URI, false, DJ_LABEL, 0L)
+            // Straight into the player, where the DJ is about to talk.
+            expand.animateTo(1f, expandSpec)
+            djStarting = false
+        }
+    }
 
     // Remembered for the next launch. Written when the animation settles rather
     // than on every frame of the drag.
@@ -1340,6 +1375,10 @@ fun SquareApp(
         ) {
             Box(Modifier.fillMaxSize()) {
                 val navController = rememberNavController()
+                val openList: (CatalogPlaylist) -> Unit = { playlist ->
+                    if (playlist.uri == dev.lelonio.square.data.Catalog.DJ_URI) startDj()
+                    else navController.openPlaylist(viewModel, playlist)
+                }
                 val currentEntry by navController.currentBackStackEntryAsState()
                 val route = currentEntry?.destination?.route
 
@@ -1608,7 +1647,7 @@ fun SquareApp(
                                 onRetry = { viewModel.retryFailed() },
                                 onGoOffline = viewModel::goOffline,
                                 onLogOut = viewModel::logOut,
-                                onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
+                                onOpenPlaylist = openList,
                                 playlistOrder = playlistOrder,
                                 recent = recent,
                                 onPlayRecent = { tracks, index ->
@@ -1675,7 +1714,7 @@ fun SquareApp(
                                     onPlay = { tracks, index ->
                                         onPlay(tracks, index, null, false, newLabel, 0L)
                                     },
-                                    onOpen = { navController.openPlaylist(viewModel, it) },
+                                    onOpen = openList,
                                 )
                                 return@composable
                             }
@@ -1722,7 +1761,7 @@ fun SquareApp(
                                     onPlay = { tracks, index ->
                                         onPlay(tracks, index, null, false, radioLabel, 0L)
                                     },
-                                    onOpen = { navController.openPlaylist(viewModel, it) },
+                                    onOpen = openList,
                                 )
                                 return@composable
                             }
@@ -1829,7 +1868,7 @@ fun SquareApp(
                                 onRetry = { viewModel.retryFailed() },
                                 onGoOffline = viewModel::goOffline,
                                 onLogOut = viewModel::logOut,
-                                onOpenPlaylist = { navController.openPlaylist(viewModel, it) },
+                                onOpenPlaylist = openList,
                                 listeningEvents = listeningEvents,
                                 listeningFromSpotify = backend == dev.lelonio.square.backend.BackendId.SPOTIFY,
                                 playlistOrder = playlistOrder,
@@ -2196,7 +2235,8 @@ fun SquareApp(
                     ) -> Unit)? = if (playback.hasItem) {
                         { accessoryModifier, _ ->
                             FloatingMiniPlayer(
-                                state = playback,
+                                state = if (djSpeaking) playerState else playback,
+                                djSpeaking = djSpeaking,
                                 positionMs = positionMs,
                                 remoteLabel = remote?.takeIf { showConnectedDevice }?.let { remoteLabel },
                                 modifier = accessoryModifier
@@ -2901,6 +2941,7 @@ fun SquareApp(
                           ) {
                             PlayerScreen(
                                 state = playerState,
+                                djSpeaking = djSpeaking,
                                 // The title is the way onto the record. The
                                 // address travels with the queue where the
                                 // source gave one; where it did not — a list
@@ -3237,6 +3278,18 @@ fun SquareApp(
                         },
                     )
                     }
+                }
+
+                // The DJ coming on: its lights, breathing, while the session
+                // is fetched and its first line made. In place of a toast,
+                // which said the same thing in a corner and went away before
+                // the music came.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = djStarting,
+                    enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(320)),
+                    exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(420)),
+                ) {
+                    dev.lelonio.square.ui.player.DjStarting()
                 }
 
                 }
@@ -3963,6 +4016,9 @@ private fun RowScope.BottomItem(
         )
     }
 }
+
+/** What the player names the DJ's queue after. */
+private const val DJ_LABEL = "DJ"
 
 /** Loads the playlist and shows it, from whichever tab asked. */
 private fun NavHostController.openPlaylist(viewModel: MainViewModel, playlist: CatalogPlaylist) {

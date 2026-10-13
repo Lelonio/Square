@@ -635,4 +635,8 @@
     <string name="lyrics_preferred_note">Vengono mostrati solo i testi della fonte scelta: se non ha il testo del brano, non viene mostrato nulla. Automatica sceglie la migliore disponibile.</string>
     <string name="youtube_account_fallback_name">Account Google</string>
     <string name="youtube_sign_in_failed">Accesso a YouTube Music non riuscito. Riprova; se succede ancora, salva un report in Impostazioni → Informazioni.</string>
+    <string name="spotify_dj_title">DJ di Spotify, con la sua voce</string>
+    <string name="spotify_dj_starting">Il DJ si sta preparando…</string>
+    <string name="spotify_dj_failed">Il DJ non è disponibile ora. Riprova più tardi.</string>
+    <string name="spotify_dj_talking">sta parlando</string>
 </resources>

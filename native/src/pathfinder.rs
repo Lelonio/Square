@@ -29,7 +29,7 @@ const ENDPOINT: &str = "https://api-partner.spotify.com/pathfinder/v2/query";
 ///
 /// Sent because the gateway expects a client to say what it is; the values are
 /// the web player's own, since that is the client these queries belong to.
-const APP_PLATFORM: &str = "WebPlayer";
+pub(crate) const APP_PLATFORM: &str = "WebPlayer";
 
 /// The web client's own version string, as captured from it.
 ///
@@ -38,7 +38,7 @@ const APP_PLATFORM: &str = "WebPlayer";
 /// caller it does not recognise rather than to one it refuses. Like the query
 /// hashes, this ages, and like them the caller can pass a newer one; see
 /// PathfinderKeys on the Kotlin side.
-const APP_VERSION: &str = "1.2.97.155.g5dd0dcaf-development";
+pub(crate) const APP_VERSION: &str = "1.2.97.155.g5dd0dcaf-development";
 
 /// One persisted query, by name and hash. See the note at the top of the file.
 struct Query {

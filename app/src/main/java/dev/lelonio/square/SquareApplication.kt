@@ -112,6 +112,13 @@ class SquareApplication : Application(), ImageLoaderFactory {
             }
         }
 
+        // Spotify's DJ, offered or not; see SpotifyDj.enabled.
+        kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default,
+        ).launch {
+            preferences.spotifyDj.collect { dev.lelonio.square.backend.spotify.SpotifyDj.enabled = it }
+        }
+
         // Not a feature: a line in the log saying whether this install has been
         // compiled ahead of time yet. See reportProfileStatus.
         reportProfileStatus(

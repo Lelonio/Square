@@ -4,7 +4,7 @@
 //! `java.lang.IllegalStateException` with the engine's error message. Kotlin
 //! therefore never has to check return codes.
 
-use crate::{catalog, downloads, engine, sink};
+use crate::{catalog, dj, downloads, engine, sink};
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
@@ -952,4 +952,66 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeCan
 ) {
     let uri = read_string(&mut env, &track_uri);
     guard(&mut env, "CancelDownload", || downloads::cancel(&uri?));
+}
+
+/// One page of the DJ's session; see dj::session.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDjSession(
+    mut env: JNIEnv,
+    _class: JClass,
+    page: JString,
+    language: JString,
+    app_version: JString,
+) -> jstring {
+    let page = read_string(&mut env, &page).unwrap_or_default();
+    let language = read_string(&mut env, &language).unwrap_or_default();
+    let app_version = read_string(&mut env, &app_version).unwrap_or_default();
+    guard_string(&mut env, "DjSession", || dj::session(&page, &language, &app_version))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDjSetActive(
+    mut env: JNIEnv,
+    _class: JClass,
+    on: jboolean,
+) {
+    guard(&mut env, "DjSetActive", || {
+        dj::set_active(on != 0);
+        Ok(())
+    });
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDjJumped(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+) {
+    let Ok(uri) = read_string(&mut env, &uri) else { return };
+    guard(&mut env, "DjJumped", || {
+        dj::jumped(&uri);
+        Ok(())
+    });
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDjAwaitOpening(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+    timeout_ms: jlong,
+) -> jboolean {
+    let Ok(uri) = read_string(&mut env, &uri) else { return JNI_FALSE };
+    if dj::await_opening(&uri, timeout_ms.max(0) as u64) { JNI_TRUE } else { JNI_FALSE }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeDjPrepare(
+    mut env: JNIEnv,
+    _class: JClass,
+    uris_json: JString,
+) {
+    let Ok(json) = read_string(&mut env, &uris_json) else { return };
+    let uris: Vec<String> = serde_json::from_str(&json).unwrap_or_default();
+    guard(&mut env, "DjPrepare", || dj::prepare(&uris));
 }

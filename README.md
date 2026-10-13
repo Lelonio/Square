@@ -200,7 +200,7 @@ development on [Ko-fi](https://ko-fi.com/lelonio).
 | [Phosphor Icons](https://phosphoricons.com) | MIT | Every icon in the app. |
 | [ebur128](https://github.com/sdroege/ebur128) | MIT | Loudness of local files, so they play at the level of the streamed tracks. |
 | librespot-java | Apache-2.0 | The listening-event format, re-implemented from its `EventService` rather than copied. |
-| [go-librespot](https://github.com/devgianlu/go-librespot) and [go-librespot-termux](https://github.com/SEKY443/go-librespot-termux) | GPL-3.0 | The remote sleep timer's command and state fields, and the check on truncated audio keys, re-implemented from their findings rather than copied. |
+| [go-librespot](https://github.com/devgianlu/go-librespot) and [go-librespot-termux](https://github.com/SEKY443/go-librespot-termux) | GPL-3.0 | The remote sleep timer's command and state fields, the check on truncated audio keys, and how Spotify's DJ is resolved and voiced (the session service, `client-tts`, the narration metadata), re-implemented from their findings rather than copied. |
 
 ## Building from source
 

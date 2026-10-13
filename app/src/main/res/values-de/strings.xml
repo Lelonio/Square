@@ -598,4 +598,8 @@
     <string name="lyrics_preferred_note">Es werden nur Songtexte der gewählten Quelle angezeigt: Hat sie keinen für den Song, wird keiner angezeigt. Automatisch wählt die beste verfügbare.</string>
     <string name="youtube_account_fallback_name">Google-Konto</string>
     <string name="youtube_sign_in_failed">Anmeldung bei YouTube Music fehlgeschlagen. Versuch es noch einmal; wenn es wieder passiert, speichere einen Bericht unter Einstellungen → Info.</string>
+    <string name="spotify_dj_title">Spotify-DJ, mit seiner Stimme</string>
+    <string name="spotify_dj_starting">Der DJ macht sich bereit…</string>
+    <string name="spotify_dj_failed">Der DJ ist gerade nicht verfügbar. Versuch es später noch einmal.</string>
+    <string name="spotify_dj_talking">spricht</string>
 </resources>

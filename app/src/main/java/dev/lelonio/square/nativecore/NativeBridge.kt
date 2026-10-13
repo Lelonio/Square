@@ -642,4 +642,32 @@ object NativeBridge {
     private external fun nativeDownloadState(trackUri: String): String
     private external fun nativeRemoveDownload(trackUri: String)
     private external fun nativeCancelDownload(trackUri: String)
+
+    /**
+     * One page of Spotify's DJ session, `{"tracks": [...], "next": "hm://..."}`;
+     * [page] is the `next` of the page before, empty for the first. The DJ's
+     * lines for the page start being synthesised before this returns. See
+     * native/src/dj.rs.
+     */
+    fun djSession(page: String, language: String, appVersion: String): String =
+        nativeDjSession(page, language, appVersion)
+
+    /** Has the DJ's lines for [urisJson], the tracks about to be queued, synthesised. */
+    fun djPrepare(urisJson: String) = runCatching { nativeDjPrepare(urisJson) }
+
+    /** Turns the DJ's lines on for the queue playing, or off with all it had fetched. */
+    fun djSetActive(on: Boolean) = runCatching { nativeDjSetActive(on) }
+
+    /** The listener went straight to [uri]: it is introduced with the DJ's jump line. */
+    fun djJumped(uri: String) = runCatching { nativeDjJumped(uri) }
+
+    /** Waits up to [timeoutMs] for the line that opens [uri]; true once it is ready. */
+    fun djAwaitOpening(uri: String, timeoutMs: Long): Boolean =
+        runCatching { nativeDjAwaitOpening(uri, timeoutMs) }.getOrDefault(false)
+
+    private external fun nativeDjSession(page: String, language: String, appVersion: String): String
+    private external fun nativeDjSetActive(on: Boolean)
+    private external fun nativeDjPrepare(urisJson: String)
+    private external fun nativeDjJumped(uri: String)
+    private external fun nativeDjAwaitOpening(uri: String, timeoutMs: Long): Boolean
 }

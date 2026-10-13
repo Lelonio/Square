@@ -510,6 +510,20 @@ fun SettingsScreen(
             AutoplaySection(backdrop)
         }
 
+        // Spotify's DJ: offered and played with its voice, or kept out of sight.
+        if (shown == SettingsPage.Playback && showSpotify && "listening" in openGroups) groupItem("spotify-dj", Group.LISTENING) {
+            val enabled by app.preferences.spotifyDj.collectAsStateWithLifecycle()
+            Section(stringResource(R.string.spotify_dj)) {
+                DownloadSwitch(
+                    label = stringResource(R.string.spotify_dj_title),
+                    icon = PhosphorIcons.Regular.MicrophoneStage,
+                    checked = enabled,
+                    backdrop = backdrop,
+                    onChange = app.preferences::setSpotifyDj,
+                )
+            }
+        }
+
         if (shown == SettingsPage.Playback && showSpotify && "listening" in openGroups) groupItem("connected-device-label", Group.LISTENING) {
             val enabled by app.preferences.showConnectedDevice.collectAsStateWithLifecycle()
             Section(stringResource(R.string.connected_device_label)) {
