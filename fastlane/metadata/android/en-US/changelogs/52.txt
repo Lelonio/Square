@@ -1,0 +1,3 @@
+Spotify's DJ: plays new songs with its voice between them, in your language, with its own animation. Can be turned off in Settings.
+YouTube Music playlists are no longer cut at 100 songs, and open at once when unchanged.
+Smoother dissolve when picking a song from another list.
