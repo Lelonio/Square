@@ -1849,7 +1849,14 @@ pub fn load_queue(
     }
 
     // Nothing but this track may be heard until it starts; see PLAYBACK_ARMED.
-    if !wanted.is_empty() {
+    //
+    // Except while a song playing here is dissolved into it, as for a skip
+    // (see `leaving`). The tail being faded is the very track this keeps from
+    // being heard: picking a song from another list cut the dissolve off, and
+    // the sink, throwing away the tail a packet at a time and waiting out each
+    // one, stuttered on the way.
+    let dissolving = start_playing && dissolves() && !current_uri().is_empty();
+    if !wanted.is_empty() && !dissolving {
         shut(Gate::Expect(wanted.clone()));
     }
 
