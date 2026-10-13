@@ -4168,7 +4168,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         return@launch
                     }
-                    val tracks = container.activeBackend.tracksOf(playlist.uri)
+                    // A YouTube Music list is kept like a Spotify one: read in
+                    // full only when its first page says it has changed. Long
+                    // lists are a page a hundred songs, asked one after another.
+                    val youtubeLists = container.activeBackend as? dev.lelonio.square.backend.youtube.YouTubeBackend
+                    val tracks = if (youtubeLists != null) {
+                        val (stamp, fresh) = youtubeLists.tracksIfChanged(
+                            playlist.uri,
+                            entry?.snapshotId.takeIf { cached.isNotEmpty() },
+                        )
+                        val now = System.currentTimeMillis()
+                        if (stamp != null) {
+                            val kept = fresh ?: cached
+                            contextCache[playlist.uri] = ContextCacheStore.Entry(tracks = kept, snapshotId = stamp, savedAt = now, uri = playlist.uri)
+                            container.contextCache.write(playlist.uri, kept, stamp)
+                        }
+                        fresh ?: cached
+                    } else {
+                        container.activeBackend.tracksOf(playlist.uri)
+                    }
                     followKept(playlist.uri, tracks)
                     if (isActive && _playlist.value.uri == playlist.uri) {
                         publishPlaylist(base.copy(tracks = tracks, loading = false))

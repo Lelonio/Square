@@ -488,7 +488,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
             // Videos stay videos: no swapping them for their songs here, which
             // is the whole reason somebody opened this list.
-            uri.startsWith(VIDEOS_PREFIX) -> YouTube.playlist(id).getOrThrow().songs.map(::toVideoTrack)
+            uri.startsWith(VIDEOS_PREFIX) -> wholePlaylist(id).map(::toVideoTrack)
 
             // A record opened from the player, by the album's own id.
             uri.startsWith(ALBUM_PREFIX) -> YouTube.album(id).getOrThrow().songs.map(::toCatalogTrack)
@@ -510,26 +510,81 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                     .map(::toCatalogTrack)
             }
 
-            else -> {
-                val listed = YouTube.playlist(id).getOrThrow().songs
-                // Only the listener's own lists: a video there is a song they
-                // saved, and they want the song. A list YouTube made of videos
-                // (a chart of music videos) is meant to be videos, and an album's
-                // entries are already its songs.
-                val own = id == LIKED_MUSIC_ID || id in editable
-                val songs = if (own) asSongs(listed) else listed
-                listed.zip(songs).forEach { (entry, song) ->
-                    // What taking a song out of this list will need: YouTube
-                    // removes an entry, not a song, and names the entry here —
-                    // under the song it now plays as, too, if it was a video.
-                    entry.setVideoId?.let {
-                        entries["$id/${entry.id}"] = it
-                        entries["$id/${song.id}"] = it
-                    }
-                }
-                songs.map(::toCatalogTrack)
+            else -> playlistTracks(id, wholePlaylist(id))
+        }
+    }
+
+    /**
+     * A playlist's songs, unless they are what [stamp] says they were; and the
+     * stamp they have now. Null songs for a list that has not changed, which
+     * its first page says without the rest being read: what it holds, and how
+     * many. The way Spotify's snapshot id is used for its lists, for a service
+     * that has none, and the reason a long list opens at once the second time.
+     *
+     * Null stamp for anything that is not a playlist, read in full as before.
+     */
+    suspend fun tracksIfChanged(uri: String, stamp: String?): Pair<String?, List<CatalogTrack>?> =
+        withContext(Dispatchers.IO) {
+            val listed = uri.startsWith(PLAYLIST_PREFIX) || uri.startsWith(VIDEOS_PREFIX)
+            if (!listed || isStation(uri)) return@withContext null to tracksOf(uri)
+            val id = uri.substringAfterLast(':')
+            val first = YouTube.playlist(id).getOrThrow()
+            val now = stampOf(first)
+            if (stamp != null && now == stamp) return@withContext now to null
+            val songs = wholePlaylist(id, first)
+            now to if (uri.startsWith(VIDEOS_PREFIX)) songs.map(::toVideoTrack) else playlistTracks(id, songs)
+        }
+
+    /** What a list's first page says about all of it; see [tracksIfChanged]. */
+    private fun stampOf(first: com.metrolist.innertube.pages.PlaylistPage): String {
+        val entries = first.songs.joinToString(",") { it.setVideoId ?: it.id }
+        return "${first.playlist.songCountText.orEmpty()}|${entries.hashCode()}|${first.songs.size}"
+    }
+
+    /** A playlist's entries as the songs to show; see the note on own lists. */
+    private suspend fun playlistTracks(id: String, listed: List<SongItem>): List<CatalogTrack> {
+        // Only the listener's own lists: a video there is a song they saved,
+        // and they want the song. A list YouTube made of videos (a chart of
+        // music videos) is meant to be videos, and an album's entries are
+        // already its songs.
+        val own = id == LIKED_MUSIC_ID || id in editable
+        val songs = if (own) asSongs(listed) else listed
+        listed.zip(songs).forEach { (entry, song) ->
+            // What taking a song out of this list will need: YouTube removes an
+            // entry, not a song, and names the entry here — under the song it
+            // now plays as, too, if it was a video.
+            entry.setVideoId?.let {
+                entries["$id/${entry.id}"] = it
+                entries["$id/${song.id}"] = it
             }
         }
+        return songs.map(::toCatalogTrack)
+    }
+
+    /**
+     * Every song of a playlist, not just its first page.
+     *
+     * YouTube answers a playlist with a hundred songs and a token for the
+     * rest, and the token was never spent: every list stopped at a hundred,
+     * however long it was. The pages after it are asked for one at a time, up
+     * to [PLAYLIST_CAP] songs, and a page that fails ends the list where it
+     * got to rather than losing what was already there.
+     */
+    private suspend fun wholePlaylist(
+        id: String,
+        given: com.metrolist.innertube.pages.PlaylistPage? = null,
+    ): List<SongItem> {
+        val first = given ?: YouTube.playlist(id).getOrThrow()
+        val songs = first.songs.toMutableList()
+        var token = first.songsContinuation ?: first.continuation
+        var pages = 0
+        while (token != null && songs.size < PLAYLIST_CAP && pages++ < PLAYLIST_MAX_PAGES) {
+            val page = YouTube.playlistContinuation(token).getOrNull() ?: break
+            if (page.songs.isEmpty()) break
+            songs += page.songs
+            token = page.continuation
+        }
+        return songs
     }
 
     /**
@@ -847,6 +902,12 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
         /** What a song's radio is named after: this, then the song's id. */
         private const val RADIO_LIST = "RDAMVM"
+
+        /** As long as a playlist is read: well past what anyone keeps in one. */
+        private const val PLAYLIST_CAP = 5_000
+
+        /** The pages that takes, at a hundred songs a page, with room to spare. */
+        private const val PLAYLIST_MAX_PAGES = 60
 
         /** A song's radio as an address, for the page that shows it. */
         fun stationUri(trackUri: String): String = "$PLAYLIST_PREFIX$RADIO_LIST${videoIdOfUri(trackUri)}"
