@@ -140,6 +140,7 @@ object YouTubePlayerFactory {
                 SponsorBlock(exo) { preferences?.sponsorBlock?.value ?: true }
                 // Every change of song the listener asks for goes through the
                 // fade; see SkipFadePlayer.
+                mixer.skipFadeMs = { preferences?.skipFadeMs() ?: 0 }
                 SkipFadePlayer(exo, fades) { preferences?.skipFadeMs() ?: 0 }
             }
     }

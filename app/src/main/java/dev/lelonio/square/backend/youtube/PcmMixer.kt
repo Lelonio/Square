@@ -96,6 +96,20 @@ class PcmMixer {
     val audioSessionId: Int get() = track.audioSessionId
 
     /**
+     * How long a change of song the listener makes takes to fade out, in ms;
+     * zero with the fade off. Set by the player's owner; see [liveFrames].
+     */
+    @Volatile
+    var skipFadeMs: () -> Int = { 0 }
+
+    /** How far ahead a playing channel is filled: the skip fade and a margin, or a quarter of a second. */
+    internal fun liveFrames(): Int {
+        val fade = skipFadeMs()
+        val wanted = if (fade > 0) (fade + LIVE_MARGIN_MS) * RATE / 1000 else RATE / 4
+        return wanted.coerceIn(RATE / 4, RATE * 2)
+    }
+
+    /**
      * The room's send, on the one track every player is heard through; see
      * PlayerReverb. Each player asks its own output for the room, and every
      * output here is a channel into this track: ignored, as it was, the reverb
@@ -156,8 +170,9 @@ class PcmMixer {
     /**
      * Lets what [slot] has already decoded play out on its own, fading to
      * nothing over [fadeMs], while the player moves on: the outgoing half of a
-     * change of song the listener asked for, as the engine has it. The pile
-     * holds up to two seconds ahead, so there is no decoder to wait for.
+     * change of song the listener asked for, as the engine has it. A playing
+     * channel is held as far ahead as this fade lasts (see liveFrames), so
+     * there is no decoder to wait for.
      *
      * False when there is nothing to fade.
      */
@@ -323,6 +338,9 @@ class PcmMixer {
 
     companion object {
         const val RATE = 48_000
+
+        /** Held past the skip fade, so the fade never runs dry before it ends. */
+        private const val LIVE_MARGIN_MS = 150
         private const val BLOCK_FRAMES = 480
         private const val TRACK_BUFFER_FRAMES = 3_840
         private const val MAX_EXTRAPOLATION_NS = 100_000_000L
@@ -511,11 +529,14 @@ class MixerChannel internal constructor(
                 while (stamps.size > MAX_STAMPS) stamps.removeFirst()
             }
             // Only a held slot piles up the whole ring: it needs the pile to be
-            // lined up in (see handOver). A live one is kept a moment ahead,
-            // since everything it holds has already been through speed, pitch
-            // and karaoke: filled to two seconds, an effect was heard two
-            // seconds after it was set.
-            val room = (if (slot.held) capacity else LIVE_FRAMES) - queued
+            // lined up in (see handOver). A live one is kept only as far ahead
+            // as a change of song needs, since everything it holds has already
+            // been through speed, pitch and karaoke: filled to two seconds, an
+            // effect was heard two seconds after it was set. But no less than
+            // that: a skip fades the song being left out of what is held here
+            // (see detach), and held to a quarter of a second the fade was cut
+            // off after a quarter of a second.
+            val room = (if (slot.held) capacity else mixer.liveFrames()) - queued
             val frames = min(available, max(0, room))
             val data = buffer.duplicate().order(ByteOrder.nativeOrder())
             var write = (readIndex + queued) % capacity
@@ -688,9 +709,6 @@ class MixerChannel internal constructor(
     override fun setPreferredDevice(preferredDevice: AudioDeviceInfo?) = Unit
 
     private companion object {
-        /** How far ahead a playing channel is filled: a quarter of a second. */
-        const val LIVE_FRAMES = PcmMixer.RATE / 4
-
         /** About two seconds of blocks: far more than the track ever holds unplayed. */
         const val MAX_BLOCKS = 200
 
