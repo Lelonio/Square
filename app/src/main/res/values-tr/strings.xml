@@ -615,4 +615,7 @@
     <string name="spotify_dj_starting">DJ hazırlanıyor…</string>
     <string name="spotify_dj_failed">DJ şu anda kullanılamıyor. Daha sonra tekrar dene.</string>
     <string name="spotify_dj_talking">konuşuyor</string>
+    <string name="link_copied_open_browser">Tarayıcı açılamadı. Bağlantı kopyalandı: oraya yapıştır.</string>
+    <string name="youtube_signing_in">Giriş yapılıyor…</string>
+    <string name="youtube_sign_in_private">Şifren yalnızca Google\'a gider. Square, Google\'ın verdiği oturumu saklar.</string>
 </resources>

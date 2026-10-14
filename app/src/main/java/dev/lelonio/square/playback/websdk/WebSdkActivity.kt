@@ -167,11 +167,14 @@ class WebSdkActivity : ComponentActivity() {
         } else {
             val uriHandler = LocalUriHandler.current
             val clipboard = LocalClipboardManager.current
+            val context = androidx.compose.ui.platform.LocalContext.current
             CardButton(
                 title = stringResource(R.string.onboarding_open_dashboard),
                 detail = DASHBOARD_URL.removePrefix("https://"),
                 icon = PhosphorIcons.Regular.ArrowUpRight,
-                onClick = { uriHandler.openUri(DASHBOARD_URL) },
+                onClick = {
+                    dev.lelonio.square.ui.onboarding.openOrCopy(uriHandler, clipboard, context, DASHBOARD_URL)
+                },
                 modifier = Modifier.padding(top = 18.dp),
             )
             Text(stringResource(R.string.web_sdk_redirect), style = MaterialTheme.typography.bodyMedium,

@@ -639,4 +639,7 @@
     <string name="spotify_dj_starting">Il DJ si sta preparando…</string>
     <string name="spotify_dj_failed">Il DJ non è disponibile ora. Riprova più tardi.</string>
     <string name="spotify_dj_talking">sta parlando</string>
+    <string name="link_copied_open_browser">Impossibile aprire il browser. Il link è copiato: incollalo lì.</string>
+    <string name="youtube_signing_in">Accesso in corso…</string>
+    <string name="youtube_sign_in_private">La password va solo a Google. Square conserva la sessione che Google restituisce.</string>
 </resources>

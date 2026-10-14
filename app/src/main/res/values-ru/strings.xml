@@ -631,4 +631,7 @@
     <string name="spotify_dj_starting">DJ готовится…</string>
     <string name="spotify_dj_failed">DJ сейчас недоступен. Попробуйте позже.</string>
     <string name="spotify_dj_talking">говорит</string>
+    <string name="link_copied_open_browser">Не удалось открыть браузер. Ссылка скопирована: вставьте её туда.</string>
+    <string name="youtube_signing_in">Выполняется вход…</string>
+    <string name="youtube_sign_in_private">Пароль получает только Google. Square хранит сессию, которую возвращает Google.</string>
 </resources>

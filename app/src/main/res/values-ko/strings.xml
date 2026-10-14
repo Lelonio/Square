@@ -626,4 +626,7 @@
     <string name="spotify_dj_starting">DJ가 준비 중입니다…</string>
     <string name="spotify_dj_failed">지금은 DJ를 사용할 수 없습니다. 나중에 다시 시도하세요.</string>
     <string name="spotify_dj_talking">이야기 중</string>
+    <string name="link_copied_open_browser">브라우저를 열 수 없습니다. 링크가 복사되었으니 브라우저에 붙여넣으세요.</string>
+    <string name="youtube_signing_in">로그인 중…</string>
+    <string name="youtube_sign_in_private">비밀번호는 Google에만 전달됩니다. Square는 Google이 돌려주는 세션만 보관합니다.</string>
 </resources>

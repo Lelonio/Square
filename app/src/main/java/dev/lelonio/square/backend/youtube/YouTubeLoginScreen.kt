@@ -5,8 +5,32 @@ import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.adamglin.PhosphorIcons
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.fill.LockSimple
+import com.adamglin.phosphoricons.regular.ShieldCheck
+import com.adamglin.phosphoricons.regular.X
+import dev.lelonio.square.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,7 +64,21 @@ import kotlinx.coroutines.launch
 fun YouTubeLoginScreen(account: YouTubeAccount, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var completing by remember { mutableStateOf(false) }
-    var webView: WebView? = null
+    // Remembered: a plain local was lost every time the page redrew, and the
+    // progress bar redraws it many times a second.
+    val webViewHolder = remember { arrayOfNulls<WebView>(1) }
+    // Every way out goes through here: the page lets go of the focus first.
+    // Taken away while focused, it sent Android looking for the next thing to
+    // focus in a screen still being composed, and the app stopped.
+    val close: () -> Unit = {
+        webViewHolder[0]?.apply {
+            clearFocus()
+            isFocusable = false
+        }
+        onDone()
+    }
+    var progress by remember { mutableStateOf(0) }
+    var host by remember { mutableStateOf("accounts.google.com") }
 
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -54,7 +92,7 @@ fun YouTubeLoginScreen(account: YouTubeAccount, onDone: () -> Unit) {
         val cookie = CookieManager.getInstance().getCookie(MUSIC_URL).orEmpty()
         // Backing out before signing in is an ordinary outcome, not a failure.
         if (cookie.isBlank()) {
-            onDone()
+            close()
             return
         }
 
@@ -66,9 +104,15 @@ fun YouTubeLoginScreen(account: YouTubeAccount, onDone: () -> Unit) {
             YouTube.dataSyncId = dataSyncId
 
             fun keep(name: String) {
-                webView?.apply {
+                webViewHolder[0]?.apply {
                     stopLoading()
                     clearHistory()
+                    // Let go of the focus before the page goes: taken away
+                    // while focused, it sent Android looking for the next
+                    // thing to focus in a screen still being composed, and the
+                    // app stopped right as the sign-in finished.
+                    clearFocus()
+                    isFocusable = false
                 }
                 account.save(
                     cookie = cookie,
@@ -76,7 +120,7 @@ fun YouTubeLoginScreen(account: YouTubeAccount, onDone: () -> Unit) {
                     dataSyncId = dataSyncId,
                     name = name,
                 )
-                onDone()
+                close()
             }
 
             // The session is only worth keeping if it can actually read the
@@ -114,55 +158,207 @@ fun YouTubeLoginScreen(account: YouTubeAccount, onDone: () -> Unit) {
                         context.getString(dev.lelonio.square.R.string.youtube_sign_in_failed),
                         android.widget.Toast.LENGTH_LONG,
                     ).show()
-                    onDone()
+                    close()
                 }
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { context ->
-                WebView(context).apply {
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView, url: String?) {
-                            // Landing back on music.youtube.com with a cookie is
-                            // what "signed in" looks like: Google's flow can take
-                            // any number of pages — password, 2FA, account
-                            // picker — and this is the one state that means it
-                            // finished.
-                            val signedIn = url?.contains("music.youtube.com") == true &&
-                                CookieManager.getInstance().getCookie(MUSIC_URL)
-                                    .orEmpty().isNotBlank()
-                            if (!signedIn || completing) return
-                            // The page's ids first, then the check. Read
-                            // through a bridge and checked straight after,
-                            // the check always went before the page had
-                            // answered, with both of them empty.
-                            view.evaluateJavascript(
-                                "(function(){try{var c=window.yt.config_;" +
-                                    "return [c.VISITOR_DATA||'',c.DATASYNC_ID||''];}catch(e){return ['',''];}})()",
-                            ) { result ->
-                                val ids = runCatching { org.json.JSONArray(result) }.getOrNull()
-                                complete(
-                                    visitorData = ids?.optString(0).orEmpty(),
-                                    // Two ids separated by `||`; the first is
-                                    // this account's.
-                                    dataSyncId = ids?.optString(1).orEmpty().substringBefore("||"),
-                                )
+    // Google's own page, inside the app's: a header that says what it is and
+    // where it is, the page on a card under it, and a word on what is kept.
+    // The page has to stay Google's and stay visible as Google's — a password
+    // typed into anything else is the thing never to ask for.
+    val ink = androidx.compose.ui.graphics.Color.White
+    androidx.compose.foundation.layout.Column(
+        Modifier
+            .fillMaxSize()
+            .systemBarsPadding(),
+    ) {
+        androidx.compose.foundation.layout.Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(ink.copy(alpha = 0.12f))
+                    .clickable {
+                        webViewHolder[0]?.stopLoading()
+                        close()
+                    },
+                contentAlignment = androidx.compose.ui.Alignment.Center,
+            ) {
+                Icon(
+                    PhosphorIcons.Regular.X,
+                    contentDescription = stringResource(R.string.close),
+                    tint = ink,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            androidx.compose.foundation.layout.Column(Modifier.padding(start = 14.dp)) {
+                Text(
+                    stringResource(R.string.youtube_sign_in),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ink,
+                )
+                androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Icon(
+                        PhosphorIcons.Fill.LockSimple,
+                        contentDescription = null,
+                        tint = ink.copy(alpha = 0.6f),
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Text(
+                        host,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ink.copy(alpha = 0.6f),
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
+            }
+        }
+
+        // How far the page has got, on a hairline under the header.
+        val shown by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = progress / 100f,
+            label = "loginProgress",
+        )
+        val barAlpha by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (progress in 1..99) 1f else 0f,
+            label = "loginProgressAlpha",
+        )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .padding(horizontal = 16.dp)
+                .graphicsLayer { alpha = barAlpha },
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(shown.coerceIn(0f, 1f))
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(ink.copy(alpha = 0.85f)),
+            )
+        }
+
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, top = 10.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(androidx.compose.ui.graphics.Color.White),
+        ) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    WebView(context).apply {
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                                url?.let { android.net.Uri.parse(it).host }?.let { host = it }
+                            }
+
+                            override fun onPageFinished(view: WebView, url: String?) {
+                                // Landing back on music.youtube.com with a cookie is
+                                // what "signed in" looks like: Google's flow can take
+                                // any number of pages — password, 2FA, account
+                                // picker — and this is the one state that means it
+                                // finished.
+                                val signedIn = url?.contains("music.youtube.com") == true &&
+                                    CookieManager.getInstance().getCookie(MUSIC_URL)
+                                        .orEmpty().isNotBlank()
+                                if (!signedIn || completing) return
+                                // The page's ids first, then the check. Read
+                                // through a bridge and checked straight after,
+                                // the check always went before the page had
+                                // answered, with both of them empty.
+                                view.evaluateJavascript(
+                                    "(function(){try{var c=window.yt.config_;" +
+                                        "return [c.VISITOR_DATA||'',c.DATASYNC_ID||''];}catch(e){return ['',''];}})()",
+                                ) { result ->
+                                    val ids = runCatching { org.json.JSONArray(result) }.getOrNull()
+                                    complete(
+                                        visitorData = ids?.optString(0).orEmpty(),
+                                        // Two ids separated by `||`; the first is
+                                        // this account's.
+                                        dataSyncId = ids?.optString(1).orEmpty().substringBefore("||"),
+                                    )
+                                }
                             }
                         }
+                        webChromeClient = object : android.webkit.WebChromeClient() {
+                            override fun onProgressChanged(view: WebView, newProgress: Int) {
+                                progress = newProgress
+                            }
+                        }
+                        settings.javaScriptEnabled = true
+                        webViewHolder[0] = this
+                        loadUrl(SIGN_IN_URL)
                     }
-                    settings.javaScriptEnabled = true
-                    webView = this
-                    loadUrl(SIGN_IN_URL)
+                },
+            )
+            // The account being checked, once Google has let it in: a moment
+            // with nothing to press, said rather than left to look stuck.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = completing,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(androidx.compose.ui.graphics.Color(0xFF101012).copy(alpha = 0.88f)),
+                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                ) {
+                    androidx.compose.foundation.layout.Column(
+                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            color = ink,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(32.dp),
+                        )
+                        Text(
+                            stringResource(R.string.youtube_signing_in),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ink,
+                            modifier = Modifier.padding(top = 14.dp),
+                        )
+                    }
                 }
-            },
-        )
+            }
+        }
+
+        androidx.compose.foundation.layout.Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Icon(
+                PhosphorIcons.Regular.ShieldCheck,
+                contentDescription = null,
+                tint = ink.copy(alpha = 0.6f),
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                stringResource(R.string.youtube_sign_in_private),
+                style = MaterialTheme.typography.bodySmall,
+                color = ink.copy(alpha = 0.6f),
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
     }
 
     BackHandler {
-        val view = webView
+        val view = webViewHolder[0]
         // Google's flow is several pages deep, so back should walk it rather
         // than abandoning a sign-in halfway through.
         if (view?.canGoBack() == true) view.goBack() else complete()

@@ -185,7 +185,11 @@ fun HomeScreen(
             contentPadding = contentPadding,
             home = youtubeHome,
             recent = recent,
-            accountName = (state as? MainViewModel.UiState.Ready)?.displayName.orEmpty(),
+            // Nobody's name while signed out: the library's answer outlived a
+            // sign-out, and the header went on naming an account the app was
+            // no longer in.
+            accountName = (state as? MainViewModel.UiState.Ready)?.displayName.orEmpty()
+                .takeIf { youtubeSignedIn }.orEmpty(),
             backdrop = backdrop,
             onPlayRecent = onPlayRecent,
             onPlayTrending = onPlayTrending,
@@ -759,9 +763,10 @@ private fun Header(
                 FriendFaces(friends, onOpenFriends)
             }
 
-            Artwork(
+            dev.lelonio.square.ui.components.ProfilePicture(
                 url = avatarUrl,
-                title = name,
+                name = name,
+                size = 46.dp,
                 modifier = Modifier
                     .padding(start = 14.dp)
                     // Measured from the scroll rather than sized in
@@ -774,7 +779,6 @@ private fun Header(
                     .clip(CircleShape)
                     .pressable(onOpenSettings, pressedScale = 0.90f)
                     .softShadow(CircleShape, elevation = 10.dp),
-                corner = 23.dp,
                 decodeSize = 46.dp,
             )
         }

@@ -602,4 +602,7 @@
     <string name="spotify_dj_starting">O DJ está se preparando…</string>
     <string name="spotify_dj_failed">O DJ não está disponível agora. Tente mais tarde.</string>
     <string name="spotify_dj_talking">está falando</string>
+    <string name="link_copied_open_browser">Não foi possível abrir o navegador. O link foi copiado: cole-o lá.</string>
+    <string name="youtube_signing_in">Entrando…</string>
+    <string name="youtube_sign_in_private">Sua senha vai só para o Google. O Square guarda a sessão que o Google devolve.</string>
 </resources>

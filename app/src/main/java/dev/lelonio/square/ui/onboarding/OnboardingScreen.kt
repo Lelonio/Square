@@ -195,6 +195,7 @@ private fun LogIn(
 private fun Dashboard(redirectUri: String) {
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     StepHeader(stringResource(R.string.onboarding_key_title), stepOf(2))
     ProseText(stringResource(R.string.onboarding_key_intro))
@@ -203,7 +204,7 @@ private fun Dashboard(redirectUri: String) {
         title = stringResource(R.string.onboarding_open_dashboard),
         detail = DASHBOARD_URL.removePrefix("https://"),
         icon = PhosphorIcons.Regular.ArrowUpRight,
-        onClick = { uriHandler.openUri(DASHBOARD_URL) },
+        onClick = { openOrCopy(uriHandler, clipboard, context, DASHBOARD_URL) },
         modifier = Modifier.padding(top = 18.dp),
     )
 
@@ -348,3 +349,25 @@ private fun LanguageChips(language: String, onLanguage: (String) -> Unit) {
 }
 
 private const val DASHBOARD_URL = "https://developer.spotify.com/dashboard"
+
+/**
+ * Opens [url] in the browser, or copies it and says so when nothing will open
+ * it. A phone with no browser set to answer, or one whose launcher refuses a
+ * link from an app, left the button doing nothing at all, with no way to the
+ * page the setup depends on.
+ */
+internal fun openOrCopy(
+    uriHandler: androidx.compose.ui.platform.UriHandler,
+    clipboard: androidx.compose.ui.platform.ClipboardManager,
+    context: android.content.Context,
+    url: String,
+) {
+    val opened = runCatching { uriHandler.openUri(url) }.isSuccess
+    if (opened) return
+    clipboard.setText(androidx.compose.ui.text.AnnotatedString(url))
+    android.widget.Toast.makeText(
+        context,
+        context.getString(dev.lelonio.square.R.string.link_copied_open_browser),
+        android.widget.Toast.LENGTH_LONG,
+    ).show()
+}

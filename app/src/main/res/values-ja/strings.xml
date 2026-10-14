@@ -658,5 +658,8 @@
     <string name="spotify_dj_starting">DJ を準備しています…</string>
     <string name="spotify_dj_failed">DJ は現在利用できません。しばらくしてからもう一度お試しください。</string>
     <string name="spotify_dj_talking">話しています</string>
+    <string name="link_copied_open_browser">ブラウザを開けませんでした。リンクをコピーしたので、ブラウザに貼り付けてください。</string>
+    <string name="youtube_signing_in">ログインしています…</string>
+    <string name="youtube_sign_in_private">パスワードは Google にのみ送られます。Square は Google から返されたセッションだけを保存します。</string>
 </resources>
 

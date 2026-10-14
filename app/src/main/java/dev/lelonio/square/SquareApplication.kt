@@ -35,6 +35,8 @@ class SquareApplication : Application(), ImageLoaderFactory {
         // First, so a crash anywhere below is written down; see Report.
         dev.lelonio.square.diagnostics.Report.install(this)
         // Temporary, dev builds only; see WidevineProbe.
+        // YouTube's language and country, before anything asks it for a page.
+        language.applyToYouTube()
         dev.lelonio.square.diagnostics.WidevineProbe.register(this)
         // The vendored InnerTube module logs through Timber, and with nothing
         // planted every one of those lines went nowhere — which is why a

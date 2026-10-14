@@ -308,14 +308,21 @@ fun SettingsScreen(
         item("top") { heading(shown) }
 
         if (shown == null) item("pages") {
+            // On YouTube Music, the Google account says who this is. The
+            // library's own answer outlived a sign-out: the card went on
+            // showing a name, a picture and a count of playlists for an account
+            // the app was no longer signed in to.
+            val youtubeName by app.youtubeAccount.accountName.collectAsStateWithLifecycle()
+            val activeBackend by app.preferences.backend.collectAsStateWithLifecycle()
+            val signedOutOfYouTube = activeBackend == BackendId.YOUTUBE_MUSIC && youtubeName == null
             SettingsIndex(
-                name = ready?.displayName,
-                note = if (ready != null) {
-                    stringResource(R.string.playlist_count, ready.playlists.size)
-                } else {
-                    stringResource(R.string.log_in_to_resume)
+                name = ready?.displayName?.takeUnless { signedOutOfYouTube },
+                note = when {
+                    signedOutOfYouTube -> stringResource(R.string.youtube_sign_in)
+                    ready != null -> stringResource(R.string.playlist_count, ready.playlists.size)
+                    else -> stringResource(R.string.log_in_to_resume)
                 },
-                avatarUrl = ready?.avatarUrl,
+                avatarUrl = ready?.avatarUrl?.takeUnless { signedOutOfYouTube },
             ) { goTo(it) }
         }
 
@@ -330,13 +337,13 @@ fun SettingsScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Artwork(
+                dev.lelonio.square.ui.components.ProfilePicture(
                     url = ready?.avatarUrl,
-                    title = ready?.displayName.orEmpty(),
+                    name = ready?.displayName,
+                    size = 96.dp,
                     modifier = Modifier
                         .size(96.dp)
                         .softShadow(CircleShape, elevation = 16.dp),
-                    corner = 48.dp,
                     decodeSize = 96.dp,
                 )
                 Text(
@@ -999,13 +1006,13 @@ private fun SettingsIndex(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Artwork(
+            dev.lelonio.square.ui.components.ProfilePicture(
                 url = avatarUrl,
-                title = name.orEmpty(),
+                name = name,
+                size = 56.dp,
                 modifier = Modifier
                     .size(56.dp)
                     .softShadow(CircleShape, elevation = 10.dp),
-                corner = 28.dp,
                 decodeSize = 56.dp,
             )
             Column(

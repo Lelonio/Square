@@ -159,7 +159,10 @@ class YouTubeAccount(context: Context) {
             .putString(KEY_VISITOR_DATA, visitorData)
             .putString(KEY_DATA_SYNC_ID, dataSyncId)
             .putString(KEY_NAME, name)
-            .apply()
+            // Written before this returns: a sign-in is the one thing worth
+            // waiting for the disk over, and an asynchronous write was lost
+            // when the app stopped straight after it.
+            .commit()
         _accountName.value = name
         applyToInnerTube()
     }

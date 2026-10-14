@@ -49,6 +49,7 @@ class LanguageStore(context: Context) {
         _tag.value = tag
         prefs.edit().putString(KEY_LANGUAGE, tag).apply()
         tellEngine()
+        applyToYouTube()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val manager = app.getSystemService(android.app.LocaleManager::class.java)
             manager?.applicationLocales =
@@ -77,6 +78,25 @@ class LanguageStore(context: Context) {
             runCatching { dev.lelonio.square.nativecore.NativeBridge.setLanguage(language, quiet) }
                 .onFailure { android.util.Log.w("SquareLanguage", "language not passed on: ${it.message}") }
         }.start()
+    }
+
+    /**
+     * Tells YouTube Music the language to answer in and the country to answer
+     * for, separately.
+     *
+     * Its module read both from the default locale, and an app set to English
+     * has a default locale with a language and no country: the country went
+     * out empty, YouTube answered every page with 400 "invalid argument", and
+     * the home was blank. The country is the phone's own, whatever language the
+     * app is read in; the network's where the phone names none.
+     */
+    fun applyToYouTube() {
+        val country = systemLocale().country.takeIf { it.length == 2 }
+            ?: app.getSystemService(android.telephony.TelephonyManager::class.java)
+                ?.networkCountryIso?.uppercase()?.takeIf { it.length == 2 }
+            ?: "US"
+        com.metrolist.innertube.YouTube.locale =
+            com.metrolist.innertube.models.YouTubeLocale(gl = country, hl = language())
     }
 
     /**
