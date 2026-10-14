@@ -1,0 +1,3 @@
+Landscape: a two-column player, narrower bar, fitting grids.
+Fixed a blank YouTube Music home when the app language has no country, and the sign-in crash.
+Smoother skip fade on YouTube Music. New sign-in page and profile pictures.
