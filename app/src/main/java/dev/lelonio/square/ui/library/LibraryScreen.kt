@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -303,25 +304,33 @@ fun LibraryScreen(
             } else {
             Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
-                Header(
-                    count = playlists.size,
-                    layout = layout,
-                    order = order,
-                    filter = filter,
-                    backdrop = backdrop,
-                    topPadding = contentPadding.calculateTopPadding(),
-                    onLayout = {
-                        layout = it
-                        view.grid = it == Layout.GRID
-                    },
-                    onOrder = { onOrderChosen(it) },
-                    onFilter = { filter = it },
-                    onSort = { sortOpen = true },
-                    onSortAnchor = { sortAnchor = it },
-                    canEdit = canEdit,
-                    onCreatePlaylist = onCreatePlaylist,
-                    onOpenRecap = if (listeningEvents != null) ({ recapOpen = true }) else null,
-                )
+                // On its side the screen is short, and the heading held still
+                // over the list covered half of it: there it scrolls away with
+                // the list instead, as the first thing in it.
+                val sideways = androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
+                    android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                val heading: @Composable () -> Unit = {
+                    Header(
+                        count = playlists.size,
+                        layout = layout,
+                        order = order,
+                        filter = filter,
+                        backdrop = backdrop,
+                        topPadding = contentPadding.calculateTopPadding(),
+                        onLayout = {
+                            layout = it
+                            view.grid = it == Layout.GRID
+                        },
+                        onOrder = { onOrderChosen(it) },
+                        onFilter = { filter = it },
+                        onSort = { sortOpen = true },
+                        onSortAnchor = { sortAnchor = it },
+                        canEdit = canEdit,
+                        onCreatePlaylist = onCreatePlaylist,
+                        onOpenRecap = if (listeningEvents != null) ({ recapOpen = true }) else null,
+                    )
+                }
+                if (!sideways) heading()
 
                 val listPadding = PaddingValues(
                     start = 20.dp,
@@ -333,7 +342,9 @@ fun LibraryScreen(
                 when (layout) {
                     Layout.GRID -> LazyVerticalGrid(
                         state = gridState,
-                        columns = GridCells.Fixed(2),
+                        // As many as fit: two on a phone held upright, five or six on its side,
+                        // where two filled the screen with a pair of tiles taller than it.
+                        columns = GridCells.Adaptive(minSize = 150.dp),
                         contentPadding = listPadding,
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -345,6 +356,11 @@ fun LibraryScreen(
                                 frozen = { listBackdropFreeze.frozen() || gridState.isScrollInProgress },
                             ),
                     ) {
+                        if (sideways) {
+                            item(span = { GridItemSpan(maxLineSpan) }, key = "heading") {
+                                Box(Modifier.bleed(20.dp)) { heading() }
+                            }
+                        }
                         item(span = { GridItemSpan(maxLineSpan) }, key = "search") {
                             dev.lelonio.square.ui.components.ListSearchField(
                                 query = query,
@@ -399,6 +415,9 @@ fun LibraryScreen(
                                 frozen = { listBackdropFreeze.frozen() || listState.isScrollInProgress },
                             ),
                     ) {
+                        if (sideways) {
+                            item(key = "heading") { Box(Modifier.bleed(20.dp)) { heading() } }
+                        }
                         item(key = "search") {
                             dev.lelonio.square.ui.components.ListSearchField(
                                 query = query,
@@ -822,3 +841,16 @@ private fun ArtistShelf(
         }
     }
 }
+
+/** Out past [horizontal] of the padding it was laid out in, on both sides. */
+private fun Modifier.bleed(horizontal: androidx.compose.ui.unit.Dp): Modifier =
+    layout { measurable, constraints ->
+        val extra = horizontal.roundToPx()
+        val placeable = measurable.measure(
+            constraints.copy(
+                minWidth = constraints.minWidth + 2 * extra,
+                maxWidth = constraints.maxWidth + 2 * extra,
+            ),
+        )
+        layout(constraints.maxWidth, placeable.height) { placeable.place(-extra, 0) }
+    }

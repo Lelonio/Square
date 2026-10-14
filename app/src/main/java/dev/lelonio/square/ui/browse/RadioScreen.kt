@@ -96,7 +96,9 @@ fun RadioScreen(
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        // As many as fit: two on a phone held upright, five or six on its side,
+        // where two filled the screen with a pair of tiles taller than it.
+        columns = GridCells.Adaptive(minSize = 150.dp),
         contentPadding = PaddingValues(
             start = 16.dp,
             end = 16.dp,

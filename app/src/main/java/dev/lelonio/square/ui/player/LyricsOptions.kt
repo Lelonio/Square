@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.CaretDown
+import com.adamglin.phosphoricons.regular.Quotes
 import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.X
 import dev.lelonio.square.R
@@ -58,26 +59,29 @@ import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.ui.glass.pressable
 import kotlinx.coroutines.launch
 
-/** Where the words on screen came from, and the way to the others. */
+/**
+ * The way to the other sources and styles: a round button in the column of
+ * the lyrics' controls, above the translation, like them. It used to be a
+ * labelled chip on its own in the other corner.
+ */
 @Composable
 fun LyricsSourceChip(source: String?, backdrop: Backdrop, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val label = LyricsSource.entries.firstOrNull { it.name == source }?.label
         ?: stringResource(R.string.lyrics_sources)
     GlassSurface(
         backdrop = backdrop,
-        shape = RoundedCornerShape(50),
-        modifier = modifier.pressable(onClick, shape = RoundedCornerShape(50)),
+        shape = androidx.compose.foundation.shape.CircleShape,
+        modifier = modifier
+            .size(44.dp)
+            .pressable(onClick, shape = androidx.compose.foundation.shape.CircleShape),
     ) {
-        Row(
-            Modifier.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(label, style = MaterialTheme.typography.labelLarge, color = GlassInk, maxLines = 1)
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Icon(
-                PhosphorIcons.Regular.CaretDown,
-                contentDescription = null,
-                tint = GlassInkDim,
-                modifier = Modifier.padding(start = 6.dp).size(14.dp),
+                PhosphorIcons.Regular.Quotes,
+                // Says which source it is, for whoever cannot see the words.
+                contentDescription = label,
+                tint = GlassInk,
+                modifier = Modifier.size(20.dp),
             )
         }
     }

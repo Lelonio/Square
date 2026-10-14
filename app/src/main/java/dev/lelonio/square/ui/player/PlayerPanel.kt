@@ -112,6 +112,8 @@ fun PlayerPanelSection(
     /** The layer the panel refracts; see the liquid-glass note in PlayerScreen. */
     backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop,
     modifier: Modifier = Modifier,
+    /** False on a phone held sideways, where the cover is beside the views already. */
+    showCover: Boolean = true,
 ) {
     Column(
         modifier.fillMaxWidth(),
@@ -140,9 +142,9 @@ fun PlayerPanelSection(
             .collectAsStateWithLifecycle()
         val karaokeOn = karaoke > 0f && !sdkPlayback
 
-        val views = remember(sdkPlayback) {
+        val views = remember(sdkPlayback, showCover) {
             listOfNotNull(
-                PlayerPanel.NONE,
+                PlayerPanel.NONE.takeIf { showCover },
                 PlayerPanel.LYRICS,
                 PlayerPanel.QUEUE,
                 PlayerPanel.EFFECTS.takeUnless { sdkPlayback },
@@ -177,7 +179,7 @@ fun PlayerPanelSection(
                 .fillMaxWidth(0.84f)
                 .padding(top = 14.dp),
         ) {
-            PanelTab(
+            if (showCover) PanelTab(
                 icon = PhosphorIcons.Regular.VinylRecord,
                 activeIcon = PhosphorIcons.Fill.VinylRecord,
                 label = stringResource(R.string.cover),

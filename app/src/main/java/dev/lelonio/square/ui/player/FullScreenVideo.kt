@@ -43,6 +43,7 @@ import com.adamglin.phosphoricons.fill.SkipForward
 import dev.lelonio.square.R
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.CornersIn
+import com.adamglin.phosphoricons.regular.MusicNotes
 import dev.lelonio.square.ui.library.formatDuration
 
 /**
@@ -68,6 +69,13 @@ fun FullScreenVideo(
     onSeek: (Long) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    /**
+     * Back to the song, staying on the side the phone is held. The only way
+     * back used to be the button below, which turns the app upright: on a
+     * phone held sideways, a foldable above all, going back to the song meant
+     * going back to portrait.
+     */
+    onSwitchToSong: (() -> Unit)? = null,
 ) {
     // The video's own shape, so it is fitted rather than stretched; see
     // rememberVideoRatio.
@@ -162,20 +170,41 @@ fun FullScreenVideo(
                 .align(Alignment.TopEnd)
                 .padding(horizontal = 20.dp, vertical = 16.dp),
         ) {
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(Color.Black.copy(alpha = 0.4f))
-                    .clickable { lockVideoOrientation(context, landscape = false) },
-                contentAlignment = Alignment.Center,
+            androidx.compose.foundation.layout.Row(
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
             ) {
-                Icon(
-                    PhosphorIcons.Regular.CornersIn,
-                    contentDescription = stringResource(R.string.exit_full_screen),
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
-                )
+                if (onSwitchToSong != null) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(Color.Black.copy(alpha = 0.4f))
+                            .clickable(onClick = onSwitchToSong),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            PhosphorIcons.Regular.MusicNotes,
+                            contentDescription = stringResource(R.string.switch_to_audio),
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .clickable { lockVideoOrientation(context, landscape = false) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        PhosphorIcons.Regular.CornersIn,
+                        contentDescription = stringResource(R.string.exit_full_screen),
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
 

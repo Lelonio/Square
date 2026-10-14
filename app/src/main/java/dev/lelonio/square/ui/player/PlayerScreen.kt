@@ -21,6 +21,9 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.text.font.FontWeight
@@ -222,6 +225,8 @@ private fun NowReadingLine(
     backdrop: Backdrop,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** On its side: no wider than a phone held upright, in the middle. */
+    sideways: Boolean = false,
 ) {
     GlassSurface(
         backdrop = backdrop,
@@ -229,6 +234,7 @@ private fun NowReadingLine(
         shape = RoundedCornerShape(50),
         modifier = modifier
             .padding(vertical = 6.dp)
+            .then(if (sideways) Modifier.widthIn(max = 560.dp) else Modifier)
             .fillMaxWidth()
             .pressable(onClick = onClick),
     ) {
@@ -552,6 +558,17 @@ fun PlayerScreen(
     // lyric over one.
     val panelOpen = panel != PlayerPanel.NONE
 
+    // On its side: the stage and the controls side by side; see stageBlock.
+    val sideways = androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    // On its side the player is two halves: the song on a card to the left,
+    // the views — lyrics, queue, effects, credits — to the right; see SongCard.
+    val readingSideways = sideways
+    // The cover is the card's on its side, so the views start at the lyrics.
+    LaunchedEffect(sideways, panel) {
+        if (sideways && panel == PlayerPanel.NONE) panel = PlayerPanel.LYRICS
+    }
+
     // The words on their own, as Apple Music does it: while a song plays over
     // its lyrics and nobody touches the screen, everything but the transport
     // steps aside and the lyrics take the room, under a line with the song on
@@ -562,7 +579,8 @@ fun PlayerScreen(
     // Set by the stage as a press arrives, read by the column after it.
     var pressOnLyrics by remember { mutableStateOf(false) }
     var lyricsAlone by remember { mutableStateOf(false) }
-    val lyricsReading = panel == PlayerPanel.LYRICS && lyrics != null && !lyricsLoading
+    val lyricsReading = (panel == PlayerPanel.LYRICS || (sideways && panel == PlayerPanel.NONE)) &&
+        lyrics != null && !lyricsLoading
     // On wantsPlay, not isPlaying: a tap on a line seeks, the player stops for
     // the moment it takes to load the new place, and on isPlaying that moment
     // brought everything back and folded it away again four seconds later.
@@ -637,6 +655,21 @@ fun PlayerScreen(
         // Recorded for the glass above, so light drawn here is light the
         // buttons and the panels refract; see lightBackdrop.
         Box(Modifier.fillMaxSize().layerBackdrop(lightBackdrop)) {
+            // On its side, the room is the sleeve itself, blurred and dimmed:
+            // the picture behind the player upright is often another one — the
+            // record's extended artwork — and beside the sleeve it read as two
+            // different covers at once.
+            if (sideways) {
+                dev.lelonio.square.ui.components.Artwork(
+                    url = state.artworkUrl,
+                    title = state.title,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(70.dp),
+                    corner = 0.dp,
+                )
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+            }
             AmbientLight(ambient)
             // In this layer so the glass refracts the DJ, not the cover under it.
             val djShown by animateFloatAsState(
@@ -685,7 +718,10 @@ fun PlayerScreen(
             // two overlap for the length of the change, and it comes back the
             // same way on a track that has no clip.
             val coverFade by animateFloatAsState(
-                targetValue = if (!videoOn && (canvas == null || !canvasReady)) 1f else 0f,
+                // Never on its side, where the room is the sleeve, blurred: the
+                // stand-in is the record's extended artwork, often another
+                // picture, and it was what showed behind the sleeve.
+                targetValue = if (!sideways && !videoOn && (canvas == null || !canvasReady)) 1f else 0f,
                 animationSpec = tween(CANVAS_HANDOVER),
                 label = "coverFade",
             )
@@ -1006,6 +1042,10 @@ fun PlayerScreen(
                         .systemBarsPadding()
                         .padding(horizontal = 20.dp),
                 ) {
+                    // Across the top upright; at the top of the song's
+                    // half on its side, where the video, devices and the way
+                    // down would otherwise be missing.
+                    val topBar: @Composable (Modifier) -> Unit = { barModifier ->
                     TopBar(
                         backdrop = upperBackdrop,
                         panel = panel,
@@ -1029,21 +1069,26 @@ fun PlayerScreen(
                         onAnotherDevice = onAnotherDevice,
                         onWatchVideo = onWatchVideo,
                         videoOn = videoOn,
-                        modifier = Modifier.retreat(chrome),
+                        modifier = barModifier,
                         dj = isDjQueue(state.contextUri),
                     )
+                    }
+                    if (!sideways) topBar(Modifier.retreat(chrome))
 
                     // In its place while the lyrics are read alone: the song,
                     // and the way back to its cover.
                     NowReadingLine(
                         state = state,
+                        sideways = sideways,
                         // The ground, as the title pill reads it: over the
                         // lyrics the clip is blurred on screen and not in its
                         // own layer, and a pane refracting that layer showed
                         // the moving cover sharp through frosted glass.
                         backdrop = groundBackdrop,
                         onClick = { panel = PlayerPanel.NONE },
-                        modifier = Modifier.retreat(1f - chrome),
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .retreat(if (readingSideways) 0f else 1f - chrome),
                     )
 
                     // Everything sits at the bottom, as in the reference: the
@@ -1054,11 +1099,36 @@ fun PlayerScreen(
                     // column measures against an infinite height. The panels
                     // below cap their own height and scroll internally, so the
                     // screen never needs to.
-                    Column(
-                        Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Bottom,
-                    ) {
+                    // The stage and the controls, as two pieces: one above the other on a
+                    // phone held upright, side by side on its side, where one above the
+                    // other left the controls stretched across the screen and the tabs
+                    // pushed off the bottom of it.
+                    val tabsBlock: @Composable () -> Unit = {
+                        PlayerPanelSection(
+                            panel = panel,
+                            onSelect = { panel = it },
+                            queue = queue,
+                            lyrics = lyrics,
+                            lyricsLoading = lyricsLoading,
+                            positionMs = positionMs,
+                            onPlayQueueItem = onPlayQueueItem,
+                            onSeek = onSeek,
+                            speed = state.speed,
+                            pitch = state.pitch,
+                            reverb = reverb,
+                            onSpeed = onSpeed,
+                            onPitch = onPitch,
+                            onReverb = onReverb,
+                            presets = presets,
+                            onApplyPreset = onApplyPreset,
+                            onSavePreset = onSavePreset,
+                            onDeletePreset = onDeletePreset,
+                            backdrop = lowerBackdrop,
+                            modifier = Modifier.retreat(chrome),
+                            showCover = !sideways,
+                        )
+                    }
+                    val stageBlock: @Composable ColumnScope.() -> Unit = {
                         // With a Canvas the clip *is* the picture and a cover on
                         // top would compete with it. Without one, the cover
                         // fills the space above the controls — the shadow that
@@ -1093,7 +1163,9 @@ fun PlayerScreen(
                         // cover, at the size the record was given one for, and
                         // putting the sleeve back on top of it is the same image
                         // twice — which is what the reference stopped doing.
-                        val coverShowing = panel == PlayerPanel.NONE &&
+                        // Never on its side, where the cover is the stage's own
+                        // to draw: see Stage.COVER.
+                        val coverShowing = !sideways && panel == PlayerPanel.NONE &&
                             !(videoOn && videoPlayer != null && LocalGlassEnabled.current) &&
                             (canvas == null || !canvasReady)
                         // One at a time, from one clock.
@@ -1187,7 +1259,12 @@ fun PlayerScreen(
                                 PlayerPanel.QUEUE -> Stage.QUEUE
                                 PlayerPanel.DEVICES -> Stage.DEVICES
                                 PlayerPanel.ADD_TO_PLAYLIST -> Stage.ADD_TO_PLAYLIST
-                                PlayerPanel.NONE -> when {
+                                // On its side the cover is on the card to the
+                                // left, so the right half opens on the words, or
+                                // on what is coming up for a song without any.
+                                PlayerPanel.NONE -> if (sideways) {
+                                    if (lyrics != null || lyricsLoading) Stage.LYRICS else Stage.QUEUE
+                                } else when {
                                     // Not while the player is travelling: a
                                     // TextureView inside a layer being scaled
                                     // and faded loses its surface for the length
@@ -1224,6 +1301,8 @@ fun PlayerScreen(
                                 .graphicsLayer { alpha = panelAlpha },
                         ) { stage ->
                             when (stage) {
+                                // Empty: the cover above this AnimatedContent
+                                // is what fills the slot when no panel is open.
                                 // Empty: the cover above this AnimatedContent
                                 // is what fills the slot when no panel is open.
                                 Stage.COVER -> Box(Modifier.fillMaxSize())
@@ -1383,6 +1462,8 @@ fun PlayerScreen(
                         }
                         }
 
+                    }
+                    val controlsBlock: @Composable ColumnScope.() -> Unit = {
                         // With a panel open the room below the stage goes to
                         // the panel: lyrics, queue and effects ran out a video
                         // row and a gap short of the title, over empty glass.
@@ -1395,7 +1476,9 @@ fun PlayerScreen(
                             label = "gapBelowStage",
                         )
                         val videoRowHeight by androidx.compose.animation.core.animateDpAsState(
-                            if (panelOpen) 0.dp else VIDEO_ROW_HEIGHT,
+                            // On its side the room is the controls': the
+                            // video is one tap away at the top right.
+                            if (panelOpen || sideways) 0.dp else VIDEO_ROW_HEIGHT,
                             tween(STAGE_FADE_MS * 2),
                             label = "videoRowHeight",
                         )
@@ -1427,7 +1510,7 @@ fun PlayerScreen(
                             contentAlignment = Alignment.Center,
                         ) {
                         androidx.compose.animation.AnimatedVisibility(
-                            visible = videoFileId != null && !panelOpen,
+                            visible = videoFileId != null && !panelOpen && !sideways,
                             enter = fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.9f),
                             exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.92f),
                         ) {
@@ -1467,6 +1550,18 @@ fun PlayerScreen(
                                 }
                             }
                         }
+                        }
+
+                        // On its side there is room above the title, and the
+                        // line being sung is the best thing to put in it.
+                        if (sideways && panel == PlayerPanel.NONE && lyrics?.synced == true) {
+                            SungLine(
+                                lyrics = lyrics,
+                                positionMs = positionMs,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                            )
                         }
 
                         // Title and artist on their own capsule, with the two
@@ -1582,7 +1677,8 @@ fun PlayerScreen(
                         }
 
                         Column(Modifier.retreat(chrome)) {
-                            Spacer(Modifier.height(18.dp))
+                            // Tighter on its side, where the column is short.
+                            Spacer(Modifier.height(if (sideways) 10.dp else 18.dp))
 
                             GlassProgressBar(
                                 positionMs = positionMs,
@@ -1593,7 +1689,7 @@ fun PlayerScreen(
                             )
                             TimeRow(positionMs, state.durationMs)
 
-                            Spacer(Modifier.height(14.dp))
+                            Spacer(Modifier.height(if (sideways) 6.dp else 14.dp))
                         }
 
                         Controls(
@@ -1607,33 +1703,58 @@ fun PlayerScreen(
                             toggles = chrome,
                         )
 
-                        Spacer(Modifier.height(14.dp))
+                        // Under the transport upright; under the sleeve on
+                        // its side, where there is no height left for it here.
+                        if (!sideways) {
+                            Spacer(Modifier.height(14.dp))
+                            tabsBlock()
+                        }
 
-
-                        PlayerPanelSection(
-                            panel = panel,
-                            onSelect = { panel = it },
-                            queue = queue,
-                            lyrics = lyrics,
-                            lyricsLoading = lyricsLoading,
-                            positionMs = positionMs,
-                            onPlayQueueItem = onPlayQueueItem,
-                            onSeek = onSeek,
-                            speed = state.speed,
-                            pitch = state.pitch,
-                            reverb = reverb,
-                            onSpeed = onSpeed,
-                            onPitch = onPitch,
-                            onReverb = onReverb,
-                            presets = presets,
-                            onApplyPreset = onApplyPreset,
-                            onSavePreset = onSavePreset,
-                            onDeletePreset = onDeletePreset,
-                            backdrop = lowerBackdrop,
-                            modifier = Modifier.retreat(chrome),
-                        )
-
-                        Spacer(Modifier.height(20.dp))
+                        Spacer(Modifier.height(if (sideways) 12.dp else 20.dp))
+                    }
+                    if (sideways) {
+                        Row(Modifier.fillMaxSize()) {
+                            Column(
+                                Modifier
+                                    .weight(0.85f)
+                                    .fillMaxHeight(),
+                            ) {
+                                topBar(Modifier)
+                                SongCard(
+                                    state = state,
+                                    positionMs = positionMs,
+                                    onSeek = onSeek,
+                                    onTogglePlay = onTogglePlay,
+                                    onNext = onNext,
+                                    onPrevious = onPrevious,
+                                    onCover = { panel = PlayerPanel.LYRICS },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth(),
+                                )
+                            }
+                            Spacer(Modifier.width(24.dp))
+                            Column(
+                                Modifier
+                                    .weight(1.4f)
+                                    .fillMaxHeight(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                stageBlock()
+                                Spacer(Modifier.height(8.dp))
+                                tabsBlock()
+                                Spacer(Modifier.height(12.dp))
+                            }
+                        }
+                    } else {
+                        Column(
+                            Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Bottom,
+                        ) {
+                            stageBlock()
+                            controlsBlock()
+                        }
                     }
                 }
             }
@@ -2743,9 +2864,12 @@ private fun LyricsStage(
                 source = lyrics?.source,
                 backdrop = backdrop,
                 onClick = { optionsOpen = true },
+                // At the top of the column the translation and the karaoke
+                // stand in, above them. With no words there is no
+                // translation to sit above, so it takes that place instead.
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 6.dp, bottom = 6.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 6.dp, bottom = if (lyrics != null) 106.dp else 56.dp),
             )
         }
 
@@ -2785,6 +2909,167 @@ private fun LyricsStage(
                 // the middle of the panel.
                 .align(Alignment.BottomEnd)
                 .padding(end = 6.dp, bottom = 6.dp),
+        )
+    }
+}
+
+/**
+ * The line of [lyrics] being sung at [positionMs], changing with a dissolve;
+ * nothing between lines, where nobody is singing. For the room above the
+ * title on a phone held sideways.
+ */
+@Composable
+private fun SungLine(
+    lyrics: dev.lelonio.square.data.Lyrics,
+    positionMs: State<Long>,
+    modifier: Modifier = Modifier,
+) {
+    val line by remember(lyrics) {
+        androidx.compose.runtime.derivedStateOf {
+            val now = positionMs.value
+            lyrics.lines.lastOrNull { (it.startTimeMs ?: Long.MAX_VALUE) <= now }
+                ?.text?.trim().orEmpty()
+        }
+    }
+    // Two lines' height whatever is being sung: a line that grew from one row
+    // to two pushed the title, the progress and the transport down with it.
+    AnimatedContent(
+        targetState = line,
+        transitionSpec = {
+            (fadeIn(tween(320)) + androidx.compose.animation.slideInVertically(tween(320)) { it / 3 })
+                .togetherWith(fadeOut(tween(220)))
+        },
+        label = "sungLine",
+        contentAlignment = Alignment.BottomCenter,
+        modifier = modifier.height(56.dp),
+    ) { text ->
+        Text(
+            text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = GlassInk,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * The song while its lyrics fill the rest of a sideways screen: the sleeve
+ * with the transport over its foot, the progress under it, then the title and
+ * the artist. A tap on the sleeve goes back to it.
+ */
+@Composable
+private fun SongCard(
+    state: PlaybackState,
+    positionMs: State<Long>,
+    onSeek: (Long) -> Unit,
+    onTogglePlay: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onCover: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier.padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier
+                .weight(1f, fill = false)
+                .aspectRatio(1f)
+                .softShadow(RoundedCornerShape(18.dp), elevation = 20.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(onClick = onCover),
+        ) {
+            dev.lelonio.square.ui.components.Artwork(
+                url = state.artworkUrl,
+                title = state.title,
+                modifier = Modifier.fillMaxSize(),
+                corner = 18.dp,
+            )
+            // A shade at the foot, so the transport reads over any sleeve.
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.42f)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)))),
+            )
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CardButton(PhosphorIcons.Fill.SkipBack, stringResource(R.string.previous), 40.dp, state.hasPrevious, onPrevious)
+                CardButton(
+                    if (state.wantsPlay) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
+                    stringResource(if (state.wantsPlay) R.string.pause else R.string.play),
+                    52.dp,
+                    true,
+                    onTogglePlay,
+                )
+                CardButton(PhosphorIcons.Fill.SkipForward, stringResource(R.string.next), 40.dp, state.hasNext, onNext)
+            }
+        }
+        Column(Modifier.widthIn(max = 420.dp).padding(top = 12.dp)) {
+            GlassProgressBar(
+                positionMs = positionMs,
+                durationMs = state.durationMs,
+                onSeek = onSeek,
+                accentColor = GlassInk,
+                trackColor = GlassInk.copy(alpha = 0.28f),
+            )
+            TimeRow(positionMs, state.durationMs)
+        }
+        Text(
+            state.title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = GlassInk,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Text(
+            state.artist,
+            style = MaterialTheme.typography.bodyMedium,
+            color = GlassInkDim,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** A round control over the sleeve: a dark disc, a white glyph. */
+@Composable
+private fun CardButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    size: androidx.compose.ui.unit.Dp,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.35f))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = description,
+            tint = Color.White.copy(alpha = if (enabled) 1f else 0.4f),
+            modifier = Modifier.size(size * 0.45f),
         )
     }
 }

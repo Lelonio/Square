@@ -47,6 +47,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.setValue
 import dev.lelonio.square.ui.components.FriendsPanel
 import dev.lelonio.square.ui.components.SharedTrackCard
@@ -1292,6 +1293,15 @@ fun SquareApp(
                     }
                 },
                 onSeek = { player.seekTo(it) },
+                // Back to the song on its side: the app follows the phone
+                // again once the video is off; see the effect above.
+                onSwitchToSong = {
+                    if (spotifyVideoOn) {
+                        dev.lelonio.square.backend.spotify.SpotifyVideoMode.listen(player.currentPosition)
+                    } else {
+                        YouTubeVideoMode.toggle(player)
+                    }
+                },
                 onToggleShuffle = { player.shuffleModeEnabled = !player.shuffleModeEnabled },
                 onCycleRepeat = {
                     player.repeatMode = when (player.repeatMode) {
@@ -1346,13 +1356,18 @@ fun SquareApp(
         )
         val foldThresholdPx = with(LocalDensity.current) { 50.dp.toPx() }
         // Beside the bar's own rather than inside it; see ScrollActivity.
+        // On its side the phone has height for one row of bar, not two: the
+        // bar stays folded — the page's own tab, the song, search — and opens
+        // only when its tab is tapped, never by itself at the top of a page.
+        val sideways = rememberUpdatedState(landscape)
+        LaunchedEffect(landscape) { if (landscape) tabBarScroll.inline() }
         val scrollActivity = remember(tabBarScroll, foldThresholdPx) {
             dev.lelonio.square.ui.glass.ScrollActivity(
                 onFold = { tabBarScroll.inline() },
                 // Only at the top. Scrolling up in the middle of a list leaves
                 // the bar where it is: it went away because the reader is
                 // reading, and it comes back when they have finished.
-                onTop = { tabBarScroll.expand() },
+                onTop = { if (!sideways.value) tabBarScroll.expand() },
                 foldThresholdPx = foldThresholdPx,
             )
         }
@@ -2147,7 +2162,10 @@ fun SquareApp(
                 if (chrome > 0.01f) Box(
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
+                        // Sideways, no wider than a phone held upright: a bar
+                        // across the whole of a landscape screen is a strip
+                        // of glass with the controls lost at its ends.
+                        .then(if (landscape) Modifier.widthIn(max = 640.dp) else Modifier.fillMaxWidth())
                         // The bar is where you type now, so it has to be above
                         // the keyboard: the search field lived on the page until
                         // a moment ago, where the keyboard covering the bottom of
