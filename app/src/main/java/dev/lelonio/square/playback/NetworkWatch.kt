@@ -96,6 +96,7 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
 
     private fun evaluate() {
         val connected = connected()
+        probeIfDoubtful()
         val returned = connected && lastConnected == false
         lastConnected = connected
         // Only when it changes. The system reports every step in signal
@@ -127,14 +128,6 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    /**
-     * Whether there is an active link that can carry traffic.
-     *
-     * Wi-Fi, Ethernet, Cellular and VPNs are treated as connected without strictly
-     * requiring NET_CAPABILITY_VALIDATED, because Android's captive portal check
-     * (Google 204 probe) frequently fails or is blocked on local/regional networks
-     * despite having working internet.
-     */
     /** The default network's capabilities: from the callbacks, or asked before the first one. */
     private fun capabilities(): NetworkCapabilities? =
         current?.let { (network, known) -> known ?: connectivity?.getNetworkCapabilities(network) }
@@ -155,6 +148,21 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
         return "$transports internet=$internet validated=$validated"
     }
 
+    /**
+     * Whether there is an active link that can carry traffic.
+     *
+     * Wi-Fi, Ethernet and VPNs are treated as connected without strictly
+     * requiring NET_CAPABILITY_VALIDATED, because Android's captive portal check
+     * (Google 204 probe) frequently fails or is blocked on local/regional networks
+     * despite having working internet.
+     *
+     * Mobile data is not given that benefit of the doubt. With data on and no
+     * coverage the cellular network stays the default, with internet and
+     * nothing getting through, and the app stayed online: a library full of
+     * songs it could not fetch, and downloaded ones handed to a session that
+     * could not answer. There it counts only while the system has validated it
+     * or a probe of this app's own got through, and not once a probe has failed.
+     */
     private fun connected(): Boolean {
         val capabilities = capabilities() ?: return false
         val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -163,7 +171,102 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
         val isCellular = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
         val isVpn = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
 
-        return hasInternet && (isWifi || isEthernet || isCellular || isVpn)
+        if (!hasInternet || !(isWifi || isEthernet || isCellular || isVpn)) return false
+        if (!onMobileData(capabilities)) return true
+        val validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        val reached = reachable.takeIf { probed == current?.first }
+        return when (reached) {
+            false -> false
+            true -> true
+            // Not probed yet: the system's word, and a probe on its way when
+            // that word is no.
+            null -> validated
+        }
+    }
+
+    /** Mobile data alone: nothing faster or steadier carrying the traffic. */
+    private fun onMobileData(capabilities: NetworkCapabilities) =
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+            !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+            !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+
+    /** What the last probe of [probed] found; null before one has finished. */
+    @Volatile
+    private var reachable: Boolean? = null
+
+    @Volatile
+    private var probed: Network? = null
+
+    private var probing: Job? = null
+    private var lastProbeAt = 0L
+
+    /**
+     * Probes mobile data, when there is a reason to doubt it.
+     *
+     * The reasons are the system not having validated it, and its capabilities
+     * changing, which on mobile data is mostly the signal getting weaker or
+     * stronger: the moment coverage goes. Not more often than every
+     * [PROBE_GAP_MS] while it answers, since every probe wakes the radio; and
+     * again every [PROBE_RETRY_MS] once it has stopped answering, because
+     * nothing else would notice it coming back.
+     */
+    private fun probeIfDoubtful() {
+        val network = current?.first
+        val capabilities = capabilities()
+        if (network == null || capabilities == null || !onMobileData(capabilities)) {
+            forgetProbe()
+            return
+        }
+        if (probed != network) {
+            probing?.cancel()
+            probed = network
+            reachable = null
+            lastProbeAt = 0L
+        }
+        if (probing?.isActive == true) return
+        val validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (validated && reachable != false && now - lastProbeAt < PROBE_GAP_MS) return
+        lastProbeAt = now
+        probing = scope.launch {
+            while (current?.first == network) {
+                val answered = answers(network)
+                lastProbeAt = android.os.SystemClock.elapsedRealtime()
+                if (probed != network) return@launch
+                if (reachable != answered) {
+                    android.util.Log.i(TAG, "mobile data ${if (answered) "answers" else "carries nothing"}")
+                    reachable = answered
+                    evaluate()
+                }
+                if (answered) return@launch
+                delay(PROBE_RETRY_MS)
+            }
+        }
+    }
+
+    private fun forgetProbe() {
+        probing?.cancel()
+        probing = null
+        probed = null
+        reachable = null
+    }
+
+    /**
+     * Whether a connection opens through [network] to a server the app needs.
+     * Either one will do: the point is the link, not a service being down.
+     */
+    private suspend fun answers(network: Network): Boolean = PROBE_HOSTS.any { host ->
+        kotlinx.coroutines.withTimeoutOrNull(PROBE_TIMEOUT_MS) {
+            kotlinx.coroutines.runInterruptible(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    val address = network.getAllByName(host).first()
+                    network.socketFactory.createSocket().use { socket ->
+                        socket.connect(java.net.InetSocketAddress(address, 443), PROBE_TIMEOUT_MS.toInt())
+                    }
+                    true
+                }.getOrDefault(false)
+            }
+        } ?: false
     }
 
     private companion object {
@@ -174,5 +277,16 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
 
         /** How long the system takes to stop naming a network that has gone. */
         const val SETTLE_MS = 1_200L
+
+        /** How long a probe waits for a connection before calling it gone. */
+        const val PROBE_TIMEOUT_MS = 4_000L
+
+        /** The least time between probes of mobile data that answers. */
+        const val PROBE_GAP_MS = 30_000L
+
+        /** How often mobile data that stopped answering is tried again. */
+        const val PROBE_RETRY_MS = 10_000L
+
+        val PROBE_HOSTS = listOf("apresolve.spotify.com", "music.youtube.com")
     }
 }

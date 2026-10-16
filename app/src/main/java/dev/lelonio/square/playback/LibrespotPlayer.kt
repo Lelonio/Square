@@ -476,9 +476,15 @@ class LibrespotPlayer(
      * answer to a step it cannot make is to stop. Skipping simply stopped the
      * music, while picking a song by hand worked, because that path rebuilds
      * the queue instead of stepping through it.
+     *
+     * And so does the app being offline with the session still standing. On
+     * mobile data with no coverage the session's sockets stay open for minutes
+     * with nothing coming through, so the device was not "lost", and the engine
+     * sends everything to the player then anyway; see engine.rs player_only.
      */
     private val deviceGone: Boolean
-        get() = runCatching { NativeBridge.isOffline }.getOrDefault(false) ||
+        get() = OfflineMode.active.value ||
+            runCatching { NativeBridge.isOffline }.getOrDefault(false) ||
             runCatching { NativeBridge.spircLost }.getOrDefault(false)
 
     /**
@@ -605,7 +611,10 @@ class LibrespotPlayer(
     private fun withDevice(then: () -> Unit) {
         // Keep downloaded tracks moving while Spotify is unavailable. A
         // reconnect on every skip destroys the working downloads-only player.
-        if (OfflineMode.active.value && runCatching { NativeBridge.isOffline }.getOrDefault(false)) {
+        // Offline for any reason: bringing the session back is the keeper's
+        // job, and a handshake tried here, on a network carrying nothing, held
+        // the downloaded track for as long as the handshake took to give up.
+        if (OfflineMode.active.value) {
             handler.post { if (!released) then() }
             return
         }

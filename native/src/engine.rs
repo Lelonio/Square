@@ -841,6 +841,18 @@ pub fn set_offline_only(only: bool) {
     }
 }
 
+/// Whether commands go to the player alone, leaving Connect out of them.
+///
+/// With no session, with a device that is gone, and also whenever the app is
+/// offline, by the listener's switch or because the network stopped carrying
+/// anything. That last one was missing: on mobile data with no coverage the
+/// session's sockets stay open for minutes with nothing coming through them,
+/// so the device did not look lost, the load went to Connect, and Connect
+/// waited on Spotify for a downloaded track that needed nothing but its file.
+fn player_only() -> bool {
+    OFFLINE.load(Ordering::SeqCst) || OFFLINE_ONLY.load(Ordering::SeqCst) || spirc_lost()
+}
+
 /// Whether the engine came up with no connection; see [`OFFLINE`].
 pub fn is_offline() -> bool {
     OFFLINE.load(Ordering::SeqCst)
@@ -1784,7 +1796,7 @@ pub fn load_queue(
     // so with the network gone it died there — and a downloaded track, which
     // needs nothing but the file, never got the chance to play. The player's
     // own loader reads the disk first; it only has to be reached.
-    if with_bundle(|e| e.spirc.is_none())? || spirc_lost() {
+    if with_bundle(|e| e.spirc.is_none())? || player_only() {
         log::info!("no usable connect device; loading through the player");
         return local_load(&uris, index, start_playing, position_ms);
     }
@@ -1936,7 +1948,7 @@ fn transport(
         });
     }
 
-    if OFFLINE.load(Ordering::SeqCst) || spirc_lost() {
+    if player_only() {
         return with_bundle(|engine| {
             log::warn!("{what}: no connect device, going straight to the player");
             via_player(engine);
@@ -2109,7 +2121,7 @@ pub fn seek(position_ms: u32) -> EngineResult<()> {
     // dragging or tapping the progress bar offline reached a Connect device
     // that is not there and did nothing at all. What plays is the player's, and
     // moving within a track is something it can do on its own.
-    if OFFLINE.load(Ordering::SeqCst) || spirc_lost() {
+    if player_only() {
         return with_bundle(|e| e.player.seek(position_ms));
     }
     with_bundle(|e| e.spirc()?.set_position_ms(position_ms))?.map_err(|e| format!("seek failed: {e}"))

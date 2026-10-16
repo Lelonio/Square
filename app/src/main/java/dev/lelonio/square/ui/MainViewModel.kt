@@ -4294,6 +4294,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (t: Throwable) {
                 android.util.Log.e(TAG, "detail load failed: ${chain(t)}", t)
                 if (isActive && _playlist.value.uri == playlist.uri) {
+                    // Downloaded, it is on the phone whatever the network says:
+                    // a connection that is up and carrying nothing fails here
+                    // without the app being offline, and the songs it could
+                    // play were hidden behind an error.
+                    val downloaded = container.downloads.owners.value[playlist.uri]
+                    if (cached.isEmpty() && rememberedArtist == null && downloaded != null) {
+                        openDownloadedContext(playlist, downloaded)
+                        return@launch
+                    }
                     val hasCachedContent = cached.isNotEmpty() || rememberedArtist != null
                     val fallbackTracks = cached.ifEmpty { rememberedArtist?.tracks.orEmpty() }
                     publishPlaylist(
