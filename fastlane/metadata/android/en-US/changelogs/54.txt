@@ -1,0 +1,3 @@
+A much smoother player, above all over moving covers. Light or dark theme in the settings.
+Offline with mobile data on and no coverage: downloads now play. YouTube songs that stop are picked up again.
+Albums play in order from the play button; cleaner karaoke; the screen stays on over the lyrics.
