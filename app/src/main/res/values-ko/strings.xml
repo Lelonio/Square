@@ -581,6 +581,10 @@
     <string name="animated_cover_source">소스</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="theme_title">테마</string>
+    <string name="theme_system">휴대전화 설정과 동일</string>
+    <string name="theme_light">라이트</string>
+    <string name="theme_dark">다크</string>
     <string name="font_title">글꼴</string>
     <string name="font_system">휴대폰 글꼴 사용</string>
     <string name="youtube_quality_auto">자동: Wi-Fi에서는 높음, 모바일 데이터에서는 낮음</string>

@@ -630,6 +630,10 @@
     <string name="animated_cover_source">Source</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="theme_title">Theme</string>
+    <string name="theme_system">Same as the phone</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
     <string name="font_title">Font</string>
     <string name="font_system">Use the phone’s font</string>
     <string name="youtube_quality_auto">Automatic: high on Wi-Fi, low on mobile data</string>

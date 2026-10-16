@@ -595,6 +595,10 @@
     <string name="animated_cover_source">Источник</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="theme_title">Тема</string>
+    <string name="theme_system">Как в телефоне</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Тёмная</string>
     <string name="font_title">Шрифт</string>
     <string name="font_system">Использовать шрифт телефона</string>
     <string name="youtube_quality_auto">Автоматически: высокое по Wi-Fi, низкое по мобильной сети</string>

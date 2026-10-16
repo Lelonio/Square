@@ -81,6 +81,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import com.adamglin.phosphoricons.regular.DeviceMobile
+import com.adamglin.phosphoricons.regular.Moon
+import com.adamglin.phosphoricons.regular.Sun
 import com.adamglin.phosphoricons.regular.Package
 import com.adamglin.phosphoricons.regular.FilmStrip
 import com.adamglin.phosphoricons.regular.Repeat
@@ -641,6 +643,34 @@ fun SettingsScreen(
         if (shown == SettingsPage.App && "language" in openGroups) groupEnd(Group.LANGUAGE)
 
         if (shown == SettingsPage.App) groupHeading(Group.APPEARANCE, open = "appearance" in openGroups) { toggleGroup("appearance") }
+
+        // Light or dark, whatever the phone is.
+        if (shown == SettingsPage.App && "appearance" in openGroups) groupItem("theme", Group.APPEARANCE) {
+            val store = remember(context) {
+                (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+            }
+            val mode by store.themeMode.collectAsStateWithLifecycle()
+            Section(stringResource(R.string.theme_title)) {
+                dev.lelonio.square.data.PreferencesStore.ThemeMode.entries.forEachIndexed { index, choice ->
+                    if (index > 0) RowDivider()
+                    ChoiceRow(
+                        label = stringResource(
+                            when (choice) {
+                                dev.lelonio.square.data.PreferencesStore.ThemeMode.SYSTEM -> R.string.theme_system
+                                dev.lelonio.square.data.PreferencesStore.ThemeMode.LIGHT -> R.string.theme_light
+                                dev.lelonio.square.data.PreferencesStore.ThemeMode.DARK -> R.string.theme_dark
+                            },
+                        ),
+                        selected = choice == mode,
+                        icon = when (choice) {
+                            dev.lelonio.square.data.PreferencesStore.ThemeMode.SYSTEM -> PhosphorIcons.Regular.DeviceMobile
+                            dev.lelonio.square.data.PreferencesStore.ThemeMode.LIGHT -> PhosphorIcons.Regular.Sun
+                            dev.lelonio.square.data.PreferencesStore.ThemeMode.DARK -> PhosphorIcons.Regular.Moon
+                        },
+                    ) { store.setThemeMode(choice) }
+                }
+            }
+        }
 
         // What the bar does, which is behaviour rather than material: the glass
         // page says what it is made of, this says how it acts.

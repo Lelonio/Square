@@ -566,6 +566,10 @@
     <string name="animated_cover_source">Quelle</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="theme_title">Design</string>
+    <string name="theme_system">Wie das Telefon</string>
+    <string name="theme_light">Hell</string>
+    <string name="theme_dark">Dunkel</string>
     <string name="font_title">Schrift</string>
     <string name="font_system">Schrift des Handys verwenden</string>
     <string name="youtube_quality_auto">Automatisch: hoch im WLAN, niedrig mit mobilen Daten</string>

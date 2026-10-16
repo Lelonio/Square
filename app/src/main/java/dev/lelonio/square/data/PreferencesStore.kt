@@ -174,6 +174,27 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_SYSTEM_FONT, value).apply()
     }
 
+    /** Light, dark, or whichever the phone is set to; see [themeMode]. */
+    enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+    private val _themeMode = MutableStateFlow(
+        ThemeMode.entries.firstOrNull { it.name == prefs.getString(KEY_THEME_MODE, null) } ?: ThemeMode.SYSTEM,
+    )
+
+    /**
+     * The app's own light or dark, independent of the phone's.
+     *
+     * Asked for by listeners who keep the phone light and want the app dark,
+     * and the other way round. The phone's setting is the default, as it was
+     * before this existed.
+     */
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    fun setThemeMode(value: ThemeMode) {
+        _themeMode.value = value
+        prefs.edit().putString(KEY_THEME_MODE, value.name).apply()
+    }
+
     /** Where the moving covers come from; see [animatedCoverSource]. */
     enum class CoverSource { SPOTIFY, APPLE_MUSIC }
 
@@ -383,6 +404,7 @@ class PreferencesStore(context: Context) {
         const val KEY_CANVAS = "canvas_enabled"
         const val KEY_COVER_SOURCE = "animated_cover_source"
         const val KEY_SYSTEM_FONT = "system_font"
+        const val KEY_THEME_MODE = "theme_mode"
         const val KEY_YOUTUBE_QUALITY = "youtube_quality"
         const val KEY_LYRICS_STYLE = "lyrics_style"
         const val KEY_SPICY_LYRICS = "spicy_lyrics_key"

@@ -106,14 +106,16 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            SquareApp(
-                player = controller,
-                onPlay = ::play,
-                onEnqueue = ::enqueue,
-                onEnqueueAll = ::enqueueAll,
-                openPlayer = openPlayer,
-                link = link,
-            )
+            dev.lelonio.square.ui.theme.ChosenTheme {
+                SquareApp(
+                    player = controller,
+                    onPlay = ::play,
+                    onEnqueue = ::enqueue,
+                    onEnqueueAll = ::enqueueAll,
+                    openPlayer = openPlayer,
+                    link = link,
+                )
+            }
         }
     }
 

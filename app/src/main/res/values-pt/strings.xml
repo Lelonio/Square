@@ -566,6 +566,10 @@
     <string name="animated_cover_source">Fonte</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="theme_title">Tema</string>
+    <string name="theme_system">Igual ao telemóvel</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Escuro</string>
     <string name="font_title">Fonte</string>
     <string name="font_system">Usar a fonte do telefone</string>
     <string name="youtube_quality_auto">Automática: alta no Wi-Fi, baixa nos dados móveis</string>

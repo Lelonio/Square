@@ -603,6 +603,10 @@
     <string name="animated_cover_source">Sorgente</string>
     <string name="animated_cover_spotify">Spotify (Canvas)</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="theme_title">Tema</string>
+    <string name="theme_system">Come il telefono</string>
+    <string name="theme_light">Chiaro</string>
+    <string name="theme_dark">Scuro</string>
     <string name="font_title">Carattere</string>
     <string name="font_system">Usa il carattere del telefono</string>
     <string name="youtube_quality_auto">Automatica: alta su Wi-Fi, bassa con i dati mobili</string>

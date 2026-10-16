@@ -622,6 +622,10 @@
     <string name="animated_cover_source">取得元</string>
     <string name="animated_cover_spotify">Spotify（Canvas）</string>
     <string name="animated_cover_apple">Apple Music</string>
+    <string name="theme_title">テーマ</string>
+    <string name="theme_system">端末の設定に従う</string>
+    <string name="theme_light">ライト</string>
+    <string name="theme_dark">ダーク</string>
     <string name="font_title">フォント</string>
     <string name="font_system">端末のフォントを使用</string>
     <string name="youtube_quality_auto">自動：Wi‑Fiでは高音質、モバイルデータ通信では低音質</string>
