@@ -1,5 +1,6 @@
 package dev.lelonio.square.ui.player
 
+import dev.lelonio.square.ui.components.copyFrame
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -111,10 +112,13 @@ fun CanvasSurface(
                 kotlinx.coroutines.delay(TONE_INTERVAL_MS)
                 continue
             }
-            val frame = runCatching { view.getBitmap(TONE_SAMPLE, TONE_SAMPLE) }.getOrNull()
+            // Off the main thread, copy and sums alike; see copyFrame.
+            val frame = view.copyFrame(TONE_SAMPLE, TONE_SAMPLE)
             if (frame != null) {
-                tone.value(frame.footColumns())
-                frame.recycle()
+                val columns = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    frame.footColumns().also { frame.recycle() }
+                }
+                tone.value(columns)
             }
             kotlinx.coroutines.delay(TONE_INTERVAL_MS)
         }

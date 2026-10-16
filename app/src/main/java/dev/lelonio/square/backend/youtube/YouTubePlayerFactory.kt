@@ -90,7 +90,10 @@ object YouTubePlayerFactory {
                                 dev.lelonio.square.R.string.youtube_sign_in_required
                             causes.any { it is SignedInStreams.Refused } ->
                                 dev.lelonio.square.R.string.youtube_signed_in_unplayable
-                            else -> return
+                            else -> {
+                                recover(exo, error)
+                                return
+                            }
                         }
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             android.widget.Toast.makeText(
@@ -150,6 +153,50 @@ object YouTubePlayerFactory {
      * address, so nothing reloads: only the name, the picture and the id the
      * rest of the app reads (lyrics, credits, likes) change.
      */
+    /** The song last picked up again after an error, and when, and how often. */
+    private var recovering: Triple<String, Long, Int>? = null
+
+    /**
+     * Picks the song up again where it stopped, after an error that was not
+     * about the account.
+     *
+     * Everything else used to be left as it was: a stream address that had
+     * expired, a 403 halfway through, a connection that dropped for a moment,
+     * and the player sat stopped in its error with the song half played until
+     * the listener came back and chose another. Asked again, with the addresses
+     * it had forgotten, almost every one of these plays on. One that fails
+     * [RETRIES] times in a row within [RETRY_WINDOW_MS] is passed over, as a
+     * song that cannot be played would be.
+     */
+    private fun recover(exo: ExoPlayer, error: androidx.media3.common.PlaybackException) {
+        val item = exo.currentMediaItem ?: return
+        val id = item.mediaId
+        if (!exo.playWhenReady) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val last = recovering?.takeIf { it.first == id && now - it.second < RETRY_WINDOW_MS }
+        val attempt = (last?.third ?: 0) + 1
+        recovering = Triple(id, now, attempt)
+        YouTubeStreams.forget(YouTubeBackend.videoIdOfUri(id))
+        val at = exo.currentPosition
+        val index = exo.currentMediaItemIndex
+        android.util.Log.w("SquareYT", "playback failed (${error.errorCodeName}), try $attempt at ${at}ms")
+        android.os.Handler(exo.applicationLooper).postDelayed({
+            // Moved on in the meantime: nothing of this to pick up.
+            if (exo.currentMediaItem?.mediaId != id || exo.playerError == null) return@postDelayed
+            if (attempt > RETRIES) {
+                if (exo.hasNextMediaItem()) exo.seekToNextMediaItem() else return@postDelayed
+            } else {
+                exo.seekTo(index, at)
+            }
+            exo.prepare()
+            exo.play()
+        }, RETRY_DELAY_MS * attempt)
+    }
+
+    private const val RETRIES = 3
+    private const val RETRY_DELAY_MS = 1_500L
+    private const val RETRY_WINDOW_MS = 60_000L
+
     private fun retitle(player: ExoPlayer, video: String, song: com.metrolist.innertube.models.SongItem) {
         val listed = "${YouTubeBackend.TRACK_PREFIX}$video"
         for (index in 0 until player.mediaItemCount) {
@@ -567,6 +614,12 @@ object YouTubeStreams {
                 }
             }
         }
+    }
+
+    /** Drops what is kept about [videoId], so its addresses are asked for again. */
+    fun forget(videoId: String) {
+        infos.remove(videoId)
+        watched.remove(videoId)
     }
 
     private const val INFO_TTL_MS = 60 * 60 * 1000L

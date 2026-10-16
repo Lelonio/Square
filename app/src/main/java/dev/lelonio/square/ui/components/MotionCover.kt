@@ -135,7 +135,15 @@ fun MotionCover(
                     ) {
                         val height = (FRAME_PX.toLong() * view.height / view.width).toInt()
                             .coerceAtLeast(1)
-                        view.getBitmap(FRAME_PX, height)?.let { latest(it) }
+                        // Copied and worked on away from the main thread; see
+                        // copyFrame. Both used to run on it, a copy every
+                        // frame or two, and the player dropped more than half
+                        // of its frames while a cover moved.
+                        view.copyFrame(FRAME_PX, height)?.let { frame ->
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                                latest(frame)
+                            }
+                        }
                     }
                     delay(FRAME_EVERY_MS)
                 }
@@ -190,6 +198,12 @@ private const val APPEAR_MS = 450
  * trailed the picture and stepped from one to the next. The cover only moves
  * on the player's own screen (a panel stills it), so this is the one place it
  * costs anything.
+ *
+ * Less often since then, about seven times a second. Every copy is a read of
+ * the video on the render thread, and redraws the blurred band below the
+ * cover; at fifteen a second those two were most of what the player's frames
+ * spent. The blend that follows the copies takes bigger steps to keep pace;
+ * see FRAME_FOLLOW.
  */
 private const val FRAME_PX = 96
-private const val FRAME_EVERY_MS = 66L
+private const val FRAME_EVERY_MS = 150L

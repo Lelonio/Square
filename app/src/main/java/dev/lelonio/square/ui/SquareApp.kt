@@ -2061,6 +2061,15 @@ fun SquareApp(
                                         )
                                     },
                                     onEnqueue = onEnqueue,
+                                    // In order, whatever was left on. Shuffle
+                                    // is a mode, and the one a playlist's
+                                    // shuffle button turned on stayed on for the
+                                    // album played after it: its first song,
+                                    // and the rest in any order (#71).
+                                    onPlayInOrder = { tracks, asContext ->
+                                        player?.shuffleModeEnabled = false
+                                        onPlay(tracks, 0, page.uri, asContext, source, 0L)
+                                    },
                                     onShuffle = { tracks ->
                                         // Order does not matter: the player
                                         // treats shuffle as a mode and stamps it
@@ -2921,12 +2930,15 @@ fun SquareApp(
                                 // controls legible.
                                 toneFloor = 0.08f,
                                 scrimFloor = 0.22f,
-                                // Still while the sheet is travelling: under a
-                                // moving, scaling, fading layer the drift
-                                // cannot be seen, and it is the one moment in
-                                // the app where an always-invalidating
-                                // background would be competing for the frame.
-                                motion = playerSettled,
+                                // Still, always. This layer is what every pane
+                                // of glass on the player refracts, so a drift
+                                // here redrew all of them on every frame,
+                                // about a hundred render passes sixty times a
+                                // second, for a movement the cover and its
+                                // extension hide almost entirely. Measured: the
+                                // player never stopped drawing, and most of
+                                // its frames came in late.
+                                motion = false,
                                 columns = clipColumns,
                             )
                           }

@@ -1,5 +1,6 @@
 package dev.lelonio.square.ui.player
 
+import dev.lelonio.square.ui.components.copyFrame
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.togetherWith
@@ -539,7 +540,7 @@ fun PlayerScreen(
     // there it keeps refracting it.
     var clipBottom by remember { mutableFloatStateOf(Float.MAX_VALUE) }
     var lowerTop by remember { mutableFloatStateOf(0f) }
-    val lowerBackdrop = if (lowerTop >= clipBottom) groundBackdrop else glassBackdrop
+    val lowerBackdropAlone = if (lowerTop >= clipBottom) groundBackdrop else glassBackdrop
 
     // The panes over a moving Apple cover read the page's own blurred ground
     // instead of the cover. The cover is in the layer they refract, and every
@@ -548,6 +549,12 @@ fun PlayerScreen(
     // it was costing the player half its frames.
     val coverMoving = coverMotionUrl != null && canvas == null
     val upperBackdrop = if (coverMoving) groundBackdrop else glassBackdrop
+    // The panes below it too. The cover's picture carries on under it to the
+    // foot of the screen, moving with it, so the layer changed under the title,
+    // the transport and the tabs with every frame as well, and each of them
+    // redid its blur and its lens: a trace of the player over a moving cover
+    // counted close to a hundred render passes a frame.
+    val lowerBackdrop = if (coverMoving) groundBackdrop else lowerBackdropAlone
 
     // Lyrics take over the middle of the screen rather than opening a panel at
     // the bottom, and the Canvas goes out of focus behind them: a clip is
@@ -589,6 +596,16 @@ fun PlayerScreen(
         if (!lyricsReading || !state.wantsPlay) return@LaunchedEffect
         kotlinx.coroutines.delay(LYRICS_ALONE_AFTER_MS)
         lyricsAlone = true
+    }
+    // The screen stays on while the words are being sung along to. Left to
+    // the phone's own timeout it dimmed and locked halfway through a verse,
+    // which on a page meant to be read from across the room is the page going
+    // away. Only while it plays: paused, the phone sleeps as it would anyway.
+    val hostView = androidx.compose.ui.platform.LocalView.current
+    val keepAwake = lyricsReading && state.wantsPlay
+    DisposableEffect(hostView, keepAwake) {
+        if (keepAwake) hostView.keepScreenOn = true
+        onDispose { if (keepAwake) hostView.keepScreenOn = false }
     }
     val chrome by animateFloatAsState(
         targetValue = if (lyricsAlone) 0f else 1f,
@@ -1829,11 +1846,12 @@ private fun VideoStage(
             // light in a room does not flicker.
             kotlinx.coroutines.delay(AMBIENT_INTERVAL_MS)
             if (!texture.isAvailable) continue
-            val frame = runCatching {
-                texture.getBitmap(AMBIENT_SAMPLE, AMBIENT_SAMPLE)
-            }.getOrNull() ?: continue
-            report(frame.edges())
-            frame.recycle()
+            // Off the main thread, copy and sums alike; see copyFrame.
+            val frame = texture.copyFrame(AMBIENT_SAMPLE, AMBIENT_SAMPLE) ?: continue
+            val edges = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                frame.edges().also { frame.recycle() }
+            }
+            report(edges)
         }
     }
 

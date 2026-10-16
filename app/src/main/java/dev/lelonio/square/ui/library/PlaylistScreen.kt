@@ -195,6 +195,12 @@ fun PlaylistScreen(
     onPlay: (List<CatalogTrack>, Int, Boolean) -> Unit,
     onEnqueue: (CatalogTrack) -> Unit,
     onShuffle: (List<CatalogTrack>) -> Unit,
+    /**
+     * The page's own play button: the list from the top, in its order, as
+     * [onShuffle] is the same list in none. Separate from [onPlay] because a
+     * row tapped keeps whatever shuffle the listener has on.
+     */
+    onPlayInOrder: (List<CatalogTrack>, Boolean) -> Unit,
     /** Opens the app-wide "add to playlist" sheet for one track. */
     onAddToPlaylist: (CatalogTrack) -> Unit,
     /**
@@ -664,7 +670,7 @@ fun PlaylistScreen(
                 topPadding = topPadding,
                 searching = searching,
                 onBack = onBack,
-                onPlay = { visible.takeIf { it.isNotEmpty() }?.let { onPlay(it, 0, asContext) } },
+                onPlay = { visible.takeIf { it.isNotEmpty() }?.let { onPlayInOrder(it, asContext) } },
                 onShuffle = { visible.takeIf { it.isNotEmpty() }?.let(onShuffle) },
                 onToggleSearch = {
                     searching = !searching
@@ -711,7 +717,7 @@ fun PlaylistScreen(
             topPadding = topPadding,
             onBack = onBack,
             onPlay = {
-                visible.takeIf { it.isNotEmpty() }?.let { onPlay(it, 0, asContext) }
+                visible.takeIf { it.isNotEmpty() }?.let { onPlayInOrder(it, asContext) }
             },
             onShuffle = { visible.takeIf { it.isNotEmpty() }?.let(onShuffle) },
             onToggleSearch = {

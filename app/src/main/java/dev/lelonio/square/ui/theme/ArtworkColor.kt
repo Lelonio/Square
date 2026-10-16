@@ -94,7 +94,15 @@ fun lightPage(): Boolean = LocalLightTheme.current
  * under dark. The same gradient with this colour in it works both ways round.
  */
 @Composable
-fun scrimColor(): Color = if (lightPage()) Color.White else Color.Black
+fun scrimColor(): Color {
+    // The ink a page has set for itself before the theme's. The player's is
+    // light whatever the phone's theme, and read from the theme its scrim was
+    // white on a light phone: a black cover ended in a grey wash under the
+    // controls, a third of the way to white.
+    val ink = LocalInkOverride.current
+    val lightPaper = if (ink != null) ink.luminance() < 0.5f else lightPage()
+    return if (lightPaper) Color.White else Color.Black
+}
 
 /** The colour every page's own colour is mixed towards. */
 @Composable

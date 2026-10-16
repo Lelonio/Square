@@ -1,5 +1,7 @@
 package dev.lelonio.square.ui.components
 
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
@@ -141,6 +143,20 @@ fun HeroBackdrop(
     // What the moving cover is showing now, for the blur and the extension;
     // empty, and the still used, until it has shown something.
     val motion = remember(motionUrl) { MotionFrames() }
+    // How far the newest copy has come in over the one before it, run again
+    // from nothing each time one arrives, for about as long as the next takes
+    // to come. Read only while drawing; see MotionFrames.previous.
+    val frameFade = remember(motion) { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(motion) {
+        androidx.compose.runtime.snapshotFlow { motion.latest.value }.collectLatest { frame ->
+            if (frame == null) return@collectLatest
+            frameFade.snapTo(0f)
+            frameFade.animateTo(
+                1f,
+                tween(MOTION_FRAME_FADE_MS, easing = androidx.compose.animation.core.LinearEasing),
+            )
+        }
+    }
     // Every copy of the picture this draws, loaded together and swapped
     // together. Each used to load on its own, and the small ones arrived
     // first: on a change of song the extension and the blur were already the
@@ -168,6 +184,7 @@ fun HeroBackdrop(
                 imageAspect = imageAspect,
                 softenFrom = softenFrom,
                 softenTo = softenTo,
+                fade = { frameFade.value },
             )
         }
         if (imageAspect != null && fadeToPage) {
@@ -288,10 +305,21 @@ fun HeroBackdrop(
                         layout(constraints.maxWidth, full) { placeable.place(0, top) }
                     }
                     .then(if (motionUrl != null) Modifier.smoothedUp() else Modifier)
+                    // A layer of its own while the cover moves, which the
+                    // blend below adds into; smoothedUp already is one where
+                    // it applies.
+                    .then(
+                        if (motionUrl != null) {
+                            Modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        } else {
+                            Modifier
+                        },
+                    )
                     // Compose the bitmap and its alpha mask in one shader:
                     // no header-sized offscreen render target on each redraw.
                     .drawWithCache {
                         val frame = motion.latest.value
+                        val before = motion.previous.value
                         val top = shift[0]
                         // Built for the whole height, as before, and drawn
                         // moved up by what this box starts below the top.
@@ -302,9 +330,23 @@ fun HeroBackdrop(
                             whole,
                             stops,
                         )
+                        val earlier = before?.let { maskedPictureBrush(it.soft, shown.zoom, whole, stops) }
                         onDrawBehind {
                             translate(top = -top) {
-                                drawRect(brush = brush, topLeft = androidx.compose.ui.geometry.Offset(0f, top), size = size)
+                                val at = androidx.compose.ui.geometry.Offset(0f, top)
+                                if (earlier == null) {
+                                    drawRect(brush = brush, topLeft = at, size = size)
+                                } else {
+                                    // The two copies mixed, not stacked: the one
+                                    // before at what is left of it, the newest
+                                    // added at its share. Same mask on both, so
+                                    // the sum keeps the mask's own opacity; laid
+                                    // one over the other, the fade went see-through
+                                    // halfway and the page showed in it.
+                                    val share = frameFade.value
+                                    drawRect(brush = earlier, topLeft = at, size = size, alpha = 1f - share)
+                                    drawRect(brush = brush, topLeft = at, size = size, alpha = share, blendMode = BlendMode.Plus)
+                                }
                             }
                         }
                     },
@@ -525,6 +567,8 @@ private fun PictureExtension(
     imageAspect: Float?,
     softenFrom: Float,
     softenTo: Float,
+    /** How far the newest frame has come in over the one before; see MotionFrames. */
+    fade: () -> Float,
 ) {
     Crossfade(
         targetState = art,
@@ -533,16 +577,83 @@ private fun PictureExtension(
         modifier = Modifier.fillMaxSize(),
     ) { shown ->
         val image = shown?.edge ?: return@Crossfade
-        val imageZoom = shown.zoom
-        val extension = remember { ExtensionPicture() }
         // Whether the cover is moving, not each frame of it: read in
         // composition, the frames themselves would recompose this every time.
         val moving by remember(motion) { androidx.compose.runtime.derivedStateOf { motion.latest.value != null } }
+        // Two of it while the cover moves: the frame before underneath, and the
+        // newest coming in over it. Only the top one's opacity is animated,
+        // which costs a composite and not a redraw: each copy is blurred once,
+        // when it arrives, and the colours under the cover glide from one to
+        // the next instead of stepping every time a copy is read.
+        if (moving) {
+            ExtensionLayer(
+                image = image,
+                imageZoom = shown.zoom,
+                imageAspect = imageAspect,
+                softenFrom = softenFrom,
+                softenTo = softenTo,
+                moving = true,
+                frame = { (motion.previous.value ?: motion.latest.value)?.sharp },
+                opacity = { 1f },
+                fades = false,
+            )
+        }
+        ExtensionLayer(
+            image = image,
+            imageZoom = shown.zoom,
+            imageAspect = imageAspect,
+            softenFrom = softenFrom,
+            softenTo = softenTo,
+            moving = moving,
+            frame = { motion.latest.value?.sharp },
+            opacity = fade,
+            fades = moving,
+        )
+    }
+}
+
+/** One copy of [PictureExtension], from [frame] or the still [image]. */
+@Composable
+private fun ExtensionLayer(
+    image: ImageBitmap,
+    imageZoom: Float,
+    imageAspect: Float?,
+    softenFrom: Float,
+    softenTo: Float,
+    moving: Boolean,
+    frame: () -> ImageBitmap?,
+    opacity: () -> Float,
+    fades: Boolean,
+) {
+        val extension = remember { ExtensionPicture() }
+        // Laid out from just above where the extension starts, not from the
+        // top of the screen. The blur that smooths a moving cover's copies is
+        // paid by the pixel, and over the whole screen it was blurring the
+        // height of the cover too, where nothing of this is drawn, on every
+        // new frame of it.
+        val shift = remember { floatArrayOf(0f) }
         Box(
             Modifier
-                .then(if (moving) Modifier.smoothedUp() else Modifier)
                 .fillMaxSize()
+                .layout { measurable, constraints ->
+                    val full = constraints.maxHeight
+                    val slot = if (imageAspect != null) constraints.maxWidth / imageAspect else full.toFloat()
+                    val fadeFrom = if (imageAspect != null) 1f - SLOT_FADE else softenFrom
+                    val top = (minOf(fadeFrom, 1f) * slot - SMOOTH_PX * 2).toInt().coerceIn(0, full)
+                    shift[0] = top.toFloat()
+                    val placeable = measurable.measure(
+                        constraints.copy(minHeight = full - top, maxHeight = full - top),
+                    )
+                    layout(constraints.maxWidth, full) { placeable.place(0, top) }
+                }
+                .then(if (fades) Modifier.graphicsLayer { alpha = opacity() } else Modifier)
+                .then(if (moving) Modifier.smoothedUp() else Modifier)
                 .drawBehind {
+                    val shifted = shift[0]
+                    translate(top = -shifted) {
+                    // The whole box as it would be from the top of the screen;
+                    // everything below is worked out in those terms.
+                    val size = androidx.compose.ui.geometry.Size(size.width, size.height + shifted)
                     // The slot, in this box's terms: across the top, as wide as
                     // the screen, at the picture's proportions.
                     val slotHeight =
@@ -566,7 +677,7 @@ private fun PictureExtension(
                     // drawn or the screen's own blurred background shows
                     // through the gap.
                     val top = (minOf(fadeFrom, 1f) * slotHeight).coerceIn(0f, size.height)
-                    if (top >= size.height) return@drawBehind
+                    if (top >= size.height) return@translate
                     // How much of what is drawn is that carrying on: held at
                     // the picture's own colours, so the softening begins where
                     // the controls do and not where the picture stopped.
@@ -578,7 +689,7 @@ private fun PictureExtension(
 
                     // The slot crops the picture to fill it, centred; so does this.
                     // The moving cover's frame while it plays; see MotionFrames.
-                    val source = motion.latest.value?.sharp ?: image
+                    val source = frame() ?: image
                     val w = source.width
                     val h = source.height
                     val slotRatio = if (slotHeight > 0f) size.width / slotHeight else 1f
@@ -594,9 +705,9 @@ private fun PictureExtension(
                         dstSize = IntSize(size.width.roundToInt(), (size.height - top).roundToInt()),
                         filterQuality = FilterQuality.Low,
                     )
+                    }
                 },
         )
-    }
 }
 
 /**
@@ -606,9 +717,9 @@ private fun PictureExtension(
  *
  * Its top row is the cover's row, barely softened, since that is where the two
  * meet. On the way down it is blurred across more and more, and drawn towards
- * the row's dominant colour: the one the eye takes the picture to be, weighted
- * to the vivid pixels, so a pink sky beside a white ramp comes out pink rather
- * than the grey their average would be. And it darkens on the way down by
+ * the colour the foot of the picture is mostly made of, see groundOf, so a
+ * black cover with light running down it ends in black and not in the grey its
+ * average would be. And it darkens on the way down by
  * taking its own colours down, a little more saturated as they go, rather
  * than by laying black over them, which turned everything under the controls
  * the same grey.
@@ -661,7 +772,7 @@ private class ExtensionPicture {
             rows++
         }
         for (i in sampled.indices) sampled[i] /= rows.coerceAtLeast(1)
-        val dominant = dominantOf(sampled, width)
+        val dominant = groundOf(bitmap, left, width, top, bottom, row)
 
         val blurred = FloatArray(width * 3)
         val hsv = FloatArray(3)
@@ -703,32 +814,59 @@ private class ExtensionPicture {
     }
 
     /**
-     * The colour a row reads as: its pixels averaged, each counted by how
-     * vivid it is, so a few greys and whites do not wash out the hue that is
-     * actually there. A row with no colour in it at all comes out as its plain
-     * average, which is what it is.
+     * The colour the foot of the picture is made of: what the bottom of the
+     * screen settles on.
+     *
+     * It used to be the row where the fade begins, averaged with the vivid
+     * pixels counted most, and one row is a thin thing to judge a picture by.
+     * A black cover with shafts of light running down it was cut by that row
+     * across the shafts, and the screen under it came out grey, a colour
+     * that is nowhere in the picture. This reads the last stretch of the
+     * picture instead and takes the middle of it, channel by channel, each
+     * pixel counted a little more the more vivid it is: what covers most of the
+     * picture wins, black there, and a pink sky beside a white ramp still comes
+     * out pink.
      */
-    private fun dominantOf(rgb: FloatArray, width: Int): FloatArray {
+    private fun groundOf(
+        bitmap: android.graphics.Bitmap,
+        left: Int,
+        width: Int,
+        top: Int,
+        bottom: Int,
+        row: Int,
+    ): FloatArray {
+        val from = maxOf(top, row - ((bottom - top) * GROUND_BAND).roundToInt())
+        val counts = Array(3) { FloatArray(256) }
+        val line = IntArray(width)
         val hsv = FloatArray(3)
-        var red = 0f
-        var green = 0f
-        var blue = 0f
         var total = 0f
-        for (x in 0 until width) {
-            android.graphics.Color.RGBToHSV(
-                rgb[x * 3].roundToInt(),
-                rgb[x * 3 + 1].roundToInt(),
-                rgb[x * 3 + 2].roundToInt(),
-                hsv,
-            )
-            val vivid = hsv[1] * hsv[2]
-            val weight = 0.05f + vivid * vivid
-            red += rgb[x * 3] * weight
-            green += rgb[x * 3 + 1] * weight
-            blue += rgb[x * 3 + 2] * weight
-            total += weight
+        for (r in from..row) {
+            if (r < top || r >= bottom) continue
+            bitmap.getPixels(line, 0, width, left, r, width, 1)
+            for (c in line) {
+                val red = (c shr 16) and 0xFF
+                val green = (c shr 8) and 0xFF
+                val blue = c and 0xFF
+                android.graphics.Color.RGBToHSV(red, green, blue, hsv)
+                val vivid = hsv[1] * hsv[2]
+                val weight = 1f + GROUND_VIVID * vivid * vivid
+                counts[0][red] += weight
+                counts[1][green] += weight
+                counts[2][blue] += weight
+                total += weight
+            }
         }
-        return floatArrayOf(red / total, green / total, blue / total)
+        if (total == 0f) return floatArrayOf(0f, 0f, 0f)
+        return FloatArray(3) { channel ->
+            var seen = 0f
+            var value = 0
+            while (value < 255) {
+                seen += counts[channel][value]
+                if (seen >= total / 2f) break
+                value++
+            }
+            value.toFloat()
+        }
     }
 
     /** A Gaussian across one row, the edges held rather than wrapped. */
@@ -784,6 +922,13 @@ private class MotionFrames {
 
     val latest = mutableStateOf<Frame?>(null)
 
+    /**
+     * The copy before [latest], which the newest fades in over. A copy is read
+     * every few frames of the cover, and drawn one after the other the colours
+     * under it changed in steps.
+     */
+    val previous = mutableStateOf<Frame?>(null)
+
     private var blend: FloatArray? = null
     private var blendWidth = 0
     private var blendHeight = 0
@@ -814,7 +959,13 @@ private class MotionFrames {
         }
         val smooth = android.graphics.Bitmap
             .createBitmap(pixels, width, height, android.graphics.Bitmap.Config.ARGB_8888)
-        latest.value = Frame(smooth.asImageBitmap(), softened(smooth).asImageBitmap())
+        val next = Frame(smooth.asImageBitmap(), softened(smooth).asImageBitmap())
+        // Both at once, so nothing is drawn with the new copy and the old
+        // "before" in between.
+        androidx.compose.runtime.snapshots.Snapshot.withMutableSnapshot {
+            previous.value = latest.value
+            latest.value = next
+        }
     }
 
     /**
@@ -893,10 +1044,18 @@ private const val FRAME_SOFTEN = 4
 
 /**
  * How far each copy of a frame moves [MotionFrames]' blend towards itself: at
- * thirty copies a second, a little each time, so the colours glide after the
- * cover a fraction of a second behind instead of stepping.
+ * about seven copies a second, close to half the way each time, so the colours
+ * glide after the cover a fraction of a second behind instead of stepping.
  */
-private const val FRAME_FOLLOW = 0.25f
+private const val FRAME_FOLLOW = 0.45f
+
+/**
+ * How long a copy of a moving cover takes to come in over the one before:
+ * a little under the time between copies (see MotionCover's FRAME_EVERY_MS,
+ * plus the moment the copy itself takes), so one has finished arriving before
+ * the next starts.
+ */
+private const val MOTION_FRAME_FADE_MS = 140
 
 /** The same cropped picture and DstIn fade, without an intermediate surface. */
 private fun maskedPictureBrush(
@@ -970,6 +1129,12 @@ private const val EXTENSION_ROWS = 24
  */
 private const val EXTENSION_NEAR = 0.05f
 private const val EXTENSION_FAR = 0.40f
+
+/** The share of the picture, from its foot up, that [ExtensionPicture.groundOf] reads. */
+private const val GROUND_BAND = 0.35f
+
+/** How much more a fully vivid pixel counts there than a grey one. */
+private const val GROUND_VIVID = 3f
 
 /** How much of the way to the dominant colour the bottom of the screen goes. */
 private const val EXTENSION_CONVERGE = 0.85f
