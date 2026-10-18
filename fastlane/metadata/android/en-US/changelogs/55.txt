@@ -1,0 +1,3 @@
+YouTube Music plays and downloads again when YouTube asks to confirm you are not a bot, if you are signed in.
+Fixed a crash on opening the app with YouTube Music. No more requests to Spotify while it has paused your developer app.
+Deeper glass on the bar and mini player, following the film setting. The karaoke label no longer covers the lyrics credit.
