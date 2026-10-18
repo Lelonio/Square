@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.OkHttpClient
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -123,6 +124,24 @@ object ApiFactory {
      */
     private class RateLimitInterceptor : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
+            // Still inside a long back-off: answered here, without asking.
+            //
+            // Spotify puts a developer app that went over its quota on hold
+            // for hours (a report showed Retry-After=70220, nineteen of them),
+            // and the app went on asking: seven hundred more 429s in a few
+            // minutes, every one of them a reason for Spotify to keep it there.
+            val waitMs = blockedUntil - android.os.SystemClock.elapsedRealtime()
+            if (waitMs > 0) {
+                return Response.Builder()
+                    .request(chain.request())
+                    .protocol(okhttp3.Protocol.HTTP_1_1)
+                    .code(429)
+                    .message("Rate limited, waiting")
+                    .header("Retry-After", ((waitMs + 999) / 1000).toString())
+                    .body("".toResponseBody(null))
+                    .build()
+            }
+
             val response = chain.proceed(chain.request())
 
             // Spotify's gateway answers 502 and 503 a few times a day for no
@@ -139,6 +158,10 @@ object ApiFactory {
 
             val retryAfter = response.header("Retry-After")?.toLongOrNull()
             android.util.Log.w(TAG, "rate limited, Retry-After=${retryAfter ?: "absent"}")
+            if (retryAfter != null && retryAfter > HOLD_FROM_SECONDS) {
+                blockedUntil = android.os.SystemClock.elapsedRealtime() + retryAfter * 1000
+                android.util.Log.w(TAG, "holding Web API requests for ${retryAfter}s, as Spotify asked")
+            }
             if (retryAfter == null || retryAfter > MAX_WAIT_SECONDS) return response
 
             response.close()
@@ -160,6 +183,14 @@ object ApiFactory {
              * subsequent requests and fallbacks can proceed without hanging the UI.
              */
             const val MAX_WAIT_SECONDS = 3L
+
+            /** A back-off longer than this is a hold, and nothing is asked until it ends. */
+            const val HOLD_FROM_SECONDS = 60L
+
+            /** When the current hold ends, on the elapsed-realtime clock; 0 for none. */
+            @Volatile
+            var blockedUntil = 0L
+
             const val TAG = "SquareApi"
         }
     }
