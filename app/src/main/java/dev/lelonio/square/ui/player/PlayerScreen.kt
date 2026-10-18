@@ -1242,8 +1242,12 @@ fun PlayerScreen(
                             // already has all the room it needs.
                             val karaokeAmount by dev.lelonio.square.playback.AudioEffects.karaoke
                                 .collectAsStateWithLifecycle()
+                            // Not over the lyrics, where the karaoke's own
+                            // control is on screen and the source's credit
+                            // takes this same line: the two were drawn on top
+                            // of each other (#79).
                             androidx.compose.animation.AnimatedVisibility(
-                                visible = karaokeAmount > 0f && !sdkPlayback,
+                                visible = karaokeAmount > 0f && !sdkPlayback && panel != PlayerPanel.LYRICS,
                                 enter = fadeIn(tween(220)),
                                 exit = fadeOut(tween(180)),
                                 modifier = Modifier
