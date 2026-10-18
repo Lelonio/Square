@@ -2212,13 +2212,43 @@ fun SquareApp(
                     // but the film, which is the same thing a phone without the
                     // hardware blur gets.
                     val flat = dev.lelonio.square.ui.glass.GlassStyle.TRANSPARENT
+                    // Convx's lens and base film, on the bar and the mini
+                    // player alike: a deeper bend at the rim and a lighter
+                    // film, so what is behind shows through the glass instead
+                    // of a milky sheet over it. The shader, the highlight and
+                    // the selector are the app's own.
+                    //
+                    // Starting points, not fixed values: the settings' sliders
+                    // scale them, so at their defaults this is the tuning and
+                    // moved, the bar and the pill follow like every other pane.
+                    // Set once as numbers, the film slider did nothing to them.
+                    val lightBar = dev.lelonio.square.ui.theme.LocalLightTheme.current
+                    val defaults = dev.lelonio.square.ui.glass.GlassEffectConfig()
+                    fun scaled(tuned: Float, set: Float, default: Float) =
+                        (tuned * set / default).coerceIn(0f, 1f)
+                    val chromeConfig = glassConfig.copy(
+                        lensHeight = scaled(0.60f, glassConfig.lensHeight, defaults.lensHeight),
+                        lensAmount = scaled(0.69f, glassConfig.lensAmount, defaults.lensAmount),
+                        surfaceTintColor = if (glassConfig.surfaceTintColor.isSpecified) {
+                            glassConfig.surfaceTintColor
+                        } else if (lightBar) {
+                            Color(0xFFF5F5F7)
+                        } else {
+                            Color.White
+                        },
+                        surfaceOpacity = scaled(
+                            if (lightBar) 0.40f else 0.15f,
+                            glassConfig.surfaceOpacity,
+                            defaults.surfaceOpacity,
+                        ),
+                    )
                     val barConfig = if (glassConfig.navBarEnabled) {
-                        glassConfig
+                        chromeConfig
                     } else {
                         glassConfig.copy(style = flat)
                     }
                     val pillConfig = if (glassConfig.miniPlayerEnabled) {
-                        glassConfig
+                        chromeConfig
                     } else {
                         glassConfig.copy(style = flat)
                     }
