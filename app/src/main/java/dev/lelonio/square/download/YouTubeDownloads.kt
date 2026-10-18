@@ -102,12 +102,25 @@ object YouTubeDownloads {
         cancelled.remove(trackUri)
         YouTubeStreams.ensureNewPipe()
         val id = YouTubeBackend.videoIdOfUri(trackUri)
-        val info = StreamInfo.getInfo(ServiceList.YouTube, YouTubeStreams.WATCH_URL + id)
-        val stream = info.audioStreams
-            .filter { !it.content.isNullOrEmpty() }
-            .maxByOrNull { it.averageBitrate }
-            ?: error("no audio for $id")
-        val extension = stream.format?.suffix ?: "m4a"
+        // Asked without an account first, and as the account where YouTube
+        // wants one, as the player does. Without the second, a network
+        // YouTube had stopped trusting ("confirm you're not a bot") could not
+        // download anything, signed in or not (#81).
+        val source = try {
+            val info = StreamInfo.getInfo(ServiceList.YouTube, YouTubeStreams.WATCH_URL + id)
+            val stream = info.audioStreams
+                .filter { !it.content.isNullOrEmpty() }
+                .maxByOrNull { it.averageBitrate }
+                ?: error("no audio for $id")
+            Source(stream.content, stream.format?.suffix ?: "m4a", stream.averageBitrate.takeIf { it > 0 } ?: 0)
+        } catch (error: Exception) {
+            if (!dev.lelonio.square.backend.youtube.SignedInStreams.needsAccount(error)) throw error
+            val url = dev.lelonio.square.backend.youtube.SignedInStreams.url(
+                context, id, dev.lelonio.square.backend.youtube.SignedInStreams.Kind.AUDIO, lowRate = false,
+            )
+            Source(url, if ("mime=audio%2Fwebm" in url) "webm" else "m4a", 0)
+        }
+        val extension = source.extension
 
         val dir = directory(context)
         val part = File(dir, "$id.$extension.$PARTIAL")
@@ -119,7 +132,7 @@ object YouTubeDownloads {
                 while (total < 0 || offset < total) {
                     if (trackUri in cancelled) throw kotlinx.coroutines.CancellationException("removed")
                     val request = Request.Builder()
-                        .url(stream.content)
+                        .url(source.url)
                         .header("Range", "bytes=$offset-${offset + CHUNK_BYTES - 1}")
                         .build()
                     http.newCall(request).execute().use { response ->
@@ -165,10 +178,13 @@ object YouTubeDownloads {
             trackId = id,
             format = extension,
             bytes = done.length(),
-            kbps = stream.averageBitrate.takeIf { it > 0 } ?: 0,
+            kbps = source.kbps,
             downloadedAt = System.currentTimeMillis(),
         )
     }
+
+    /** Where a song's audio is fetched from, and what it is. */
+    private class Source(val url: String, val extension: String, val kbps: Int)
 
     private const val PARTIAL = "part"
     private const val READ_TIMEOUT_SECONDS = 30L

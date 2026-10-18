@@ -50,11 +50,19 @@ object SignedInStreams {
 
     /**
      * Whether [error], from asking without an account, is YouTube asking for
-     * one: an age check, or a song it serves to accounts alone.
+     * one: an age check, a song it serves to accounts alone, or its "confirm
+     * you're not a bot", which it puts in front of every song for a network it
+     * has stopped trusting.
+     *
+     * That last one is not a ContentNotAvailableException, so it was not taken
+     * for a request for an account: a listener signed in, on such a network,
+     * had every song fail and none tried as the account, which YouTube would
+     * have played.
      */
     fun needsAccount(error: Throwable): Boolean =
         generateSequence(error) { it.cause }.any {
             it is AgeRestrictedContentException ||
+                it is org.schabi.newpipe.extractor.exceptions.SignInConfirmNotBotException ||
                 (it is ContentNotAvailableException && it.message.orEmpty().contains("LOGIN_REQUIRED"))
         }
 

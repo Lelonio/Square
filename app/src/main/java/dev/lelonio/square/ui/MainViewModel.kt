@@ -2192,7 +2192,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         if (container.activeBackend.id != BackendId.SPOTIFY) {
             // No engine to authenticate, so nothing to send the service.
-            refresh()
+            //
+            // Once this object is whole, not from inside its construction.
+            // The view model's scope runs on the main thread straight away, so
+            // a load that did not have to wait for anything (nobody signed in,
+            // a library already at hand) went on into the saved albums and the
+            // followed artists, whose fields are declared further down this
+            // class and were still null: the app closed as it opened.
+            viewModelScope.launch(Dispatchers.Main) { refresh() }
         } else if (container.spotifySignedIn) {
             PlaybackService.connect(app)
             refresh()
