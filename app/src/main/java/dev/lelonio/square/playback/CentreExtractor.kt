@@ -52,12 +52,6 @@ class CentreExtractor {
     private val rightReal = FloatArray(WINDOW)
     private val rightImaginary = FloatArray(WINDOW)
 
-    /** Each bin's gain as last applied, so the next frame moves from it. */
-    private val smoothed = FloatArray(BINS) { 1f }
-
-    /** This frame's gains before smoothing. */
-    private val wanted = FloatArray(BINS)
-
     private val window = FloatArray(WINDOW) { i ->
         // Hann, and at three-quarters overlap it sums to a constant, so the
         // frames can be added back together without the level breathing.
@@ -74,7 +68,6 @@ class CentreExtractor {
         pending = 0
         ready = 0
         rate = 0
-        smoothed.fill(1f)
     }
 
     /**
@@ -181,30 +174,8 @@ class CentreExtractor {
         fft(leftReal, leftImaginary, false)
         fft(rightReal, rightImaginary, false)
 
-        val binHz = rate.toFloat() / WINDOW
-        for (bin in 0 until BINS) {
-            val reach = band(bin * binHz)
-            wanted[bin] = if (reach <= 0f) {
-                1f
-            } else {
-                1f - reach * (1f - centreGain(leftReal[bin], leftImaginary[bin], rightReal[bin], rightImaginary[bin], amount))
-            }
-        }
-
-        // Smoothed across neighbouring bins and from one frame to the next.
-        //
-        // Taken raw, the mask jumped between keep and drop from cell to cell as
-        // the music moved, and those jumps are what was heard at the top of the
-        // slider: a thin, metallic warble over the band ("musical noise"), more
-        // than any voice left behind. Turning down is quicker than letting back
-        // up, so a syllable is caught at its start and its tail does not flutter.
-        for (bin in 0 until BINS) {
-            val below = wanted[if (bin > 0) bin - 1 else bin]
-            val above = wanted[if (bin < BINS - 1) bin + 1 else bin]
-            val target = 0.25f * below + 0.5f * wanted[bin] + 0.25f * above
-            val previous = smoothed[bin]
-            smoothed[bin] = previous + (target - previous) * if (target < previous) ATTACK else RELEASE
-        }
+        val lowBin = (KEEP_BELOW_HZ * WINDOW / rate).toInt()
+        val highBin = (KEEP_ABOVE_HZ * WINDOW / rate).toInt()
 
         for (bin in 0 until BINS) {
             val lr = leftReal[bin]
@@ -212,7 +183,11 @@ class CentreExtractor {
             val rr = rightReal[bin]
             val ri = rightImaginary[bin]
 
-            val gain = smoothed[bin]
+            val gain = if (bin < lowBin || bin > highBin) {
+                1f
+            } else {
+                centreGain(lr, li, rr, ri, amount)
+            }
 
             leftReal[bin] = lr * gain
             leftImaginary[bin] = li * gain
@@ -265,22 +240,7 @@ class CentreExtractor {
             -(level * level) / (LEVEL_WIDTH * LEVEL_WIDTH) -
                 (phase * phase) / (PHASE_WIDTH * PHASE_WIDTH),
         )
-        // Never all the way down. A cell taken to silence is the hole the
-        // warble is heard through; a voice twenty decibels under the music is
-        // already gone to anyone singing over it.
-        return 1f - amount * DEPTH * centred
-    }
-
-    /**
-     * How much of the slider reaches [hz]: none below the bass and above the
-     * air, all of it across the voice, and a slope between rather than an edge,
-     * which was a step in the spectrum heard as a filter.
-     */
-    private fun band(hz: Float): Float = when {
-        hz <= KEEP_BELOW_HZ || hz >= KEEP_ABOVE_HZ -> 0f
-        hz < VOICE_FROM_HZ -> (hz - KEEP_BELOW_HZ) / (VOICE_FROM_HZ - KEEP_BELOW_HZ)
-        hz > VOICE_TO_HZ -> (KEEP_ABOVE_HZ - hz) / (KEEP_ABOVE_HZ - VOICE_TO_HZ)
-        else -> 1f
+        return 1f - amount * centred
     }
 
     /**
@@ -370,19 +330,8 @@ class CentreExtractor {
         /** Below this the record keeps its bass and its kick, centred or not. */
         const val KEEP_BELOW_HZ = 120f
 
-        /** Where the slider applies in full: the body of a singing voice. */
-        const val VOICE_FROM_HZ = 220f
-        const val VOICE_TO_HZ = 7_000f
-
         /** And above this the air, where a voice has only its sibilance. */
         const val KEEP_ABOVE_HZ = 12_000f
-
-        /** The most a centred cell is turned down: about twenty decibels. */
-        const val DEPTH = 0.9f
-
-        /** How far a bin's gain moves toward its target per frame, down and up. */
-        const val ATTACK = 0.6f
-        const val RELEASE = 0.25f
 
         const val SCALE = 32768f
         const val TINY = 1e-7f
