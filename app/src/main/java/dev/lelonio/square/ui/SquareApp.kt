@@ -1843,8 +1843,32 @@ fun SquareApp(
                                 onClientIdChange = viewModel::onWebApiClientIdChange,
                                 onConnectWebApi = { viewModel.connectWebApi() },
                                 onPlayTrack = { tracks, index ->
-                                    tracks.getOrNull(index)?.let(viewModel::recordSearchPlay)
-                                    onPlay(tracks, index, null, false, searchLabel, 0L)
+                                    val chosen = tracks.getOrNull(index)
+                                    chosen?.let(viewModel::recordSearchPlay)
+                                    if (chosen != null && !offlineNow && viewModel.hasRadio(chosen.uri)) {
+                                        // The song, and then songs like it.
+                                        //
+                                        // The rest of the results are not a
+                                        // queue: a search for one song is not a
+                                        // wish to hear the others it matched,
+                                        // which were what followed it, and then
+                                        // nothing (#85). Its radio is what
+                                        // comes next, as in Spotify, asked for
+                                        // while the song starts and added only
+                                        // if it is still the one playing.
+                                        onPlay(listOf(chosen), 0, null, false, searchLabel, 0L)
+                                        scope.launch {
+                                            val similar = viewModel.radioFor(chosen.uri)
+                                                .filter { it.uri != chosen.uri }
+                                            if (similar.isNotEmpty() &&
+                                                player?.currentMediaItem?.mediaId == chosen.uri
+                                            ) {
+                                                onEnqueueAll(similar)
+                                            }
+                                        }
+                                    } else {
+                                        onPlay(tracks, index, null, false, searchLabel, 0L)
+                                    }
                                 },
                                 history = searchTrail,
                                 onClearHistory = viewModel::clearSearchHistory,
