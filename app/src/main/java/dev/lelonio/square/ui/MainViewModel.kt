@@ -3705,25 +3705,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Every kept list of YouTube Music's read again, once a run.
+     * Every kept list read again, once a run, so songs added to a downloaded
+     * playlist anywhere (the service's own app, another phone) are downloaded
+     * without the playlist having to be opened here first (discussion #87).
      *
-     * A song added to a playlist from YouTube Music itself, or from another
-     * phone, would otherwise wait for the playlist to be opened here before
-     * it was downloaded. Spotify's are left to their next open: reading a
-     * long one in full is many requests, where YouTube answers in one.
+     * YouTube Music's in full, which is one request. Spotify's only when their
+     * version has moved since the copy kept here, which is one question each;
+     * a playlist is read in full, at two hundred songs a request, only when
+     * something in it changed. Liked Songs has no version to ask for, and is
+     * read in full.
      */
     private fun followKeptYouTube() = viewModelScope.launch {
         delay(KEPT_SYNC_DELAY_MS)
         container.downloads.ensureLoaded()
         if (dev.lelonio.square.playback.OfflineMode.active.value) return@launch
         val youtube = container.youtubeBackend
-        container.downloads.owners.value.keys
-            .filter { it.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.PLAYLIST_PREFIX) }
+        val kept = container.downloads.owners.value.keys
+        kept.filter { it.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.PLAYLIST_PREFIX) }
             .forEach { uri ->
                 runCatching { youtube.tracksOf(uri) }
                     .onSuccess { followKept(uri, it) }
                     .onFailure { android.util.Log.w(TAG, "kept $uri not read: ${describe(it)}") }
             }
+        val spotify = kept.filter { it.startsWith("spotify:playlist:") || it.endsWith(":collection") }
+        if (spotify.isEmpty() || !container.spotifySignedIn || !awaitEngine()) return@launch
+        spotify.forEach { uri ->
+            if (dev.lelonio.square.playback.OfflineMode.active.value) return@launch
+            val stamp = snapshotOf(uri)
+            val known = (contextCache[uri] ?: container.contextCache.read(uri))?.snapshotId
+            if (stamp != null && stamp == known) return@forEach
+            followKeptSpotify(uri)
+        }
     }
 
     /**
@@ -4999,14 +5011,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { container.contextCache.remove(uri) }
         // A song just added to, or taken out of, a list that is kept: read
         // again now rather than on the next open, so the download follows the
-        // change while the listener is still looking at it. Spotify's lists
-        // are read again on the next open, which the change above forces.
-        if (!uri.startsWith("spotify:") && container.downloads.owners.value.containsKey(uri)) {
+        // change while the listener is still looking at it. Spotify's too:
+        // left to the next open, a song added from here to a downloaded
+        // playlist was not downloaded until the playlist was opened again,
+        // which read as the download not following at all (discussion #87).
+        if (container.downloads.owners.value.containsKey(uri)) {
             viewModelScope.launch {
-                runCatching { container.activeBackend.tracksOf(uri) }
-                    .onSuccess { followKept(uri, it) }
+                if (uri.startsWith("spotify:")) {
+                    followKeptSpotify(uri)
+                } else {
+                    runCatching { container.activeBackend.tracksOf(uri) }
+                        .onSuccess { followKept(uri, it) }
+                }
             }
         }
+    }
+
+    /**
+     * A kept Spotify list read again in full and followed; see [followKept].
+     *
+     * Read quietly (nothing on screen changes) and stored as the cached copy
+     * too, stamped with its version, so the next open is free.
+     */
+    private suspend fun followKeptSpotify(uri: String) {
+        val tracks = runCatching {
+            pagedTracks(PlaylistState(uri = uri), uri, showProgress = false)
+        }.onFailure { android.util.Log.w(TAG, "kept $uri not read: ${describe(it)}") }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return
+        followKept(uri, tracks)
+        val snapshotId = snapshotOf(uri)
+        contextCache[uri] = ContextCacheStore.Entry(tracks, snapshotId)
+        container.contextCache.write(uri, tracks, snapshotId)
     }
 
     /**
