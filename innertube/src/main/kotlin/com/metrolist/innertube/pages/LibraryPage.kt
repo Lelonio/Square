@@ -48,7 +48,10 @@ data class LibraryPage(
                         )
                     },
                     songCountText = renderer.subtitle?.runs?.lastOrNull()?.text,
-                    thumbnail = renderer.thumbnailRenderer.getThumbnailUrl() ?: return null,
+                    // LOCAL CHANGE: kept without a picture, which an empty
+                    // playlist has none of: dropped, it could not be opened
+                    // or added to, and it is the one most likely to be next.
+                    thumbnail = renderer.thumbnailRenderer.getThumbnailUrl(),
                     playEndpoint = renderer.thumbnailOverlay
                         ?.musicItemThumbnailOverlayRenderer?.content
                         ?.musicPlayButtonRenderer?.playNavigationEndpoint
