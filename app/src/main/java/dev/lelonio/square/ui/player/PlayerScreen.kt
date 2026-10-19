@@ -548,13 +548,25 @@ fun PlayerScreen(
     // blurred again; behind this much glass the motion is only a shimmer, and
     // it was costing the player half its frames.
     val coverMoving = coverMotionUrl != null && canvas == null
-    val upperBackdrop = if (coverMoving) groundBackdrop else glassBackdrop
+    val upperBackdrop = when {
+        panel != PlayerPanel.NONE -> groundBackdrop
+        coverMoving -> groundBackdrop
+        else -> glassBackdrop
+    }
     // The panes below it too. The cover's picture carries on under it to the
     // foot of the screen, moving with it, so the layer changed under the title,
     // the transport and the tabs with every frame as well, and each of them
     // redid its blur and its lens: a trace of the player over a moving cover
     // counted close to a hundred render passes a frame.
-    val lowerBackdrop = if (coverMoving) groundBackdrop else lowerBackdropAlone
+    val lowerBackdropMoving = if (coverMoving) groundBackdrop else lowerBackdropAlone
+    // Behind a panel every pane reads the same layer: the ground, the cover
+    // blurred over the whole screen, which is near enough one colour from top
+    // to bottom. The round buttons beside the lyrics read the cover's own
+    // layer while the panes under them read the ground, and the two looked
+    // like different glass (#85); moved to the cover's layer, the tabs at the
+    // foot took its dark end and came out grey under brown panes.
+    val panelBackdrop = groundBackdrop
+    val lowerBackdrop = if (panel != PlayerPanel.NONE) panelBackdrop else lowerBackdropMoving
 
     // Lyrics take over the middle of the screen rather than opening a panel at
     // the bottom, and the Canvas goes out of focus behind them: a clip is
@@ -1397,7 +1409,7 @@ fun PlayerScreen(
                                     positionMs = positionMs,
                                     isPlaying = state.isPlaying,
                                     onSeek = onSeek,
-                                    backdrop = glassBackdrop,
+                                    backdrop = panelBackdrop,
                                     expandSignal = karaokeExpand,
                                     alone = lyricsAlone,
                                 )
@@ -1428,7 +1440,7 @@ fun PlayerScreen(
                                         onApplyPreset = onApplyPreset,
                                         onSavePreset = onSavePreset,
                                         onDeletePreset = onDeletePreset,
-                                        backdrop = glassBackdrop,
+                                        backdrop = panelBackdrop,
                                     )
                                 }
 
@@ -2569,7 +2581,6 @@ private fun KaraokeBadge(amount: Float, backdrop: Backdrop, onClick: () -> Unit)
                 shape = dev.lelonio.square.ui.glass.shapes.ContinuousCapsule(),
                 ownBackdrop = backdrop,
                 highlightAlpha = BarHighlightAlpha,
-                backdropScale = 0.4f,
             )
             .padding(horizontal = 12.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,

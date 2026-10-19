@@ -149,7 +149,6 @@ fun KaraokeDial(
                 shape = ContinuousCapsule(),
                 ownBackdrop = backdrop,
                 highlightAlpha = BarHighlightAlpha,
-                backdropScale = 0.4f,
             )
             // The touch is claimed the moment it lands, before anything else
             // can decide what it was.

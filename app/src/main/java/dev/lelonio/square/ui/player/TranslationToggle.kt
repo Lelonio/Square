@@ -85,7 +85,6 @@ fun TranslationToggle(
                 shape = ContinuousCapsule(),
                 ownBackdrop = backdrop,
                 highlightAlpha = BarHighlightAlpha,
-                backdropScale = 0.4f,
             )
             // Claimed in the first pass, for the reason the dial beside it
             // does: the lyrics behind this scroll, and the player above it
