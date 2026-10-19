@@ -1,0 +1,3 @@
+Podcasts on Spotify and YouTube Music: shows with episode cards, resume where you left off, follow shows, a Podcast chip in Home, Library and Search, new episodes in New, a speed button on episodes.
+A 10-band equalizer with its own curve for each pair of headphones.
+Add a whole album or playlist to a playlist. Library sort moved above the list.
