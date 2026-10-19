@@ -934,7 +934,15 @@ fun KaraokeLetterItem(
         return
     }
 
-    val jumpPadding = (12.dp * visualSettings.jumpStrength).coerceAtLeast(8.dp)
+    // Room for the letter's glow as well as for its jump. The glow is a blur
+    // of up to sixteen points around the letter, and drawn past the edge of
+    // the letter's own layer it was cut off there on phones that redraw only
+    // what changed: the sung word lit up inside a hard-edged box (#85). The
+    // room costs no layout; overflowBounds takes it back.
+    val jumpPadding = maxOf(
+        (12.dp * visualSettings.jumpStrength).coerceAtLeast(8.dp),
+        LETTER_GLOW_REACH * visualSettings.glowRadius,
+    )
     val text = remember(timing) { timing.char.toString() }
 
     Box(
@@ -1092,3 +1100,6 @@ fun PulsingGlowDot(
 
 /** Rough line height in px, used to bias the auto-scroll target. */
 private const val LineHeightPx = 60
+
+/** How far a sung letter's glow reaches past it at full strength: its blur, and a little over. */
+private val LETTER_GLOW_REACH = 20.dp

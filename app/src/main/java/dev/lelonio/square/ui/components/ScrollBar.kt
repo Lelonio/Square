@@ -135,20 +135,44 @@ private fun LazyListState.topOffsetFor(contentType: Any?): Float {
     return first.offset.toFloat().coerceAtLeast(0f)
 }
 
-/** How far down the list is, 0 to 1, counted in items. */
+/**
+ * How far down the list is, 0 to 1, counted in items and parts of items.
+ *
+ * Whole items only, the thumb stood still while a row scrolled away and then
+ * jumped by a row's share of the bar, which on a list of fifty is a jump the
+ * eye catches (#85). The part of the first row already gone is counted too, and
+ * how many rows fit on screen is worked out from their average height rather
+ * than counted: the count changes by one as rows come and go at the edges,
+ * and the thumb twitched with it.
+ */
 private fun LazyListState.progress(): Float {
+    val last = lastStart()
+    if (last <= 0f) return 0f
+    val first = layoutInfo.visibleItemsInfo.firstOrNull()
+    val partly = if (first != null && first.size > 0) {
+        (firstVisibleItemScrollOffset.toFloat() / first.size).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    return ((firstVisibleItemIndex + partly) / last).coerceIn(0f, 1f)
+}
+
+/** The first item of the last screenful, as a number of items, fractional. */
+private fun LazyListState.lastStart(): Float {
     val info = layoutInfo
-    val last = info.totalItemsCount - info.visibleItemsInfo.size
-    if (last <= 0) return 0f
-    return (firstVisibleItemIndex.toFloat() / last).coerceIn(0f, 1f)
+    val visible = info.visibleItemsInfo
+    if (visible.isEmpty()) return 0f
+    val average = visible.sumOf { it.size }.toFloat() / visible.size
+    if (average <= 0f) return 0f
+    val viewport = (info.viewportEndOffset - info.viewportStartOffset).toFloat()
+    return (info.totalItemsCount - viewport / average).coerceAtLeast(0f)
 }
 
 /** Which item a touch at [y] within a bar [height] tall is asking for. */
 private fun itemFor(y: Float, height: Int, state: LazyListState): Int {
-    val info = state.layoutInfo
-    val last = (info.totalItemsCount - info.visibleItemsInfo.size).coerceAtLeast(0)
+    val last = state.lastStart()
     val fraction = (y / height.toFloat()).coerceIn(0f, 1f)
-    return (fraction * last).roundToInt().coerceIn(0, last)
+    return (fraction * last).roundToInt().coerceIn(0, last.roundToInt().coerceAtLeast(0))
 }
 
 private val THUMB_WIDTH = 4.dp
