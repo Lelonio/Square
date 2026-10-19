@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -186,6 +187,10 @@ fun PlaylistScreen(
     state: MainViewModel.PlaylistState,
     contentPadding: PaddingValues,
     nowPlayingUri: String?,
+    /** Whether what is current is playing; an episode's card shows pause then. */
+    nowPlaying: Boolean = false,
+    /** Pauses or resumes what is current, for that card's button. */
+    onTogglePlay: () -> Unit = {},
     onBack: () -> Unit,
     /**
      * Plays the list. The flag says whether what is being played is the context
@@ -697,7 +702,7 @@ fun PlaylistScreen(
             },
             // Only where the reference puts one: a record or a list. An artist
             // page keeps it in the menu, beside the rest of what a page can do.
-            canDownload = canDownload && !isArtist,
+            canDownload = canDownload && !isArtist && state.kind != MainViewModel.DetailKind.SHOW,
             byline = byline,
             bylineArtists = if (state.kind == MainViewModel.DetailKind.ALBUM) {
                 state.tracks.firstOrNull()?.artists.orEmpty()
@@ -821,7 +826,11 @@ fun PlaylistScreen(
                 item(contentType = "sectionTitle") {
                     SectionHeader(
                         title = stringResource(
-                            if (isArtist) R.string.top_songs else R.string.tracks,
+                            when {
+                                isArtist -> R.string.top_songs
+                                state.kind == MainViewModel.DetailKind.SHOW -> R.string.episodes
+                                else -> R.string.tracks
+                            },
                         ),
                         // Set as a page heading on an artist, the way the
                         // reference does: there the songs are one section among
@@ -938,6 +947,18 @@ fun PlaylistScreen(
                     // Faded in as the list arrives; nothing moves after that.
                     Box(Modifier.animateItem(fadeInSpec = tween(260), placementSpec = null, fadeOutSpec = null)) {
                     SwipeToQueue(onQueue = { onEnqueue(track) }) {
+                        if (track.isEpisode) {
+                            val current = track.uri == nowPlayingUri
+                            EpisodeRow(
+                                episode = track,
+                                isCurrent = current,
+                                playing = nowPlaying,
+                                onClick = { if (current) onTogglePlay() else onPlay(visible, index, asContext) },
+                                onMenu = { onTrackMenu(track) },
+                                showName = state.kind != MainViewModel.DetailKind.SHOW,
+                                unavailable = offline && trackDownload(track) != dev.lelonio.square.data.DownloadState.Done,
+                            )
+                        } else
                         TrackRow(
                             track = track,
                             position = index + 1,
@@ -947,6 +968,11 @@ fun PlaylistScreen(
                             // record the song is on and when it came out, which
                             // is the thing a listener is actually placing.
                             subtitle = when {
+                                // When it came out and how long it is, and
+                                // how much is left of one already started: what
+                                // an episode is chosen by. The show's name is
+                                // the page's title.
+                                track.isEpisode -> episodeLine(track, showName = state.kind != MainViewModel.DetailKind.SHOW)
                                 isArtist -> track.releaseLine()
                                 // On a record by one artist, printing their
                                 // name under every title says nothing; the
@@ -960,6 +986,8 @@ fun PlaylistScreen(
                             // instead — the one thing that differs, and the
                             // thing a record is read by.
                             numbered = state.kind == MainViewModel.DetailKind.ALBUM,
+                            progress = track.takeIf { it.isEpisode && !it.played && it.resumeMs > 0 && it.durationMs > 0 }
+                                ?.let { (it.resumeMs.toFloat() / it.durationMs).coerceIn(0f, 1f) },
                             isCurrent = track.uri == nowPlayingUri,
                             onClick = { onPlay(visible, index, asContext) },
                             onMenu = { onTrackMenu(track) },
@@ -983,7 +1011,9 @@ fun PlaylistScreen(
             // How much of it there is, at the end rather than under the title.
             // That is where the reference puts it, and it is the right place: it
             // is what you read after the list, not before it.
-            if (!isArtist && state.tracks.isNotEmpty() && query.isBlank()) {
+            if (!isArtist && state.kind != MainViewModel.DetailKind.SHOW &&
+                state.tracks.isNotEmpty() && query.isBlank()
+            ) {
                 item(contentType = "totals") {
                     Text(
                         stringResource(
@@ -1350,7 +1380,7 @@ fun PlaylistScreen(
             // one action that changes what your library holds, apart from the
             // controls that only start the music. Absent while the answer is
             // unknown and on the pages the question does not apply to.
-            if (state.saved != null) {
+            if (state.saved != null && state.kind != MainViewModel.DetailKind.SHOW) {
                 CollapsingSlot(collapseFraction) {
                 CapsuleAction(
                     tint = chromeInk,
@@ -1706,6 +1736,21 @@ private fun DetailHeader(
                         state = download,
                         backdrop = backdrop,
                         onClick = onToggleDownload,
+                        tint = ink,
+                    )
+                }
+
+                // A podcast cannot be kept on the phone yet, so the place the
+                // download takes on a record is where following it goes.
+                if (kind == MainViewModel.DetailKind.SHOW && saved != null) {
+                    CircleAction(
+                        icon = if (saved) PhosphorIcons.Bold.Check else PhosphorIcons.Bold.Plus,
+                        description = stringResource(
+                            if (saved) R.string.remove_from_library else R.string.add_to_library,
+                        ),
+                        size = 46.dp,
+                        backdrop = backdrop,
+                        onClick = onToggleSaved,
                         tint = ink,
                     )
                 }
@@ -2890,6 +2935,8 @@ private fun TrackRow(
     subtitle: String? = null,
     /** Its place on the record, drawn where the cover would be. */
     numbered: Boolean = false,
+    /** How far into it the listener got, for an episode they started. */
+    progress: Float? = null,
     /** Nothing is drawn until a download for this track exists; see below. */
     download: dev.lelonio.square.data.DownloadState =
         dev.lelonio.square.data.DownloadState.None,
@@ -3065,6 +3112,22 @@ private fun TrackRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            if (progress != null) {
+                Box(
+                    Modifier
+                        .padding(top = 5.dp)
+                        .size(width = 72.dp, height = 3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progress)
+                            .background(MaterialTheme.colorScheme.onSurface),
+                    )
+                }
+            }
         }
 
         IconButton(onClick = onMenu, modifier = Modifier.size(32.dp)) {
@@ -3124,6 +3187,37 @@ fun openLinkOf(uri: String): String {
  * year with no album name is never the case. Empty when there is neither, and
  * the row then falls back to the artist and the length.
  */
+/**
+ * An episode's second line: the day it came out, then how long it is or how
+ * much of it is left, or that it was heard. The show's name first where the
+ * list is not the show's own.
+ */
+@Composable
+internal fun episodeLine(track: CatalogTrack, showName: Boolean): String {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val day = track.releasedAt?.let { iso ->
+        runCatching { java.time.Instant.parse(iso).toEpochMilli() }.getOrNull()
+    }?.let { millis ->
+        val thisYear = java.time.Year.now().value.toString() == track.releasedAt.take(4)
+        android.text.format.DateUtils.formatDateTime(
+            context,
+            millis,
+            android.text.format.DateUtils.FORMAT_SHOW_DATE or
+                android.text.format.DateUtils.FORMAT_ABBREV_MONTH or
+                if (thisYear) android.text.format.DateUtils.FORMAT_NO_YEAR else android.text.format.DateUtils.FORMAT_SHOW_YEAR,
+        )
+    }
+    val length = when {
+        track.played -> stringResource(R.string.episode_played)
+        track.resumeMs > 0 && track.durationMs > track.resumeMs ->
+            stringResource(R.string.episode_left, formatTotal(track.durationMs - track.resumeMs))
+        track.durationMs > 0 -> formatTotal(track.durationMs)
+        else -> null
+    }
+    return listOfNotNull(track.artist.takeIf { showName && it.isNotBlank() }, day, length)
+        .joinToString(" · ")
+}
+
 private fun CatalogTrack.releaseLine(): String = listOf(album, year)
     .filter { it.isNotBlank() }
     .joinToString(" · ")

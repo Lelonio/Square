@@ -213,6 +213,105 @@ class Gateway(private val keys: PathfinderKeys) {
     }
 
     /**
+     * A podcast's own page: its name, who makes it, what it is about, and its
+     * newest episode. The rest of the episodes are [showEpisodes].
+     */
+    suspend fun show(uri: String): String? {
+        keys.refresh()
+        return runCatching {
+            query(
+                operation = "queryShowMetadataV2",
+                hash = keys.show,
+                variables = """{"uri":"$uri","includeContentCapabilityTrait":true,""" +
+                    """"includeEpisodeContentRatingsV2":false}""",
+            )
+        }
+            .onFailure { android.util.Log.i(TAG, "show unavailable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /** A page of a podcast's episodes, newest first; see SpotifyPodcasts. */
+    suspend fun showEpisodes(uri: String, offset: Int, limit: Int = SHOW_PAGE): String? {
+        keys.refresh()
+        return runCatching {
+            query(
+                operation = "queryPodcastEpisodes",
+                hash = keys.showEpisodes,
+                variables = """{"uri":"$uri","offset":$offset,"limit":$limit,""" +
+                    """"includeEpisodeContentRatingsV2":false}""",
+            )
+        }
+            .onFailure { android.util.Log.i(TAG, "episodes unavailable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /**
+     * The podcasts the account follows, from its library.
+     *
+     * The library query with Spotify's own filter for them, which is how the
+     * web player's "Podcasts & Shows" chip asks the same thing.
+     */
+    suspend fun followedShows(offset: Int = 0, limit: Int = SHOWS_PAGE): String? {
+        keys.refresh()
+        return runCatching {
+            query(
+                operation = "libraryV3",
+                hash = keys.libraryContents,
+                variables = """{"filters":["Podcasts & Shows"],"order":null,"textFilter":null,""" +
+                    """"features":["YOUR_EPISODES_V2","PRERELEASES","PRERELEASES_V2","EVENTS"],""" +
+                    """"limit":$limit,"offset":$offset,"flatten":false,"expandedFolders":[],""" +
+                    """"folderUri":null,"includeFoldersWhenFlattening":true}""",
+            )
+        }
+            .onFailure { android.util.Log.i(TAG, "followed shows unavailable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /**
+     * Puts [uris] in the account's library, or takes them out: shows, which the
+     * Web API keeps behind a registered application, and anything else the web
+     * player keeps the same way. True when the gateway took it.
+     */
+    suspend fun setInLibrary(uris: List<String>, keep: Boolean): Boolean {
+        keys.refresh()
+        val list = uris.joinToString(",") { org.json.JSONObject.quote(it) }
+        return runCatching {
+            val answer = query(
+                operation = if (keep) "addToLibrary" else "removeFromLibrary",
+                hash = keys.libraryEdit,
+                variables = if (keep) {
+                    """{"libraryItemUris":[$list],"interactionId":null}"""
+                } else {
+                    """{"libraryItemUris":[$list]}"""
+                },
+            )
+            !org.json.JSONObject(answer).has("errors")
+        }
+            .onFailure { android.util.Log.i(TAG, "library edit refused: ${it.message}") }
+            .getOrDefault(false)
+    }
+
+    /**
+     * Spotify's home as one of its own chips has it: "podcasts-chip" is the
+     * page of shows and episodes the app's Podcast chip shows.
+     */
+    suspend fun homeFacet(facet: String): String? {
+        keys.refresh()
+        val zone = org.json.JSONObject.quote(java.util.TimeZone.getDefault().id)
+        return runCatching {
+            query(
+                operation = "home",
+                hash = keys.home,
+                variables = """{"homeEndUserIntegration":"INTEGRATION_WEB_PLAYER","timeZone":$zone,""" +
+                    """"sp_t":"","facet":"$facet","sectionItemsLimit":10,""" +
+                    """"includeEpisodeContentRatingsV2":false}""",
+            )
+        }
+            .onFailure { android.util.Log.i(TAG, "home $facet unavailable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /**
      * Reads a list to its end.
      *
      * Null when the first page will not come back, and null part way through
@@ -292,5 +391,11 @@ class Gateway(private val keys: PathfinderKeys) {
 
         /** And how much of a single row, when one is read on its own. */
         const val BROWSE_PAGE = 20
+
+        /** Episodes a page, as the web player reads a show. */
+        const val SHOW_PAGE = 50
+
+        /** Podcasts followed, a page: more than most people follow. */
+        const val SHOWS_PAGE = 50
     }
 }

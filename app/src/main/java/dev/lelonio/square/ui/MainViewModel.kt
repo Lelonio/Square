@@ -101,6 +101,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         PLAYLIST(R.string.playlist),
         ALBUM(R.string.album),
         ARTIST(R.string.artist),
+        /** A podcast: its episodes are the page's list. */
+        SHOW(R.string.podcast),
     }
 
     /**
@@ -1176,6 +1178,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val open: Boolean = false,
         /** The track the sheet will add, captured when it opens. */
         val trackUri: String? = null,
+        /**
+         * Every track to add, when the sheet adds a whole record or list
+         * rather than one song; empty for one song.
+         */
+        val batch: List<String> = emptyList(),
         val trackTitle: String = "",
         val playlists: List<CatalogPlaylist> = emptyList(),
         /** URI of the playlist currently being written to. */
@@ -1267,6 +1274,80 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * The same sheet for a whole album or list: every one of its songs goes
+     * into the playlist picked, in order. Nothing is taken out by picking a
+     * playlist twice, as one song is: with dozens of them that would be a
+     * second tap undoing a first by surprise.
+     */
+    fun openAddAllToPlaylist(tracks: List<CatalogTrack>, title: String) {
+        val backend = container.activeBackend
+        val uris = tracks.map { it.uri }.filter {
+            if (backend.id == BackendId.SPOTIFY) it.startsWith("spotify:track:") || it.startsWith("spotify:episode:")
+            else backend.owns(it)
+        }.distinct()
+        _addToPlaylist.value = AddToPlaylistState(
+            open = true,
+            trackUri = uris.firstOrNull(),
+            batch = uris,
+            trackTitle = title,
+            playlists = if (backend.id == BackendId.SPOTIFY) {
+                (_state.value as? UiState.Ready)?.playlists.orEmpty()
+            } else {
+                emptyList()
+            },
+            error = when {
+                uris.isEmpty() -> string(R.string.track_cannot_be_added)
+                backend.id == BackendId.SPOTIFY && !container.webApi.isReady && !container.tokenStore.isLoggedIn ->
+                    string(R.string.connect_app_in_settings)
+                backend.id != BackendId.SPOTIFY && !backend.canEditPlaylists ->
+                    string(R.string.track_cannot_be_added)
+                else -> null
+            },
+        )
+        if (backend.id != BackendId.SPOTIFY && uris.isNotEmpty()) viewModelScope.launch {
+            val lists = runCatching { backend.writablePlaylists() }.getOrDefault(emptyList())
+            if (_addToPlaylist.value.batch == uris) _addToPlaylist.value = _addToPlaylist.value.copy(playlists = lists)
+        }
+    }
+
+    /** [openAddAllToPlaylist]'s songs, into [playlist]. */
+    private fun addAllToPlaylist(playlist: CatalogPlaylist, uris: List<String>) {
+        _addToPlaylist.value = _addToPlaylist.value.copy(busy = playlist.uri, done = null, removed = null, error = null)
+        viewModelScope.launch {
+            runCatching {
+                when {
+                    // Liked Songs: the account's library, kept in one request.
+                    playlist.uri.endsWith(":collection") ->
+                        check(container.gateway.setInLibrary(uris, keep = true)) { "the gateway refused" }
+                    playlist.uri.startsWith("spotify:playlist:") -> {
+                        val id = playlist.uri.substringAfterLast(':')
+                        // A hundred a request is the most Spotify takes.
+                        uris.chunked(100).forEach { chunk ->
+                            container.api.addToPlaylist(id, AddTracksRequestDto(chunk))
+                        }
+                    }
+                    else -> uris.forEach { container.activeBackend.addToPlaylist(playlist.uri, it) }
+                }
+            }
+                .onSuccess {
+                    _addToPlaylist.value = _addToPlaylist.value.copy(busy = null, done = playlist.name)
+                    _inPlaylists.value = _inPlaylists.value + uris
+                    invalidateContext(playlist.uri)
+                    if (playlist.uri.endsWith(":collection")) uris.forEach(container.likedStore::add)
+                }
+                .onFailure {
+                    android.util.Log.e(TAG, "adding a whole list failed: ${chain(it)}", it)
+                    val forbidden = describe(it).contains("403")
+                    if (forbidden) _webApi.value = _webApi.value.copy(expired = true)
+                    _addToPlaylist.value = _addToPlaylist.value.copy(
+                        busy = null,
+                        error = if (forbidden) string(R.string.permission_needed) else string(R.string.add_failed, playlist.name),
+                    )
+                }
+        }
+    }
+
+    /**
      * A file on this phone, or a playlist's local entry, put into a playlist.
      *
      * Written as Spotify's own apps write it — a `spotify:local:` entry built
@@ -1324,6 +1405,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val trackUri = current.trackUri ?: return
         if (current.busy != null) return
         val id = playlist.uri.substringAfterLast(':')
+
+        if (current.batch.isNotEmpty()) {
+            addAllToPlaylist(playlist, current.batch)
+            return
+        }
 
         if (playlist.uri.startsWith("spotify:playlist:") &&
             (LocalLibrary.isLocal(trackUri) || LocalLibrary.isSpotifyLocal(trackUri))
@@ -1534,6 +1620,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         artist = string(R.string.artist),
                         album = string(R.string.album),
                         playlist = string(R.string.playlist),
+                        podcast = string(R.string.podcast),
                     ),
                 )
             }
@@ -1649,6 +1736,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         artist = string(R.string.artist),
                         album = string(R.string.album),
                         playlist = string(R.string.playlist),
+                        podcast = string(R.string.podcast),
                     ),
                     offset = searchOffset,
                 )
@@ -1965,7 +2053,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         videoLookup?.cancel()
         _videoFileId.value = null
         _videoMode.value = false
-        if (trackUri == null || !trackUri.startsWith("spotify:track:")) return
+        if (trackUri == null ||
+            !(trackUri.startsWith("spotify:track:") || trackUri.startsWith("spotify:episode:"))
+        ) return
         // Offline there is no video to offer: it is streamed, and the lookup
         // itself is a request. Leaving the answer null is what takes the button
         // off the player — the button is drawn from having one.
@@ -2376,6 +2466,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // also what clears Spotify's off the screen when the source changes.
             loadSavedAlbums()
             loadFollowedArtists()
+            loadSavedShows()
             return@launch
         }
 
@@ -2437,6 +2528,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 loadFriends()
                 loadFollowedArtists()
                 loadSavedAlbums()
+                loadSavedShows()
                 // The pictures of whatever is downloaded, while there is a
                 // connection to fetch them with.
                 keepPageCovers()
@@ -2696,6 +2788,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun hasRadio(trackUri: String): Boolean =
         trackUri.startsWith("spotify:track:") || isYouTubeSong(trackUri)
 
+    /** A YouTube Music show, which opens as a list whose id starts "MPSP". */
+    private fun isYouTubePodcast(uri: String) =
+        uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.PLAYLIST_PREFIX + "MPSP")
+
     private fun isYouTubeSong(uri: String) =
         uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX) ||
             uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.VIDEO_PREFIX)
@@ -2866,6 +2962,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * than showing a state nobody checked.
      */
     private suspend fun savedState(uri: String): Boolean? {
+        // A YouTube Music podcast: kept when it is among the saved ones.
+        if (isYouTubePodcast(uri)) {
+            if (_savedShows.value.isEmpty()) _savedShows.value = runCatching { readSavedShows() }.getOrDefault(emptyList())
+            return _savedShows.value.any { it.uri == uri }
+        }
         if (!container.webApi.isReady && !container.tokenStore.isLoggedIn) return null
         val id = uri.substringAfterLast(':')
         return runCatching {
@@ -2899,6 +3000,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _playlist.value = _playlist.value.copy(saved = !was)
         runCatching {
             when {
+                // A podcast is kept through the gateway, as Spotify's own
+                // player keeps one: the Web API asks for an application
+                // registered with permission for it, which almost nobody has.
+                dev.lelonio.square.data.SpotifyPodcasts.isShow(uri) ->
+                    check(container.gateway.setInLibrary(listOf(uri), keep = !was)) { "the gateway refused" }
+
+                isYouTubePodcast(uri) ->
+                    com.metrolist.innertube.YouTube.savePodcast(
+                        uri.removePrefix(dev.lelonio.square.backend.youtube.YouTubeBackend.PLAYLIST_PREFIX),
+                        save = !was,
+                    ).getOrThrow()
+
                 uri.startsWith("spotify:album:") ->
                     if (was) container.api.removeAlbums(id) else container.api.saveAlbums(id)
 
@@ -2909,7 +3022,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .onSuccess {
                 // The library is what this button is about, so it is the library
                 // that has to show the answer.
-                refresh()
+                if (kindOf(uri) == DetailKind.SHOW || isYouTubePodcast(uri)) loadSavedShows() else refresh()
             }
             .onFailure {
                 android.util.Log.e(TAG, "keeping failed: ${chain(it)}", it)
@@ -2955,6 +3068,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 DetailKind.ARTIST -> if (container.webApi.isReady) container.api.artist(id).name else null
                 DetailKind.ALBUM -> if (container.webApi.isReady) container.api.album(id).name else null
                 DetailKind.PLAYLIST -> if (container.webApi.isReady) container.api.playlist(id).name else null
+                DetailKind.SHOW -> container.gateway.show(uri)
+                    ?.let(dev.lelonio.square.data.SpotifyPodcasts::parseShow)?.name
             }
         }
             .onFailure { android.util.Log.w(TAG, "no name for $uri: ${describe(it)}") }
@@ -3667,7 +3782,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         kind = when (page.kind) {
                             DetailKind.ALBUM -> DownloadStore.KIND_ALBUM
                             DetailKind.ARTIST -> DownloadStore.KIND_ARTIST
-                            DetailKind.PLAYLIST -> DownloadStore.KIND_PLAYLIST
+                            DetailKind.PLAYLIST, DetailKind.SHOW -> DownloadStore.KIND_PLAYLIST
                         },
                     ),
                 )
@@ -4265,6 +4380,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                             }
                         }
                     }
+                } else if (kind == DetailKind.SHOW) {
+                    // A podcast: its page, then its episodes newest first. Read
+                    // again on every visit rather than trusted from the copy,
+                    // which is there to draw the page at once: a show gets new
+                    // episodes, and how far into each one the listener got is
+                    // part of what the list says.
+                    awaitEngine()
+                    val showAnswer = container.gateway.show(playlist.uri)
+                    val show = showAnswer?.let(dev.lelonio.square.data.SpotifyPodcasts::parseShow)
+                    if (show == null) {
+                        android.util.Log.w(TAG, "show ${playlist.uri} unreadable: ${showAnswer?.take(400)}")
+                    }
+                    if (show != null) {
+                        base = base.copy(
+                            name = base.name.ifEmpty { show.name },
+                            artworkUrl = show.artworkUrl ?: base.artworkUrl,
+                            description = show.description,
+                            byline = show.publisher,
+                            saved = show.saved ?: base.saved,
+                        )
+                        if (isActive && _playlist.value.uri == playlist.uri) {
+                            _playlist.value = _playlist.value.copy(
+                                name = base.name,
+                                artworkUrl = base.artworkUrl,
+                                description = base.description,
+                                byline = base.byline,
+                                saved = base.saved,
+                            )
+                        }
+                    }
+                    val episodes = readShow(playlist.uri, base.name) { read, more ->
+                        if (isActive && _playlist.value.uri == playlist.uri) {
+                            publishPlaylist(base.copy(tracks = read, loading = false, loadingMore = more))
+                        }
+                    }
+                    if (episodes != null) {
+                        contextCache[playlist.uri] = ContextCacheStore.Entry(
+                            tracks = episodes,
+                            snapshotId = null,
+                            savedAt = System.currentTimeMillis(),
+                            uri = playlist.uri,
+                        )
+                        container.contextCache.write(playlist.uri, episodes, null)
+                    } else if (cached.isEmpty()) {
+                        error("the show's episodes did not come back")
+                    }
                 } else {
                     val freshness = if (cached.isEmpty()) {
                         Freshness.CHANGED
@@ -4515,6 +4676,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 DetailKind.ARTIST -> if (container.webApi.isReady) container.api.artist(id).images.firstOrNull()?.url else null
                 DetailKind.ALBUM -> if (container.webApi.isReady) container.api.album(id).images.firstOrNull()?.url else null
                 DetailKind.PLAYLIST -> if (container.webApi.isReady) container.api.playlist(id).images.firstOrNull()?.url else null
+                DetailKind.SHOW -> container.gateway.show(uri)
+                    ?.let(dev.lelonio.square.data.SpotifyPodcasts::parseShow)?.artworkUrl
             }
         }
             .onFailure { android.util.Log.w(TAG, "no cover for $uri: ${describe(it)}") }
@@ -5736,6 +5899,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                     artist = string(R.string.artist),
                                     album = string(R.string.album),
                                     playlist = string(R.string.playlist),
+                                    podcast = string(R.string.podcast),
                                 ),
                             )
                         }
@@ -5813,6 +5977,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                         artist = string(R.string.artist),
                                         album = string(R.string.album),
                                         playlist = string(R.string.playlist),
+                                        podcast = string(R.string.podcast),
                                     ),
                                 )
                             }
@@ -5883,6 +6048,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                                 artist = string(R.string.artist),
                                 album = string(R.string.album),
                                 playlist = string(R.string.playlist),
+                                podcast = string(R.string.podcast),
                             ),
                         )
                     }
@@ -6135,6 +6301,106 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { android.util.Log.w(TAG, "saved albums unavailable: ${describe(it)}") }
     }
 
+    private val _podcastShelves = MutableStateFlow<List<HomeShelf>>(emptyList())
+
+    /** Spotify's own podcast home, for Home's chip of it; see [loadPodcastShelves]. */
+    val podcastShelves: StateFlow<List<HomeShelf>> = _podcastShelves.asStateFlow()
+    private val _podcastsLoading = MutableStateFlow(false)
+    val podcastsLoading: StateFlow<Boolean> = _podcastsLoading.asStateFlow()
+    private var podcastShelvesJob: Job? = null
+
+    /** Once a session, when the chip is first chosen. */
+    fun loadPodcastShelves() {
+        if (podcastShelvesJob?.isActive == true || _podcastShelves.value.isNotEmpty()) return
+        _podcastsLoading.value = true
+        podcastShelvesJob = viewModelScope.launch {
+            try {
+                if (!awaitEngine()) return@launch
+                val json = container.gateway.homeFacet(PODCASTS_FACET) ?: return@launch
+                _podcastShelves.value = withContext(Dispatchers.Default) {
+                    dev.lelonio.square.data.SpotifyHome.parse(json, podcasts = true)
+                }
+            } finally {
+                _podcastsLoading.value = false
+            }
+        }
+    }
+
+    private val _savedShows = MutableStateFlow<List<CatalogPlaylist>>(emptyList())
+
+    /** The podcasts the account follows, for the library's chip of them. */
+    val savedShows: StateFlow<List<CatalogPlaylist>> = _savedShows.asStateFlow()
+
+    fun loadSavedShows() = viewModelScope.launch {
+        _savedShows.value = runCatching { readSavedShows() }
+            .onFailure { android.util.Log.w(TAG, "followed shows unavailable: ${describe(it)}") }
+            .getOrDefault(emptyList())
+    }
+
+    /** From Spotify's library page for them, or whatever the source keeps. */
+    private suspend fun readSavedShows(): List<CatalogPlaylist> {
+        if (container.activeBackend.id != BackendId.SPOTIFY) return container.activeBackend.savedShows()
+        if (!awaitEngine()) return emptyList()
+        val gathered = mutableListOf<CatalogPlaylist>()
+        while (gathered.size < MAX_SHOWS) {
+            val page = container.gateway.followedShows(offset = gathered.size)
+                ?.let(dev.lelonio.square.data.SpotifyPodcasts::parseFollowed)
+                ?: break
+            gathered += page
+            if (page.isEmpty()) break
+        }
+        return gathered.distinctBy { it.uri }
+    }
+
+    private val _newEpisodes = MutableStateFlow<List<CatalogTrack>>(emptyList())
+
+    /** What the followed podcasts put out lately, newest first; see [loadNewEpisodes]. */
+    val newEpisodes: StateFlow<List<CatalogTrack>> = _newEpisodes.asStateFlow()
+    private var newEpisodesJob: Job? = null
+    private var newEpisodesAt = 0L
+
+    /**
+     * The New tab's row of episodes, read again at most every few minutes.
+     *
+     * On Spotify there is no one list of them: each followed show is asked for
+     * its newest few, a handful at a time, and what came out in the last weeks
+     * is kept. YouTube Music keeps such a list itself.
+     */
+    fun loadNewEpisodes() {
+        if (newEpisodesJob?.isActive == true) return
+        if (System.currentTimeMillis() - newEpisodesAt < NEW_EPISODES_FRESH_MS) return
+        newEpisodesJob = viewModelScope.launch {
+            val episodes = runCatching {
+                if (container.activeBackend.id != BackendId.SPOTIFY) {
+                    container.activeBackend.newEpisodes()
+                } else {
+                    val shows = _savedShows.value.ifEmpty { readSavedShows().also { _savedShows.value = it } }
+                    val since = java.time.Instant.now().minus(java.time.Duration.ofDays(NEW_EPISODES_DAYS)).toString()
+                    withContext(Dispatchers.IO) {
+                        shows.take(MAX_SHOWS_ASKED).chunked(SHOWS_AT_ONCE).flatMap { batch ->
+                            coroutineScope {
+                                batch.map { show ->
+                                    async {
+                                        container.gateway.showEpisodes(show.uri, 0, EPISODES_A_SHOW)
+                                            ?.let { dev.lelonio.square.data.SpotifyPodcasts.parseEpisodes(it, show.name) }
+                                            ?.tracks.orEmpty()
+                                    }
+                                }.awaitAll().flatten()
+                            }
+                        }
+                    }
+                        .filter { (it.releasedAt ?: "") >= since }
+                        .sortedByDescending { it.releasedAt }
+                        .take(NEW_EPISODES)
+                }.map(container.episodeProgress::apply)
+            }
+                .onFailure { android.util.Log.w(TAG, "new episodes unavailable: ${describe(it)}") }
+                .getOrNull() ?: return@launch
+            _newEpisodes.value = episodes
+            newEpisodesAt = System.currentTimeMillis()
+        }
+    }
+
     private val _followedArtists = MutableStateFlow<List<SearchItem>>(emptyList())
 
     /** The artists this account follows, for the library. */
@@ -6172,6 +6438,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
     }
 
+    /**
+     * A show's episodes, newest first, up to [SHOW_EPISODES_LIMIT].
+     *
+     * Not to the end, as a playlist is read: a daily show has thousands, and a
+     * page of the last few hundred is what anybody scrolls. Null when the first
+     * page would not come back.
+     */
+    private suspend fun readShow(
+        uri: String,
+        showName: String,
+        onPage: (List<CatalogTrack>, Boolean) -> Unit,
+    ): List<CatalogTrack>? {
+        val loaded = mutableListOf<CatalogTrack>()
+        var offset = 0
+        while (loaded.size < SHOW_EPISODES_LIMIT) {
+            val page = container.gateway.showEpisodes(uri, offset)
+                ?.let { dev.lelonio.square.data.SpotifyPodcasts.parseEpisodes(it, showName) }
+                ?: return loaded.takeIf { it.isNotEmpty() }
+            loaded += page.tracks.map(container.episodeProgress::apply)
+            val next = page.nextOffset
+            val more = next != null && next > offset && loaded.size < SHOW_EPISODES_LIMIT
+            onPage(loaded.toList(), more)
+            if (!more) break
+            offset = next!!
+        }
+        return loaded
+    }
+
     private fun kindOf(uri: String): DetailKind = when {
         uri.startsWith("spotify:artist:") -> DetailKind.ARTIST
         // An artist on the other source is an artist too: the page they open on
@@ -6179,6 +6473,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.ARTIST_PREFIX) ->
             DetailKind.ARTIST
         uri.startsWith("spotify:album:") -> DetailKind.ALBUM
+        dev.lelonio.square.data.SpotifyPodcasts.isShow(uri) -> DetailKind.SHOW
         else -> DetailKind.PLAYLIST
     }
 
@@ -6257,6 +6552,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         /** How many detail pages back the in-screen history holds. */
         const val PAGE_HISTORY = 12
+
+        /** Spotify's name for its home's podcast chip. */
+        const val PODCASTS_FACET = "podcasts-chip"
+
+        /** Followed podcasts read, and how many of them asked for new episodes, how many at once. */
+        const val MAX_SHOWS = 500
+        const val MAX_SHOWS_ASKED = 60
+        const val SHOWS_AT_ONCE = 6
+        const val EPISODES_A_SHOW = 5
+
+        /** What counts as new, how much of it the tab shows, and how long it is believed. */
+        const val NEW_EPISODES_DAYS = 21L
+        const val NEW_EPISODES = 30
+        const val NEW_EPISODES_FRESH_MS = 10 * 60 * 1000L
+
+        /** How many of a show's episodes a page reads; see [readShow]. */
+        const val SHOW_EPISODES_LIMIT = 300
 
         /** How long a home row gets before it stops being worth scrolling. */
         const val FEED_ROW = 12

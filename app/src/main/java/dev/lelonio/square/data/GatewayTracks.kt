@@ -15,8 +15,8 @@ import org.json.JSONObject
 internal object GatewayTracks {
 
     /**
-     * Null for anything that is not a playable track: a podcast episode, a
-     * local file, something this market has no licensed copy of. Keeping those
+     * Null for anything that is not a playable track or episode: something
+     * this market has no licensed copy of. Keeping those
      * would put items in the queue that the engine could only skip.
      */
     /**
@@ -44,6 +44,10 @@ internal object GatewayTracks {
     fun track(data: JSONObject?, addedAt: String?): CatalogTrack? {
         if (data == null) return null
         if (LocalLibrary.isSpotifyLocal(data.optString("uri"))) return localTrack(data, addedAt)
+        // An episode in a playlist plays like a song does, so it is kept.
+        if (data.optString("__typename") == "Episode") {
+            return SpotifyPodcasts.episode(data)?.copy(addedAt = addedAt)
+        }
         val uri = data.optString("uri").takeIf { it.startsWith("spotify:track:") } ?: return null
         if (data.optJSONObject("playability")?.optBoolean("playable", true) == false) return null
 

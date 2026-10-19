@@ -108,8 +108,12 @@ import java.util.Calendar
 private enum class Feed(@StringRes val label: Int, val chip: dev.lelonio.square.data.TabContents.Chip?) {
     ALL(R.string.feed_all, null),
     FOR_YOU(R.string.feed_for_you, dev.lelonio.square.data.TabContents.Chip.FOR_YOU),
-    DISCOVER(R.string.feed_discover, dev.lelonio.square.data.TabContents.Chip.DISCOVER),
     ARTISTS(R.string.artists, dev.lelonio.square.data.TabContents.Chip.ARTISTS),
+    /**
+     * Spotify's own podcast page rather than a part of this one: its shows
+     * and episodes come from a home of their own, asked for when the chip is.
+     */
+    PODCASTS(R.string.podcasts, null),
 }
 
 /**
@@ -179,6 +183,12 @@ fun HomeScreen(
     shelves: List<dev.lelonio.square.data.HomeShelf> = emptyList(),
     /** Spotify's shelves are on their way; their outline stands in until then. */
     shelvesLoading: Boolean = false,
+    /** Spotify's podcast home, for the chip of it; asked for with [onWantPodcasts]. */
+    podcastShelves: List<dev.lelonio.square.data.HomeShelf> = emptyList(),
+    podcastsLoading: Boolean = false,
+    onWantPodcasts: () -> Unit = {},
+    /** An episode tile: played, not opened. */
+    onPlayEpisode: (CatalogPlaylist, String) -> Unit = { _, _ -> },
 ) {
     if (youtubeMode) {
         YouTubeHome(
@@ -248,9 +258,10 @@ fun HomeScreen(
                 listOf(Feed.ALL) + Feed.entries.filter { entry ->
                     entry.chip != null &&
                         shelves.any { dev.lelonio.square.data.TabContents.chipOf(it) == entry.chip }
-                }
+                } + listOfNotNull(Feed.PODCASTS.takeIf { shelves.isNotEmpty() })
             }
             val filter = chips.firstOrNull { it.name == filterName } ?: Feed.ALL
+            LaunchedEffect(filter) { if (filter == Feed.PODCASTS) onWantPodcasts() }
             // Read once here rather than inside the rows: the label travels
             // with the play so the player can say where the song came from,
             // and that is a plain string by the time it leaves this screen.
@@ -411,27 +422,40 @@ fun HomeScreen(
                 // placeholder the page arrived in two halves and shifted under
                 // whatever was being read.
                 run {
-                    val visible = if (filter == Feed.ALL) shelves
-                    else shelves.filter { dev.lelonio.square.data.TabContents.chipOf(it) == filter.chip }
+                    val visible = when (filter) {
+                        Feed.ALL -> shelves
+                        Feed.PODCASTS -> podcastShelves
+                        else -> shelves.filter { dev.lelonio.square.data.TabContents.chipOf(it) == filter.chip }
+                    }
                     // Their outline while they come, and a fade as they land
                     // rather than the rows appearing in one frame.
-                    if (visible.isEmpty() && shelvesLoading && filter == Feed.ALL) {
+                    if (visible.isEmpty() &&
+                        ((shelvesLoading && filter == Feed.ALL) || (podcastsLoading && filter == Feed.PODCASTS))
+                    ) {
                         items(SHELF_OUTLINES, key = { "shelf-outline-$it" }, contentType = { "skeleton" }) {
                             Box(Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = tween(200))) {
                                 SkeletonSection(tileWidth = 152.dp, tileHeight = 152.dp)
                             }
                         }
                     }
-                    visible.forEach { shelf ->
-                        item(key = "shelf-heading-${shelf.title}", contentType = "shelf") {
+                    // Keyed by place as well as title: Spotify can send two rows
+                    // with the same title, and a key used twice crashes the list.
+                    visible.forEachIndexed { index, shelf ->
+                        item(key = "shelf-heading-$index-${shelf.title}", contentType = "shelf") {
                             Box(Modifier.animateItem(fadeInSpec = tween(320), placementSpec = null, fadeOutSpec = null)) {
                                 Heading(shelf.title)
                             }
                         }
-                        item(key = "shelf-${shelf.title}", contentType = "shelf") {
+                        item(key = "shelf-$index-${shelf.title}", contentType = "shelf") {
                             Box(Modifier.animateItem(fadeInSpec = tween(320), placementSpec = null, fadeOutSpec = null)) {
                                 Carousel(shelf.items, key = { it.uri }) { entry ->
-                                    PlaylistTile(entry) { onOpenPlaylist(entry) }
+                                    PlaylistTile(entry) {
+                                        if (dev.lelonio.square.data.SpotifyPodcasts.isEpisode(entry.uri)) {
+                                            onPlayEpisode(entry, shelf.title)
+                                        } else {
+                                            onOpenPlaylist(entry)
+                                        }
+                                    }
                                 }
                             }
                         }

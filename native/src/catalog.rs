@@ -626,12 +626,18 @@ pub fn track_video(track_uri: &str) -> EngineResult<String> {
     let uri = track_uri.to_string();
 
     block_on(async move {
-        let associated = match extension(&session, &uri, VIDEO_ASSOCIATIONS).await? {
-            Some(bytes) => uris_in(&bytes)
-                .into_iter()
-                .find(|found| found != &uri)
-                .ok_or_else(|| String::new()),
-            None => Err(String::new()),
+        // A video podcast's episode is its own video: there is no second
+        // entity to be pointed at, so the file is asked of the episode itself.
+        let associated = if uri.starts_with("spotify:episode:") {
+            Ok(uri.clone())
+        } else {
+            match extension(&session, &uri, VIDEO_ASSOCIATIONS).await? {
+                Some(bytes) => uris_in(&bytes)
+                    .into_iter()
+                    .find(|found| found != &uri)
+                    .ok_or_else(|| String::new()),
+                None => Err(String::new()),
+            }
         };
 
         // No association is the ordinary answer: almost no track has a video.

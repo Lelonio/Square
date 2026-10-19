@@ -696,6 +696,10 @@ fun SquareApp(
     val addFriendState by viewModel.addFriendState.collectAsStateWithLifecycle()
     val followedArtists by viewModel.followedArtists.collectAsStateWithLifecycle()
     val savedAlbums by viewModel.savedAlbums.collectAsStateWithLifecycle()
+    val savedShows by viewModel.savedShows.collectAsStateWithLifecycle()
+    val podcastShelves by viewModel.podcastShelves.collectAsStateWithLifecycle()
+    val podcastsLoading by viewModel.podcastsLoading.collectAsStateWithLifecycle()
+    val newEpisodes by viewModel.newEpisodes.collectAsStateWithLifecycle()
     val videoFileId by viewModel.videoFileId.collectAsStateWithLifecycle()
     val spotifyVideoOn by dev.lelonio.square.backend.spotify.SpotifyVideoMode.enabled
         .collectAsStateWithLifecycle()
@@ -1685,6 +1689,23 @@ fun SquareApp(
                                 youtubeHome = youtubeHome,
                                 shelves = homeShelves,
                                 shelvesLoading = homeShelvesLoading,
+                                podcastShelves = podcastShelves,
+                                podcastsLoading = podcastsLoading,
+                                onWantPodcasts = viewModel::loadPodcastShelves,
+                                onPlayEpisode = { entry, label ->
+                                    onPlay(
+                                        listOf(
+                                            dev.lelonio.square.data.CatalogTrack(
+                                                uri = entry.uri,
+                                                name = entry.name,
+                                                artist = entry.subtitle.orEmpty(),
+                                                album = entry.subtitle.orEmpty(),
+                                                artworkUrl = entry.artworkUrl,
+                                            ),
+                                        ),
+                                        0, null, false, label, 0L,
+                                    )
+                                },
                                 onPlayTrending = { tracks, index ->
                                     onPlay(tracks, index, null, false, trendingLabel, 0L)
                                 },
@@ -1719,11 +1740,16 @@ fun SquareApp(
                             // gets that page; the one below is built out of
                             // Spotify's gateway and has nothing to show for any
                             // other catalogue.
+                            LaunchedEffect(backend) { viewModel.loadNewEpisodes() }
                             if (backend != dev.lelonio.square.backend.BackendId.SPOTIFY) {
                                 LaunchedEffect(backend) { viewModel.loadSourceNew() }
+                                val episodesTitle = stringResource(R.string.new_episodes)
                                 dev.lelonio.square.ui.home.SourceRowsPage(
                                     title = newLabel,
-                                    rows = sourceNew.rows,
+                                    rows = listOfNotNull(
+                                        dev.lelonio.square.backend.HomeRow(title = episodesTitle, tracks = newEpisodes)
+                                            .takeIf { newEpisodes.isNotEmpty() },
+                                    ) + sourceNew.rows,
                                     loading = sourceNew.loading,
                                     contentPadding = listPadding,
                                     onPlay = { tracks, index ->
@@ -1750,6 +1776,10 @@ fun SquareApp(
                                 },
                                 onSongMenu = { track ->
                                     trackMenu = TrackMenuRequest(track = track, removable = false)
+                                },
+                                episodes = newEpisodes,
+                                onPlayEpisode = { tracks, index ->
+                                    onPlay(tracks, index, null, false, newLabel, 0L)
                                 },
                                 onOpen = { item ->
                                     viewModel.openContext(
@@ -1845,7 +1875,7 @@ fun SquareApp(
                                 onPlayTrack = { tracks, index ->
                                     val chosen = tracks.getOrNull(index)
                                     chosen?.let(viewModel::recordSearchPlay)
-                                    if (chosen != null && !offlineNow && viewModel.hasRadio(chosen.uri)) {
+                                    if (chosen != null && !offlineNow && !chosen.isEpisode && viewModel.hasRadio(chosen.uri)) {
                                         // The song, and then songs like it.
                                         //
                                         // The rest of the results are not a
@@ -1922,6 +1952,7 @@ fun SquareApp(
                                 },
                                 artists = followedArtists,
                                 albums = savedAlbums,
+                                podcasts = savedShows,
                                 onRetryOnline = viewModel::retryOnline,
                                 signInHint = backend == dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC &&
                                     youtubeAccountName == null,
@@ -2066,6 +2097,10 @@ fun SquareApp(
                                     },
                                     contentPadding = listPadding,
                                     nowPlayingUri = playback.mediaId,
+                                    nowPlaying = playback.isPlaying,
+                                    onTogglePlay = {
+                                        player?.let { if (it.isPlaying) it.pause() else it.play() }
+                                    },
                                     // One route holds every detail page, so
                                     // back is the screen's own history first
                                     // and the navigation stack only once that
@@ -3405,6 +3440,18 @@ fun SquareApp(
                         ) {
                             viewModel.togglePinned(shownPlaylist.uri)
                             playlistMenu = null
+                        }
+                        // The whole record, or the whole list, into a
+                        // playlist: what the open page holds, in its order.
+                        if (playlist.uri == shownPlaylist.uri && playlist.tracks.isNotEmpty() &&
+                            (playlist.kind == MainViewModel.DetailKind.ALBUM ||
+                                playlist.kind == MainViewModel.DetailKind.PLAYLIST)
+                        ) TrackSheetAction(
+                            stringResource(R.string.add_to_playlist),
+                            PhosphorIcons.Regular.Plus,
+                        ) {
+                            playlistMenu = null
+                            viewModel.openAddAllToPlaylist(playlist.tracks, playlist.name)
                         }
                         // Liked Songs is Spotify's own list: it can be pinned
                         // like any other row, but there is no name to change

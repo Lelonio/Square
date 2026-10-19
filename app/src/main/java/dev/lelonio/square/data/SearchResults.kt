@@ -24,10 +24,15 @@ data class SearchResults(
      * the row. Empty from the Web API, which does not search lyrics at all.
      */
     val lyricMatches: Set<String> = emptySet(),
+    /** Shows, which open as their list of episodes. */
+    val podcasts: List<SearchItem> = emptyList(),
+    /** Single episodes, which play. */
+    val episodes: List<CatalogTrack> = emptyList(),
 ) {
     /** How many rows this holds in total, for telling a page from an echo. */
     val count: Int
-        get() = tracks.size + artists.size + albums.size + playlists.size + videos.size
+        get() = tracks.size + artists.size + albums.size + playlists.size + videos.size +
+            podcasts.size + episodes.size
 
     /**
      * This, with another page's rows after it.
@@ -48,12 +53,14 @@ data class SearchResults(
             playlists = playlists + page.playlists.filter { it.uri !in heldLists },
             videos = videos + page.videos.filter { video -> videos.none { it.uri == video.uri } },
             lyricMatches = lyricMatches + page.lyricMatches,
+            podcasts = podcasts + page.podcasts.filter { show -> podcasts.none { it.uri == show.uri } },
+            episodes = episodes + page.episodes.filter { episode -> episodes.none { it.uri == episode.uri } },
         )
     }
 
     val isEmpty: Boolean
         get() = tracks.isEmpty() && artists.isEmpty() && albums.isEmpty() && playlists.isEmpty() &&
-            videos.isEmpty()
+            videos.isEmpty() && podcasts.isEmpty() && episodes.isEmpty()
 }
 
 /**

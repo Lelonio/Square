@@ -328,6 +328,16 @@ class MainActivity : ComponentActivity() {
     ) {
         val player = controller ?: return
 
+        // An episode picks up where the listener left it, from whichever list
+        // it was tapped in; see EpisodeProgress.
+        val tapped = tracks.getOrNull(index)
+        @Suppress("NAME_SHADOWING")
+        val positionMs = if (positionMs == 0L && tapped?.isEpisode == true) {
+            (application as dev.lelonio.square.SquareApplication).episodeProgress.resumeFor(tapped)
+        } else {
+            positionMs
+        }
+
         // Offline, the queue is only what can actually be played.
         //
         // The rows for the rest are already inert, so nothing here is being

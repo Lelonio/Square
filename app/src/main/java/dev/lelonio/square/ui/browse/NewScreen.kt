@@ -83,6 +83,9 @@ fun NewScreen(
     onPlaySong: (List<CatalogTrack>, Int) -> Unit,
     /** The same menu every other list of songs in the app opens. */
     onSongMenu: (CatalogTrack) -> Unit,
+    /** What the followed podcasts put out lately, newest first. */
+    episodes: List<CatalogTrack> = emptyList(),
+    onPlayEpisode: (List<CatalogTrack>, Int) -> Unit = { _, _ -> },
 ) {
     // Not held for the followed artists: reading all of them takes seconds,
     // and the whole page stood behind a spinner for the one row that needs it.
@@ -141,6 +144,15 @@ fun NewScreen(
                 Heading(stringResource(R.string.new_songs), more = true)
             }
             item(contentType = "songs") { SongPages(page.songs, onSongMenu, onPlaySong) }
+        }
+
+        // The listener's own shows, after the music: a page of what is new is
+        // a page of what is new to them, and these are new to nobody else.
+        if (episodes.isNotEmpty()) {
+            item(contentType = "episodesHeading") {
+                Heading(stringResource(R.string.new_episodes), more = true)
+            }
+            item(contentType = "episodes") { SongPages(episodes, onSongMenu, onPlayEpisode) }
         }
 
         if (followed.albums.isNotEmpty() || followed.error != null || followed.loaded || followed.loading) {
@@ -446,7 +458,7 @@ private fun SongRow(track: CatalogTrack, onMenu: () -> Unit, onClick: () -> Unit
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                track.artist,
+                if (track.isEpisode) dev.lelonio.square.ui.library.episodeLine(track, showName = true) else track.artist,
                 style = MaterialTheme.typography.bodySmall,
                 color = InkDim,
                 maxLines = 1,

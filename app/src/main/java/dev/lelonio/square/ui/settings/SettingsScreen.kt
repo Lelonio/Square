@@ -68,6 +68,7 @@ import androidx.compose.foundation.layout.heightIn
 import com.adamglin.phosphoricons.regular.UserCircle
 import com.adamglin.phosphoricons.regular.Waveform
 import com.adamglin.phosphoricons.regular.Drop
+import com.adamglin.phosphoricons.regular.Equalizer
 import com.adamglin.phosphoricons.regular.SlidersHorizontal
 import com.adamglin.phosphoricons.regular.Info
 import com.adamglin.phosphoricons.regular.DownloadSimple
@@ -286,6 +287,13 @@ fun SettingsScreen(
         },
         label = "settingsPage",
     ) { shown ->
+    if (shown == SettingsPage.Equalizer) {
+        EqualizerPage(
+            contentPadding = contentPadding,
+            header = { heading(shown) },
+        )
+        return@AnimatedContent
+    }
     if (shown == SettingsPage.Glass) {
         GlassPage(
             backdrop = backdrop,
@@ -998,6 +1006,9 @@ private enum class SettingsPage(
     // Its own page rather than a section of the app's: the preview has to stay
     // on screen while the numbers under it move, and a section inside a list
     // scrolls away. See GlassPage.
+    // Its own page for the glass's reason: the curve is moved by hand, and
+    // stays on screen while it is.
+    Equalizer(R.string.equalizer, R.string.page_equalizer_summary, PhosphorIcons.Regular.Equalizer),
     Glass(R.string.glass, R.string.page_glass_summary, PhosphorIcons.Regular.Drop),
     Downloads(R.string.page_downloads, R.string.page_downloads_summary, PhosphorIcons.Regular.DownloadSimple),
     App(R.string.page_app, R.string.page_app_summary, PhosphorIcons.Regular.SlidersHorizontal),
@@ -1072,7 +1083,7 @@ private fun SettingsIndex(
             )
         }
 
-        // Five places, and a sixth tile that is not a place: it leaves the app
+        // Six places, and a seventh tile that is not a place: it leaves the app
         // for the Ko-fi page. Last, and in the same shape as the rest, because
         // it is an offer rather than a setting — asking louder than that would
         // be asking on a screen somebody opened to change something.

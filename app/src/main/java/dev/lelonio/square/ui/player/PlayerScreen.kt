@@ -118,6 +118,7 @@ import dev.lelonio.square.ui.glass.LiquidButton
 import dev.lelonio.square.ui.library.formatDuration
 import dev.lelonio.square.ui.theme.softShadow
 import com.adamglin.phosphoricons.regular.MonitorPlay
+import com.adamglin.phosphoricons.regular.Gauge
 import com.adamglin.phosphoricons.regular.MusicNotes
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.regular.DeviceRotate
@@ -1542,6 +1543,43 @@ fun PlayerScreen(
                                 .height(videoRowHeight),
                             contentAlignment = Alignment.Center,
                         ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                        // The speed, one tap a step, beside the video, and
+                        // only on an episode: a talk is what people speed up.
+                        // A song keeps the fine slider in the effects panel.
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = !panelOpen && !sideways &&
+                                state.mediaId?.startsWith("spotify:episode:") == true,
+                            enter = fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.9f),
+                            exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.92f),
+                        ) {
+                            GlassSurface(
+                                backdrop = upperBackdrop,
+                                surfaceColor = LocalPlayerFilm.current,
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier.pressable(onClick = { onSpeed(nextSpeed(state.speed)) }),
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        PhosphorIcons.Regular.Gauge,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .padding(end = 8.dp)
+                                            .size(18.dp),
+                                    )
+                                    Text(
+                                        speedLabel(state.speed),
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                }
+                            }
+                        }
                         androidx.compose.animation.AnimatedVisibility(
                             visible = videoFileId != null && !panelOpen && !sideways,
                             enter = fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.9f),
@@ -1582,6 +1620,7 @@ fun PlayerScreen(
                                     )
                                 }
                             }
+                        }
                         }
                         }
 
@@ -3105,4 +3144,19 @@ private fun CardButton(
             modifier = Modifier.size(size * 0.45f),
         )
     }
+}
+
+/** The speeds the button steps through, in the order a listener reaches for them. */
+private val SPEED_STEPS = listOf(1f, 1.25f, 1.5f, 1.75f, 2f, 0.75f)
+
+/** The step after [speed]; a speed set on the slider goes back to normal. */
+private fun nextSpeed(speed: Float): Float {
+    val at = SPEED_STEPS.indexOfFirst { kotlin.math.abs(it - speed) < 0.01f }
+    return if (at < 0) 1f else SPEED_STEPS[(at + 1) % SPEED_STEPS.size]
+}
+
+/** "1,5×", in the reader's own decimal mark. */
+private fun speedLabel(speed: Float): String {
+    val format = java.text.DecimalFormat("0.##")
+    return format.format(speed.toDouble()) + "×"
 }

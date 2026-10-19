@@ -48,5 +48,5 @@ object SpotifyLink {
     private fun String.isKind(): Boolean =
         KINDS.any { startsWith("spotify:$it:") }
 
-    private val KINDS = listOf("track", "album", "playlist", "artist")
+    private val KINDS = listOf("track", "album", "playlist", "artist", "show")
 }

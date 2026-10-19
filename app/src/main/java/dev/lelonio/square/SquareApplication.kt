@@ -55,6 +55,7 @@ class SquareApplication : Application(), ImageLoaderFactory {
         // exist by then and either can announce a default that would be saved
         // over what the listener had set.
         dev.lelonio.square.playback.AudioEffects.load(this)
+        dev.lelonio.square.playback.Equalizer.load(this)
 
         // Where the extras live, and which tracks are worth keeping them for.
         // Attached here rather than in the service: Catalog reaches for it on
@@ -301,6 +302,11 @@ class SquareApplication : Application(), ImageLoaderFactory {
 
     /** The user's saved speed / pitch / reverb combinations. */
     val effectPresets: EffectPresetStore by lazy { EffectPresetStore(this) }
+
+    /** How far into each podcast episode the listener got; see EpisodeProgress. */
+    val episodeProgress: dev.lelonio.square.data.EpisodeProgress by lazy {
+        dev.lelonio.square.data.EpisodeProgress(this)
+    }
 
     /**
      * The Spotify source, behind the common backend interface.

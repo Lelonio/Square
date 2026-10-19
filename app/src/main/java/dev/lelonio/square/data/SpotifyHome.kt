@@ -43,7 +43,12 @@ object SpotifyHome {
     /** Sections whose items are one-per-row filler; see the note in [parse]. */
     private const val BASELINE = "HomeFeedBaselineSectionData"
 
-    fun parse(json: String): List<HomeShelf> = runCatching {
+    /**
+     * @param podcasts whether shows and episodes are tiles too. Off for the
+     *   music home, where they used to be dropped; on for the Podcast chip,
+     *   which is nothing but them.
+     */
+    fun parse(json: String, podcasts: Boolean = false): List<HomeShelf> = runCatching {
         val sections = JSONObject(json)
             .getJSONObject("data")
             .getJSONObject("home")
@@ -57,7 +62,7 @@ object SpotifyHome {
             val section = sections.getJSONObject(index)
             val baseline = section.optJSONObject("data")?.optString("__typename") == BASELINE
             if (!baseline) {
-                shelf(section)?.let(rows::add)
+                shelf(section, podcasts)?.let(rows::add)
                 continue
             }
             // The endless feed at the bottom of Spotify's own home: dozens of
@@ -66,7 +71,7 @@ object SpotifyHome {
             // the artist a section is about when it names one ("For fans of
             // Geolier" twice is one row), and by title when it does not ("Just
             // for you" five times is one row).
-            val one = shelf(section) ?: continue
+            val one = shelf(section, podcasts) ?: continue
             val artist = section.optJSONObject("data")
                 ?.optJSONObject("headerEntity")
                 ?.optJSONObject("data")
@@ -80,7 +85,7 @@ object SpotifyHome {
         rows + gathered.values
     }.getOrDefault(emptyList())
 
-    private fun shelf(section: JSONObject): HomeShelf? {
+    private fun shelf(section: JSONObject, podcasts: Boolean): HomeShelf? {
         val data = section.optJSONObject("data") ?: return null
 
         val title = data.optJSONObject("title")?.optString("transformedLabel").orEmpty()
@@ -89,12 +94,12 @@ object SpotifyHome {
         val items = section.optJSONObject("sectionItems")?.optJSONArray("items")
             ?: return null
         val entries = (0 until items.length()).mapNotNull { index ->
-            entry(items.getJSONObject(index))
+            entry(items.getJSONObject(index), podcasts)
         }
         return if (entries.isEmpty()) null else HomeShelf(title, entries, section.optString("uri"))
     }
 
-    private fun entry(item: JSONObject): CatalogPlaylist? {
+    private fun entry(item: JSONObject, podcasts: Boolean): CatalogPlaylist? {
         val uri = item.optString("uri")
         if (uri.isEmpty()) return null
         // The DJ is a stream Spotify generates as you listen, not a list: it has
@@ -126,8 +131,13 @@ object SpotifyHome {
                 ),
             )
 
-            // Podcasts and audiobooks come down the same pipe. This app plays
-            // music, and a tile that cannot be opened is worse than a gap.
+            // Shows open as their list of episodes and an episode plays; both
+            // only on the podcast page, where they are what was asked for.
+            "Podcast" -> if (podcasts) SpotifyPodcasts.showTile(data) else null
+            "Episode" -> if (podcasts) SpotifyPodcasts.episodeTile(data) else null
+
+            // Audiobooks come down the same pipe, and a tile that cannot be
+            // opened is worse than a gap.
             else -> null
         }
     }

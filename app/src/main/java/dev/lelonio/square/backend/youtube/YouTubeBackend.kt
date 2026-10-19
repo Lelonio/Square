@@ -117,6 +117,8 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                 // Videos of every kind YouTube Music has: music videos, and the
                 // uploads people listen to rather than watch (ASMR, sessions).
                 val videos = async { searchItems(trimmed, YouTube.SearchFilter.FILTER_VIDEO) }
+                val podcasts = async { searchItems(trimmed, YouTube.SearchFilter.FILTER_PODCAST) }
+                val episodes = async { searchItems(trimmed, YouTube.SearchFilter.FILTER_EPISODE) }
 
                 SearchResults(
                     tracks = songs.await().filterIsInstance<SongItem>().map(::toCatalogTrack),
@@ -146,6 +148,16 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                             artworkUrl = playlist.thumbnail?.atSize(COVER_SIZE),
                         )
                     },
+                    podcasts = podcasts.await().filterIsInstance<PodcastItem>().mapNotNull { show ->
+                        val tile = toCatalogPlaylist(show) ?: return@mapNotNull null
+                        SearchItem(
+                            uri = tile.uri,
+                            title = tile.name,
+                            subtitle = tile.subtitle ?: labels.podcast,
+                            artworkUrl = tile.artworkUrl,
+                        )
+                    },
+                    episodes = episodes.await().filterIsInstance<EpisodeItem>().map(::toCatalogTrack),
                 )
             }
         }
@@ -198,6 +210,28 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                 .mapNotNull(::toCatalogPlaylist)
         }.getOrElse {
             android.util.Log.w(LOG_TAG, "saved albums unavailable: $it")
+            emptyList()
+        }
+    }
+
+    /** The podcasts saved to the library, from YouTube Music's page of them. */
+    override suspend fun savedShows(): List<CatalogPlaylist> = withContext(Dispatchers.IO) {
+        if (!account.isSignedIn) return@withContext emptyList()
+        runCatching {
+            YouTube.savedPodcastShows().getOrThrow().mapNotNull(::toCatalogPlaylist)
+        }.getOrElse {
+            android.util.Log.w(LOG_TAG, "saved podcasts unavailable: $it")
+            emptyList()
+        }
+    }
+
+    /** YouTube Music's own "New episodes" list, of the podcasts saved. */
+    override suspend fun newEpisodes(): List<CatalogTrack> = withContext(Dispatchers.IO) {
+        if (!account.isSignedIn) return@withContext emptyList()
+        runCatching {
+            YouTube.newEpisodes().getOrThrow().map { toCatalogTrack(it).copy(releasedAt = "") }
+        }.getOrElse {
+            android.util.Log.w(LOG_TAG, "new episodes unavailable: $it")
             emptyList()
         }
     }
@@ -424,6 +458,8 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         durationMs = item.duration?.takeIf { it > 0 }?.times(1000L) ?: 0L,
         explicit = item.explicit,
         artworkUrl = item.thumbnail,
+        // Marks it as an episode; YouTube gives the day only as words.
+        releasedAt = "",
     )
 
     /**

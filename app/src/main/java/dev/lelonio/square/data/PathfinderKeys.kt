@@ -61,6 +61,20 @@ class PathfinderKeys(context: Context) {
     val playlistSection: String
         get() = prefs.getString(KEY_PLAYLIST_SECTION, null) ?: DEFAULT_PLAYLIST_SECTION
 
+    /** And `queryShowMetadataV2`, a podcast's own page; see SpotifyPodcasts. */
+    val show: String get() = prefs.getString(KEY_SHOW, null) ?: DEFAULT_SHOW
+
+    /** And `queryPodcastEpisodes`, a podcast's episodes a page at a time. */
+    val showEpisodes: String get() = prefs.getString(KEY_SHOW_EPISODES, null) ?: DEFAULT_SHOW_EPISODES
+
+    /** And `libraryV3`, the account's library by kind; the podcasts it follows. */
+    val libraryContents: String
+        get() = prefs.getString(KEY_LIBRARY_CONTENTS, null) ?: DEFAULT_LIBRARY_CONTENTS
+
+    /** And `addToLibrary` / `removeFromLibrary`, one document for both. */
+    val libraryEdit: String
+        get() = prefs.getString(KEY_LIBRARY_EDIT, null) ?: DEFAULT_LIBRARY_EDIT
+
     /** The web client version the gateway is told about. */
     val appVersion: String get() = prefs.getString(KEY_VERSION, null) ?: DEFAULT_VERSION
 
@@ -99,6 +113,14 @@ class PathfinderKeys(context: Context) {
                     ?.let { edit.putString(KEY_ARTIST_OVERVIEW, it) }
                 body.optString("playlistSection").takeIf { it.length == HASH_LENGTH }
                     ?.let { edit.putString(KEY_PLAYLIST_SECTION, it) }
+                body.optString("show").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_SHOW, it) }
+                body.optString("showEpisodes").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_SHOW_EPISODES, it) }
+                body.optString("libraryContents").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_LIBRARY_CONTENTS, it) }
+                body.optString("libraryEdit").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_LIBRARY_EDIT, it) }
                 body.optString("appVersion").takeIf { it.isNotEmpty() }
                     ?.let { edit.putString(KEY_VERSION, it) }
                 edit.apply()
@@ -118,6 +140,10 @@ class PathfinderKeys(context: Context) {
         const val KEY_BROWSE_SECTION = "browse_section"
         const val KEY_ARTIST_OVERVIEW = "artist_overview"
         const val KEY_PLAYLIST_SECTION = "playlist_section"
+        const val KEY_SHOW = "show"
+        const val KEY_SHOW_EPISODES = "show_episodes"
+        const val KEY_LIBRARY_CONTENTS = "library_contents"
+        const val KEY_LIBRARY_EDIT = "library_edit"
         const val KEY_VERSION = "app_version"
         const val KEY_CHECKED = "checked_at"
 
@@ -150,6 +176,14 @@ class PathfinderKeys(context: Context) {
             "9f8134ef565e78621f1e1793555bd6633c5ac144ae0f89604ed3ae3f80b3c8e6"
         const val DEFAULT_PLAYLIST_SECTION =
             "2615df403a9043c1d7d3094fbeb4c9653b07b11a33d8081fbd31f0f7959ff4a1"
+        const val DEFAULT_SHOW =
+            "b475447846f37cc426add800b995a7859c169c53c72b62de6338c0c40a5dacea"
+        const val DEFAULT_SHOW_EPISODES =
+            "3539d746cf882f3909660de40b4ef472b3f5893a0761d617c282541de5d412c5"
+        const val DEFAULT_LIBRARY_CONTENTS =
+            "390c78e5b951029bad359785e69b07b536a509c581cbcd0aded5e5067f187455"
+        const val DEFAULT_LIBRARY_EDIT =
+            "896ebcb47815681340860d121cb5d494e157e2a78d3950385cd54e0393c67148"
         const val DEFAULT_VERSION = "1.2.97.155.g5dd0dcaf-development"
     }
 }

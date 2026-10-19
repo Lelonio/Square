@@ -28,6 +28,7 @@ data class SearchLabels(
     val artist: String,
     val album: String,
     val playlist: String,
+    val podcast: String = "Podcast",
 )
 
 /**
@@ -159,6 +160,12 @@ interface MusicBackend {
 
     /** The artists the account follows, for the same shelf's artists chip. */
     suspend fun followedArtists(): List<SearchItem> = emptyList()
+
+    /** The podcasts the account follows, for the library's podcast chip. */
+    suspend fun savedShows(): List<CatalogPlaylist> = emptyList()
+
+    /** What those podcasts put out lately, newest first, for the New tab. */
+    suspend fun newEpisodes(): List<CatalogTrack> = emptyList()
 
     /** Tracks of a playlist, album, or artist URI this backend owns. */
     suspend fun tracksOf(uri: String): List<CatalogTrack>

@@ -78,6 +78,18 @@ internal object GatewaySearch {
                 )
             },
             lyricMatches = lyricMatches,
+            podcasts = search.items("podcasts").mapNotNull { wrapper ->
+                val show = SpotifyPodcasts.showTile(wrapper.optJSONObject("data")) ?: return@mapNotNull null
+                SearchItem(
+                    uri = show.uri,
+                    title = show.name,
+                    subtitle = show.subtitle ?: labels.podcast,
+                    artworkUrl = wrapper.optJSONObject("data")?.optJSONObject("coverArt").best(),
+                )
+            },
+            episodes = search.items("episodes").mapNotNull { wrapper ->
+                SpotifyPodcasts.episode(wrapper.optJSONObject("data"))
+            },
         )
     }
 

@@ -538,6 +538,7 @@ class AudioOutput {
         // the packets go out untouched and the rate is set on the track itself.
         if (lightEffects) {
             synchronized(this) { applyPlatformRate() }
+            equalizer.apply(data, sizeInBytes, channels, sampleRate)
             writeAll(output, data, sizeInBytes)
             return
         }
@@ -555,10 +556,16 @@ class AudioOutput {
         }
 
         if (stretched != null) {
-            writeAll(output, stretched, stretched.remaining())
+            val size = stretched.remaining()
+            // After the stretch, as in the other players' chain; see
+            // EqualizerAudioProcessor. Its own view of the buffer, so the
+            // equaliser's reads leave the position the write starts from.
+            equalizer.apply(stretched.duplicate(), size, channels, sampleRate)
+            writeAll(output, stretched, size)
             return
         }
 
+        equalizer.apply(data, sizeInBytes, channels, sampleRate)
         writeAll(output, data, sizeInBytes)
     }
 
@@ -599,6 +606,9 @@ class AudioOutput {
         val output = synchronized(this) { ensureTrack(sampleRate, channels) } ?: return
         if (!voice) enterVoice(output)
         dev.lelonio.square.backend.spotify.SpotifyDj.hear(data, sizeInBytes)
+        // The one thing the voice does go through: the curve is about the
+        // headphones, not the music, and a voice on them needs it as much.
+        equalizer.apply(data, sizeInBytes, channels, sampleRate)
         writeAll(output, data, sizeInBytes)
     }
 
@@ -636,6 +646,9 @@ class AudioOutput {
 
     /** Takes the middle of the stage away; see [CentreExtractor]. */
     private val vocals = CentreExtractor()
+
+    /** The listener's curve for whatever is plugged in; see [Equalizer]. */
+    private val equalizer = EqualizerFilter()
 
     /** What the track was last told, so it is not told again every packet. */
     private var platformSpeed = 1f

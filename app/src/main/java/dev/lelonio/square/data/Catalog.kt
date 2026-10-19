@@ -70,7 +70,29 @@ data class CatalogTrack(
      * has nothing to play for it.
      */
     val localFile: String? = null,
-)
+    /**
+     * For a podcast episode: when it came out, ISO-8601. Null for music, whose
+     * release is a year on its record rather than a day.
+     */
+    val releasedAt: String? = null,
+    /** For an episode: how far into it the listener got, where the source says. */
+    val resumeMs: Long = 0,
+    /** For an episode: whether the listener heard it to the end. */
+    val played: Boolean = false,
+    /** For an episode: whether it comes with a picture as well as sound. */
+    val hasVideo: Boolean = false,
+    /** For an episode: what the show says it is about, as plain text. */
+    val summary: String = "",
+) {
+    /**
+     * A podcast episode rather than a song, on either source.
+     *
+     * What the player and the lists ask before offering what only a song has:
+     * lyrics, a heart, a radio, credits.
+     */
+    val isEpisode: Boolean
+        get() = uri.startsWith("spotify:episode:") || releasedAt != null
+}
 
 /**
  * One line of lyrics.

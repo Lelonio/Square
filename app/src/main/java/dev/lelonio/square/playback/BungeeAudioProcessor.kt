@@ -190,6 +190,40 @@ class VocalAudioProcessor : BaseAudioProcessor() {
     }
 }
 
+/**
+ * The equaliser, for the players that are not the Spotify engine.
+ *
+ * After the stretcher, so the bands sit where they were set whatever the speed
+ * and pitch: before it, a pitch shift would carry the bass boost up with the
+ * bass. See [Equalizer].
+ */
+@OptIn(UnstableApi::class)
+class EqualizerAudioProcessor : BaseAudioProcessor() {
+
+    private val filter = EqualizerFilter()
+
+    override fun onConfigure(
+        inputAudioFormat: AudioProcessor.AudioFormat,
+    ): AudioProcessor.AudioFormat {
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
+            throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
+        }
+        return inputAudioFormat
+    }
+
+    override fun queueInput(inputBuffer: ByteBuffer) {
+        val size = inputBuffer.remaining()
+        if (size == 0) return
+        val out = replaceOutputBuffer(size)
+        val start = out.position()
+        out.put(inputBuffer)
+        out.position(start)
+        filter.apply(out, size, inputAudioFormat.channelCount, inputAudioFormat.sampleRate)
+        out.position(start)
+        out.limit(start + size)
+    }
+}
+
 @OptIn(UnstableApi::class)
 class BungeeProcessorChain(
     private val bungee: BungeeAudioProcessor = BungeeAudioProcessor(),
@@ -201,7 +235,9 @@ class BungeeProcessorChain(
 
     private val vocals = VocalAudioProcessor()
 
-    override fun getAudioProcessors(): Array<AudioProcessor> = arrayOf(vocals, bungee, *after)
+    private val equalizer = EqualizerAudioProcessor()
+
+    override fun getAudioProcessors(): Array<AudioProcessor> = arrayOf(vocals, bungee, equalizer, *after)
 
     override fun applyPlaybackParameters(
         playbackParameters: PlaybackParameters,

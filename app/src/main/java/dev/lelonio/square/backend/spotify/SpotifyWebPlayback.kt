@@ -108,7 +108,12 @@ object SpotifyWebPlayback {
         val metered = object : androidx.media3.exoplayer.DefaultRenderersFactory(context) {
             override fun buildAudioSink(c: Context, f: Boolean, p: Boolean) =
                 androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(c)
-                    .setAudioProcessors(arrayOf(androidx.media3.exoplayer.audio.TeeAudioProcessor(meter)))
+                    .setAudioProcessors(
+                        arrayOf(
+                            androidx.media3.exoplayer.audio.TeeAudioProcessor(meter),
+                            dev.lelonio.square.playback.EqualizerAudioProcessor(),
+                        ),
+                    )
                     .build()
         }
         val exo = ExoPlayer.Builder(context, metered)

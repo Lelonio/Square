@@ -1,5 +1,7 @@
 package dev.lelonio.square.ui.library
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.animation.AnimatedContent
@@ -25,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -108,6 +111,7 @@ private enum class Filter(@StringRes val label: Int, @StringRes val count: Int) 
     PLAYLISTS(R.string.playlists, R.string.playlist_count),
     ARTISTS(R.string.artists, R.string.artist_count),
     ALBUMS(R.string.albums, R.string.album_count),
+    PODCASTS(R.string.podcasts, R.string.podcast_count),
 }
 
 /**
@@ -143,6 +147,8 @@ fun LibraryScreen(
     onOpenArtist: (dev.lelonio.square.data.SearchItem) -> Unit = {},
     /** The albums the account has saved; see MainViewModel.savedAlbums. */
     albums: List<CatalogPlaylist> = emptyList(),
+    /** The podcasts the account follows; none leaves their chip out. */
+    podcasts: List<CatalogPlaylist> = emptyList(),
     /** Tries the servers again from the offline banner; null hides the button. */
     onRetryOnline: (suspend () -> Boolean)? = null,
     /**
@@ -235,9 +241,10 @@ fun LibraryScreen(
             }
 
             // What the chips are asking for, before any sorting.
-            val shown = remember(state.playlists, albums, artistItems, filter) {
+            val shown = remember(state.playlists, albums, artistItems, podcasts, filter) {
                 when (filter) {
-                    Filter.ALL -> (state.playlists + albums).distinctBy { it.uri }
+                    Filter.ALL -> (state.playlists + albums + podcasts).distinctBy { it.uri }
+                    Filter.PODCASTS -> podcasts.distinctBy { it.uri }
                     Filter.PLAYLISTS -> state.playlists.distinctBy { it.uri }
                     Filter.ALBUMS -> albums.distinctBy { it.uri }
                     Filter.ARTISTS -> artistItems.distinctBy { it.uri }
@@ -315,6 +322,7 @@ fun LibraryScreen(
                         layout = layout,
                         order = order,
                         filter = filter,
+                        hasPodcasts = podcasts.isNotEmpty(),
                         backdrop = backdrop,
                         topPadding = contentPadding.calculateTopPadding(),
                         onLayout = {
@@ -538,6 +546,8 @@ private fun Header(
     layout: Layout,
     order: Order,
     filter: Filter,
+    /** Whether the podcast chip has anything under it. */
+    hasPodcasts: Boolean = false,
     backdrop: Backdrop,
     topPadding: Dp,
     onLayout: (Layout) -> Unit,
@@ -626,33 +636,41 @@ private fun Header(
             }
         }
 
-        // The chips say what is being shown; the sort sits at the end of the
-        // same row as a menu, because it is a choice among three that is made
-        // once and then left alone.
+        // The chips say what is being shown, the whole width to themselves:
+        // the sort went up beside the other buttons, since it is a choice made
+        // once and then left alone, and the chips need the room.
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(top = 14.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Filter.entries.forEach { entry ->
+            // Scrolled sideways rather than squeezed, edge to edge.
+            Row(
+                Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+            Filter.entries.filter { it != Filter.PODCASTS || hasPodcasts }.forEach { entry ->
                 dev.lelonio.square.ui.components.FilterChip(
                     label = stringResource(entry.label),
                     selected = entry == filter,
                     onClick = { onFilter(entry) },
                 )
             }
+            }
+        }
 
-            Spacer(Modifier.weight(1f))
-
-            LiquidButton(
-                onClick = onSort,
-                backdrop = backdrop,
-                flat = true,
-                contentHeight = 36.dp,
-                contentPadding = 12.dp,
-                modifier = Modifier.onGloballyPositioned {
+        // The order, named, just above what it orders: read with the list
+        // rather than hunted for among the buttons, and out of the chips' way.
+        Row(
+            Modifier
+                .padding(start = 14.dp, top = 2.dp, bottom = 4.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable(onClick = onSort)
+                .onGloballyPositioned {
                     val bounds = it.boundsInRoot()
                     onSortAnchor(
                         androidx.compose.ui.unit.IntOffset(
@@ -660,15 +678,23 @@ private fun Header(
                             bounds.bottom.toInt(),
                         ),
                     )
-                },
-            ) {
-                Icon(
-                    PhosphorIcons.Regular.ArrowsDownUp,
-                    contentDescription = stringResource(R.string.sort),
-                    tint = InkDim,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+                }
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                PhosphorIcons.Regular.ArrowsDownUp,
+                contentDescription = stringResource(R.string.sort),
+                tint = InkDim,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                stringResource(order.label),
+                style = MaterialTheme.typography.labelLarge,
+                color = InkDim,
+            )
+
         }
     }
 }

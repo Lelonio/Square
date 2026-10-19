@@ -66,6 +66,7 @@ private enum class Kind(@StringRes val label: Int) {
     ARTISTS(R.string.artists),
     ALBUMS(R.string.albums),
     PLAYLISTS(R.string.playlists),
+    PODCASTS(R.string.podcasts),
 }
 
 /**
@@ -152,7 +153,12 @@ fun SearchScreen(
         if (!state.results.isEmpty && !state.loading) {
             item(contentType = "chips") {
                 // Videos only where the source has them: Spotify's search does not.
-                KindRow(kind, backdrop, hasVideos = state.results.videos.isNotEmpty()) { kind = it }
+                KindRow(
+                    kind,
+                    backdrop,
+                    hasVideos = state.results.videos.isNotEmpty(),
+                    hasPodcasts = state.results.podcasts.isNotEmpty() || state.results.episodes.isNotEmpty(),
+                ) { kind = it }
             }
         }
 
@@ -337,6 +343,33 @@ fun SearchScreen(
                     section(R.string.playlists, state.results.playlists, all, round = false, onOpenContext)
                 }
 
+                // Shows open as their episodes; an episode plays where it is.
+                if (all || kind == Kind.PODCASTS) {
+                    section(R.string.podcasts, state.results.podcasts, all, round = false, onOpenContext)
+                }
+                val episodes = state.results.episodes.let { if (all) it.take(TOP_RESULTS) else it }
+                if ((all || kind == Kind.PODCASTS) && episodes.isNotEmpty()) {
+                    item(contentType = "section") { SectionTitle(stringResource(R.string.episodes)) }
+                    items(
+                        count = episodes.size,
+                        key = { "episode-${episodes[it].uri}-$it" },
+                        contentType = { "track" },
+                    ) { index ->
+                        val episode = episodes[index]
+                        SwipeToQueue(onQueue = { onEnqueue(episode) }) {
+                            ResultRow(
+                                title = episode.name,
+                                subtitle = dev.lelonio.square.ui.library.episodeLine(episode, showName = true),
+                                artworkUrl = episode.artworkUrl,
+                                highlighted = episode.uri == nowPlayingUri,
+                                round = false,
+                                onClick = { onPlayTrack(episodes, index) },
+                                onMenu = { onTrackMenu(episode) },
+                            )
+                        }
+                    }
+                }
+
                 // The page on its way, said in the one place the reader is
                 // looking: at the bottom, where they ran out of rows.
                 if (state.loadingMore) {
@@ -363,13 +396,22 @@ fun SearchScreen(
 
 /** The same chips the home page filters with; see the note there. */
 @Composable
-private fun KindRow(selected: Kind, backdrop: Backdrop, hasVideos: Boolean, onSelect: (Kind) -> Unit) {
+private fun KindRow(
+    selected: Kind,
+    backdrop: Backdrop,
+    hasVideos: Boolean,
+    hasPodcasts: Boolean,
+    onSelect: (Kind) -> Unit,
+) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
     ) {
-        items(Kind.entries.filter { it != Kind.VIDEOS || hasVideos }, key = { it.name }) { entry ->
+        items(
+            Kind.entries.filter { (it != Kind.VIDEOS || hasVideos) && (it != Kind.PODCASTS || hasPodcasts) },
+            key = { it.name },
+        ) { entry ->
             dev.lelonio.square.ui.components.FilterChip(
                 label = stringResource(entry.label),
                 selected = entry == selected,

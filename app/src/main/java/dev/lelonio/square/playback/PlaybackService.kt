@@ -1637,6 +1637,21 @@ class PlaybackService : MediaLibraryService() {
                     )
                 ) {
                     savePlayback()
+                    recordEpisode()
+                }
+            }
+
+            // An episode that ran into the next one was heard to the end.
+            override fun onMediaItemTransition(
+                mediaItem: androidx.media3.common.MediaItem?,
+                reason: Int,
+            ) {
+                val left = episodePlaying
+                episodePlaying = mediaItem?.mediaId
+                if (left != null && left != mediaItem?.mediaId &&
+                    reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_AUTO
+                ) {
+                    (application as dev.lelonio.square.SquareApplication).episodeProgress.finished(left)
                 }
             }
         })
@@ -1645,7 +1660,10 @@ class PlaybackService : MediaLibraryService() {
         saveJob = scope.launch {
             while (true) {
                 delay(SAVE_INTERVAL_MS)
-                if (player.isPlaying) savePlayback()
+                if (player.isPlaying) {
+                    savePlayback()
+                    recordEpisode()
+                }
             }
         }
     }
@@ -1768,6 +1786,17 @@ class PlaybackService : MediaLibraryService() {
      * the queue knows the pre-shuffle order and the permutation on top of it;
      * the timeline exposes just the current sequence.
      */
+    /** What was playing at the last transition, for marking it heard; see observeForSaving. */
+    private var episodePlaying: String? = null
+
+    /** Where the episode playing has got to; see EpisodeProgress. */
+    private fun recordEpisode() {
+        val uri = player.currentMediaItem?.mediaId ?: return
+        if (!uri.startsWith("spotify:episode:")) return
+        (application as dev.lelonio.square.SquareApplication).episodeProgress
+            .record(uri, player.currentPosition, player.duration.coerceAtLeast(0))
+    }
+
     private fun savePlayback() {
         // A backend with no PlayQueue behind it — the YouTube one — is saved off
         // the Media3 timeline instead. That loses the pre-shuffle order, which
