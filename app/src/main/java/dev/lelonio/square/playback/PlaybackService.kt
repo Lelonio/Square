@@ -51,7 +51,7 @@ class PlaybackService : MediaLibraryService() {
     private fun redrawButtons() {
         val live = session ?: return
         live.connectedControllers.forEach { controller ->
-            live.setCustomLayout(
+            live.setMediaButtonPreferences(
                 controller,
                 browseTree.layoutFor(
                     player,

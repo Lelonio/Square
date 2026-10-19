@@ -147,6 +147,10 @@ class MediaBrowseTree(
         )
             .setSessionCommand(SessionCommand(CMD_SHUFFLE, Bundle.EMPTY))
             .setDisplayName(strings.getString(R.string.shuffle))
+            // Where each goes, said rather than left to the order. Some
+            // phones' media controls (OxygenOS, #84) showed only the transport
+            // for a layout that did not say, and Spotify's two beside it.
+            .setSlots(CommandButton.SLOT_BACK_SECONDARY, CommandButton.SLOT_OVERFLOW)
             .build()
 
         if (!shadeAndCar) {
@@ -163,6 +167,7 @@ class MediaBrowseTree(
                 )
                     .setSessionCommand(SessionCommand(CMD_REPEAT, Bundle.EMPTY))
                     .setDisplayName(strings.getString(R.string.repeat))
+                    .setSlots(CommandButton.SLOT_FORWARD_SECONDARY, CommandButton.SLOT_OVERFLOW)
                     .build(),
             )
         }
@@ -175,10 +180,13 @@ class MediaBrowseTree(
             .setDisplayName(
                 strings.getString(if (liked) R.string.remove_from_liked else R.string.liked_songs),
             )
+            .setSlots(CommandButton.SLOT_FORWARD_SECONDARY, CommandButton.SLOT_OVERFLOW)
             .build()
         val radio = CommandButton.Builder(CommandButton.ICON_RADIO)
             .setSessionCommand(SessionCommand(CMD_RADIO, Bundle.EMPTY))
             .setDisplayName(strings.getString(R.string.radio))
+            // Beside the transport where there is no heart to put there.
+            .setSlots(CommandButton.SLOT_FORWARD_SECONDARY, CommandButton.SLOT_OVERFLOW)
             .build()
         // The heart only where it can do something: a button that did nothing
         // was what a YouTube Music listener with no account found here.
@@ -209,7 +217,7 @@ class MediaBrowseTree(
 
         return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
             .setAvailableSessionCommands(commands)
-            .setCustomLayout(
+            .setMediaButtonPreferences(
                 layoutFor(
                     session.player,
                     shadeAndCar = session.isMediaNotificationController(controller),
@@ -263,7 +271,7 @@ class MediaBrowseTree(
         }
         // Redrawn at once on each controller so their layouts (car vs shade) remain distinct.
         session.connectedControllers.forEach { ctrl ->
-            session.setCustomLayout(
+            session.setMediaButtonPreferences(
                 ctrl,
                 layoutFor(
                     player,
@@ -285,7 +293,7 @@ class MediaBrowseTree(
 
         // Redraw immediately on all connected controllers so the heart flips without latency
         session.connectedControllers.forEach { ctrl ->
-            session.setCustomLayout(
+            session.setMediaButtonPreferences(
                 ctrl,
                 layoutFor(
                     player,
@@ -316,7 +324,7 @@ class MediaBrowseTree(
                 app.likedStore.toggle(uri)
                 val revertedLiked = !nowLiked
                 session.connectedControllers.forEach { ctrl ->
-                    session.setCustomLayout(
+                    session.setMediaButtonPreferences(
                         ctrl,
                         layoutFor(
                             player,
