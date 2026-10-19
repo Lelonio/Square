@@ -65,13 +65,8 @@ class MainActivity : ComponentActivity() {
      */
     private var link by mutableStateOf<LinkRequest?>(null)
 
-    /** The screen's fastest mode while a finger is on the app; see the class. */
+    /** The screen's fastest mode while the app is on screen; see the class. */
     private val touchRefreshRate = TouchRefreshRate(this)
-
-    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
-        touchRefreshRate.onTouch(event)
-        return super.dispatchTouchEvent(event)
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -278,6 +273,7 @@ class MainActivity : ComponentActivity() {
             getBooleanExtra(dev.lelonio.square.playback.EXTRA_OPEN_PLAYER, false)
 
     override fun onStart() {
+        touchRefreshRate.hold()
         dev.lelonio.square.data.RemoteConnect.onAppOpened()
         androidx.core.content.ContextCompat.registerReceiver(
             this,

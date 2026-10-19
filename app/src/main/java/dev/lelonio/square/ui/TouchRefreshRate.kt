@@ -2,54 +2,38 @@ package dev.lelonio.square.ui
 
 import android.app.Activity
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.view.Display
-import android.view.MotionEvent
 
 /**
- * Asks for the screen's fastest mode while a finger is on the app, and gives
- * it back shortly after.
+ * Asks for the screen's fastest mode for as long as the app is on screen.
  *
  * Some phones decide the rate app by app. The Nothing Phone (3a) held this app
  * at 90 Hz while other apps scrolled at 120: it gives an app that asks only
  * for "fast" its middle rate, and a frame rate requested from a view is
  * clamped to that too. What it does honour is a window naming the display mode
- * it wants. Named for good, though, that mode keeps the panel at its top rate
- * over a picture that is not moving, which is battery spent on nothing. So it
- * is named when a finger comes down and released a little after the last one
- * lifts, which leaves time for a fling to settle and for the bar to finish
- * folding.
+ * it wants.
+ *
+ * It used to be named only while a finger was on the app and let go two
+ * seconds after, to spare the battery over a still picture. Everything that
+ * moves on its own then ran at the phone's lower rate (the lyrics scrolling,
+ * the player opening on a tap that had already lifted, a cover playing), and
+ * on Xiaomi's phones, which drop to sixty for an app that does not ask, the
+ * app felt like it ran at sixty (#85). The phone still lowers the rate itself
+ * when nothing on screen changes, wherever its panel can.
  *
  * Where the phone already runs at its top rate, or has only one, asking
  * changes nothing.
  */
 internal class TouchRefreshRate(private val activity: Activity) {
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val release = Runnable { request(NO_PREFERENCE) }
-
-    /** The mode last written to the window, so a tap does not rewrite it. */
+    /** The mode last written to the window, so it is not rewritten. */
     private var requested = NO_PREFERENCE
 
-    fun onTouch(event: MotionEvent) {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                handler.removeCallbacks(release)
-                request(fastestMode())
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                handler.removeCallbacks(release)
-                handler.postDelayed(release, HOLD_MS)
-            }
-        }
-    }
+    /** Asks for the fastest mode; called as the app comes on screen. */
+    fun hold() = request(fastestMode())
 
-    /** Lets the mode go at once, for an activity that is leaving the screen. */
-    fun reset() {
-        handler.removeCallbacks(release)
-        request(NO_PREFERENCE)
-    }
+    /** Lets the mode go, for an activity that is leaving the screen. */
+    fun reset() = request(NO_PREFERENCE)
 
     /**
      * The fastest mode at the resolution the screen is using now: a mode at
@@ -87,8 +71,5 @@ internal class TouchRefreshRate(private val activity: Activity) {
 
     private companion object {
         const val NO_PREFERENCE = 0
-
-        /** Long enough for a fling and the bar's fold after the finger lifts. */
-        const val HOLD_MS = 2_000L
     }
 }
