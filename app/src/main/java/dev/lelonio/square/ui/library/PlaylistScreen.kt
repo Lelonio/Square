@@ -563,7 +563,12 @@ fun PlaylistScreen(
     // as a square, and each is drawn at the shape it was made in. What is left
     // of the header below it is the picture carrying on, blurred.
     val screenWidth = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
-    val artHeight = state.heroAspect
+    // A cover is square, and drawn whole. Cropped to fill the header, which is
+    // taller than it is wide, it lost a strip down either side — the words
+    // and faces a playlist's cover has at its edges. Only a photograph made
+    // for a header is laid over the whole of it.
+    val shownAspect = if (state.heroUrl != null) state.heroAspect else 1f
+    val artHeight = shownAspect
         ?.let { (screenWidth / it).coerceIn(200.dp, heroHeight) }
         ?: heroHeight
 
@@ -640,7 +645,7 @@ fun PlaylistScreen(
                 heroPx = heroPx,
                 collapsedPx = collapsedPx,
                 collapse = collapseFraction,
-                imageAspect = state.heroAspect,
+                imageAspect = shownAspect,
                 pending = state.heroPending,
             )
         }

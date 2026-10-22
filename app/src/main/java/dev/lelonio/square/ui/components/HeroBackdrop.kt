@@ -170,7 +170,15 @@ fun HeroBackdrop(
             return@produceState
         }
         value = coroutineScope {
-            val cover = async { loadArt(context, artworkUrl, COVER_PX) }
+            // The largest print there is, since this one fills the screen;
+            // the url as given when there is no larger one, and offline, where
+            // only the copy kept on the phone may be drawn.
+            val cover = async {
+                val large = spotifyLargeUrl(artworkUrl)
+                val sharper = large != artworkUrl && !dev.lelonio.square.playback.OfflineMode.active.value
+                (if (sharper) loadArt(context, large, COVER_PX) else null)
+                    ?: loadArt(context, artworkUrl, COVER_PX)
+            }
             val edge = async { if (extended) loadArt(context, artworkUrl, EXTENSION_PX) else null }
             val blur = async { loadArt(context, artworkUrl, HERO_BLUR_PX, blurred = true) }
             cover.await()?.let { ArtSet(it, edge.await(), blur.await(), zoom) }

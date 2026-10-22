@@ -295,6 +295,47 @@ fun spotifyResizedUrl(url: String, targetPx: Int): String {
 }
 
 /**
+ * The largest print the CDN publishes of the same picture, for one drawn
+ * across the whole screen.
+ *
+ * What a page is handed is a list-sized print: a playlist of Spotify's own
+ * comes as `ab67706f00000002…`, which is 300 across, and the header crops it
+ * to its own shape and draws it the width of the phone — five times over,
+ * which is the soft cover a listener reported. The same picture is there
+ * larger under another prefix, measured against the CDN rather than guessed:
+ *  - Spotify's playlists (`ab67706f`): `00000004` → 1280 px
+ *  - Listeners' own playlist covers (`ab67706c`): `0000bebb` → 640 px
+ *  - Albums (`ab67616d`): `000082c1` → 2000 px
+ *  - Artists (`ab676161`): `0000e5eb` → 640 px
+ *  - Playlist mosaics (`mosaic.scdn.co/<size>/…`): 640 px, the most it makes
+ *
+ * Anything else comes back unchanged. A print that turns out to be missing is
+ * the caller's to fall back from, to the url it had.
+ */
+fun spotifyLargeUrl(url: String): String {
+    if (url.startsWith("https://mosaic.scdn.co/")) {
+        val rest = url.removePrefix("https://mosaic.scdn.co/")
+        val size = rest.substringBefore('/')
+        if (size.all(Char::isDigit) && size != "640") {
+            return "https://mosaic.scdn.co/640/" + rest.substringAfter('/')
+        }
+        return url
+    }
+    val id = url.substringAfterLast('/')
+    if (id.length != SPOTIFY_ID_LEN || !id.all { it.isDigit() || it in 'a'..'f' }) return url
+    val family = id.take(8)
+    val rendition = when (family) {
+        "ab67706f" -> "00000004"
+        "ab67706c" -> "0000bebb"
+        "ab67616d" -> "000082c1"
+        "ab676161" -> "0000e5eb"
+        else -> return url
+    }
+    val tail = id.drop(SPOTIFY_SIZE_PREFIX_LEN)
+    return url.dropLast(SPOTIFY_ID_LEN) + family + rendition + tail
+}
+
+/**
  * Resolves a canonical cache key for an image URL.
  *
  * Spotify image IDs are 40 hex chars: 16 prefix chars encoding size/rendition,
