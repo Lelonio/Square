@@ -1,0 +1,2 @@
+Playlist covers are sharp and shown whole at the top of their page. Go to album in a song's menu.
+Fixed: downloaded playlists missing offline on YouTube Music, English lyrics laid out right to left on phones in Arabic, songs just added to a playlist shown without artist or cover, speed and pitch undoing each other, and an update that could leave the app unable to log in.
