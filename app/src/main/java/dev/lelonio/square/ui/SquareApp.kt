@@ -519,12 +519,21 @@ fun SquareApp(
     // letting go, and the slider draws its own value meanwhile.
     val effectsScope = rememberCoroutineScope()
     var effectsJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // What was last asked for and not yet sent. Speed and pitch travel as a
+    // pair, so the one not being moved is taken from here first: taken from
+    // the player, a pitch moved within the wait undid the speed still waiting.
+    var pendingParameters by remember { mutableStateOf<PlaybackParameters?>(null) }
     val setPlaybackParameters: (PlaybackParameters) -> Unit = { params ->
+        pendingParameters = params
         effectsJob?.cancel()
         effectsJob = effectsScope.launch {
             kotlinx.coroutines.delay(120)
             player?.playbackParameters = params
+            pendingParameters = null
         }
+    }
+    val currentParameters: () -> PlaybackParameters = {
+        pendingParameters ?: player?.playbackParameters ?: PlaybackParameters.DEFAULT
     }
     // What was last taken out of the queue, each with the place it had, kept
     // for a few seconds so it can be put back where it was.
@@ -3205,17 +3214,21 @@ fun SquareApp(
                                 // has to carry the other through unchanged.
                                 onSpeed = {
                                     setPlaybackParameters(
-                                        PlaybackParameters(it, playback.pitch),
+                                        PlaybackParameters(it, currentParameters().pitch),
                                     )
                                 },
                                 onPitch = {
                                     setPlaybackParameters(
-                                        PlaybackParameters(playback.speed, it),
+                                        PlaybackParameters(currentParameters().speed, it),
                                     )
                                 },
                                 onReverb = AudioEffects::setReverb,
                                 presets = presets,
                                 onApplyPreset = { preset ->
+                                    // Over any slider write still waiting, or
+                                    // that lands after it and undoes it.
+                                    effectsJob?.cancel()
+                                    pendingParameters = null
                                     player?.playbackParameters =
                                         PlaybackParameters(preset.speed, preset.pitch)
                                     AudioEffects.setReverb(preset.reverbAmount)

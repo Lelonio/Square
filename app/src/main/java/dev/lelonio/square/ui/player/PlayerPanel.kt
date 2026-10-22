@@ -673,7 +673,12 @@ private fun EffectSlider(
                 color = GlassInk,
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .clickable(onClick = onReset)
+                    .clickable {
+                        // Or the thumb stays on the dragged value while the
+                        // player goes back to normal under it.
+                        dragged = null
+                        onReset()
+                    }
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }

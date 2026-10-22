@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -82,6 +83,14 @@ fun LiquidSlider(
         val trackWidth = constraints.maxWidth
 
         val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+        // LOCAL CHANGE: read through this, never the parameter. The animation
+        // and the gesture handler below are made once and outlive the
+        // composition that made them, so the callback they closed over was the
+        // first one — and that one had closed over whatever the caller knew
+        // then. The effects panel builds speed and pitch as a pair, so moving
+        // one sent the other as it was when the panel opened, and a pitch set
+        // a moment ago sprang back to a value nobody had chosen.
+        val latestOnValueChange by rememberUpdatedState(onValueChange)
         val animationScope = rememberCoroutineScope()
         var didDrag by remember { mutableStateOf(false) }
         val dampedDragAnimation = remember(animationScope) {
@@ -95,7 +104,8 @@ fun LiquidSlider(
                 onDragStarted = {},
                 onDragStopped = {
                     if (didDrag) {
-                        onValueChange(targetValue)
+                        didDrag = false
+                        latestOnValueChange(targetValue)
                     }
                 },
                 onDrag = { _, dragAmount ->
@@ -103,7 +113,7 @@ fun LiquidSlider(
                         didDrag = dragAmount.x != 0f
                     }
                     val delta = (valueRange.endInclusive - valueRange.start) * (dragAmount.x / trackWidth)
-                    onValueChange(
+                    latestOnValueChange(
                         if (isLtr) (targetValue + delta).coerceIn(valueRange)
                         else (targetValue - delta).coerceIn(valueRange)
                     )
@@ -157,7 +167,7 @@ fun LiquidSlider(
                             else valueRange.endInclusive - delta)
                                 .coerceIn(valueRange)
                         dampedDragAnimation.updateValue(target)
-                        onValueChange(target)
+                        latestOnValueChange(target)
                     }
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
@@ -202,7 +212,7 @@ fun LiquidSlider(
                                 else valueRange.endInclusive - delta)
                                     .coerceIn(valueRange)
                             dampedDragAnimation.animateToValue(targetValue)
-                            onValueChange(targetValue)
+                            latestOnValueChange(targetValue)
                         }
                     }
                     .height(6f.dp)
