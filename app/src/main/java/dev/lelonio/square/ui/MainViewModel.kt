@@ -5217,7 +5217,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?.takeIf { it.isNotEmpty() }
             ?: return
         followKept(uri, tracks)
-        val snapshotId = snapshotOf(uri)
+        // Unstamped while a song in it is still only a name, so the next open
+        // reads it again rather than trusting this copy until the version moves.
+        val snapshotId = if (tracks.any(::isSparse)) null else snapshotOf(uri)
         contextCache[uri] = ContextCacheStore.Entry(tracks, snapshotId)
         container.contextCache.write(uri, tracks, snapshotId)
     }
@@ -5275,7 +5277,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // one question instead of reading it all again. Without a stamp the
         // entry still saves — it just gets refreshed silently every time.
         followKept(uri, tracks)
-        val snapshotId = snapshotOf(uri)
+        // Unstamped while a song in it is still only a name, so the next open
+        // reads it again rather than trusting this copy until the version moves.
+        val snapshotId = if (tracks.any(::isSparse)) null else snapshotOf(uri)
         contextCache[uri] = ContextCacheStore.Entry(tracks, snapshotId)
         rememberMembership(uri, tracks)
         container.contextCache.write(uri, tracks, snapshotId)
@@ -5318,7 +5322,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (uri.endsWith(":collection")) {
             gatewayTracks(base, showProgress) { offset ->
                 container.gateway.savedTracks(offset)
-            }?.let { return it }
+            }?.let { return completeSparse(it) }
             // Nothing else knows this list: the access point refuses the
             // collection as a context, so without the gateway and without a
             // registered application there is no answer to give.
@@ -5329,9 +5333,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!uri.startsWith("spotify:playlist:")) return null
         gatewayTracks(base, showProgress) { offset ->
             container.gateway.playlistTracks(uri, offset)
-        }?.let { return it }
+        }?.let { return completeSparse(it) }
         if (!container.webApi.isReady) return null
         return webApiPlaylistTracks(base, uri, showProgress)
+    }
+
+    /**
+     * A song the gateway named and nothing more: no artist, no length.
+     *
+     * What it answers for a song added to a playlist moments before, until
+     * its own copy of the list catches up, and it caught up in its own time:
+     * the rows stayed a letter and a dash for a while after every addition
+     * (issue #93).
+     */
+    private fun isSparse(track: CatalogTrack): Boolean =
+        track.uri.startsWith("spotify:track:") && track.artist.isBlank() && track.durationMs <= 0L
+
+    /**
+     * [tracks] with the [isSparse] ones looked up again, through the access
+     * point rather than the gateway that answered short. Whatever it cannot
+     * answer either stays as it was.
+     */
+    private suspend fun completeSparse(tracks: List<CatalogTrack>): List<CatalogTrack> {
+        val sparse = tracks.filter(::isSparse).map { it.uri }.distinct()
+        if (sparse.isEmpty()) return tracks
+        val found = runCatching { Catalog.tracks(sparse) }
+            .onFailure { android.util.Log.w(TAG, "sparse tracks not completed: ${describe(it)}") }
+            .getOrDefault(emptyList())
+            .filterNot(::isSparse)
+            .associateBy { it.uri }
+        android.util.Log.i(TAG, "completed ${found.size} of ${sparse.size} sparse tracks")
+        return tracks.map { track ->
+            found[track.uri]?.takeIf { isSparse(track) }?.copy(addedAt = track.addedAt) ?: track
+        }
     }
 
     /** The shared gateway reader, with each page published as it lands. */
