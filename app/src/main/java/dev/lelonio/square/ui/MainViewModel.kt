@@ -2438,6 +2438,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun launchRefresh() = viewModelScope.launch {
         val backend = container.activeBackend
         if (backend.id != BackendId.SPOTIFY) {
+            // Offline, the downloads are the library here as they are for
+            // Spotify. Asked for its playlists, this backend can only fail, and
+            // the page was left with the two shelves of the phone's own music
+            // and none of the playlists downloaded for exactly this (issue #88).
+            if (dev.lelonio.square.playback.OfflineMode.active.value) {
+                offlineLibrary()?.let {
+                    val known = (backend.authState.value as? BackendAuthState.LoggedIn)?.displayName
+                    _state.value = it.copy(displayName = known.orEmpty().ifEmpty { it.displayName })
+                    return@launch
+                }
+            }
             // No access point to wait for and no Premium account to check: this
             // backend is usable at once, and signing in only adds the library.
             _state.value = UiState.Loading
@@ -2457,9 +2468,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     android.util.Log.w(TAG, "youtube library unavailable: ${describe(it)}")
                     // Not a failure worth a whole error screen: the library is
                     // the one part that needs an account, and everything else
-                    // on this backend works without one.
-                    _state.value =
-                        UiState.Ready(displayName = name.orEmpty(), playlists = withLocalFiles(emptyList()))
+                    // on this backend works without one. What was downloaded is
+                    // still listed, since that much needs no connection.
+                    _state.value = offlineLibrary()
+                        ?.let { it.copy(displayName = name.orEmpty().ifEmpty { it.displayName }) }
+                        ?: UiState.Ready(displayName = name.orEmpty(), playlists = withLocalFiles(emptyList()))
                 }
             // The other two shelves of the same library. They read the active
             // backend and empty themselves for one that keeps neither, which is
