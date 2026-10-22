@@ -145,6 +145,7 @@ import com.adamglin.phosphoricons.regular.YoutubeLogo
 import com.adamglin.phosphoricons.regular.Export
 import com.adamglin.phosphoricons.regular.Trash
 import com.adamglin.phosphoricons.regular.User
+import com.adamglin.phosphoricons.regular.VinylRecord
 import dev.lelonio.square.data.RemoteConnect
 import dev.lelonio.square.ui.player.asPlaybackState
 import dev.lelonio.square.ui.player.rememberRemotePositionMs
@@ -3702,6 +3703,28 @@ fun SquareApp(
                                     viewModel.openContext(artist.uri, artist.title, artist.artworkUrl)
                                     if (navController.currentDestination?.route != Routes.PLAYLIST) {
                                         navController.navigate(Routes.PLAYLIST) { launchSingleTop = true }
+                                    }
+                                }
+                            }
+                        }
+                        // The record the song is on, as the player's own album
+                        // link finds it: the address the source gave, or a
+                        // lookup for a Spotify song that came without one.
+                        // YouTube has nothing to look up, so its songs offer
+                        // this only with the address in hand.
+                        if (menu.track.albumUri != null || menu.track.uri.startsWith("spotify:track:")) {
+                            TrackSheetAction(stringResource(R.string.go_to_album), PhosphorIcons.Regular.VinylRecord) {
+                                val track = menu.track
+                                trackMenu = null
+                                scope.launch {
+                                    val album = track.albumUri?.let { uri ->
+                                        CatalogPlaylist(uri = uri, name = track.album, artworkUrl = track.artworkUrl)
+                                    } ?: viewModel.albumOf(track.uri)
+                                    if (album != null) {
+                                        if (expand.value > 0f) {
+                                            expand.animateTo(0f, expandSpec)
+                                        }
+                                        navController.openPlaylist(viewModel, album)
                                     }
                                 }
                             }

@@ -107,6 +107,7 @@
     <string name="add_to_queue">대기열에 추가</string>
     <string name="add_to_playlist">플레이리스트에 추가</string>
     <string name="go_to_artist">아티스트로 이동</string>
+    <string name="go_to_album">앨범으로 이동</string>
     <string name="copy_link">링크 복사</string>
     <string name="remove_from_playlist">플레이리스트에서 삭제</string>
     <string name="queued">대기열에 추가됨</string>

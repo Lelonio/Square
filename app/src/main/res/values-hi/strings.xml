@@ -119,6 +119,7 @@
     <string name="add_to_queue">कतार में जोड़ें</string>
     <string name="add_to_playlist">प्लेलिस्ट में जोड़ें</string>
     <string name="go_to_artist">कलाकार पर जाएँ</string>
+    <string name="go_to_album">एल्बम पर जाएँ</string>
     <string name="copy_link">लिंक कॉपी करें</string>
     <string name="remove_from_playlist">प्लेलिस्ट से हटाएँ</string>
     <string name="queued">कतार में</string>

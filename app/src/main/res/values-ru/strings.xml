@@ -121,6 +121,7 @@
     <string name="add_to_queue">Добавить в очередь</string>
     <string name="add_to_playlist">Добавить в плейлист</string>
     <string name="go_to_artist">К исполнителю</string>
+    <string name="go_to_album">К альбому</string>
     <string name="copy_link">Копировать ссылку</string>
     <string name="remove_from_playlist">Убрать из плейлиста</string>
     <string name="queued">В очереди</string>

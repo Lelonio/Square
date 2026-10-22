@@ -120,6 +120,7 @@
     <string name="add_to_queue">キューに追加</string>
     <string name="add_to_playlist">プレイリストに追加</string>
     <string name="go_to_artist">アーティストを表示</string>
+    <string name="go_to_album">アルバムを表示</string>
     <string name="copy_link">リンクをコピー</string>
     <string name="remove_from_playlist">プレイリストから削除</string>
     <string name="queued">キューに追加しました</string>

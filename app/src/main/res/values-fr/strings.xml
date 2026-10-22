@@ -110,6 +110,7 @@
     <string name="add_to_queue">Ajouter à la file</string>
     <string name="add_to_playlist">Ajouter à une playlist</string>
     <string name="go_to_artist">Accéder à l\'artiste</string>
+    <string name="go_to_album">Accéder à l\'album</string>
     <string name="copy_link">Copier le lien</string>
     <string name="remove_from_playlist">Retirer de la playlist</string>
     <string name="queued">Dans la file</string>
