@@ -56,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.DisposableEffect
@@ -2867,6 +2868,13 @@ private fun LyricsStage(
         }
     }
 
+    // The song's own direction for the words, the app's for everything around
+    // them; see lyricsDirection.
+    val appDirection = LocalLayoutDirection.current
+    val songDirection = remember(lyrics, appDirection) {
+        lyricsDirection(lyrics?.lines.orEmpty(), appDirection)
+    }
+
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         when {
             optionsOpen && query != null -> LyricsOptionsPanel(
@@ -2890,18 +2898,23 @@ private fun LyricsStage(
                 color = GlassInkDim,
             )
 
-            style == dev.lelonio.square.data.PreferencesStore.LyricsStyle.CLASSIC -> ClassicLyricsView(
-                lyrics = shown ?: lyrics,
-                positionMs = positionMs,
-                showTranslation = translated,
-                onSeek = onSeek,
-                modifier = Modifier.fillMaxSize(),
-            )
+            style == dev.lelonio.square.data.PreferencesStore.LyricsStyle.CLASSIC -> CompositionLocalProvider(
+                LocalLayoutDirection provides songDirection,
+            ) {
+                ClassicLyricsView(
+                    lyrics = shown ?: lyrics,
+                    positionMs = positionMs,
+                    showTranslation = translated,
+                    onSeek = onSeek,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
             else -> CompositionLocalProvider(
                 LocalLyricVisualSettings provides LocalLyricVisualSettings.current.let {
                     if (alone) it.copy(inactiveBlur = 0f) else it
                 },
+                LocalLayoutDirection provides songDirection,
             ) {
                 LyricsView(
                     lyrics = shown ?: lyrics,

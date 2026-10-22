@@ -78,6 +78,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -105,6 +106,35 @@ data class LyricVisualSettings(
 )
 
 val LocalLyricVisualSettings = compositionLocalOf { LyricVisualSettings() }
+
+/**
+ * The direction the song is written in, whatever the app is read in.
+ *
+ * The page used to take the app's: with the phone in Arabic, an English song
+ * was laid out right to left, its sung line's words set down in reverse by
+ * the row that places them and every question mark at the wrong end (issue
+ * #92). The words decide instead, by counting the letters that have a
+ * direction of their own; [fallback] for a sheet that has none, such as one
+ * of only numbers.
+ */
+fun lyricsDirection(lines: List<LyricLine>, fallback: LayoutDirection): LayoutDirection {
+    var ltr = 0
+    var rtl = 0
+    lines.forEach { line ->
+        line.text.forEach { c ->
+            when (Character.getDirectionality(c)) {
+                Character.DIRECTIONALITY_LEFT_TO_RIGHT -> ltr++
+                Character.DIRECTIONALITY_RIGHT_TO_LEFT,
+                Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC -> rtl++
+            }
+        }
+    }
+    return when {
+        ltr > rtl -> LayoutDirection.Ltr
+        rtl > ltr -> LayoutDirection.Rtl
+        else -> fallback
+    }
+}
 
 /**
  * Synced lyrics view ported directly from Spicy Lyrics (spicy-lyrics / LyricsAnimator.ts).
