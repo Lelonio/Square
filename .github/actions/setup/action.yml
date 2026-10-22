@@ -49,6 +49,15 @@ runs:
         key: cargo-${{ runner.os }}-${{ hashFiles('native/Cargo.lock', 'native/vendor/**', 'native/src/**') }}
         restore-keys: cargo-${{ runner.os }}-
 
+    # Bungee and its submodules, kept rather than cloned on every build. One
+    # of them, Eigen, lives on GitLab, and GitLab turning requests away under
+    # load failed the 2.6.1 release twice in a row. Keyed on the build script,
+    # which names the tag; fetchBungee skips the clone when it is there.
+    - uses: actions/cache@v6
+      with:
+        path: native-dsp/bungee
+        key: bungee-${{ hashFiles('app/build.gradle.kts') }}
+
     - name: cargo-ndk
       shell: bash
       run: command -v cargo-ndk > /dev/null || cargo install cargo-ndk --version 4.1.2 --locked

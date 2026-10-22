@@ -265,23 +265,36 @@ val fetchBungee by tasks.registering {
     val target = rootProject.file("native-dsp/bungee")
     val marker = target.resolve("bungee/Bungee.h")
     val tag = bungeeTag
+    val tries = 3
+    val retryMs = 5_000L
     outputs.dir(target)
 
     doLast {
         if (marker.exists()) return@doLast
-        target.deleteRecursively()
-        target.parentFile.mkdirs()
 
-        val process = ProcessBuilder(
-            "git", "clone",
-            "--depth", "1",
-            "--branch", tag,
-            "--recurse-submodules", "--shallow-submodules",
-            "https://github.com/bungee-audio-stretch/bungee.git",
-            target.absolutePath,
-        ).inheritIO().start()
-
-        check(process.waitFor() == 0) { "could not clone Bungee $tag into $target" }
+        // git's own words kept and put in the failure. Inherited, they went to
+        // a daemon's output that CI never shows, and a release failed on
+        // "could not clone" with nothing to say which host refused. Tried a
+        // few times: the submodules come from three different hosts, and any
+        // one of them having a bad minute was a failed release.
+        var output = ""
+        repeat(tries) { attempt ->
+            target.deleteRecursively()
+            target.parentFile.mkdirs()
+            val process = ProcessBuilder(
+                "git", "clone",
+                "--depth", "1",
+                "--branch", tag,
+                "--recurse-submodules", "--shallow-submodules",
+                "https://github.com/bungee-audio-stretch/bungee.git",
+                target.absolutePath,
+            ).redirectErrorStream(true).start()
+            output = process.inputStream.bufferedReader().readText()
+            if (process.waitFor() == 0 && marker.exists()) return@doLast
+            logger.warn("Bungee clone attempt ${attempt + 1} of $tries failed:\n$output")
+            if (attempt < tries - 1) Thread.sleep(retryMs * (attempt + 1))
+        }
+        error("could not clone Bungee $tag into $target:\n$output")
     }
 }
 
