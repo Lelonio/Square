@@ -123,6 +123,15 @@ And a reply of the wrong size is refused rather than trusted. Upstream copies
 the key with `copy_from_slice` and reads the error code by index, both of which
 panic on a short packet, on the task that reads every packet of the session.
 
+#### 6. `src/cache.rs`: credentials are replaced, never emptied
+
+Upstream writes the credentials file with `File::create`, which empties it
+before the new contents are written. A process killed between the two, which
+installing an update does, leaves an empty file, and with it a device that
+cannot log in and says only that it is offline. The new contents are written to
+a file beside it and renamed over it, so the old one stays whole until the new
+one is.
+
 ### Maintenance
 
 Re-apply this patch when bumping `librespot-core`. If the whole file is replaced,

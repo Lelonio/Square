@@ -336,10 +336,19 @@ impl Cache {
 
     pub fn save_credentials(&self, cred: &Credentials) {
         if let Some(location) = &self.credentials_location {
-            let result = File::create(location).and_then(|mut file| {
-                let data = serde_json::to_string(cred)?;
-                write!(file, "{data}")
-            });
+            // LOCAL PATCH: written beside the file and renamed over it.
+            // `File::create` empties the file before a byte of the new one is
+            // written, so a process killed in between, which an app update
+            // does, left an empty file and a device that could no longer log
+            // in. A rename replaces the old file whole or not at all.
+            let staging = location.with_extension("json.tmp");
+            let result = File::create(&staging)
+                .and_then(|mut file| {
+                    let data = serde_json::to_string(cred)?;
+                    write!(file, "{data}")?;
+                    file.sync_all()
+                })
+                .and_then(|_| fs::rename(&staging, location));
 
             if let Err(e) = result {
                 warn!("Cannot save credentials to cache: {e}")

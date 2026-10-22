@@ -22,9 +22,19 @@ object EngineCredentials {
     /** Where librespot keeps its own copy; the native side is given this path. */
     fun dir(context: Context): File = context.filesDir.resolve("librespot")
 
-    /** True when the engine has a credential of its own to log in with. */
-    fun exist(context: Context): Boolean =
-        dir(context).resolve(KEPT).resolve(FILE).isFile
+    /**
+     * True when the engine has a credential of its own to log in with.
+     *
+     * Read, not only found. A file left empty by a process killed while
+     * writing it is there and holds nothing, and taking it for a credential
+     * kept the app out of the login screen with no way in: offline, for good,
+     * with nothing saying why.
+     */
+    fun exist(context: Context): Boolean {
+        val file = dir(context).resolve(KEPT).resolve(FILE)
+        if (!file.isFile || file.length() == 0L) return false
+        return runCatching { org.json.JSONObject(file.readText()) }.isSuccess
+    }
 
     /** Dropped along with the OAuth session, so signing out really signs out. */
     fun clear(context: Context) {
