@@ -119,10 +119,14 @@ object AppleCatalog {
      * catalogue exists to enrich the visual experience — the app works correctly
      * without it — and reaching out for large editorial photos over mobile data
      * is not a trade the listener has agreed to. A cached answer is always used
-     * regardless of connection type; only a live lookup is skipped.
+     * regardless of connection type; only a live lookup is skipped. The one
+     * exception is an artist's drawn name; see artist.
      */
-    private fun mayAsk(): Boolean {
-        if (dev.lelonio.square.playback.OfflineMode.active.value) return false
+    private fun mayAsk(): Boolean =
+        !dev.lelonio.square.playback.OfflineMode.active.value && unmetered()
+
+    /** Wi-Fi or ethernet, or a connection that cannot be told apart from one. */
+    private fun unmetered(): Boolean {
         // Check metered status via the connectivity service.
         val connectivity = connectivityRef?.get()
         if (connectivity != null) {
@@ -242,7 +246,28 @@ object AppleCatalog {
             return kept
         }
 
-        if (!mayAsk()) return null
+        if (dev.lelonio.square.playback.OfflineMode.active.value) return null
+
+        // On mobile data the page still gets the name drawn: one search and a
+        // PNG of a few tens of kilobytes, against a photograph many times that.
+        // The photograph and the colours filed with it are left for Wi-Fi —
+        // Apple's colours over Spotify's photo would be a page tinted for a
+        // different picture. Kept for this run only, and under its own key, so
+        // the first visit on Wi-Fi still asks for the whole page.
+        if (!unmetered()) {
+            val lite = "logo $key"
+            synchronized(cache) { if (cache.containsKey(lite)) return cache[lite] as Artist? }
+            val found = ask(name) { lookUpArtist(name, storefront) }
+                ?.copy(
+                    heroUrl = null,
+                    heroAspect = null,
+                    bgColor = null,
+                    textHex = null,
+                    inkPalette = emptyList(),
+                )
+            synchronized(cache) { cache[lite] = found }
+            return found
+        }
 
         val found = ask(name) { lookUpArtist(name, storefront) }
 
@@ -718,6 +743,10 @@ object AppleCatalog {
             token = it
             return it
         }
+
+        // Several megabytes for a logo of a few tens of kilobytes is not what
+        // mobile data is spent on; the next lookup on Wi-Fi fetches it.
+        if (!unmetered()) return null
 
         val page = get(SITE, null) ?: return null
         // The player's own bundle, whichever hash it carries today.
