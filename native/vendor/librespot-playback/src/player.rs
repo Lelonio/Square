@@ -1692,11 +1692,15 @@ impl PlayerTrackLoader {
             let key = match self.session.audio_key().request(track_id, file_id).await {
                 Ok(key) => Some(key),
                 Err(e) => {
+                    // A key that never came because the session went away
+                    // counts too: the connection dropping mid-request answers
+                    // "channel closed", and the file is no less encrypted for
+                    // it. Played anyway, it was a decoder error and a skip.
                     let refused = matches!(
                         e.error.downcast_ref::<librespot_core::audio_key::AudioKeyError>(),
                         Some(librespot_core::audio_key::AudioKeyError::AesKey)
                             | Some(librespot_core::audio_key::AudioKeyError::Timeout)
-                    );
+                    ) || self.session.is_invalid();
                     if refused {
                         warn!("no key for <{track_id:?}>, not playing it undecrypted: {e}");
                         return None;

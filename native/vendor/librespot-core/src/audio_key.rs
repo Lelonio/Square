@@ -140,10 +140,19 @@ enum Refusal {
 }
 
 /// How recent a playback request has to be for a refusal to be its.
-const PLAYBACK_WAITING: Duration = Duration::from_secs(60);
+///
+/// Longer than one load's own retries take: three refusals with the hold
+/// doubling between them, plus the player trying the load again, run past a
+/// minute, and at sixty seconds the last refusals of a load stopped counting.
+const PLAYBACK_WAITING: Duration = Duration::from_secs(90);
 
 /// How long refusals with no key in between make it the account's.
-const ACCOUNT_AFTER: Duration = Duration::from_secs(120);
+///
+/// A burst of requests is refused for about a minute. At two minutes, the
+/// refusals one press of play produces never got that far, so an account that
+/// was refused every key was told for several minutes to wait and try again,
+/// which could not help.
+const ACCOUNT_AFTER: Duration = Duration::from_secs(70);
 
 /// Sets where refusals are reported; see [ON_PLAYBACK_REFUSAL]. Only the first
 /// call counts.

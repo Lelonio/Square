@@ -1556,13 +1556,10 @@ class LibrespotPlayer(
         } else if (refusalShown) {
             return
         }
-        // The whole account refused: there is another way to play it.
-        if (account) {
-            dev.lelonio.square.backend.spotify.SpotifyWebPlayback.reportAccountRefused()
-            refusalShown = true
-            return
-        }
         refusalShown = true
+        // Said first, whatever happens next: an account refused every key was
+        // otherwise left with the advice to wait a few minutes, which cannot
+        // help, or with only the web player's setup and no reason for it.
         android.widget.Toast.makeText(
             appContext,
             appContext.getString(
@@ -1574,6 +1571,10 @@ class LibrespotPlayer(
             ),
             android.widget.Toast.LENGTH_LONG,
         ).show()
+        // The whole account refused: there is another way to play it.
+        if (account) {
+            dev.lelonio.square.backend.spotify.SpotifyWebPlayback.reportAccountRefused()
+        }
     }
 
     /**

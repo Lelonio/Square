@@ -111,13 +111,16 @@ when the session does.
 
 A refusal is also reported, through `on_playback_refusal`, so the app can say
 why a song is not starting instead of leaving it at the start with no time on
-it. Only refusals that land within a minute of the player asking for a key are
-reported, once for a run of them, and the next key that comes back is reported
-as the end of it. Downloads refused while nothing is playing say nothing. When
-no key at all has come back since the app started and the refusals have gone on
-for two minutes, the refusal is reported as the account's instead: Spotify
-refuses every key to some accounts (librespot#1649), and for those waiting a few
-minutes is the wrong advice.
+it. Only refusals that land within ninety seconds of the player asking for a
+key are reported, once for a run of them, and the next key that comes back is
+reported as the end of it. Downloads refused while nothing is playing say
+nothing. When no key at all has come back since the app started and the
+refusals have gone on for seventy seconds, the refusal is reported as the
+account's instead: Spotify refuses every key to some accounts (librespot#1649),
+and for those waiting a few minutes is the wrong advice. The window is longer
+than the burst Spotify refuses for, about a minute, and short enough that the
+refusals one press of play produces reach it; at two minutes they did not, and
+an account refused every key was told to wait.
 
 And a reply of the wrong size is refused rather than trusted. Upstream copies
 the key with `copy_from_slice` and reads the error code by index, both of which
@@ -225,8 +228,10 @@ second, the engine moves to the next one, and that one is refused too. Nothing
 in the log says the word key.
 
 A refusal or a timeout now ends the load, which puts it on the retry path with
-the rest, and says so if it still cannot be played. Any other key failure keeps
-upstream's behaviour, since a genuinely unencrypted file has to go on playing.
+the rest, and says so if it still cannot be played. So does a key lost because
+the session went away mid-request, which answers "channel closed". Any other key
+failure keeps upstream's behaviour, since a genuinely unencrypted file has to go
+on playing.
 See also the retry in `librespot-core`'s `audio_key.rs`, which is what tries a
 refused key again before it gets this far.
 
