@@ -62,6 +62,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
@@ -152,6 +153,9 @@ import kotlin.math.abs
  * moving it one to one drags the whole screen's refraction along with it.
  */
 private const val CANVAS_SWIPE_FOLLOW = 0.35f
+
+/** How far the cover fades under a swipe that has crossed the whole screen. */
+private const val COVER_SWIPE_DIM = 0.7f
 
 /**
  * How far a Canvas is darkened while playback is paused.
@@ -505,6 +509,10 @@ fun PlayerScreen(
     val canvas = canvas?.takeIf { !videoOn }
 
     val canvasShift = remember { mutableFloatStateOf(0f) }
+    // The same gesture over the cover. Not a shift: the picture is not moved,
+    // only dimmed as the finger goes, and the next one comes in through the
+    // cover's own crossfade, the way it does on a tap of next.
+    val coverSwipe = remember { mutableFloatStateOf(0f) }
 
     // Whether the clip has put a frame on screen yet.
     //
@@ -722,6 +730,10 @@ fun PlayerScreen(
                 // above it and moving it one to one drags the whole screen's
                 // refraction with it.
                 .graphicsLayer {
+                    val dim = coverSwipe.floatValue
+                    if (dim != 0f) {
+                        alpha = 1f - (abs(dim) / size.width).coerceIn(0f, 1f) * COVER_SWIPE_DIM
+                    }
                     val shift = canvasShift.floatValue
                     if (shift == 0f) return@graphicsLayer
                     translationX = shift * CANVAS_SWIPE_FOLLOW
@@ -1336,11 +1348,23 @@ fun PlayerScreen(
                                 .graphicsLayer { alpha = panelAlpha },
                         ) { stage ->
                             when (stage) {
-                                // Empty: the cover above this AnimatedContent
-                                // is what fills the slot when no panel is open.
-                                // Empty: the cover above this AnimatedContent
-                                // is what fills the slot when no panel is open.
-                                Stage.COVER -> Box(Modifier.fillMaxSize())
+                                // Nothing to draw: the cover is the picture
+                                // behind the player now. But the slot keeps the
+                                // track-change swipe, which went with the square
+                                // sleeve when that was taken off this screen.
+                                // The picture fades as the finger goes rather
+                                // than sliding; see coverSwipe.
+                                Stage.COVER -> CoverGestures(
+                                    onNext = onNext,
+                                    onPrevious = onPrevious,
+                                    canGoNext = state.hasNext,
+                                    canGoPrevious = state.hasPrevious,
+                                    followFinger = false,
+                                    onDrag = { coverSwipe.floatValue = it },
+                                    modifier = Modifier.fillMaxSize(),
+                                ) {
+                                    Box(Modifier.fillMaxSize())
+                                }
 
                                 Stage.VIDEO -> Column(
                                     Modifier.fillMaxSize(),
@@ -1753,14 +1777,26 @@ fun PlayerScreen(
                             // Tighter on its side, where the column is short.
                             Spacer(Modifier.height(if (sideways) 10.dp else 18.dp))
 
+                            // Where the bar is being dragged to, while it is.
+                            var scrubMs by remember { mutableStateOf<Long?>(null) }
+                            val shownPosition = remember(positionMs) {
+                                derivedStateOf { scrubMs ?: positionMs.value }
+                            }
                             GlassProgressBar(
                                 positionMs = positionMs,
                                 durationMs = state.durationMs,
                                 onSeek = onSeek,
+                                onScrub = { scrubMs = it },
                                 accentColor = GlassInk,
                                 trackColor = GlassInk.copy(alpha = 0.28f),
+                                // The cover's own layer, which carries its
+                                // colours down to here: the ground alone is
+                                // the app behind the player, and the thumb,
+                                // clear glass while it is dragged, came
+                                // out grey over a brown page.
+                                backdrop = glassBackdrop,
                             )
-                            TimeRow(positionMs, state.durationMs)
+                            TimeRow(shownPosition, state.durationMs)
 
                             Spacer(Modifier.height(if (sideways) 6.dp else 14.dp))
                         }
