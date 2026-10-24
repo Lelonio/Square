@@ -241,12 +241,24 @@ class PlaybackService : MediaLibraryService() {
 
     private fun maybeTriggerAutoplay(mediaItem: androidx.media3.common.MediaItem?) {
         if (!::container.isInitialized) return
-        // The DJ's queue is fed by the DJ, not by autoplay.
-        (mediaItem ?: player.currentMediaItem)?.let { if (maybeContinueDj(it)) return }
+        // Behind a video the queue is the parked engine's. The video player
+        // holds one item, the video, under the song's own id, so it looked
+        // like the last song of the queue: the tracks were appended to it, and
+        // at the end of the video it moved on to a `spotify:` URI it cannot
+        // open. That is an error rather than an end, so nothing took the queue
+        // back to the engine and playback stopped there.
+        val video = playerKind == PlayerKind.VIDEO
+        val player: androidx.media3.common.Player =
+            if (video) parkedSpotify ?: return else this.player
+        // The DJ's queue is fed by the DJ, not by autoplay. Left for when the
+        // song is back in front: it appends to the player in front.
+        if (!video) {
+            (mediaItem ?: player.currentMediaItem)?.let { if (maybeContinueDj(it)) return }
+        }
         if (!container.preferences.autoplayInfinite.value) return
         if (player.repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF) return
 
-        val current = mediaItem ?: player.currentMediaItem ?: return
+        val current = (if (video) null else mediaItem) ?: player.currentMediaItem ?: return
         val currentUri = current.mediaId
         if (!currentUri.startsWith("spotify:track:")) return
 
@@ -695,7 +707,11 @@ class PlaybackService : MediaLibraryService() {
                 // source changed.
                 val playing = player.currentMediaItem
                 val identity = playing?.mediaId
-                val metadata = playing?.mediaMetadata
+                // All but the length, which is the song's and not the video's.
+                // Carried over, it was what the progress bar spanned: a video
+                // running longer than its song could not be dragged to its own
+                // end, and the time shown stopped short of it.
+                val metadata = playing?.mediaMetadata?.buildUpon()?.setDurationMs(null)?.build()
 
                 swapPlayer(PlayerKind.VIDEO, restore = false)
                 val item = androidx.media3.common.MediaItem.Builder()

@@ -351,6 +351,24 @@ fun rememberQueue(player: Player?): State<List<QueueEntry>> {
 fun rememberPositionMs(player: Player?, isPlaying: Boolean): State<Long> {
     val position = remember { mutableLongStateOf(0L) }
 
+    // A seek is read the moment it happens, playing or not. Polled only while
+    // playing, the position stayed where it was after a seek made while paused,
+    // or while a video buffered at its new place: the time on screen was wrong,
+    // and the bar's thumb went back to the old place before jumping forward.
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                position.longValue = newPosition.positionMs.coerceAtLeast(0)
+            }
+        }
+        player?.addListener(listener)
+        onDispose { player?.removeListener(listener) }
+    }
+
     LaunchedEffect(player, isPlaying) {
         if (player == null) {
             position.longValue = 0
