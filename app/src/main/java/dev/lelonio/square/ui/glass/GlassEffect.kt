@@ -256,7 +256,7 @@ fun isGlassSupported(sdkInt: Int = Build.VERSION.SDK_INT): Boolean = sdkInt >= B
  * Devices Android flags as low-RAM ([ActivityManager.isLowRamDevice]) can't push the
  * RenderEffect/RuntimeShader chain (blur + lens + vibrancy, several offscreen layers
  * per glass surface) without dropped frames, so glass is skipped there in favor of the
- * flat fallback color every glass call site already has for [isGlassSupported] == false.
+ * translucent film and rim [liquidGlass] draws where the blur is not available.
  */
 @Composable
 fun isLowRamDevice(): Boolean {
@@ -444,8 +444,6 @@ fun Modifier.liquidGlass(
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
     onDrawTint: (DrawScope.() -> Unit)? = null,
 ): Modifier {
-    if (!isGlassAllowed()) return this
-    val backdrop = ownBackdrop ?: LocalAppBackdrop.current
     val density = LocalDensity.current
     val resolutionScale = backdropScale.coerceIn(0.05f, 1f)
     // A surface that names its own condition (the tab bar, mid-fold) still
@@ -510,7 +508,13 @@ fun Modifier.liquidGlass(
     // real blur, need something cheap that still respects the user's tint
     // and opacity settings" — so route the unsupported case here too instead
     // of a separate hardcoded fallback.
-    if (shouldUseTranslucentGlassFallback(config.style, isRenderEffectSupported())) {
+    // Also taken where glass is not allowed at all, on a phone Android calls
+    // low on memory. That case used to return the modifier untouched, which
+    // is no film and no rim: the tab bar and the mini player were text
+    // floating over the page.
+    if (shouldUseTranslucentGlassFallback(config.style, isRenderEffectSupported()) ||
+        !isGlassAllowed()
+    ) {
         // The film and the rim, which is what a pane of this app's glass looks
         // like once you take the refraction away. Without the rim a flat surface
         // beside a real one reads as a hole rather than as the same material:
@@ -543,6 +547,7 @@ fun Modifier.liquidGlass(
             )
             .border(EdgeHighlightWidth, flatRimColor.copy(alpha = flatRim), shape)
     }
+    val backdrop = ownBackdrop ?: LocalAppBackdrop.current
 
     // ponytail: frozen mid-sweep. The drift described at [HighlightAngleMin] was a
     // rememberInfiniteTransition, and because glass surfaces (the nav bar above all)
