@@ -1,0 +1,2 @@
+Swipe the cover to change song again. The progress bar is liquid glass, with the time following your finger. Artist names drawn by Apple Music on mobile data too.
+Fixed: playback stopping after a video, videos that could not be dragged to their end, see-through bars on low-memory phones, and a refused Spotify account told only to wait.
