@@ -14,7 +14,7 @@ plugins {
  * extra Rust build (~2 min from cold), so the default is deliberately just the
  * one. Add "x86_64" for the emulator and "armeabi-v7a" for pre-2015 hardware.
  */
-val nativeAbis = listOf("arm64-v8a", "armeabi-v7a")
+val nativeAbis = listOf("arm64-v8a")
 
 /** NDK used for both AGP and the Cargo cross-build; keep the two in step. */
 val ndkVersionForCargo = "28.2.13676358"
