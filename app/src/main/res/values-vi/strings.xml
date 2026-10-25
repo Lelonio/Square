@@ -126,7 +126,7 @@
     <string name="go_to_album">Đi tới album</string>
     <string name="copy_link">Sao chép liên kết</string>
     <string name="remove_from_playlist">Xóa khỏi danh sách phát</string>
-    <string name="queued">Đã thêm vào hàng đợi</string>
+    <string name="queued">Hàng đợi</string>
     <string name="added_to">Đã thêm vào %1$s</string>
     <string name="removed_from">Đã xóa khỏi %1$s</string>
     <string name="remove_from_liked">Xóa khỏi Bài hát đã thích</string>
@@ -231,7 +231,7 @@
 
     <!-- Web API setup -->
     <string name="turn_on_search">BẬT TÌM KIẾM</string>
-    <string name="web_api_explainer">Tính năng tìm kiếm sử dụng Web API của Spotify - dịch vụ có giới hạn số lượt yêu cầu cho mỗi ứng dụng. Hãy tạo một ứng dụng trên bảng điều khiển dành cho nhà phát triển và dán Client ID vào đây để dùng hạn ngạch riêng của bạn.</string>
+    <string name="web_api_explainer">Tính năng tìm kiếm sử dụng Web API của Spotify — dịch vụ có giới hạn số lượt yêu cầu cho mỗi ứng dụng. Hãy tạo một ứng dụng trên bảng điều khiển dành cho nhà phát triển và dán Client ID vào đây để dùng hạn ngạch riêng của bạn.</string>
     <string name="redirect_uri_note">Phải thêm đúng Redirect URI này vào ứng dụng:</string>
 
     <!-- Onboarding -->
