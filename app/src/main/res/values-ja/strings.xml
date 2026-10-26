@@ -439,6 +439,7 @@
     <string name="download_progress_count">%1$d / %2$d</string>
     <string name="download_partial">%1$d / %2$d曲を利用可能</string>
     <string name="download_waiting_wifi">Wi‑Fi接続待ち</string>
+    <string name="download_waiting_wifi_hint">ダウンロードはWi‑Fi接続時に始まります。モバイルデータでもダウンロードするには、%1$s → %2$s で「%3$s」をオフにしてください。</string>
     <string name="download_waiting_network">ネットワーク接続待ち</string>
     <string name="download_waiting_engine">Spotify待ち</string>
     <string name="download_extras">カバー画像と歌詞を取得中</string>

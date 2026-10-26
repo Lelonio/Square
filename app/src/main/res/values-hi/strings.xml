@@ -438,6 +438,7 @@
     <string name="download_progress_count">%2$d में से %1$d</string>
     <string name="download_partial">%2$d में से %1$d उपलब्ध</string>
     <string name="download_waiting_wifi">Wi‑Fi का इंतज़ार</string>
+    <string name="download_waiting_wifi_hint">डाउनलोड Wi‑Fi पर शुरू होंगे। मोबाइल डेटा पर भी डाउनलोड करने के लिए %1$s → %2$s में “%3$s” बंद करें।</string>
     <string name="download_waiting_network">कनेक्शन का इंतज़ार</string>
     <string name="download_waiting_engine">Spotify का इंतज़ार</string>
     <string name="download_extras">कवर और बोल पूरे किए जा रहे हैं</string>

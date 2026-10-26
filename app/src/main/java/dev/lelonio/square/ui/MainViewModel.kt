@@ -3758,6 +3758,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     /**
+     * Starts the downloads the listener just asked for, and says so when they
+     * are going to wait.
+     *
+     * On mobile data with "Download over Wi‑Fi only" on, which it is unless
+     * changed, a download waits for Wi‑Fi, and the only place that said so was
+     * the download notification. With notifications off, nothing happened and
+     * nothing explained why, which reads as downloading being broken. Only for
+     * what was asked for here: the queue following a kept playlist on its own
+     * has nobody to tell.
+     */
+    private fun startRequestedDownloads() {
+        val app = getApplication<android.app.Application>()
+        if (container.downloadQueue.waitsForWifi()) {
+            android.widget.Toast.makeText(
+                app,
+                app.getString(
+                    dev.lelonio.square.R.string.download_waiting_wifi_hint,
+                    app.getString(dev.lelonio.square.R.string.settings),
+                    app.getString(dev.lelonio.square.R.string.page_downloads),
+                    app.getString(dev.lelonio.square.R.string.download_wifi_only),
+                ),
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
+        DownloadService.start(app)
+    }
+
+    /**
      * Keeps a whole page on the phone, or stops keeping it.
      *
      * The page is the unit rather than the track because that is how a listener
@@ -3799,7 +3827,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         },
                     ),
                 )
-                DownloadService.start(getApplication())
+                startRequestedDownloads()
             }
         }
     }
@@ -3882,7 +3910,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 sweepOrphans()
             } else {
                 container.downloads.addSingle(track)
-                DownloadService.start(getApplication())
+                startRequestedDownloads()
             }
         }
     }
@@ -3928,7 +3956,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun retryFailedDownloads() {
         viewModelScope.launch {
             container.downloads.retryFailed()
-            DownloadService.start(getApplication())
+            startRequestedDownloads()
         }
     }
 

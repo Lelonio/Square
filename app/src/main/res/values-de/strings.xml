@@ -423,6 +423,7 @@
     <string name="download_progress_count">%1$d von %2$d</string>
     <string name="download_partial">%1$d von %2$d verfügbar</string>
     <string name="download_waiting_wifi">Wartet auf WLAN</string>
+    <string name="download_waiting_wifi_hint">Die Downloads starten im WLAN. Um auch mobile Daten zu nutzen, deaktiviere „%3$s“ unter %1$s → %2$s.</string>
     <string name="download_waiting_network">Wartet auf eine Verbindung</string>
     <string name="download_waiting_engine">Wartet auf Spotify</string>
     <string name="download_extras">Cover und Songtexte werden ergänzt</string>

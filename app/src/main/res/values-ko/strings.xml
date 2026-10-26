@@ -412,6 +412,7 @@
     <string name="download_progress_count">%2$d개 중 %1$d개</string>
     <string name="download_partial">%2$d개 중 %1$d개 사용 가능</string>
     <string name="download_waiting_wifi">Wi‑Fi 대기 중</string>
+    <string name="download_waiting_wifi_hint">다운로드는 Wi‑Fi에서 시작됩니다. 모바일 데이터로도 받으려면 %1$s → %2$s에서 “%3$s”을(를) 끄세요.</string>
     <string name="download_waiting_network">연결 대기 중</string>
     <string name="download_waiting_engine">Spotify 대기 중</string>
     <string name="download_extras">커버와 가사 마무리 중</string>

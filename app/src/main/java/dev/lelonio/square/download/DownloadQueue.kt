@@ -687,6 +687,14 @@ class DownloadQueue(
         }
     }
 
+    /**
+     * Whether a download asked for now would wait for Wi‑Fi rather than start.
+     *
+     * Read off the connection as it is, not the watched one: the watch runs
+     * only while the queue does, and this is asked before it starts.
+     */
+    fun waitsForWifi(): Boolean = settings.wifiOnly.value && link() == Link.METERED
+
     /** Null when downloading may go ahead, otherwise what it is waiting for. */
     private fun allowed(): Waiting? {
         if (dev.lelonio.square.playback.OfflineMode.active.value) return Waiting.NETWORK

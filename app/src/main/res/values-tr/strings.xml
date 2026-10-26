@@ -438,6 +438,7 @@
     <string name="download_progress_count">%2$d içinden %1$d</string>
     <string name="download_partial">%2$d içinden %1$d mevcut</string>
     <string name="download_waiting_wifi">Wi‑Fi bekleniyor</string>
+    <string name="download_waiting_wifi_hint">İndirmeler Wi‑Fi\'da başlayacak. Mobil veriyi de kullanmak için %1$s → %2$s içinde “%3$s” seçeneğini kapatın.</string>
     <string name="download_waiting_network">Bağlantı bekleniyor</string>
     <string name="download_waiting_engine">Spotify bekleniyor</string>
     <string name="download_extras">Kapaklar ve sözler tamamlanıyor</string>
