@@ -2970,7 +2970,7 @@ private fun TrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 2.dp)
+            .padding(horizontal = 18.dp, vertical = 1.dp)
             // The playing row lifts onto its own card. With covers gone from the
             // list, a tint alone was too quiet to find while scrolling.
             .clip(shape)
@@ -3001,7 +3001,7 @@ private fun TrackRow(
                 },
             )
             .graphicsLayer { alpha = dim }
-            .padding(horizontal = 12.dp, vertical = 11.dp),
+            .padding(horizontal = 12.dp, vertical = if (numbered) 7.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The record, not the row number. A list of covers is scanned by
@@ -3011,7 +3011,7 @@ private fun TrackRow(
         Box(contentAlignment = Alignment.Center) {
             if (numbered) {
                 Box(
-                    Modifier.size(width = 30.dp, height = 46.dp),
+                    Modifier.size(width = 30.dp, height = ROW_ART),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (isCurrent) {
@@ -3033,14 +3033,14 @@ private fun TrackRow(
             Artwork(
                 url = track.artworkUrl,
                 title = track.name,
-                modifier = Modifier.size(46.dp),
+                modifier = Modifier.size(COVER_ART),
                 corner = 8.dp,
-                decodeSize = 46.dp,
+                decodeSize = COVER_ART,
             )
             if (isCurrent) {
                 Box(
                     Modifier
-                        .size(46.dp)
+                        .size(COVER_ART)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Black.copy(alpha = 0.45f)),
                     contentAlignment = Alignment.Center,
@@ -3464,3 +3464,21 @@ private const val LIGHT_PAGE_LUMINANCE = 0.45f
 
 /** Room below the header for the Play button's shadow; see heroCollapse. */
 private val PLAY_SHADOW_ROOM = 48.dp
+
+/**
+ * The height of a numbered row's number, which sets a record's rows.
+ *
+ * At 72dp a record's rows were far apart for a list of titles and times, and
+ * the reference packs them tighter; at 52dp they ran into each other. 60dp,
+ * this and 7dp either side, is between the two.
+ */
+private val ROW_ART = 44.dp
+
+/**
+ * The cover at the start of a playlist's row.
+ *
+ * A row with a picture in it needs more room than a numbered one: brought down
+ * to a record's 60dp, covers sat edge to edge and the list read as one strip.
+ * With 10dp either side this is 68dp, a little under the 72dp it was.
+ */
+private val COVER_ART = 46.dp
