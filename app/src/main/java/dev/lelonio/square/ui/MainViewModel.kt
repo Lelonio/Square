@@ -2442,12 +2442,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Spotify. Asked for its playlists, this backend can only fail, and
             // the page was left with the two shelves of the phone's own music
             // and none of the playlists downloaded for exactly this (issue #88).
+            //
+            // With nothing downloaded too: the page is then the phone's own
+            // music, and nothing else. It went on to ask the service, which
+            // with signal and no data never answers, so the button that says
+            // "switch to offline mode" put the same spinner back.
             if (dev.lelonio.square.playback.OfflineMode.active.value) {
-                offlineLibrary()?.let {
-                    val known = (backend.authState.value as? BackendAuthState.LoggedIn)?.displayName
-                    _state.value = it.copy(displayName = known.orEmpty().ifEmpty { it.displayName })
-                    return@launch
-                }
+                val known = (backend.authState.value as? BackendAuthState.LoggedIn)?.displayName
+                _state.value = offlineLibrary()
+                    ?.let { it.copy(displayName = known.orEmpty().ifEmpty { it.displayName }) }
+                    ?: UiState.Ready(displayName = known.orEmpty(), playlists = withLocalFiles(emptyList()))
+                return@launch
             }
             // No access point to wait for and no Premium account to check: this
             // backend is usable at once, and signing in only adds the library.
@@ -2455,9 +2460,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // Before the library is asked for: a session that has come loose
             // reads as an empty library otherwise, with nothing on screen to
             // say the account is the thing that needs attention.
-            runCatching { backend.refreshAuth() }
+            //
+            // Both bounded, as Spotify's are: with signal and no data neither
+            // answers, and the page waited on them for as long as it was open.
+            runCatching { withTimeout(LIBRARY_TIMEOUT_MS) { backend.refreshAuth() } }
             val name = (backend.authState.value as? BackendAuthState.LoggedIn)?.displayName
-            runCatching { backend.playlists() }
+            runCatching { withTimeout(LIBRARY_TIMEOUT_MS) { backend.playlists() } }
                 .onSuccess { playlists ->
                     _state.value = UiState.Ready(
                         displayName = name.orEmpty(),
