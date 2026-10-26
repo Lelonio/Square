@@ -140,6 +140,13 @@ object SongCounterparts {
         val sameTitle = wanted == got ||
             (kotlin.math.min(wanted.length, got.length) >= 4 && (wanted.contains(got) || got.contains(wanted)))
         if (!sameTitle) return false
+        // A version of the song is not the song. Uploads of a record slowed
+        // down, sped up, remixed or played live carry its title and its
+        // artist's name, and the title check above lets a longer title contain
+        // a shorter one: "Don Toliver - No idea (s l o w e d + r e v e r b)"
+        // was taken for "No Idea" and played as the original, which is the one
+        // thing the listener had not saved.
+        if (editOf(video.title) != editOf(song.title)) return false
         val channel = video.artists.map { squash(it.name).replace(CHANNEL_NOISE, "") }
         val sameArtist = song.artists.any { credited ->
             val name = squash(credited.name)
@@ -152,6 +159,19 @@ object SongCounterparts {
     }
 
     private fun squash(text: String) = text.lowercase().filter { it.isLetterOrDigit() }
+
+    /**
+     * Which kinds of reworking a title says it is, as a set.
+     *
+     * Read squashed for the words that never turn up inside another word, so a
+     * title spelled out letter by letter still counts; and as whole words for
+     * the short ones, which do: "live" is in "Don Toliver".
+     */
+    private fun editOf(title: String): Set<String> {
+        val squashed = squash(title)
+        return EDIT_SQUASHED.filterTo(mutableSetOf()) { it in squashed } +
+            EDIT_WORDS.filter { it.value.containsMatchIn(title) }.keys
+    }
 
     private fun load() {
         val source = file?.takeIf { it.exists() } ?: return
@@ -213,7 +233,9 @@ object SongCounterparts {
     }
 
     private const val TAG = "SquareYouTube"
-    private const val FILE_NAME = "yt_counterparts.json"
+    // Renamed when what counts as a match changes, so the songs found under the
+    // old rule are looked for again rather than kept.
+    private const val FILE_NAME = "yt_counterparts-2.json"
     private const val MUSIC_VIDEO_TYPE_OMV = "MUSIC_VIDEO_TYPE_OMV"
     private const val MUSIC_VIDEO_TYPE_UGC = "MUSIC_VIDEO_TYPE_UGC"
     private const val MUSIC_VIDEO_TYPE_ATV = "MUSIC_VIDEO_TYPE_ATV"
@@ -227,4 +249,16 @@ object SongCounterparts {
         RegexOption.IGNORE_CASE,
     )
     private val CHANNEL_NOISE = Regex("vevo|topic|official|music|tv$")
+
+    /** Reworkings named by words long enough to be found in a squashed title. */
+    private val EDIT_SQUASHED = listOf(
+        "slowed", "reverb", "spedup", "speedup", "nightcore", "daycore", "remix",
+        "bassboost", "karaoke", "instrumental", "acapella", "acappella", "mashup",
+        "8daudio", "extended", "chopped",
+    )
+
+    /** And by short words, matched as words. */
+    private val EDIT_WORDS = listOf("live", "cover", "8d", "loop", "edit").associateWith {
+        Regex("\\b$it\\b", RegexOption.IGNORE_CASE)
+    }
 }
