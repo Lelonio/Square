@@ -215,3 +215,13 @@ The lyrics view,
 [`LyricsView.kt`](app/src/main/java/dev/lelonio/square/ui/player/LyricsView.kt),
 is ported from Spicy Lyrics and stays under AGPL-3.0, combined with the rest as
 section 13 of both licences allows.
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=lelonio%2Fsquare&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=lelonio/square&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=lelonio/square&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=lelonio/square&type=date&legend=top-left" />
+ </picture>
+</a>
