@@ -23,6 +23,8 @@ class AudioFocusController(
     private val onPause: () -> Unit,
     private val onResume: () -> Unit,
     private val onDuck: (ducked: Boolean) -> Unit,
+    /** Whether to stop for another app taking the sound for good; see PreferencesStore. */
+    private val pauseOnLoss: () -> Boolean = { true },
 ) {
 
     private val appContext = context.applicationContext
@@ -95,8 +97,14 @@ class AudioFocusController(
             // Someone took the output for good — a different player started.
             // Give up focus entirely rather than waiting for a return.
             AudioManager.AUDIOFOCUS_LOSS -> {
+                // Unless the listener has said not to. The focus is gone either
+                // way, so it is let go of; the next play asks for it again.
+                if (pauseOnLoss()) {
+                    onPause()
+                } else {
+                    android.util.Log.i("SquareFocus", "focus lost for good, playing on as asked")
+                }
                 pausedByFocusLoss = false
-                onPause()
                 abandonFocus()
             }
 

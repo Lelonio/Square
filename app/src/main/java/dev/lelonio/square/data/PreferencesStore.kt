@@ -233,6 +233,24 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_KEEP_PLAYING, value).apply()
     }
 
+    private val _pauseForOtherApps = MutableStateFlow(prefs.getBoolean(KEY_PAUSE_FOR_OTHER_APPS, true))
+
+    /**
+     * Whether Spotify's music stops when another app takes over the sound.
+     *
+     * On by default: that is what Android asks of a player, and what a video
+     * or a voice message started on top of the music expects. But on some
+     * phones something takes the sound for a moment and gives no sign of it,
+     * and the music pauses several times an hour for no reason the listener
+     * can see (#121). Off, the music goes on.
+     */
+    val pauseForOtherApps: StateFlow<Boolean> = _pauseForOtherApps.asStateFlow()
+
+    fun setPauseForOtherApps(value: Boolean) {
+        _pauseForOtherApps.value = value
+        prefs.edit().putBoolean(KEY_PAUSE_FOR_OTHER_APPS, value).apply()
+    }
+
     private val _sponsorBlock = MutableStateFlow(prefs.getBoolean(KEY_SPONSOR_BLOCK, true))
 
     /**
@@ -410,6 +428,7 @@ class PreferencesStore(context: Context) {
         const val KEY_SPICY_LYRICS = "spicy_lyrics_key"
         const val KEY_PREFERRED_LYRICS = "preferred_lyrics_source"
         const val KEY_KEEP_PLAYING = "keep_playing_on_close"
+        const val KEY_PAUSE_FOR_OTHER_APPS = "pause_for_other_apps"
         const val KEY_SPONSOR_BLOCK = "sponsor_block"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"
         const val KEY_SPOTIFY_DJ = "spotify_dj"

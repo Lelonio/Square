@@ -358,6 +358,8 @@
     <string name="page_downloads_summary">端末に保存済みの項目と取得する項目</string>
     <string name="keep_playing_on_close">アプリを閉じても再生を続ける</string>
     <string name="keep_playing_on_close_note">最近使ったアプリの画面でSquareをスワイプして終了しても、音楽の再生は続きます。通知から停止できます。</string>
+    <string name="pause_for_other_apps">他のアプリの再生中は一時停止</string>
+    <string name="pause_for_other_apps_note">他のアプリが音声を使い始めると、Squareは一時停止します。音楽が勝手に止まる場合はオフにしてください。動画やボイスメッセージの上でも再生が続きます。</string>
     <string name="sponsor_block">音楽以外の部分をスキップ</string>
     <string name="sponsor_block_note">SponsorBlockコミュニティが登録した、ミュージックビデオのイントロ、寸劇、トークをスキップします。送信されるのは動画IDのみです。</string>
     <string name="page_app_bar">下部バー</string>

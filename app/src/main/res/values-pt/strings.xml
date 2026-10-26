@@ -342,6 +342,8 @@
     <string name="page_downloads_summary">O que está no telefone e o que é baixado</string>
     <string name="keep_playing_on_close">Continuar tocando ao fechar o app</string>
     <string name="keep_playing_on_close_note">Tirar o Square dos recentes deixa a música tocando. Pela notificação ela para como sempre.</string>
+    <string name="pause_for_other_apps">Pausar quando outro app tocar</string>
+    <string name="pause_for_other_apps_note">Se outro app assumir o som, o Square pausa. Desative se a música pausar sozinha: ela continuará tocando, inclusive por cima de vídeos e mensagens de voz.</string>
     <string name="sponsor_block">Pular as partes sem música</string>
     <string name="sponsor_block_note">Introduções, esquetes e falas em clipes, marcadas pela comunidade do SponsorBlock. Só o id do vídeo é enviado.</string>
     <string name="page_app_bar">Barra inferior</string>

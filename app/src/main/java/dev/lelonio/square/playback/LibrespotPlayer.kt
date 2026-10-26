@@ -182,6 +182,10 @@ class LibrespotPlayer(
         onPause = { engine("pause") { NativeBridge.pause() } },
         onResume = { engine("play") { NativeBridge.play() } },
         onDuck = ::applyDuck,
+        pauseOnLoss = {
+            (context.applicationContext as? dev.lelonio.square.SquareApplication)
+                ?.preferences?.pauseForOtherApps?.value != false
+        },
     )
 
     /** Volume before ducking, so it can be put back exactly. */

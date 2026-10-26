@@ -99,6 +99,7 @@ import com.adamglin.phosphoricons.regular.Gear
 import com.adamglin.phosphoricons.regular.BatteryCharging
 import com.adamglin.phosphoricons.regular.Broom
 import com.adamglin.phosphoricons.regular.ArrowsInLineHorizontal
+import com.adamglin.phosphoricons.regular.Pause
 import com.adamglin.phosphoricons.regular.Playlist
 import androidx.compose.foundation.layout.fillMaxHeight
 import com.adamglin.phosphoricons.regular.Trash
@@ -497,6 +498,25 @@ fun SettingsScreen(
                     color = InkDim,
                     modifier = Modifier.padding(start = ROW_TEXT_START, end = 18.dp, bottom = 14.dp),
                 )
+                // Spotify's engine keeps its own audio focus; YouTube Music's
+                // player is ExoPlayer's, which handles focus as one whole.
+                if (showSpotify) {
+                    val pauseForOthers by prefs.pauseForOtherApps.collectAsStateWithLifecycle()
+                    RowDivider()
+                    DownloadSwitch(
+                        label = stringResource(R.string.pause_for_other_apps),
+                        checked = pauseForOthers,
+                        backdrop = backdrop,
+                        icon = PhosphorIcons.Regular.Pause,
+                        onChange = prefs::setPauseForOtherApps,
+                    )
+                    Text(
+                        stringResource(R.string.pause_for_other_apps_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = InkDim,
+                        modifier = Modifier.padding(start = ROW_TEXT_START, end = 18.dp, bottom = 14.dp),
+                    )
+                }
                 // Only where it does anything: SponsorBlock knows YouTube videos.
                 if (!showSpotify) {
                     val sponsorBlock by prefs.sponsorBlock.collectAsStateWithLifecycle()

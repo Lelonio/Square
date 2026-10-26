@@ -342,6 +342,8 @@
     <string name="page_downloads_summary">Ce qui est sur le téléphone et ce qui est téléchargé</string>
     <string name="keep_playing_on_close">Continuer la lecture quand l\'appli est fermée</string>
     <string name="keep_playing_on_close_note">Retirer Square des applis récentes laisse la musique jouer. La notification l\'arrête toujours.</string>
+    <string name="pause_for_other_apps">Mettre en pause quand une autre app joue</string>
+    <string name="pause_for_other_apps_note">Si une autre app prend le son, Square se met en pause. Désactivez-le si la musique s\'arrête toute seule : elle continuera, même par-dessus les vidéos et les messages vocaux.</string>
     <string name="sponsor_block">Passer les parties non musicales</string>
     <string name="sponsor_block_note">Intros, sketchs et parties parlées des clips, signalés par la communauté SponsorBlock. Seul l\'identifiant de la vidéo est envoyé.</string>
     <string name="page_app_bar">Barre du bas</string>

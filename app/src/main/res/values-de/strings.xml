@@ -342,6 +342,8 @@
     <string name="page_downloads_summary">Was auf dem Telefon liegt und was geladen wird</string>
     <string name="keep_playing_on_close">Weiterspielen, wenn die App geschlossen wird</string>
     <string name="keep_playing_on_close_note">Square aus den zuletzt geöffneten Apps zu wischen lässt die Musik laufen. Über die Benachrichtigung lässt sie sich stoppen.</string>
+    <string name="pause_for_other_apps">Pausieren, wenn eine andere App abspielt</string>
+    <string name="pause_for_other_apps_note">Übernimmt eine andere App den Ton, pausiert Square. Schalte das aus, wenn die Musik von selbst pausiert: Sie spielt dann weiter, auch über Videos und Sprachnachrichten.</string>
     <string name="sponsor_block">Nicht-musikalische Teile überspringen</string>
     <string name="sponsor_block_note">Intros, Sketche und Gesprochenes in Musikvideos, markiert von der SponsorBlock-Community. Gesendet wird nur die Video-ID.</string>
     <string name="page_app_bar">Untere Leiste</string>

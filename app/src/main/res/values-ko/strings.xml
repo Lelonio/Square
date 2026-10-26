@@ -333,6 +333,8 @@
     <string name="page_downloads_summary">휴대폰에 있는 것과 불러오는 것</string>
     <string name="keep_playing_on_close">앱을 닫아도 계속 재생</string>
     <string name="keep_playing_on_close_note">최근 앱에서 Square를 밀어서 닫아도 음악이 계속 재생됩니다. 알림에서는 여전히 정지할 수 있습니다.</string>
+    <string name="pause_for_other_apps">다른 앱이 재생하면 일시정지</string>
+    <string name="pause_for_other_apps_note">다른 앱이 소리를 가져가면 Square가 일시정지합니다. 음악이 저절로 멈춘다면 끄세요. 동영상이나 음성 메시지 위로도 계속 재생됩니다.</string>
     <string name="sponsor_block">음악이 아닌 부분 건너뛰기</string>
     <string name="sponsor_block_note">뮤직비디오의 인트로, 촌극, 대화 부분으로, SponsorBlock 커뮤니티가 표시한 구간입니다. 동영상 ID만 전송됩니다.</string>
     <string name="page_app_bar">하단 바</string>

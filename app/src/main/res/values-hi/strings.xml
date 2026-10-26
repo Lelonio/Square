@@ -357,6 +357,8 @@
     <string name="page_downloads_summary">फ़ोन में क्या है और क्या डाउनलोड होता है</string>
     <string name="keep_playing_on_close">ऐप बंद करने पर भी बजता रहे</string>
     <string name="keep_playing_on_close_note">Square को हाल की ऐप्स से हटाने पर संगीत चलता रहता है। नोटिफिकेशन से बंद किया जा सकता है।</string>
+    <string name="pause_for_other_apps">दूसरा ऐप चलने पर रोकें</string>
+    <string name="pause_for_other_apps_note">अगर कोई दूसरा ऐप आवाज़ ले लेता है, तो Square रुक जाता है। अगर संगीत अपने आप रुकता है तो इसे बंद करें: यह चलता रहेगा, वीडियो और वॉइस मैसेज के ऊपर भी।</string>
     <string name="sponsor_block">बिना संगीत वाले हिस्से छोड़ें</string>
     <string name="sponsor_block_note">म्यूज़िक वीडियो के इंट्रो, स्किट और बातचीत, जिन्हें SponsorBlock समुदाय ने चिह्नित किया है। सिर्फ़ वीडियो id भेजी जाती है।</string>
     <string name="page_app_bar">नीचे की पट्टी</string>
