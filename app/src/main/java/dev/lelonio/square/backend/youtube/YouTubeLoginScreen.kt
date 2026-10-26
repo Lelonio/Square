@@ -264,7 +264,30 @@ fun YouTubeLoginScreen(account: YouTubeAccount, onDone: () -> Unit) {
                                 url?.let { android.net.Uri.parse(it).host }?.let { host = it }
                             }
 
+                            // Anything that is not a web page, which the WebView
+                            // can only show as an error. Google sends some phones
+                            // on from music.youtube.com to the YouTube Music app,
+                            // as an `intent://` link to the Play Store, and the
+                            // sign-in ended on "Webpage not available" with the
+                            // account already signed in behind it (#110). The
+                            // link is left alone and the page it came from is
+                            // checked instead.
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView,
+                                request: android.webkit.WebResourceRequest,
+                            ): Boolean {
+                                val scheme = request.url.scheme?.lowercase()
+                                if (scheme == "http" || scheme == "https") return false
+                                android.util.Log.i(TAG, "not following a $scheme link")
+                                finishIfSignedIn(view, view.url)
+                                return true
+                            }
+
                             override fun onPageFinished(view: WebView, url: String?) {
+                                finishIfSignedIn(view, url)
+                            }
+
+                            private fun finishIfSignedIn(view: WebView, url: String?) {
                                 // Landing back on music.youtube.com with a cookie is
                                 // what "signed in" looks like: Google's flow can take
                                 // any number of pages — password, 2FA, account
