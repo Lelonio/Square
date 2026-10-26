@@ -1,0 +1,2 @@
+Song rows are tighter. A download waiting for Wi-Fi now says so, and where to change it.
+Fixed: YouTube Music sign-in stuck on a page Google sends to the app, going offline with nothing downloaded showing a spinner forever, and slowed or remixed uploads replaced by the original song.
