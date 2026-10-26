@@ -788,77 +788,55 @@ fun SettingsScreen(
         if (shown == SettingsPage.App && "system" in openGroups) groupEnd(Group.SYSTEM)
 
         if (shown == SettingsPage.About) item("author") {
-            Section(stringResource(R.string.developed_by)) {
-                val uriHandler = LocalUriHandler.current
-                Row(
+            val musicExpoUriHandler = LocalUriHandler.current
+            Section("MusicExpo") {
+                Column(
                     Modifier
                         .fillMaxWidth()
-                        .clickable { uriHandler.openUri(GITHUB_URL) }
                         .padding(horizontal = 18.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    // GitHub serves the account picture at `<user>.png`, so the
-                    // avatar follows whatever it is set to rather than being a
-                    // copy checked in here.
-                    Artwork(
-                        url = "$GITHUB_URL.png",
-                        title = GITHUB_USER,
-                        modifier = Modifier
-                            .size(54.dp)
-                            .softShadow(CircleShape, elevation = 10.dp),
-                        corner = 27.dp,
-                        decodeSize = 54.dp,
+                    Text(
+                        "Dengarkan Musik tanpa gangguan iklan Gratis !!!",
+                        style = MaterialTheme.typography.bodyLarge,
                     )
-                    Column(
-                        Modifier
-                            .weight(1f)
-                            .padding(start = 14.dp),
-                    ) {
-                        Text(GITHUB_USER, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            GITHUB_URL.removePrefix("https://"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = InkDim,
-                        )
-                    }
-                    Icon(
-                        PhosphorIcons.Regular.ArrowUpRight,
-                        contentDescription = null,
-                        tint = InkDim,
-                        modifier = Modifier.size(18.dp),
+                    Text(
+                        "Pengembang versi modifikasi",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = InkDim,
+                    )
+                    Text(
+                        "Ridwan Y. Kulu",
+                        style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 RowDivider()
-                // Beside the name rather than under About: it is about the
-                // person who makes the app, not about the build.
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { uriHandler.openUri(KOFI_URL) }
-                        .padding(horizontal = 18.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                ActionRow(
+                    "Website: music.rkulu.page",
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.ArrowUpRight,
                 ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.support_development), style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            KOFI_URL.removePrefix("https://"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = InkDim,
-                        )
-                    }
-                    Icon(
-                        PhosphorIcons.Regular.ArrowUpRight,
-                        contentDescription = null,
-                        tint = InkDim,
-                        modifier = Modifier.size(18.dp),
-                    )
+                    musicExpoUriHandler.openUri("https://music.rkulu.page")
+                }
+                RowDivider()
+                ActionRow(
+                    "Instagram: @rkulu_",
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.ArrowUpRight,
+                ) {
+                    musicExpoUriHandler.openUri("https://www.instagram.com/rkulu_/")
+                }
+                RowDivider()
+                ActionRow(
+                    "Berbasis Square — Lelonio (kode sumber asli)",
+                    destructive = false,
+                    icon = PhosphorIcons.Regular.ArrowUpRight,
+                ) {
+                    musicExpoUriHandler.openUri("https://github.com/Lelonio/Square")
                 }
             }
         }
 
-        // The version as a statement rather than a row: it is the one fact
-        // anybody is asked for when they report something, and it was the
-        // smallest line on the page.
         if (shown == SettingsPage.About) item("version") {
             Column(
                 Modifier
@@ -868,7 +846,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    "Square ${BuildConfig.VERSION_NAME}",
+                    "MusicExpo ${BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
@@ -880,13 +858,7 @@ fun SettingsScreen(
             }
         }
 
-        // The update on its own, never folded away: the one thing on this
-        // page somebody comes to do rather than to read.
-        if (shown == SettingsPage.About) item("update") {
-            Section(null) {
-                UpdateRow(askToInstall)
-            }
-        }
+        // Updater upstream disembunyikan dari About untuk fork MusicExpo.
 
         if (shown == SettingsPage.About) groupHeading(Group.ABOUT, open = "about" in openGroups) { toggleGroup("about") }
 
