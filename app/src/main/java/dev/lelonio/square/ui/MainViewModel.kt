@@ -267,6 +267,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val shelves: List<dev.lelonio.square.data.ArtistShelf> = emptyList(),
         /** Where the top songs' "see all" leads, when the source has a list for it. */
         val topSongsMoreUri: String? = null,
+        /** The playlist's Spotify Mix, when it was mixed in Spotify's app; see Mixes. */
+        val mix: dev.lelonio.square.playback.Mixes.PlaylistMix? = null,
+        /** Whether the mix is on here: it plays, and the page shows it. */
+        val mixOn: Boolean = false,
+        /** Tempo and key of the songs, by URI, once a mix is on; see Mixes. */
+        val audioAttributes: Map<String, dev.lelonio.square.playback.Mixes.Attributes> = emptyMap(),
     )
 
     private val container get() = getApplication<SquareApplication>()
@@ -2915,6 +2921,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // flag's default and would clear the wait a batch of tracks
                 // early, which is the swap this exists to prevent.
                 heroPending = current.heroPending,
+                // The mix, read once like the photograph: a batch of tracks
+                // landing after it took the tempo and key back off the rows.
+                // What is on screen wins, being the newest — switched on or
+                // off since, or given its songs' lengths since.
+                mix = current.mix ?: state.mix,
+                mixOn = if (current.mix != null) current.mixOn else state.mixOn,
+                audioAttributes = current.audioAttributes.ifEmpty { state.audioAttributes },
             )
         }
     }
@@ -4099,6 +4112,81 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
 
+    private fun mixPrefs() =
+        getApplication<SquareApplication>().getSharedPreferences(MIX_PREFS, android.content.Context.MODE_PRIVATE)
+
+    /**
+     * Whether a playlist plays as a mix here: as Spotify has it, unless the
+     * listener said otherwise on this phone — off for one that is mixed, on
+     * for one that is not.
+     */
+    private fun mixOn(uri: String, mixed: Boolean): Boolean {
+        val prefs = mixPrefs()
+        return if (mixed) {
+            uri !in prefs.getStringSet(MIX_OFF, emptySet()).orEmpty()
+        } else {
+            uri in prefs.getStringSet(MIX_ON, emptySet()).orEmpty()
+        }
+    }
+
+    /**
+     * Turns the page's Spotify Mix on or off, here only.
+     *
+     * Kept per playlist on this phone, and nothing is written to Spotify: off,
+     * the songs play one after another as anywhere else, and the playlist is
+     * still mixed for every other device and for Spotify's own app.
+     */
+    fun toggleMix() {
+        val page = _playlist.value
+        val uri = page.uri ?: return
+        val mix = page.mix ?: return
+        val on = !page.mixOn
+        val prefs = mixPrefs()
+        // Kept as a difference from Spotify's own state, so a playlist mixed
+        // or unmixed in Spotify's app later follows it unless told otherwise.
+        val key = if (mix.mixed) MIX_OFF else MIX_ON
+        val listed = prefs.getStringSet(key, emptySet()).orEmpty().toMutableSet()
+        if (on == mix.mixed) listed.remove(uri) else listed.add(uri)
+        prefs.edit().putStringSet(key, listed).apply()
+        dev.lelonio.square.playback.Mixes.set(uri, mix.takeIf { on })
+        _playlist.value = page.copy(mixOn = on)
+        if (on) viewModelScope.launch { loadMixData(uri) }
+    }
+
+    /**
+     * What a mixed page needs beyond its transitions: the tempo and key the
+     * rows show, and the songs' lengths, which the automatic transitions fit
+     * inside. What those are worked out from is asked for by the player, for
+     * the pair about to play; see Mixes.
+     *
+     * Waits for the songs, which arrive on their own clock, and asks once for
+     * all of them; see catalog.rs. Returns what it found, for a caller keeping
+     * its own copy of the page, and null when the page was left meanwhile.
+     */
+    private suspend fun loadMixData(
+        uri: String,
+    ): Pair<Map<String, dev.lelonio.square.playback.Mixes.Attributes>, dev.lelonio.square.playback.Mixes.PlaylistMix>? {
+        val tracks = withTimeoutOrNull(ARTIST_WAIT_MS) {
+            while (_playlist.value.uri == uri && _playlist.value.tracks.isEmpty()) delay(POLL_INTERVAL_MS)
+            _playlist.value.tracks
+        }.orEmpty()
+        val uris = tracks.map { it.uri }.filter { it.startsWith("spotify:track:") }.distinct()
+        if (uris.isEmpty()) return null
+        val json = org.json.JSONArray(uris).toString()
+        val attributes = withContext(Dispatchers.IO) {
+            dev.lelonio.square.playback.Mixes.parseAttributes(NativeBridge.tracksAudioAttributes(json))
+        }
+        android.util.Log.i(TAG, "mix of $uri: tempo and key for ${attributes.size} of ${uris.size} songs")
+        val page = _playlist.value
+        if (page.uri != uri) return null
+        val mix = (page.mix ?: return null).copy(
+            durations = page.tracks.filter { it.durationMs > 0 }.associate { it.uri to it.durationMs },
+        )
+        _playlist.value = page.copy(audioAttributes = attributes, mix = mix)
+        if (page.mixOn) dev.lelonio.square.playback.Mixes.set(uri, mix)
+        return attributes to mix
+    }
+
     fun openPlaylist(playlist: CatalogPlaylist) {
         // Read again on every page: a file copied to the phone since the last
         // one should be found the next time its playlist is opened.
@@ -4244,6 +4332,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         mine = mine,
                         byline = details.owner.orEmpty(),
                     )
+                }
+            }
+
+            // Its Spotify Mix: the transitions it was saved with in Spotify's
+            // own app, if any, and whether it plays as a mix here. Any Spotify
+            // playlist can: one that was never mixed plays with the automatic
+            // transitions alone. On by default only where Spotify has it mixed.
+            if (playlist.uri.startsWith("spotify:playlist:") &&
+                container.activeBackend.id == BackendId.SPOTIFY &&
+                !dev.lelonio.square.playback.OfflineMode.active.value
+            ) launch {
+                if (!awaitEngine()) return@launch
+                val mix = withContext(Dispatchers.IO) {
+                    dev.lelonio.square.playback.Mixes.parseMix(NativeBridge.playlistMix(playlist.uri))
+                } ?: return@launch
+                val on = mixOn(playlist.uri, mix.mixed)
+                android.util.Log.i(TAG, "mix of ${playlist.uri}: mixed=${mix.mixed}, ${mix.transitions.size} saved, on=$on")
+                base = base.copy(mix = mix, mixOn = on)
+                if (!isActive || _playlist.value.uri != playlist.uri) return@launch
+                _playlist.value = _playlist.value.copy(mix = mix, mixOn = on)
+                if (on) {
+                    dev.lelonio.square.playback.Mixes.set(playlist.uri, mix)
+                    loadMixData(playlist.uri)?.let { (attributes, withLengths) ->
+                        base = base.copy(audioAttributes = attributes, mix = withLengths)
+                    }
                 }
             }
 
@@ -6695,6 +6808,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         /** How long the album lookup waits for a track to name the artist. */
         const val ARTIST_WAIT_MS = 8_000L
+
+        /** Where the playlists' mix choices are kept; see mixOn and toggleMix. */
+        const val MIX_PREFS = "square_mix"
+        /** Mixed in Spotify's app, and turned off here. */
+        const val MIX_OFF = "off"
+        /** Not mixed in Spotify's app, and turned on here. */
+        const val MIX_ON = "on"
 
         const val ENGINE_TIMEOUT_MS = 30_000L
 

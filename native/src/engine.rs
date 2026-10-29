@@ -1062,6 +1062,29 @@ pub fn set_hold_end(enabled: bool) -> EngineResult<()> {
     Ok(())
 }
 
+/// The transition into the next song of a mixed playlist, as JSON
+/// `{from, outMs, fadeMs, to, inMs}`, or empty for none; see
+/// librespot-playback's MixPlan. Set by the app for the pair that is next.
+pub fn set_mix_plan(json: &str) -> EngineResult<()> {
+    let plan = if json.trim().is_empty() {
+        None
+    } else {
+        let value: serde_json::Value =
+            serde_json::from_str(json).map_err(|e| format!("bad mix plan: {e}"))?;
+        let text = |key: &str| value[key].as_str().map(str::to_string);
+        let number = |key: &str| value[key].as_u64().map(|n| n as u32);
+        Some(librespot_playback::player::MixPlan {
+            from: text("from").ok_or("mix plan without from")?,
+            out_ms: number("outMs").ok_or("mix plan without outMs")?,
+            fade_ms: number("fadeMs").ok_or("mix plan without fadeMs")?,
+            to: text("to").ok_or("mix plan without to")?,
+            in_ms: number("inMs").unwrap_or(0),
+            speed_in: value["speedIn"].as_f64().map(|v| v as f32).filter(|v| (0.5..2.0).contains(v)).unwrap_or(1.0),
+        })
+    };
+    with_bundle(|bundle| bundle.player.set_mix_plan(plan))
+}
+
 /// What the app's sleep timer is doing, for the state other devices read:
 /// -1 none, 0 the end of the track, otherwise its end in epoch milliseconds.
 /// Kept by the connect crate, so a rebuilt device still publishes it.

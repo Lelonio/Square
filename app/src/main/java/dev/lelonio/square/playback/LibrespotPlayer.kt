@@ -284,6 +284,15 @@ class LibrespotPlayer(
     /** The last one handed over, so a run of events asks for it once. */
     private var unknownAsked: String? = null
 
+    /** The pair the engine was last given a mix transition for, "" for none. */
+    private var mixPlanFor: String? = null
+
+    init {
+        // A mix switched on, off, or read late: the plan is worked out again
+        // on this player's own thread.
+        Mixes.onChange = { handler.post { if (!released) followMix() } }
+    }
+
     fun showRemote(playback: dev.lelonio.square.data.RemotePlayback?) {
         if (released) return
         val was = remote
@@ -1255,6 +1264,9 @@ class LibrespotPlayer(
         // whose listens are filed under nothing and whose player has no source
         // to show.
         queue.restoreContext(contextUri, contextIsOrdered, contextLabel)
+        // A queue put back after a restart says what it plays before any
+        // event from the engine does; see Mixes.playing.
+        Mixes.follow(queue.contextUri)
 
         queue.replace(tracks, 0)
         engineIndex = -1
@@ -1629,6 +1641,31 @@ class LibrespotPlayer(
         requestSkipTo(next, 0L)
     }
 
+    /**
+     * Gives the engine the transition into the song after this one, when the
+     * playlist playing is mixed and has one for exactly this pair; takes it
+     * away otherwise. See Mixes and librespot-playback's MixPlan.
+     *
+     * Asked on every event, since the pair changes with the song, a skip, a
+     * reorder or the mix being switched off, and the answer is a lookup;
+     * the engine is only told when it changes.
+     */
+    private fun followMix() {
+        Mixes.follow(queue.contextUri)
+        val current = queue.items.getOrNull(queue.currentIndex)?.uri
+        val next = queue.items.getOrNull(queue.currentIndex + 1)?.uri
+        val transition = if (current != null && next != null && repeatMode != Player.REPEAT_MODE_ONE) {
+            Mixes.transition(queue.contextUri, current, next)
+        } else {
+            null
+        }
+        val key = transition?.let { "${it.from}>${it.to}" }.orEmpty()
+        if (key == mixPlanFor) return
+        mixPlanFor = key
+        android.util.Log.i("SquarePlayer", "mix plan: ${transition?.planJson() ?: "none"} (context ${queue.contextUri})")
+        NativeBridge.setMixPlan(transition?.planJson().orEmpty())
+    }
+
     private fun applyEvent(type: String, uri: String, eventPositionMs: Long) {
         if (released) return
 
@@ -1710,6 +1747,8 @@ class LibrespotPlayer(
                 }
             }
         }
+
+        if (uri.isNotEmpty()) followMix()
 
         when (type) {
             "loading" -> {

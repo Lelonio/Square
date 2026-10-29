@@ -120,6 +120,10 @@
     <string name="add_to_playlist">Çalma listesine ekle</string>
     <string name="go_to_artist">Sanatçıya git</string>
     <string name="go_to_album">Albüme git</string>
+    <string name="mix">Mix</string>
+    <string name="mix_bpm">%1$d BPM</string>
+    <string name="mix_auto">Otomatik</string>
+    <string name="mix_overlap">%1$d sn</string>
     <string name="copy_link">Bağlantıyı kopyala</string>
     <string name="remove_from_playlist">Çalma listesinden çıkar</string>
     <string name="queued">Sıraya eklendi</string>

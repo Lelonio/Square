@@ -55,6 +55,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import dev.lelonio.square.ui.components.mixRing
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.animation.animateColorAsState
@@ -2565,6 +2566,10 @@ internal fun Controls(
             )
         }
 
+        // Ringed while a playlist plays as a Spotify Mix, as the official
+        // player's button is; see Mixes.playing.
+        val mixPlaying by dev.lelonio.square.playback.Mixes.playing.collectAsStateWithLifecycle()
+        Box(Modifier.mixRing(mixPlaying)) {
         RoundGlassButton(backdrop = backdrop, size = 76.dp, onClick = onTogglePlay) {
             // A ring around the icon while the track is still being fetched.
             //
@@ -2595,6 +2600,7 @@ internal fun Controls(
                     )
                 }
             }
+        }
         }
 
         RoundGlassButton(

@@ -111,6 +111,10 @@
     <string name="add_to_playlist">Adicionar a uma playlist</string>
     <string name="go_to_artist">Ir para o artista</string>
     <string name="go_to_album">Ir para o álbum</string>
+    <string name="mix">Mix</string>
+    <string name="mix_bpm">%1$d bpm</string>
+    <string name="mix_auto">Auto</string>
+    <string name="mix_overlap">%1$d s</string>
     <string name="copy_link">Copiar link</string>
     <string name="remove_from_playlist">Remover da playlist</string>
     <string name="queued">Na fila</string>

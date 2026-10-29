@@ -465,6 +465,25 @@ object NativeBridge {
      */
     fun playlistCover(uri: String): String = nativePlaylistCover(uri)
 
+    /** A playlist's Spotify Mix, as `{mixed, transitions}`, or null; see catalog.rs. */
+    fun playlistMix(uri: String): String? =
+        runCatching { nativePlaylistMix(uri) }.getOrNull()?.takeIf { it != "null" }
+
+    /** Tempo and key of many tracks, as a JSON object keyed by URI; see catalog.rs. */
+    fun tracksAudioAttributes(urisJson: String): String? =
+        runCatching { nativeTracksAudioAttributes(urisJson) }
+            .onFailure { android.util.Log.w("SquareMix", "tempo and key unavailable: ${it.message}") }
+            .getOrNull()
+
+    /** What the automatic transitions of a few tracks are worked out from, keyed by URI; see catalog.rs. */
+    fun tracksMixAnalysis(urisJson: String): String? =
+        runCatching { nativeTracksMixAnalysis(urisJson) }
+            .onFailure { android.util.Log.w("SquareMix", "mix analysis unavailable: ${it.message}") }
+            .getOrNull()
+
+    /** The transition into the next song, `{from, outMs, fadeMs, to, inMs}`, or "" for none. */
+    fun setMixPlan(json: String) = runCatching { nativeSetMixPlan(json) }
+
     /**
      * A playlist's title, for one arriving by link rather than from the account.
      */
@@ -477,6 +496,18 @@ object NativeBridge {
 
     private external fun nativeFriendActivity(): String
     private external fun nativePlaylistCover(uri: String): String
+
+    private external fun nativePlaylistMix(uri: String): String
+
+
+    private external fun nativeTracksAudioAttributes(uris: String): String
+
+
+
+    private external fun nativeTracksMixAnalysis(uris: String): String
+
+
+    private external fun nativeSetMixPlan(json: String)
     private external fun nativePlaylistName(uri: String): String
     private external fun nativePlaylistMine(uri: String): String
     private external fun nativeInitContext(context: android.content.Context)

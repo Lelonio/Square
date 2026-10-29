@@ -215,6 +215,117 @@ pub enum SinkStatus {
 
 pub type SinkEventCallback = Box<dyn Fn(SinkStatus) + Send>;
 
+/// LOCAL PATCH: one transition of a mixed playlist, from the song playing
+/// into the one after it.
+///
+/// A playlist mixed in Spotify's own app keeps, on the row a transition starts
+/// from, where the song starts handing over (`out_ms`), where the next one
+/// comes in (`in_ms`) and how long the two overlap (`fade_ms`). The player
+/// announces the end at `out_ms` instead of a crossfade's length before the
+/// end, fades over `fade_ms`, and starts `to` at `in_ms` when it is loaded
+/// from the start. Set for the pair that is actually next, and only that one:
+/// a shuffled queue or a skip has no use for it, and it does nothing to any
+/// other song.
+#[derive(Clone, Debug)]
+pub struct MixPlan {
+    pub from: String,
+    pub out_ms: u32,
+    pub fade_ms: u32,
+    pub to: String,
+    pub in_ms: u32,
+    /// How fast `to` plays while the two overlap, to put its beats on the
+    /// outgoing song's: 1.0 for a transition that is not beatmatched. It
+    /// eases back to 1.0 after the overlap; see [TempoRamp].
+    pub speed_in: f32,
+}
+
+/// LOCAL PATCH: the incoming song of a beatmatched mix transition, played a
+/// little faster or slower so its beats land on the outgoing one's.
+///
+/// Resampled, the way a turntable's pitch fader does it: the key moves with
+/// the tempo, by about a semitone at the 6% a typical transition asks for.
+/// Held at [MixPlan::speed_in] for the overlap, then eased back to normal
+/// over [TEMPO_RETURN_MS], so the song settles into its own tempo rather than
+/// jumping to it.
+struct TempoRamp {
+    speed_in: f64,
+    /// Output frames still to come at `speed_in`, then over the return.
+    hold: usize,
+    ramp: usize,
+    done: usize,
+    /// Input frames not yet used, interleaved, and where in them the next
+    /// output frame is read from.
+    carry: Vec<f64>,
+    position: f64,
+}
+
+/// LOCAL PATCH: how long the incoming song takes to come back to its own
+/// tempo after a beatmatched transition.
+const TEMPO_RETURN_MS: u32 = 8000;
+
+impl TempoRamp {
+    fn new(speed_in: f32, hold_ms: u32) -> Self {
+        let frames = |ms: u32| ms as usize * SAMPLE_RATE as usize / 1000;
+        Self {
+            speed_in: speed_in as f64,
+            hold: frames(hold_ms),
+            ramp: frames(TEMPO_RETURN_MS),
+            done: 0,
+            carry: Vec::new(),
+            position: 0.0,
+        }
+    }
+
+    fn speed(&self) -> f64 {
+        if self.done < self.hold {
+            return self.speed_in;
+        }
+        let x = ((self.done - self.hold) as f64 / self.ramp.max(1) as f64).min(1.0);
+        // Eased, so the tempo leaves the matched speed and arrives at its own
+        // without a corner either end.
+        let eased = x * x * (3.0 - 2.0 * x);
+        self.speed_in + (1.0 - self.speed_in) * eased
+    }
+
+    fn finished(&self) -> bool {
+        self.done >= self.hold + self.ramp
+    }
+
+    /// The packet's samples at the speed of the moment, read between frames.
+    fn process(&mut self, data: &[f64]) -> Vec<f64> {
+        let channels = NUM_CHANNELS as usize;
+        self.carry.extend_from_slice(data);
+        let frames = self.carry.len() / channels;
+        let mut out = Vec::with_capacity(data.len() + channels * 2);
+        while !self.finished() {
+            let at = self.position.floor() as usize;
+            if at + 1 >= frames {
+                break;
+            }
+            let t = self.position - at as f64;
+            for c in 0..channels {
+                let a = self.carry[at * channels + c];
+                let b = self.carry[(at + 1) * channels + c];
+                out.push(a + (b - a) * t);
+            }
+            self.position += self.speed();
+            self.done += 1;
+        }
+        if self.finished() {
+            // Back at its own speed: what is left goes out as it is.
+            let at = (self.position.round() as usize).min(frames);
+            out.extend_from_slice(&self.carry[at * channels..]);
+            self.carry.clear();
+            self.position = 0.0;
+        } else {
+            let used = (self.position.floor() as usize).min(frames);
+            self.carry.drain(..used * channels);
+            self.position -= used as f64;
+        }
+        out
+    }
+}
+
 struct PlayerInternal {
     session: Session,
     config: PlayerConfig,
@@ -247,6 +358,15 @@ struct PlayerInternal {
     fade_out: Option<FadeOut>,
     /// LOCAL PATCH: the play request whose end has already been announced early.
     early_end: Option<u64>,
+    /// LOCAL PATCH: the transition into the next song, when a mixed playlist
+    /// names one; see [MixPlan].
+    mix_plan: Option<MixPlan>,
+    /// LOCAL PATCH: the length of the fade an announced mix transition owes,
+    /// in milliseconds, taken by the load that answers the announcement.
+    mix_fade_ms: Option<u32>,
+    /// LOCAL PATCH: the incoming song of a beatmatched transition, while it
+    /// plays off its own tempo; see [TempoRamp].
+    tempo: Option<TempoRamp>,
     /// LOCAL PATCH: the play request that has been heard playing before its own
     /// fade window, and so may have its end announced early. See the use of it.
     fade_armed: Option<u64>,
@@ -391,6 +511,8 @@ enum PlayerCommand {
     SetTrimSilence(bool),
     /// LOCAL PATCH: see PlayerConfig::hold_end.
     SetHoldEnd(bool),
+    /// LOCAL PATCH: see [MixPlan].
+    SetMixPlan(Option<MixPlan>),
     /// LOCAL PATCH: see PlayerConfig::skip_fade_ms.
     SetSkipFade(u32),
     EmitSessionDisconnectedEvent {
@@ -776,6 +898,9 @@ impl Player {
 
                 fade_out: None,
                 early_end: None,
+                mix_plan: None,
+                mix_fade_ms: None,
+                tempo: None,
                 fade_armed: None,
                 consecutive_silent_samples: 0,
                 short_end: None,
@@ -911,6 +1036,11 @@ impl Player {
     /// LOCAL PATCH: see PlayerConfig::hold_end.
     pub fn set_hold_end(&self, enabled: bool) {
         self.command(PlayerCommand::SetHoldEnd(enabled));
+    }
+
+    /// LOCAL PATCH: see [MixPlan]. None goes back to the ordinary crossfade.
+    pub fn set_mix_plan(&self, plan: Option<MixPlan>) {
+        self.command(PlayerCommand::SetMixPlan(plan));
     }
 
     /// LOCAL PATCH: see PlayerConfig::skip_fade_ms.
@@ -2370,16 +2500,32 @@ impl Future for PlayerInternal {
                 // still reading this track is handed to `fade_out` instead of
                 // being dropped. Nothing here decides what plays next, which is
                 // what keeps the Connect device the only thing that does.
-                let crossfade_ms = self.config.crossfade_duration_ms as i64;
+                // LOCAL PATCH: a mixed playlist's transition, where this
+                // track has one, decides both when its end is announced and
+                // how long the fade into the next lasts — the point the
+                // playlist's author chose rather than a fixed distance from
+                // the end, and whatever the crossfade setting says.
+                let plan = track_id
+                    .to_uri()
+                    .ok()
+                    .and_then(|uri| self.mix_plan.as_ref().filter(|plan| plan.from == uri).cloned());
                 let position = stream_position_ms as i64;
                 let duration = duration_ms as i64;
-                if crossfade_ms > 0 && duration > crossfade_ms && !self.config.hold_end && !narration_follows(&track_id) {
+                let (crossfade_ms, end_at) = match &plan {
+                    Some(plan) => (plan.fade_ms as i64, plan.out_ms as i64),
+                    None => {
+                        let crossfade_ms = self.config.crossfade_duration_ms as i64;
+                        (crossfade_ms, duration - crossfade_ms)
+                    }
+                };
+                if crossfade_ms > 0 && duration > crossfade_ms && end_at > 0 && !self.config.hold_end && !narration_follows(&track_id) {
                     let silence_threshold_samples = (SAMPLE_RATE as usize * NUM_CHANNELS as usize * 350) / 1000;
-                    let trailing_silence = self.config.trim_silence
+                    let trailing_silence = plan.is_none()
+                        && self.config.trim_silence
                         && self.consecutive_silent_samples >= silence_threshold_samples
                         && position >= duration - crossfade_ms - 2000;
 
-                    if position < duration - crossfade_ms && !trailing_silence {
+                    if position < end_at && !trailing_silence {
                         // LOCAL PATCH: the track has been heard playing outside
                         // its own ending, so its ending means something.
                         //
@@ -2399,7 +2545,13 @@ impl Future for PlayerInternal {
                         && self.fade_armed == Some(play_request_id)
                         && self.state.is_playing()
                     {
-                        if trailing_silence {
+                        if let Some(plan) = &plan {
+                            info!(
+                                "mix: {position} ms of {duration} ms played, into {} from {} ms over {} ms",
+                                plan.to, plan.in_ms, plan.fade_ms,
+                            );
+                            self.mix_fade_ms = Some(plan.fade_ms);
+                        } else if trailing_silence {
                             info!(
                                 "silence trimming: {position} ms of {duration} ms played, trailing silence detected, triggering crossfade early for <{track_id:?}>"
                             );
@@ -2546,7 +2698,10 @@ impl PlayerInternal {
         let expected = self.early_end.take();
         let (total, rising) = match &self.state {
             PlayerState::Playing { play_request_id, .. } if expected == Some(*play_request_id) => {
-                (self.crossfade_samples(), None)
+                match self.mix_fade_ms.take() {
+                    Some(ms) => (Self::fade_samples(ms), None),
+                    None => (self.crossfade_samples(), None),
+                }
             }
             PlayerState::Playing { .. } => (Self::fade_samples(self.config.skip_fade_ms), Some(0)),
             // Nothing playing to fade out of. Whatever is already fading, if
@@ -2896,6 +3051,15 @@ impl PlayerInternal {
             Some((_, mut packet)) => {
                 if !packet.is_empty() {
                     if let AudioPacket::Samples(ref mut data) = packet {
+                        // LOCAL PATCH: a mix's incoming song, at the tempo
+                        // the transition asked for; see TempoRamp.
+                        if let Some(tempo) = self.tempo.as_mut() {
+                            *data = tempo.process(data);
+                            if tempo.finished() {
+                                self.tempo = None;
+                            }
+                        }
+
                         // Get the volume for the packet. In the case of hardware volume control
                         // this will always be 1.0 (no change).
                         let volume = self.volume_getter.attenuation_factor();
@@ -3192,6 +3356,23 @@ impl PlayerInternal {
     ) -> PlayerResult {
         let play_request_id =
             play_request_id_option.unwrap_or(self.play_request_id_generator.get());
+
+        // LOCAL PATCH: the song a mix transition goes into comes in where the
+        // transition says, not from its first second; see [MixPlan]. Only a
+        // load from the start, which is what moving on to the next song is:
+        // a load at a position is a seek or a resume, and keeps it.
+        let mut position_ms = position_ms;
+        // Whatever song was being brought back to its tempo is gone.
+        self.tempo = None;
+        if let Some(plan) = self.mix_plan.as_ref() {
+            if position_ms == 0 && track_id.to_uri().ok().as_deref() == Some(plan.to.as_str()) {
+                info!("mix: {} comes in at {} ms, at {}x", plan.to, plan.in_ms, plan.speed_in);
+                position_ms = plan.in_ms;
+                if (plan.speed_in - 1.0).abs() > 0.002 {
+                    self.tempo = Some(TempoRamp::new(plan.speed_in, plan.fade_ms));
+                }
+            }
+        }
 
         // LOCAL PATCH: a line about the track being left goes with it.
         self.narration = None;
@@ -3665,6 +3846,11 @@ impl PlayerInternal {
                 self.config.skip_fade_ms = ms;
             }
 
+            PlayerCommand::SetMixPlan(plan) => {
+                info!("mix plan is now {plan:?}");
+                self.mix_plan = plan;
+            }
+
             PlayerCommand::SetHoldEnd(enabled) => {
                 info!("hold_end is now {enabled}");
                 self.config.hold_end = enabled;
@@ -3882,6 +4068,7 @@ impl fmt::Debug for PlayerCommand {
                 f.debug_tuple("SetTrimSilence").field(enabled).finish()
             }
             PlayerCommand::SetSkipFade(ms) => f.debug_tuple("SetSkipFade").field(ms).finish(),
+            PlayerCommand::SetMixPlan(plan) => f.debug_tuple("SetMixPlan").field(plan).finish(),
             PlayerCommand::SetHoldEnd(enabled) => {
                 f.debug_tuple("SetHoldEnd").field(enabled).finish()
             }

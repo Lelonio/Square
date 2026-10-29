@@ -255,6 +255,25 @@ halves go on sharing one clock as before.
 
 Zero, the default, leaves every one of these paths as upstream has it.
 
+### The patch: a mixed playlist's transitions
+
+A playlist mixed in Spotify's own app keeps, on the row a transition starts
+from, where the song hands over, where the next comes in and how long the two
+overlap (read by the app; see `catalog::playlist_mix`). `Player::set_mix_plan`
+gives the player the one transition that is next. While the song it names is
+playing, its end is announced at the transition's point instead of a
+crossfade's length before the end, whatever the crossfade setting, and the
+fade lasts as long as the transition says. The song it goes into, loaded from
+the start, starts at the transition's point instead.
+
+When the transition is beatmatched, the incoming song plays at the speed the
+recipe gives it for the overlap and eases back to its own over eight seconds
+(`TempoRamp`). It is resampled, turntable-style, so its key moves with its
+tempo, by about a semitone at a typical 6%.
+
+The markers are `LOCAL PATCH` around `MixPlan`, `mix_plan`, `mix_fade_ms` and
+`tempo` in `src/player.rs`.
+
 ### The patch: the DJ talks between the tracks
 
 Spotify's DJ gives some tracks a line to say before them and some a line after,

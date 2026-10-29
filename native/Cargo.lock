@@ -2358,6 +2358,7 @@ name = "squarecore"
 version = "0.1.0"
 dependencies = [
  "android_logger",
+ "base64",
  "bytes",
  "futures-util",
  "http",

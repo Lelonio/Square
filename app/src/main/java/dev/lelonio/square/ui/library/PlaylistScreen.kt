@@ -8,6 +8,21 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import com.adamglin.phosphoricons.regular.SlidersHorizontal
+import com.adamglin.phosphoricons.regular.Sparkle
+import com.adamglin.phosphoricons.regular.Waveform
+import dev.lelonio.square.ui.components.MIX_RING_ROOM
+import dev.lelonio.square.ui.components.mixRing
 import androidx.compose.foundation.layout.RowScope
 import dev.lelonio.square.ui.glass.liquidGlass
 import dev.lelonio.square.ui.player.GlassFilm
@@ -264,6 +279,8 @@ fun PlaylistScreen(
     /** The remembered track order, and where a change to it is stored. */
     storedSort: String? = null,
     onSortChange: (String) -> Unit = {},
+    /** Turns the page's Spotify Mix on or off; see MainViewModel.toggleMix. */
+    onToggleMix: () -> Unit = {},
     /** And which way round it runs; see the same menu. */
     storedSortDescending: Boolean = false,
     onSortDescendingChange: (Boolean) -> Unit = {},
@@ -341,7 +358,14 @@ fun PlaylistScreen(
     // or searching makes them a selection out of it, and playing that as the
     // context would have Spotify play the playlist's own order instead of the
     // one on screen.
-    val asContext = sort == TrackSort.ORIGINAL && !descending && query.isBlank()
+    // A mixed playlist plays in its own order: its transitions are between
+    // neighbours in that order, and the same songs sorted otherwise have none.
+    // The chosen sort is kept, not cleared, and comes back with the mix off.
+    val mixed = state.mixOn && state.mix != null
+    val shownSort = if (mixed) TrackSort.ORIGINAL else sort
+    val shownDescending = descending && !mixed
+
+    val asContext = shownSort == TrackSort.ORIGINAL && !shownDescending && query.isBlank()
 
     // Whether the top songs are shown in full.
     //
@@ -353,14 +377,14 @@ fun PlaylistScreen(
 
     // Derived, not stored: keeping a second list in state would leave the two
     // able to disagree after a reload.
-    val visible = remember(state.tracks, query, sort, descending) {
+    val visible = remember(state.tracks, query, shownSort, shownDescending) {
         state.tracks
             .filter { it.matches(query) }
-            .sortedWith(sort.comparator())
+            .sortedWith(shownSort.comparator())
             // Reversed after sorting rather than by a second comparator: the
             // playlist's own order has no comparator to invert, and turning it
             // upside down is exactly what "descending" means there too.
-            .let { if (descending) it.reversed() else it }
+            .let { if (shownDescending) it.reversed() else it }
     }
 
     // Taken from *this* screen's cover, not from whatever is playing. The two
@@ -726,6 +750,7 @@ fun PlaylistScreen(
             collapsedHeight = collapsedHeight,
             topPadding = topPadding,
             onBack = onBack,
+            mixOn = mixed,
             onPlay = {
                 visible.takeIf { it.isNotEmpty() }?.let { onPlayInOrder(it, asContext) }
             },
@@ -842,6 +867,8 @@ fun PlaylistScreen(
                         // several, not the whole of what is below the fold.
                         large = isArtist,
                         sort = sort,
+                        mix = state.mixOn.takeIf { state.mix != null },
+                        onToggleMix = onToggleMix,
                         onSortOpen = { sortOpen = it },
                         onAnchor = { sortAnchor = it },
                         // Only where there is more than what is shown.
@@ -950,7 +977,8 @@ fun PlaylistScreen(
                     contentType = { _, _ -> "track" },
                 ) { index, track ->
                     // Faded in as the list arrives; nothing moves after that.
-                    Box(Modifier.animateItem(fadeInSpec = tween(260), placementSpec = null, fadeOutSpec = null)) {
+                    // A column, so a mix's transition can sit under the row.
+                    Column(Modifier.animateItem(fadeInSpec = tween(260), placementSpec = null, fadeOutSpec = null)) {
                     SwipeToQueue(onQueue = { onEnqueue(track) }) {
                         if (track.isEpisode) {
                             val current = track.uri == nowPlayingUri
@@ -1007,8 +1035,23 @@ fun PlaylistScreen(
                                 !track.uri.startsWith("local:") &&
                                 trackDownload(track) !=
                                 dev.lelonio.square.data.DownloadState.Done,
+                            mixAttributes = if (mixed) state.audioAttributes[track.uri] else null,
                         )
                     }
+                    }
+                    // Between this song and the next, what Spotify's Mix does
+                    // there: the transition saved with the playlist, or its
+                    // automatic one where none was. An item of its own, so it
+                    // sits under the row rather than over it, and is not part
+                    // of the row's swipe.
+                    if (mixed && query.isBlank() && index < visible.lastIndex) {
+                        // By the pair, not the row number: the page's list
+                        // and the playlist the mix was read from need not
+                        // number their rows the same.
+                        val next = visible[index + 1].uri
+                        val transition = state.mix?.transitions
+                            ?.firstOrNull { it.from == track.uri && it.to == next }
+                        TransitionTag(transition)
                     }
                 }
             }
@@ -1568,6 +1611,8 @@ private fun DetailHeader(
     onToggleSearch: () -> Unit,
     /** What the header opens at, which the artist page makes taller. */
     heroHeight: Dp = HERO_HEIGHT,
+    /** The page plays as a Spotify Mix; the Play button wears its ring. */
+    mixOn: Boolean = false,
 ) {
     val density = LocalDensity.current
     val heroPx = with(density) { heroHeight.roundToPx() }
@@ -1710,6 +1755,10 @@ private fun DetailHeader(
                 val lightPage = pageColor.luminance() > LIGHT_PAGE_LUMINANCE
                 val playFill = if (lightPage) Color.Black else Color.White
                 val playInk = if (lightPage) Color.White else pageColor
+                // A mixed page plays as a mix, and its button says so: the
+                // page's glass instead of the solid slab, lit by the ring the
+                // official app turns round its own.
+                if (mixOn) MixPlayButton(onPlay = onPlay, backdrop = backdrop, ink = ink) else
                 Row(
                     Modifier
                         .softShadow(ContinuousCapsule, elevation = 20.dp, spot = 0.32f)
@@ -2723,6 +2772,9 @@ private fun SectionHeader(
     expandable: Boolean = false,
     expanded: Boolean = false,
     onToggle: () -> Unit = {},
+    /** The page's Spotify Mix, on or off; null where there is none. */
+    mix: Boolean? = null,
+    onToggleMix: () -> Unit = {},
 ) {
     Row(
         Modifier
@@ -2779,7 +2831,11 @@ private fun SectionHeader(
         }
         }
 
-        IconButton(
+        if (mix != null) MixPill(on = mix, onClick = onToggleMix)
+
+        // A mixed playlist plays in its own order, so there is nothing to sort
+        // while the mix is on; see `mixed` where the list is built.
+        if (mix != true) IconButton(
             onClick = { onSortOpen(true) },
             modifier = Modifier.onGloballyPositioned {
                 val root = it.boundsInRoot()
@@ -2953,6 +3009,8 @@ private fun TrackRow(
      * missing ones are exactly what they might want to download later.
      */
     unavailable: Boolean = false,
+    /** Tempo and key, on a page playing as a Spotify Mix; see Mixes. */
+    mixAttributes: dev.lelonio.square.playback.Mixes.Attributes? = null,
 ) {
     val shape = RoundedCornerShape(14.dp)
     // Everything in the row fades together, artwork included, so it reads as
@@ -3135,6 +3193,8 @@ private fun TrackRow(
             }
         }
 
+        if (mixAttributes != null) MixTag(mixAttributes)
+
         IconButton(onClick = onMenu, modifier = Modifier.size(32.dp)) {
             Icon(
                 PhosphorIcons.Bold.DotsThree,
@@ -3145,6 +3205,162 @@ private fun TrackRow(
         }
     }
 }
+
+/**
+ * The switch for a playlist's Spotify Mix, as the official app draws it: a
+ * pill with the mixer's sliders and the word, its rim lit while it is on.
+ */
+@Composable
+private fun MixPill(on: Boolean, onClick: () -> Unit) {
+    val accent = MaterialTheme.colorScheme.primary
+    val ink = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier
+            .padding(end = 4.dp)
+            .clip(ContinuousCapsule)
+            .background(if (on) accent.copy(alpha = 0.16f) else Color.Transparent)
+            .border(1.dp, ink.copy(alpha = if (on) 0.9f else 0.4f), ContinuousCapsule)
+            .pressable(onClick, shape = ContinuousCapsule, pressedScale = 0.95f)
+            .semantics { role = androidx.compose.ui.semantics.Role.Switch; stateDescription = if (on) "on" else "off" }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            PhosphorIcons.Regular.SlidersHorizontal,
+            contentDescription = null,
+            tint = ink,
+            modifier = Modifier.size(15.dp),
+        )
+        Text(
+            stringResource(R.string.mix),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = ink,
+        )
+    }
+}
+
+/**
+ * A song's tempo and key, at the end of its row on a mixed page: the number
+ * over the Camelot key, which is drawn in the colour of its place on the wheel,
+ * as the official app does.
+ */
+@Composable
+private fun MixTag(attributes: dev.lelonio.square.playback.Mixes.Attributes) {
+    Column(
+        Modifier.padding(start = 8.dp, end = 2.dp),
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(
+            stringResource(R.string.mix_bpm, attributes.bpm.roundToInt()),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (attributes.camelot.isNotEmpty()) {
+            val color = camelotColor(attributes.camelot)
+            Text(
+                attributes.camelot,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (color.luminance() > 0.5f) Color.Black else Color.White,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(color)
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The Camelot wheel's colour for a key: twelve hues round the wheel, the
+ * minor keys (A) a shade deeper than their major (B) neighbours.
+ */
+private fun camelotColor(camelot: String): Color {
+    val number = camelot.dropLast(1).toIntOrNull()?.coerceIn(1, 12) ?: return Color.Gray
+    val minor = camelot.endsWith("A", ignoreCase = true)
+    val hue = ((number - 1) * 30f + 60f) % 360f
+    return Color.hsv(hue, if (minor) 0.62f else 0.48f, if (minor) 0.86f else 0.95f)
+}
+
+/**
+ * What happens between two songs on a mixed page, under the first of them:
+ * the transition saved with the playlist, as how long the two overlap, or
+ * "Auto" where Spotify's own automatic transition applies.
+ */
+@Composable
+private fun TransitionTag(transition: dev.lelonio.square.playback.Mixes.Transition?) {
+    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier
+            .padding(start = ROW_TEXT_INDENT, top = 0.dp, bottom = 4.dp)
+            .clip(ContinuousCapsule)
+            .background(ink.copy(alpha = 0.10f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(
+            if (transition != null) PhosphorIcons.Regular.Waveform else PhosphorIcons.Regular.Sparkle,
+            contentDescription = null,
+            tint = if (transition != null) ink else MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(13.dp),
+        )
+        Text(
+            if (transition != null) {
+                stringResource(R.string.mix_overlap, ((transition.fadeMs + 500) / 1000).toInt().coerceAtLeast(1))
+            } else {
+                stringResource(R.string.mix_auto)
+            },
+            style = MaterialTheme.typography.labelMedium,
+            color = ink,
+        )
+    }
+}
+
+
+
+
+/** Where a transition sits under its row: in line with the row's text. */
+private val ROW_TEXT_INDENT = 90.dp
+
+/**
+ * The Play button of a page playing as a mix: the same glass as the round
+ * controls either side of it, with the mix's ring turning round its rim.
+ */
+@Composable
+private fun MixPlayButton(onPlay: () -> Unit, backdrop: Backdrop, ink: Color) {
+    // Room for the ring and its glow, which are drawn outside the button:
+    // without it the row around the button cut them off at its edges.
+    Box(Modifier.padding(MIX_RING_ROOM).mixRing(true)) {
+        LiquidButton(
+            onClick = onPlay,
+            backdrop = backdrop,
+            modifier = Modifier
+                .background(Color.White.copy(alpha = 0.17f), ContinuousCapsule)
+                .border(0.6.dp, Color.White.copy(alpha = 0.26f), ContinuousCapsule),
+            contentHeight = 50.dp,
+            contentPadding = 28.dp,
+        ) {
+            Icon(
+                PhosphorIcons.Fill.Play,
+                contentDescription = null,
+                tint = ink,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                stringResource(R.string.play),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = ink,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
+}
+
 
 /**
  * What can be done with one track, without leaving the list.

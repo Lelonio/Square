@@ -382,6 +382,468 @@ pub fn playlist_cover(uri: &str) -> EngineResult<String> {
     })
 }
 
+/// A playlist's Spotify Mix, as JSON `{mixed, transitions}`, or null.
+///
+/// A playlist mixed in Spotify's own app is the same playlist seen through a
+/// lens named `mix`, and the lens has to be asked for: the desktop client sends
+/// `spotify-apply-lenses: mix,auto`, and without it the answer is the plain
+/// list, with nothing about the mix in it. Through the lens, the row a
+/// transition starts from carries it as the format attribute
+/// `automix.auto_transition_recipe`, base64 of a protobuf; see
+/// [transition_in]. `mixed` says whether the `mix` lens was applied at all.
+pub fn playlist_mix(uri: &str) -> EngineResult<String> {
+    let parsed = SpotifyUri::from_uri(uri).map_err(|e| format!("bad uri: {e}"))?;
+    let SpotifyUri::Playlist { id, .. } = parsed else {
+        return Ok("null".into());
+    };
+
+    let session = with_session(|s| s.clone())?;
+    block_on(async move {
+        let endpoint = format!("/playlist/v2/playlist/{}", id.to_base62().map_err(|e| e.to_string())?);
+        let mut headers = http::HeaderMap::new();
+        headers.insert("spotify-apply-lenses", http::HeaderValue::from_static("mix,auto"));
+        let bytes = session
+            .spclient()
+            .request(&Method::GET, &endpoint, Some(headers), None)
+            .await
+            .map_err(|e| format!("playlist read failed: {e}"))?;
+        let list = SelectedListContent::parse_from_bytes(&bytes)
+            .map_err(|e| format!("playlist was not a SelectedListContent: {e}"))?;
+
+        // Whether it is mixed is the playlist's MixState, not the lens: asked
+        // for, the `mix` lens is applied to any playlist at all, mixed or not.
+        let playlist_uri = format!("spotify:playlist:{}", id.to_base62().map_err(|e| e.to_string())?);
+        let mixed = match extension(&session, &playlist_uri, MIX_STATE).await {
+            Ok(Some(bytes)) => mix_state_in(&bytes) == Some(1),
+            _ => false,
+        };
+        let transitions: Vec<Value> = list
+            .contents
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                let recipe = item
+                    .attributes
+                    .format_attributes
+                    .iter()
+                    .find(|a| a.key() == "automix.auto_transition_recipe")?;
+                let mut transition = transition_in(recipe.value())?;
+                transition["index"] = json!(index);
+                Some(transition)
+            })
+            .collect();
+
+        Ok(json!({ "mixed": mixed, "transitions": transitions }).to_string())
+    })
+}
+
+/// `MIX_STATE`, a `spotify.playlistmixing.extensions.mixstate.MixState`:
+/// `{ 1: 1 }` on a playlist mixed in Spotify's app, empty on any other.
+const MIX_STATE: u64 = 225;
+
+/// The state in a MixState reply: the `Any`'s value, its field 1.
+fn mix_state_in(bytes: &[u8]) -> Option<u64> {
+    for array in message_fields(bytes, 2) {
+        for data in message_fields(array, 3) {
+            let any = read_first_message_field(data, 3)?;
+            let value = read_first_message_field(any, 2)?;
+            let (tag, next) = read_varint(value, 0)?;
+            if tag == 1 << 3 {
+                return read_varint(value, next).map(|(state, _)| state);
+            }
+        }
+    }
+    None
+}
+
+/// One transition recipe, as JSON, from its base64.
+///
+/// What each field is was worked out from transitions made in the official
+/// app and read back here, not from a published schema:
+///
+///   1 { 3 out_ms, 4 in_ms, 5 fade_ms, 6 speed of A, 7 speed of B, 8 kind,
+///       10 from uri, 11 to uri, 16 bpm of A, 17 bpm of B }
+///   2 { 1 preset id, … the preset's own settings }
+///
+/// `in_ms` is left out of the message when the next song starts from its
+/// beginning, which is what a protobuf does with a zero.
+fn transition_in(recipe: &str) -> Option<Value> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(recipe.trim()).ok()?;
+    let timing = read_first_message_field(&bytes, 1)?;
+    let preset = read_first_message_field(&bytes, 2);
+
+    let mut out_ms = None;
+    let mut in_ms = 0u64;
+    let mut fade_ms = None;
+    let mut speed_a = 1.0f32;
+    let mut speed_b = 1.0f32;
+    let mut kind = 0u64;
+    let mut from = None;
+    let mut to = None;
+    let mut bpm_a = 0.0f32;
+    let mut bpm_b = 0.0f32;
+    let mut cursor = 0usize;
+    while cursor < timing.len() {
+        let (tag, next) = read_varint(timing, cursor)?;
+        cursor = next;
+        match (tag >> 3, tag & 0x7) {
+            (field @ (3 | 4 | 5 | 8), 0) => {
+                let (value, next) = read_varint(timing, cursor)?;
+                cursor = next;
+                match field {
+                    3 => out_ms = Some(value),
+                    4 => in_ms = value,
+                    5 => fade_ms = Some(value),
+                    _ => kind = value,
+                }
+            }
+            (field @ (6 | 7 | 16 | 17), 5) => {
+                let raw = timing.get(cursor..cursor + 4)?;
+                let value = f32::from_le_bytes(raw.try_into().ok()?);
+                cursor += 4;
+                match field {
+                    6 => speed_a = value,
+                    7 => speed_b = value,
+                    16 => bpm_a = value,
+                    _ => bpm_b = value,
+                }
+            }
+            (field @ (10 | 11), 2) => {
+                let (payload, next) = read_bytes(timing, cursor)?;
+                cursor = next;
+                let uri = std::str::from_utf8(payload).ok()?.to_string();
+                if field == 10 { from = Some(uri) } else { to = Some(uri) }
+            }
+            (_, wire) => cursor = skip_field(timing, cursor, wire)?,
+        }
+    }
+
+    let preset_id = preset.and_then(|preset| {
+        let (tag, next) = read_varint(preset, 0)?;
+        (tag == 1 << 3).then(|| read_varint(preset, next).map(|(id, _)| id)).flatten()
+    });
+
+    Some(json!({
+        "from": from?,
+        "to": to?,
+        "outMs": out_ms?,
+        "inMs": in_ms,
+        "fadeMs": fade_ms?,
+        "speedA": speed_a,
+        "speedB": speed_b,
+        "bpmA": bpm_a,
+        "bpmB": bpm_b,
+        "kind": kind,
+        "preset": preset_id,
+    }))
+}
+
+/// Tempo and key of many tracks at once, as a JSON object keyed by URI, each
+/// `{bpm, key, mode, camelot}`. A track Spotify has no numbers for is left out.
+pub fn tracks_audio_attributes(uris_json: &str) -> EngineResult<String> {
+    batched_extension(uris_json, AUDIO_ATTRIBUTES_V2, |data| audio_attributes_in(data, 0))
+}
+
+/// What Square's automatic transitions are worked out from, for a few tracks
+/// at once: a JSON object keyed by URI, each
+/// `{lengthMs, downbeats, fadeInMs, fadeOutMs, vocals, points, sections}`.
+///
+/// Spotify's own Automix works its transitions out on the phone, from these
+/// same traits, and keeps the result to itself; see Mixes.kt for what Square
+/// makes of them. Asked for the pair about to play rather than for a whole
+/// playlist: the waveforms alone are some forty kilobytes a song.
+///
+/// - `downbeats`: where each bar starts, from `MIX_BEATS`.
+/// - `fadeInMs`, `fadeOutMs`: where the song is first and last really
+///   sounding, read off `MIX_WAVEFORMS` (see [loudness_edges]).
+/// - `vocals`: how much singing there is, 0 to 100, every tenth of a second,
+///   from `MIX_VOCALS`.
+/// - `points`: `[kind, ms]`, Spotify's own suggestions from
+///   `TRANSITION_POINTS`; 1 and 2 where a song may start and finish leaving,
+///   3 and 4 where the next may start and be fully in.
+/// - `sections`: where each part of the song starts, from `TRACK_SECTIONS`.
+///
+/// A song missing its beats or waveform is left out, and has no automatic
+/// transition.
+pub fn tracks_mix_analysis(uris_json: &str) -> EngineResult<String> {
+    let uris: Vec<String> = serde_json::from_str(uris_json).map_err(|e| format!("bad uris: {e}"))?;
+    let session = with_session(|s| s.clone())?;
+
+    block_on(async move {
+        let (beats, waves, vocals, points, sections) = tokio::join!(
+            extension_payloads(&session, &uris, MIX_BEATS),
+            extension_payloads(&session, &uris, MIX_WAVEFORMS),
+            extension_payloads(&session, &uris, MIX_VOCALS),
+            extension_payloads(&session, &uris, TRANSITION_POINTS),
+            extension_payloads(&session, &uris, TRACK_SECTIONS),
+        );
+        let (beats, waves) = (beats?, waves?);
+        // Without these the transitions are only less careful.
+        let (vocals, points, sections) =
+            (vocals.unwrap_or_default(), points.unwrap_or_default(), sections.unwrap_or_default());
+
+        let mut found = serde_json::Map::new();
+        for uri in &uris {
+            let downbeats = beats.get(uri).map(|b| downbeats_in(b)).unwrap_or_default();
+            if downbeats.len() < 10 {
+                continue;
+            }
+            let Some((length_ms, fade_in_ms, fade_out_ms)) = waves.get(uri).and_then(|w| loudness_edges(w))
+            else {
+                continue;
+            };
+            found.insert(
+                uri.clone(),
+                json!({
+                    "lengthMs": length_ms,
+                    "downbeats": downbeats,
+                    "fadeInMs": fade_in_ms,
+                    "fadeOutMs": fade_out_ms,
+                    "vocals": vocals.get(uri).map(|v| vocal_curve(v)).unwrap_or_default(),
+                    "points": points.get(uri).map(|p| transition_points_in(p)).unwrap_or_default(),
+                    "sections": sections.get(uri).map(|s| sections_in(s)).unwrap_or_default(),
+                }),
+            );
+        }
+        Ok(Value::Object(found).to_string())
+    })
+}
+
+/// `spotify.playlistmixing.extensions.mixbeats.Beats`:
+/// `{ 1 beats_per_bar; 2 repeated Beat { 1 float seconds; 3 beat_in_bar } }`.
+const MIX_BEATS: u64 = 217;
+/// `...mixvocalactivity.VocalActivity`:
+/// `{ 1 float sample_rate; 4 hop in samples; 5 bytes one value a hop }`.
+const MIX_VOCALS: u64 = 218;
+/// `...mixthreebandwaveforms.ThreeBandWaveforms`:
+/// `{ 1 sample_rate; 2 hop in ms; 3, 4, 5 bytes low, mid and high, one a hop }`.
+const MIX_WAVEFORMS: u64 = 237;
+/// `...commontransitionpoint.TransitionPoints`:
+/// `{ 1 repeated Point { 1 kind; 2 position_ms; 3 double weight } }`.
+const TRANSITION_POINTS: u64 = 247;
+/// `...tracksections.TrackSections`: `{ 1 repeated Section { 1 start_ms } }`.
+const TRACK_SECTIONS: u64 = 261;
+
+/// Where each bar starts, in milliseconds.
+fn downbeats_in(bytes: &[u8]) -> Vec<u64> {
+    message_fields(bytes, 2)
+        .into_iter()
+        .filter_map(|beat| {
+            let fields = scalar_fields(beat);
+            let seconds = fields.iter().find(|(f, _)| *f == 1).map(|(_, raw)| f32::from_bits(*raw as u32))?;
+            let in_bar = fields.iter().find(|(f, _)| *f == 3).map(|(_, v)| *v)?;
+            (in_bar == 1 && seconds >= 0.0).then(|| (seconds * 1000.0).round() as u64)
+        })
+        .collect()
+}
+
+/// A song's length and where it is first and last really sounding, from its
+/// waveform: the first and last half second louder on average than
+/// [EDGE_LEVEL] of the song's median loudness.
+///
+/// Where Spotify's own plain crossfades centre themselves, as near as could be
+/// told from what its app chose for some 150 pairs of songs: the next song
+/// comes in two and a half seconds before its first such moment, and the
+/// overlap is centred on the last one.
+fn loudness_edges(bytes: &[u8]) -> Option<(u64, u64, u64)> {
+    let hop = scalar_fields(bytes).into_iter().find(|(f, _)| *f == 2).map(|(_, v)| v)?;
+    let bands: Vec<&[u8]> = (3..=5).filter_map(|f| read_first_message_field(bytes, f)).collect();
+    let n = bands.iter().map(|b| b.len()).min()?;
+    if hop == 0 || bands.len() < 3 || n < 2 {
+        return None;
+    }
+    let level: Vec<u64> = (0..n).map(|i| bands.iter().map(|b| b[i] as u64).sum()).collect();
+    let mut sorted = level.clone();
+    sorted.sort_unstable();
+    let threshold = sorted[n / 2] as f64 * EDGE_LEVEL;
+    let window = ((500 / hop) as usize).max(1);
+    let mut prefix = vec![0u64; n + 1];
+    for i in 0..n {
+        prefix[i + 1] = prefix[i] + level[i];
+    }
+    let mean = |i: usize| {
+        let end = (i + window).min(n);
+        (prefix[end] - prefix[i]) as f64 / (end - i).max(1) as f64
+    };
+    let first = (0..n).find(|&i| mean(i) >= threshold).unwrap_or(0);
+    let last = (1..n).rev().find(|&i| mean(i) >= threshold).unwrap_or(n - 1);
+    Some((n as u64 * hop, first as u64 * hop, last as u64 * hop))
+}
+
+/// See [loudness_edges].
+const EDGE_LEVEL: f64 = 0.15;
+
+/// The singing, 0 to 100, every tenth of a second. The trait's own scale
+/// rests at about 14 where nobody sings and tops out at 100.
+fn vocal_curve(bytes: &[u8]) -> Vec<u8> {
+    let fields = scalar_fields(bytes);
+    let rate = fields.iter().find(|(f, _)| *f == 1).map(|(_, raw)| f32::from_bits(*raw as u32) as f64);
+    let hop = fields.iter().find(|(f, _)| *f == 4).map(|(_, v)| *v as f64);
+    let (Some(rate), Some(hop), Some(values)) = (rate, hop, read_first_message_field(bytes, 5)) else {
+        return Vec::new();
+    };
+    if rate <= 0.0 || hop <= 0.0 {
+        return Vec::new();
+    }
+    let frame_ms = hop * 1000.0 / rate;
+    let tenths = (values.len() as f64 * frame_ms / 100.0) as usize;
+    (0..tenths)
+        .map(|k| {
+            let from = ((k as f64 * 100.0) / frame_ms) as usize;
+            let to = ((((k + 1) as f64 * 100.0) / frame_ms) as usize).clamp(from + 1, values.len());
+            let slice = &values[from.min(values.len() - 1)..to];
+            let mean = slice.iter().map(|&v| v as f64).sum::<f64>() / slice.len() as f64;
+            (((mean - 14.0) / 86.0).clamp(0.0, 1.0) * 100.0).round() as u8
+        })
+        .collect()
+}
+
+/// `[kind, ms]` for each of Spotify's suggested transition points.
+fn transition_points_in(bytes: &[u8]) -> Vec<[u64; 2]> {
+    message_fields(bytes, 1)
+        .into_iter()
+        .filter_map(|point| {
+            let fields = scalar_fields(point);
+            let kind = fields.iter().find(|(f, _)| *f == 1).map(|(_, v)| *v)?;
+            let ms = fields.iter().find(|(f, _)| *f == 2).map(|(_, v)| *v).unwrap_or(0);
+            Some([kind, ms])
+        })
+        .collect()
+}
+
+/// Where each section starts; the first, at 0, carries no number at all.
+fn sections_in(bytes: &[u8]) -> Vec<u64> {
+    message_fields(bytes, 1)
+        .into_iter()
+        .map(|section| scalar_fields(section).into_iter().find(|(f, _)| *f == 1).map(|(_, v)| v).unwrap_or(0))
+        .collect()
+}
+
+/// One extended-metadata trait of many tracks, a hundred to a request: the
+/// trait's own message for each, out of the `Any` it arrives in, by URI.
+async fn extension_payloads(
+    session: &Session,
+    uris: &[String],
+    kind: u64,
+) -> Result<std::collections::HashMap<String, Vec<u8>>, String> {
+    let mut found = std::collections::HashMap::new();
+    for (uri, data) in extension_data(session, uris, kind).await? {
+        if let Some(value) = read_first_message_field(&data, 3).and_then(|any| read_first_message_field(any, 2)) {
+            found.insert(uri, value.to_vec());
+        }
+    }
+    Ok(found)
+}
+
+/// Every `EntityExtensionData` answering one trait of many tracks, by URI.
+async fn extension_data(session: &Session, uris: &[String], kind: u64) -> Result<Vec<(String, Vec<u8>)>, String> {
+    let mut found = Vec::new();
+    for chunk in uris.chunks(100) {
+        let mut body = Vec::new();
+        for uri in chunk {
+            let mut query = Vec::new();
+            write_varint(&mut query, 1 << 3);
+            write_varint(&mut query, kind);
+            let mut entity = Vec::new();
+            write_string_field(&mut entity, 1, uri);
+            write_len_delimited(&mut entity, 2, &query);
+            write_len_delimited(&mut body, 2, &entity);
+        }
+        let bytes = session
+            .spclient()
+            .request(&Method::POST, "/extended-metadata/v0/extended-metadata", None, Some(&body))
+            .await
+            .map_err(|e| format!("extended metadata failed: {e}"))?;
+        // BatchedExtensionResponse { 2 EntityExtensionDataArray { 3
+        // EntityExtensionData { 2 entity_uri, 3 Any } } }, one per entity.
+        for array in message_fields(&bytes, 2) {
+            for data in message_fields(array, 3) {
+                if let Some(uri) = read_first_message_field_str(data, 2) {
+                    found.push((uri, data.to_vec()));
+                }
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// One extended-metadata trait of many tracks, each answer read by [read]
+/// into the JSON object returned, keyed by URI.
+fn batched_extension(
+    uris_json: &str,
+    kind: u64,
+    read: fn(&[u8]) -> Option<Value>,
+) -> EngineResult<String> {
+    let uris: Vec<String> = serde_json::from_str(uris_json).map_err(|e| format!("bad uris: {e}"))?;
+    let session = with_session(|s| s.clone())?;
+
+    block_on(async move {
+        let mut found = serde_json::Map::new();
+        for (uri, data) in extension_data(&session, &uris, kind).await? {
+            if let Some(value) = read(&data) {
+                found.insert(uri, value);
+            }
+        }
+        Ok(Value::Object(found).to_string())
+    })
+}
+
+/// Every scalar field of a message as `(number, raw)`: a varint as read, a
+/// fixed32 or fixed64 as its bits, for the caller to read as the float it is.
+fn scalar_fields(bytes: &[u8]) -> Vec<(u32, u64)> {
+    let mut found = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        let Some((key, next)) = read_varint(bytes, cursor) else { break };
+        cursor = next;
+        let field = (key >> 3) as u32;
+        match key & 0x7 {
+            0 => {
+                let Some((value, next)) = read_varint(bytes, cursor) else { break };
+                found.push((field, value));
+                cursor = next;
+            }
+            5 => {
+                let Some(raw) = bytes.get(cursor..cursor + 4) else { break };
+                found.push((field, u32::from_le_bytes(raw.try_into().unwrap_or_default()) as u64));
+                cursor += 4;
+            }
+            1 => {
+                let Some(raw) = bytes.get(cursor..cursor + 8) else { break };
+                found.push((field, u64::from_le_bytes(raw.try_into().unwrap_or_default())));
+                cursor += 8;
+            }
+            wire => {
+                let Some(next) = skip_field(bytes, cursor, wire) else { break };
+                cursor = next;
+            }
+        }
+    }
+    found
+}
+
+/// Every length-delimited field [field] of a message.
+fn message_fields(bytes: &[u8], field: u32) -> Vec<&[u8]> {
+    let mut found = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        let Some((key, next)) = read_varint(bytes, cursor) else { break };
+        cursor = next;
+        let wire = key & 0x7;
+        if (key >> 3) as u32 == field && wire == 2 {
+            let Some((payload, next)) = read_bytes(bytes, cursor) else { break };
+            found.push(payload);
+            cursor = next;
+        } else {
+            let Some(next) = skip_field(bytes, cursor, wire) else { break };
+            cursor = next;
+        }
+    }
+    found
+}
+
 /// The title of one playlist, or `null`.
 ///
 /// For a playlist arriving as a link there is nowhere else to read it: the
@@ -654,6 +1116,99 @@ pub fn track_video(track_uri: &str) -> EngineResult<String> {
             None => Ok("null".to_string()),
         }
     })
+}
+
+/// `AUDIO_ATTRIBUTES_V2`: a track's tempo and key, as the official app's Mix
+/// reads them. The public audio-features endpoint is shut to new apps, and the
+/// old `audio-attributes` one is gone; this is where the numbers went. See
+/// [audio_attributes_in] for the message.
+const AUDIO_ATTRIBUTES_V2: u64 = 222;
+
+/// The first message in [bytes] shaped like `AudioAttributes`, as JSON.
+///
+///   AudioAttributes { double bpm = 1; AudioKey key = 2 }
+///   AudioKey        { string key = 1; int32 mode = 2; Camelot camelot = 3 }
+///   Camelot         { string value = 1; string color = 2 }
+///
+/// `mode` is 1 for minor and 2 for major, as the Camelot letter agrees.
+/// Searched for rather than walked down to: it sits inside an `Any` inside the
+/// batched reply, at a depth that is the reply's business.
+fn audio_attributes_in(bytes: &[u8], depth: u32) -> Option<Value> {
+    if depth > 8 {
+        return None;
+    }
+    let mut bpm = None;
+    let mut key = None;
+    let mut nested = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        let (tag, next) = read_varint(bytes, cursor)?;
+        cursor = next;
+        let (field, wire) = (tag >> 3, tag & 0x7);
+        match wire {
+            1 => {
+                let raw = bytes.get(cursor..cursor + 8)?;
+                if field == 1 {
+                    bpm = Some(f64::from_le_bytes(raw.try_into().ok()?));
+                }
+                cursor += 8;
+            }
+            2 => {
+                let (payload, next) = read_bytes(bytes, cursor)?;
+                if field == 2 {
+                    key = audio_key_in(payload);
+                }
+                nested.push(payload);
+                cursor = next;
+            }
+            _ => cursor = skip_field(bytes, cursor, wire)?,
+        }
+    }
+    if let Some(bpm) = bpm.filter(|bpm| (20.0..400.0).contains(bpm)) {
+        let (name, mode, camelot) = key.unwrap_or_default();
+        return Some(json!({ "bpm": bpm, "key": name, "mode": mode, "camelot": camelot }));
+    }
+    nested.into_iter().find_map(|payload| audio_attributes_in(payload, depth + 1))
+}
+
+/// `AudioKey`'s name, mode and Camelot value, whichever are there.
+fn audio_key_in(bytes: &[u8]) -> Option<(String, i64, String)> {
+    let mut name = String::new();
+    let mut mode = -1i64;
+    let mut camelot = String::new();
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        let (tag, next) = read_varint(bytes, cursor)?;
+        cursor = next;
+        match (tag >> 3, tag & 0x7) {
+            (1, 2) => {
+                let (payload, next) = read_bytes(bytes, cursor)?;
+                name = std::str::from_utf8(payload).ok()?.to_string();
+                cursor = next;
+            }
+            (2, 0) => {
+                let (value, next) = read_varint(bytes, cursor)?;
+                mode = value as i64;
+                cursor = next;
+            }
+            (3, 2) => {
+                let (payload, next) = read_bytes(bytes, cursor)?;
+                if let Some(value) = read_first_message_field_str(payload, 1) {
+                    camelot = value;
+                }
+                cursor = next;
+            }
+            (_, wire) => cursor = skip_field(bytes, cursor, wire)?,
+        }
+    }
+    Some((name, mode, camelot))
+}
+
+/// The first string field [field] of a message.
+fn read_first_message_field_str(bytes: &[u8], field: u32) -> Option<String> {
+    read_first_message_field(bytes, field)
+        .and_then(|payload| std::str::from_utf8(payload).ok())
+        .map(str::to_string)
 }
 
 /// `VIDEO_ASSOCIATIONS`, which names a song's video as another track.

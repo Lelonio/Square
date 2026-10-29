@@ -37,6 +37,9 @@ http-body-util = "0.1"
 # The body type librespot's own HTTP client takes.
 bytes = "1"
 serde_json = "1"
+# The transition recipes of a mixed playlist arrive as base64; see
+# catalog::transition_in. The version librespot-core already brings in.
+base64 = "0.22"
 futures-util = "0.3"
 # Decoding the DJ's lines, which arrive as MP3; see src/dj.rs. The same
 # version librespot-playback already builds, so nothing new is compiled.

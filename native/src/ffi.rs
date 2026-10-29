@@ -370,6 +370,38 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeAcc
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeTracksMixAnalysis(
+    mut env: JNIEnv,
+    _class: JClass,
+    uris: JString,
+) -> jstring {
+    let uris = match read_string(&mut env, &uris) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "TracksMixAnalysis", || catalog::tracks_mix_analysis(&uris))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeTracksAudioAttributes(
+    mut env: JNIEnv,
+    _class: JClass,
+    uris: JString,
+) -> jstring {
+    let uris = match read_string(&mut env, &uris) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "TracksAudioAttributes", || catalog::tracks_audio_attributes(&uris))
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeTrackVideo(
     mut env: JNIEnv,
     _class: JClass,
@@ -457,6 +489,22 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePla
         }
     };
     guard_string(&mut env, "PlaylistMine", || catalog::playlist_mine(&uri))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlaylistMix(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+) -> jstring {
+    let uri = match read_string(&mut env, &uri) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return JObject::null().into_raw() as jstring;
+        }
+    };
+    guard_string(&mut env, "PlaylistMix", || catalog::playlist_mix(&uri))
 }
 
 #[no_mangle]
@@ -623,6 +671,22 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
     enabled: jboolean,
 ) {
     guard(&mut env, "SetHoldEnd", || engine::set_hold_end(enabled != 0));
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetMixPlan(
+    mut env: JNIEnv,
+    _class: JClass,
+    json: JString,
+) {
+    let json = match read_string(&mut env, &json) {
+        Ok(value) => value,
+        Err(message) => {
+            let _ = env.throw_new(EXCEPTION, message);
+            return;
+        }
+    };
+    guard(&mut env, "SetMixPlan", || engine::set_mix_plan(&json));
 }
 
 #[no_mangle]
