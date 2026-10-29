@@ -1,0 +1,2 @@
+New: Spotify playlists play as a Mix, with Spotify's own transitions or automatic ones. Music can keep playing when another app takes the sound.
+Fixed: menus unreadable and stuck with the glass blur turned down, streaks and rainbow edges on the bar, and YouTube Music downloads stopping after a few songs.
