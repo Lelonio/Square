@@ -195,6 +195,9 @@ enum class GlassComponent {
  */
 internal const val LENS_MAX_DP = 48f
 
+/** How far the bend may go for each unit of depth; see the lens in liquidGlass. */
+private const val MAX_BEND_PER_DEPTH = 2.5f
+
 /**
  * How much of a pane's shorter side the lens may approach, per edge.
  *
@@ -628,9 +631,18 @@ fun Modifier.liquidGlass(
                 // the limit the slider stops doing anything on short surfaces,
                 // and goes on working on every tall one.
                 val reach = minOf(size.width, size.height) * LENS_MAX_SHARE
+                val depth = lensHeightPx.coerceAtMost(reach)
                 lens(
-                    refractionHeight = lensHeightPx.coerceAtMost(reach),
-                    refractionAmount = lensAmountPx.coerceAtMost(reach),
+                    refractionHeight = depth,
+                    // And no further than the band it bends in can carry. A
+                    // bend many times the depth reads its light from well past
+                    // the recorded layer, where there is only the layer's edge
+                    // repeated: white streaks across the bar, and the page
+                    // smeared through it while scrolling (#133). The defaults
+                    // sit at one and a half; this only stops the extremes.
+                    refractionAmount = lensAmountPx
+                        .coerceAtMost(reach)
+                        .coerceAtMost(depth * MAX_BEND_PER_DEPTH),
                     depthEffect = config.depthEffect,
                     chromaticAberration = config.chromaticAberration,
                 )

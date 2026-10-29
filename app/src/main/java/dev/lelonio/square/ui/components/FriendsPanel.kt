@@ -107,11 +107,15 @@ fun BoxScope.FriendsPanel(
         modifier = Modifier.align(Alignment.Center),
     ) {
         val shape = RoundedCornerShape(32.dp)
+        // Back closes it, as it closes the track menu (#132).
+        androidx.activity.compose.BackHandler(onBack = onDismiss)
         GlassSurface(
             backdrop = backdrop,
             shape = shape,
             surfaceColor = Color.White.copy(alpha = 0.08f),
             blurScale = 23.0f,
+            // Never clear, whatever the frost is set to; see TrackSheet.
+            minBlurDp = 24f,
             modifier = Modifier
                 .padding(horizontal = 22.dp)
                 .fillMaxWidth()

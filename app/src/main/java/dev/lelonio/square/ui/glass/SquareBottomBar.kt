@@ -322,6 +322,7 @@ fun FoldingTabs(
         // in a `graphicsLayer` and a `layout`, so it travels and grows without
         // recomposing anything.
         if (backdrop != null) {
+            val dispersion = LocalGlassEffectConfig.current.chromaticAberration
             Box(
                 Modifier
                     .puckLayout(
@@ -334,7 +335,10 @@ fun FoldingTabs(
                     .drawBackdrop(
                         backdrop = backdrop,
                         shape = { ContinuousCapsule() },
-                        effects = { lens(10f.dp.toPx(), 14f.dp.toPx(), chromaticAberration = true) },
+                        // The colour splitting follows its switch, here as on
+                        // every other pane: fixed on, the puck kept a rainbow
+                        // edge with the setting off (#133).
+                        effects = { lens(10f.dp.toPx(), 14f.dp.toPx(), chromaticAberration = dispersion) },
                         highlight = { Highlight.Default.copy(alpha = 0.35f) },
                         shadow = { Shadow(alpha = 0.35f) },
                         onDrawSurface = { drawRect(puckColor) },

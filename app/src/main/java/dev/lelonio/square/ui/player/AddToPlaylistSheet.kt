@@ -95,6 +95,8 @@ fun AddToPlaylistSheet(
         exit = slideOutVertically(tween(180)) { it / 6 } + fadeOut(tween(150)),
         modifier = Modifier.align(Alignment.BottomCenter),
     ) {
+        // Back closes it, as it closes the track menu (#132).
+        androidx.activity.compose.BackHandler(onBack = onDismiss)
         GlassSurface(
             backdrop = backdrop,
             shape = RoundedCornerShape(28.dp),
@@ -103,6 +105,8 @@ fun AddToPlaylistSheet(
             // layer, so at the usual radius the rows underneath came through
             // sharper inside the sheet than outside it.
             blurScale = 23.0f,
+            // Never clear, whatever the frost is set to; see TrackSheet.
+            minBlurDp = 24f,
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth()

@@ -336,12 +336,14 @@ fun LiquidBottomTabs(
                 child.placeRelative((width - expandedWidth) / 2, (height - expandedHeight) / 2)
             }
         }
+        val dispersion = LocalGlassEffectConfig.current.chromaticAberration
         val slotLens: BackdropEffectScope.() -> Unit = {
             val progress = dampedDragAnimation.pressProgress
             lens(
                 10f.dp.toPx() * progress,
                 14f.dp.toPx() * progress,
-                chromaticAberration = true
+                // LOCAL CHANGE: follows the colour-splitting switch (#133).
+                chromaticAberration = dispersion
             )
         }
 

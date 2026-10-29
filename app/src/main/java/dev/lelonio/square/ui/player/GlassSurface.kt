@@ -85,6 +85,14 @@ fun GlassSurface(
      * refraction cannot follow, or a moving player falls back to.
      */
     surfaceColor: Color = Color.Unspecified,
+    /**
+     * The least this pane blurs, whatever the setting says.
+     *
+     * For the panes whose job is to stand in front of the page: a menu over a
+     * list, with the frost turned down to nothing, showed the list sharp
+     * through its own rows and could not be read (#132).
+     */
+    minBlurDp: Float = 0f,
     content: @Composable () -> Unit,
 ) {
     // The same material the bottom bar is made of, so one app has one glass.
@@ -103,7 +111,7 @@ fun GlassSurface(
     val config = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
     // The refraction is part of that recipe now, and it is the reason this takes
     // a shape it can bend light along. Anything else keeps the film below.
-    val blurDp = (config.blurRadius * blurScale).coerceAtLeast(0f)
+    val blurDp = (config.blurRadius * blurScale).coerceAtLeast(minBlurDp)
     val cornerShape = shape as? CornerBasedShape
     if (cornerShape == null) {
         Box(

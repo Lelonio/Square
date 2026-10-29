@@ -104,11 +104,15 @@ fun BoxScope.SharedTrackCard(
         val shape = RoundedCornerShape(36.dp)
         val palette by rememberArtworkPalette(track?.artworkUrl)
 
+        // Back closes it, as it closes the track menu (#132).
+        androidx.activity.compose.BackHandler(onBack = onDismiss)
         GlassSurface(
             backdrop = backdrop,
             shape = shape,
             surfaceColor = Color.White.copy(alpha = 0.07f),
             blurScale = 23.0f,
+            // Never clear, whatever the frost is set to; see TrackSheet.
+            minBlurDp = 24f,
             modifier = Modifier
                 .padding(horizontal = 26.dp)
                 .fillMaxWidth()

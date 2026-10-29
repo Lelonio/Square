@@ -94,6 +94,12 @@ fun BoxScope.TrackSheet(
         exit = scaleOut(tween(160), targetScale = 0.94f) + fadeOut(tween(140)),
         modifier = Modifier.align(Alignment.Center),
     ) {
+        // Back closes the sheet, as it closes every other modal. Without it
+        // the only way out was a tap beside a sheet tall enough to leave
+        // almost nothing beside it, and back went to the page underneath
+        // instead (#132). Registered here, as the sheet appears, so it is the
+        // last one registered and the one the system asks.
+        androidx.activity.compose.BackHandler(onBack = onDismiss)
         val shape = RoundedCornerShape(30.dp)
         GlassSurface(
             backdrop = backdrop,
@@ -104,6 +110,9 @@ fun BoxScope.TrackSheet(
             // through sharper inside the sheet than outside it — the one thing
             // that reads as a mistake rather than as a material.
             blurScale = 23.0f,
+            // And never clear, whatever the frost is set to: these rows are
+            // read over a page full of other rows.
+            minBlurDp = SheetMinBlurDp,
             modifier = Modifier
                 .padding(horizontal = 28.dp)
                 .fillMaxWidth()
@@ -112,7 +121,14 @@ fun BoxScope.TrackSheet(
                 // Swallows the tap that would otherwise close the sheet.
                 .clickable(interactionSource = null, indication = null) {},
         ) {
-            Column(Modifier.padding(vertical = 22.dp)) {
+            // A veil of the page's own colour under the rows. With the frost
+            // and the tint both turned down, the glass alone let the lines
+            // behind it through as bright as the menu's own (#132).
+            Column(
+                Modifier
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = SheetVeilAlpha))
+                    .padding(vertical = 22.dp),
+            ) {
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -192,3 +208,9 @@ fun TrackSheetAction(
 
 /** Light: the page behind is already blurred, so this only has to be a surface. */
 private val SheetFilm = Color.White.copy(alpha = 0.16f)
+
+/** The least the sheet blurs; see GlassSurface's minBlurDp. */
+private const val SheetMinBlurDp = 24f
+
+/** How much of the page's colour the sheet always keeps under its rows. */
+private const val SheetVeilAlpha = 0.45f
