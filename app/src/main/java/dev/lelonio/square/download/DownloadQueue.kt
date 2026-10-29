@@ -517,12 +517,27 @@ class DownloadQueue(
             // Taken off the list while it was coming.
             error is kotlinx.coroutines.CancellationException -> Outcome.FAILED
             // The network, which is worth another go once it is back.
-            error is java.io.IOException -> Outcome.NOT_NOW
+            error is java.io.IOException && !online() -> Outcome.NOT_NOW
+            // With the network up, a song YouTube will not hand over — an
+            // address that answers 403, a read that times out — is this
+            // song's failure, and goes through the store's backoff like any
+            // other. Waiting for it as for the network kept it at the head
+            // of a one-at-a-time queue forever: two or three songs arrived
+            // and the rest sat on "Cancel download" (#129).
             else -> {
                 store.onFailed(trackUri, error?.message.orEmpty().ifEmpty { "download failed" })
                 Outcome.FAILED
             }
         }
+    }
+
+    /** Whether there is a network the system has checked reaches the internet. */
+    private fun online(): Boolean {
+        val manager = connectivity ?: return false
+        val capabilities = manager.activeNetwork
+            ?.let(manager::getNetworkCapabilities)
+            ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
     /**
