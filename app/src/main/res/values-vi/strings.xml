@@ -124,6 +124,10 @@
     <string name="add_to_playlist">Thêm vào danh sách phát</string>
     <string name="go_to_artist">Đi tới nghệ sĩ</string>
     <string name="go_to_album">Đi tới album</string>
+    <string name="mix">Mix</string>
+    <string name="mix_bpm">%1$d bpm</string>
+    <string name="mix_auto">Tự động</string>
+    <string name="mix_overlap">%1$d s</string>
     <string name="copy_link">Sao chép liên kết</string>
     <string name="remove_from_playlist">Xóa khỏi danh sách phát</string>
     <string name="queued">Hàng đợi</string>
@@ -361,6 +365,8 @@
     <string name="page_downloads_summary">Những gì có trên máy và những gì đang được tải</string>
     <string name="keep_playing_on_close">Tiếp tục phát khi đóng ứng dụng</string>
     <string name="keep_playing_on_close_note">Khi gạt Square khỏi danh sách ứng dụng gần đây, nhạc vẫn tiếp tục phát. Bạn vẫn có thể dừng nhạc từ thanh thông báo.</string>
+    <string name="pause_for_other_apps">Tạm dừng khi ứng dụng khác phát</string>
+    <string name="pause_for_other_apps_note">Nếu một ứng dụng khác chiếm âm thanh, Square sẽ tạm dừng. Hãy tắt mục này nếu nhạc cứ tự dừng: nhạc sẽ tiếp tục phát, kể cả khi có video và tin nhắn thoại.</string>
     <string name="sponsor_block">Bỏ qua phần không phải nhạc</string>
     <string name="sponsor_block_note">Đoạn giới thiệu, tiểu phẩm và phần trò chuyện trong video ca nhạc, theo đánh dấu từ cộng đồng SponsorBlock. Chỉ ID video được gửi đi.</string>
     <string name="page_app_bar">Thanh dưới</string>
@@ -442,6 +448,7 @@
     <string name="download_progress_count">%1$d trên %2$d</string>
     <string name="download_partial">Có %1$d trên %2$d</string>
     <string name="download_waiting_wifi">Đang chờ Wi‑Fi</string>
+    <string name="download_waiting_wifi_hint">Tải xuống sẽ bắt đầu khi có Wi‑Fi. Để dùng cả dữ liệu di động, hãy tắt “%3$s” trong %1$s → %2$s.</string>
     <string name="download_waiting_network">Đang chờ kết nối</string>
     <string name="download_waiting_engine">Đang chờ Spotify</string>
     <string name="download_extras">Đang hoàn tất ảnh bìa và lời bài hát</string>
