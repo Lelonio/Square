@@ -1,0 +1,2 @@
+New: the glass is liquid_glass_widgets' material, following your glass settings; sort menus pour out of their button; pressed buttons light up under the finger. Vietnamese.
+Fixed: downloads play at once with no signal; download settings with YouTube Music; update offered again if its install is cancelled; download crash on Android 15; colour splitting on sliders; playlist picker title spacing.
