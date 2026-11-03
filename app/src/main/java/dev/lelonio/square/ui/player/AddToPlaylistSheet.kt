@@ -129,7 +129,10 @@ fun AddToPlaylistSheet(
                     color = GlassInkDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 2.dp, bottom = 12.dp),
+                    // Room under the title: at a large text size the two
+                    // lines met, and the song read as part of the heading
+                    // (#148).
+                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 14.dp),
                 )
 
                 if (state.error != null) {
