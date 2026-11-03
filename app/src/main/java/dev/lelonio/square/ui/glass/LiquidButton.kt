@@ -128,6 +128,19 @@ fun LiquidButton(
                 // The bar's rim, so a button beside it is cut from the same pane.
                 highlightAlpha = dev.lelonio.square.ui.player.BarHighlightAlpha,
                 ownBackdrop = backdrop,
+                // Upstream's touch glint, on the rim nearest the finger.
+                touch = if (isInteractive) {
+                    remember(interactiveHighlight) {
+                        {
+                            GlassTouch(
+                                interactiveHighlight.touchPosition,
+                                interactiveHighlight.pressProgress,
+                            )
+                        }
+                    }
+                } else {
+                    null
+                },
                 layerBlock = if (isInteractive) {
                     {
                         val width = size.width

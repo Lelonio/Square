@@ -48,6 +48,10 @@ class InteractiveHighlight(
     val pressProgress: Float get() = pressProgressAnimation.value
     val offset: Offset get() = positionAnimation.value - startPosition
 
+    // LOCAL CHANGE: where the finger is, in the control's own pixels, for
+    // liquid_glass_widgets' touch glint (see liquidGlassMaterial).
+    val touchPosition: Offset get() = positionAnimation.value
+
     private val shader =
         if (isRuntimeShaderSupported()) {
             RuntimeShader(

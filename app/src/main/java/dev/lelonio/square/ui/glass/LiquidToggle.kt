@@ -10,6 +10,7 @@
 
 package dev.lelonio.square.ui.glass
 
+import dev.lelonio.square.ui.glass.morph.liquidGlassIndicator
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -177,6 +178,12 @@ fun LiquidToggle(
                     shape = { ContinuousCapsule() },
                     effects = {
                         val progress = dampedDragAnimation.pressProgress
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            // LOCAL CHANGE: liquid_glass_widgets' indicator
+                            // glass, coming in with the press; see
+                            // liquidGlassIndicator.
+                            liquidGlassIndicator(progress)
+                        } else {
                         blur(8f.dp.toPx() * (1f - progress))
                         lens(
                             5f.dp.toPx() * progress,
@@ -185,9 +192,12 @@ fun LiquidToggle(
                             // switch, as every other pane does (#147).
                             chromaticAberration = dispersion
                         )
+                        }
                     },
                     highlight = {
                         val progress = dampedDragAnimation.pressProgress
+                        // Upstream's glass lights its own edge.
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) return@drawBackdrop null
                         Highlight.Ambient.copy(
                             width = Highlight.Ambient.width / 1.5f,
                             blurRadius = Highlight.Ambient.blurRadius / 1.5f,
@@ -202,6 +212,7 @@ fun LiquidToggle(
                     },
                     innerShadow = {
                         val progress = dampedDragAnimation.pressProgress
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) return@drawBackdrop null
                         InnerShadow(
                             radius = 4f.dp * progress,
                             alpha = progress
@@ -216,7 +227,14 @@ fun LiquidToggle(
                     },
                     onDrawSurface = {
                         val progress = dampedDragAnimation.pressProgress
-                        drawRect(Color.White.copy(alpha = 1f - progress))
+                        // Upstream's resting thumb fades over the first 0.15
+                        // of the press, as its glass comes in.
+                        val resting = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            dev.lelonio.square.ui.glass.morph.indicatorRestingAlpha(progress)
+                        } else {
+                            1f - progress
+                        }
+                        drawRect(Color.White.copy(alpha = resting))
                     }
                 )
                 .size(40f.dp, 24f.dp)

@@ -10,6 +10,7 @@
 
 package dev.lelonio.square.ui.glass
 
+import dev.lelonio.square.ui.glass.morph.liquidGlassIndicator
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
@@ -388,12 +389,25 @@ fun LiquidBottomTabs(
                     backdrop = pressedBackdrop,
                     shape = { ContinuousCapsule() },
                     effects = {
+                        // At rest the slot is frosted like the bar under it:
+                        // upstream's resting pill sits on the bar's glass and
+                        // lets it show through, where this slot draws the
+                        // page itself, and drawn clear it let the page
+                        // straight through the bar. The frost lifts as it is
+                        // pressed, down to upstream's clear lens.
                         vibrancy()
                         blur(8f.dp.toPx() * (1f - dampedDragAnimation.pressProgress.coerceIn(0f, 1f)))
-                        slotLens()
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            // LOCAL CHANGE: liquid_glass_widgets' indicator
+                            // glass, coming in with the press.
+                            liquidGlassIndicator(dampedDragAnimation.pressProgress)
+                        } else {
+                            slotLens()
+                        }
                     },
                     highlight = {
                         val progress = dampedDragAnimation.pressProgress
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) return@drawBackdrop null
                         Highlight.Default.copy(alpha = progress)
                     },
                     shadow = {
@@ -402,6 +416,7 @@ fun LiquidBottomTabs(
                     },
                     innerShadow = {
                         val progress = dampedDragAnimation.pressProgress
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) return@drawBackdrop null
                         InnerShadow(
                             radius = 8f.dp * progress,
                             alpha = progress
@@ -409,11 +424,18 @@ fun LiquidBottomTabs(
                     },
                     onDrawSurface = {
                         val progress = dampedDragAnimation.pressProgress
-                        drawRect(containerColor, alpha = 1f - progress)
+                        // Upstream's resting pill fades over the first 0.15
+                        // of the press, as its glass comes in.
+                        val resting = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            dev.lelonio.square.ui.glass.morph.indicatorRestingAlpha(progress)
+                        } else {
+                            1f - progress
+                        }
+                        drawRect(containerColor, alpha = resting)
                         drawRect(
                             indicatorColor ?: if (isLightTheme) Color.Black.copy(0.1f)
                             else Color.White.copy(0.1f),
-                            alpha = 1f - progress
+                            alpha = resting
                         )
                         drawRect(Color.Black.copy(alpha = 0.03f * progress))
                     }

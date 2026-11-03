@@ -5,6 +5,7 @@
 
 package dev.lelonio.square.ui.glass
 
+import dev.lelonio.square.ui.glass.morph.liquidGlassMaterial
 import android.app.ActivityManager
 import android.os.Build
 import androidx.compose.foundation.shape.CornerBasedShape
@@ -446,9 +447,21 @@ fun Modifier.liquidGlass(
     // glass IS, which is the part that now has one answer.
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
     onDrawTint: (DrawScope.() -> Unit)? = null,
+    /**
+     * Where a finger is on this surface and how far it is pressed, for
+     * upstream's touch glint: the rim nearest the finger lights up. Read
+     * while the frame is drawn; null for a surface nobody presses.
+     */
+    touch: (() -> GlassTouch?)? = null,
 ): Modifier {
     val density = LocalDensity.current
-    val resolutionScale = backdropScale.coerceIn(0.05f, 1f)
+    // Upstream's material draws its edge, its lighting and its anti-aliasing
+    // in the shader, at the layer's own resolution: recorded at a fraction
+    // and stretched back up, the rim came out soft and doubled. It is drawn
+    // at full resolution, as upstream draws it.
+    val upstreamCapable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        config.style != GlassStyle.BLUR && applyEdgeEffects
+    val resolutionScale = if (upstreamCapable) 1f else backdropScale.coerceIn(0.05f, 1f)
     // A surface that names its own condition (the tab bar, mid-fold) still
     // obeys the app-wide one: either reason to hold the last capture is enough.
     val appFrozen = LocalGlassFrozen.current
@@ -591,6 +604,22 @@ fun Modifier.liquidGlass(
     // expensive link in the effect chain.
     val plainBlur = config.style == GlassStyle.BLUR
 
+    // liquid_glass_widgets' material, where the phone can run it: its
+    // refraction, tint, saturation and lit edge, in its own shader, from the
+    // listener's settings (see toLiquidGlassSettings). The film the bar has
+    // always worn is its glass colour, so a pane still follows what is behind
+    // it. Below Android 13 the chain below is the app's own, as before.
+    val upstream = upstreamCapable
+    val upstreamSettings = config.toLiquidGlassSettings().copy(
+        blur = blurRadiusDp,
+        glassColor = surfaceTintColor.copy(alpha = config.surfaceOpacity.coerceIn(0f, 1f)),
+    )
+    // Upstream's blur is a sigma in logical pixels; Android's takes a radius.
+    val upstreamBlurPx = dev.lelonio.square.ui.glass.morph.blurRadiusForSigma(
+        with(density) { blurRadiusDp.dp.toPx() },
+    ) * resolutionScale
+    val lightPage = dev.lelonio.square.ui.theme.LocalLightTheme.current
+
     val effectsBlock: BackdropEffectScope.() -> Unit = remember(
         saturation,
         blurPx,
@@ -600,7 +629,18 @@ fun Modifier.liquidGlass(
         lensAmountPx,
         config.depthEffect,
         config.chromaticAberration,
+        upstream,
+        upstreamSettings,
+        upstreamBlurPx,
+        touch,
     ) {
+        if (upstream) {
+            {
+                if (upstreamBlurPx > 0f) blur(upstreamBlurPx)
+                val pressed = touch?.invoke()
+                liquidGlassMaterial(upstreamSettings, pressed?.position, pressed?.intensity ?: 0f)
+            }
+        } else {
         {
             if (saturation != 1f) {
                 colorControls(saturation = saturation)
@@ -648,6 +688,7 @@ fun Modifier.liquidGlass(
                 )
             }
         }
+        }
     }
 
     // The rim's own colour, independent of the surface tint: on a tinted pill a
@@ -662,8 +703,9 @@ fun Modifier.liquidGlass(
     // per-component tuning and the preference still mean something.
     val rimAlpha = (highlightAlpha * (config.highlightOpacity / EdgeHighlightAlpha)).coerceIn(0f, 1f)
 
-    val highlightBlock: (() -> Highlight?)? = remember(applyEdgeEffects, plainBlur, rimColor, rimAlpha, animatedHighlightAngle) {
-        if (applyEdgeEffects && !plainBlur) {
+    val highlightBlock: (() -> Highlight?)? = remember(applyEdgeEffects, plainBlur, rimColor, rimAlpha, animatedHighlightAngle, upstream) {
+        // Upstream's shader lights its own edge.
+        if (applyEdgeEffects && !plainBlur && !upstream) {
             {
                 Highlight(
                     width = EdgeHighlightWidth,
@@ -678,15 +720,32 @@ fun Modifier.liquidGlass(
         }
     }
 
-    val shadowBlock: (() -> Shadow?)? = remember(applyEdgeEffects) {
-        if (applyEdgeEffects) ({ Shadow.Default }) else null
+    val shadowBlock: (() -> Shadow?)? = remember(applyEdgeEffects, upstream, lightPage) {
+        when {
+            !applyEdgeEffects -> null
+            // Upstream's GlassShadow.elevation, on light pages only, as
+            // upstream draws it: 0x0F black, an 8 px blur, 2 px down.
+            upstream -> if (lightPage) {
+                {
+                    Shadow(
+                        radius = 8.dp,
+                        offset = androidx.compose.ui.unit.DpOffset(0.dp, 2.dp),
+                        color = Color.Black.copy(alpha = 15f / 255f),
+                    )
+                }
+            } else {
+                null
+            }
+            else -> ({ Shadow.Default })
+        }
     }
 
     // RenderEffect is guaranteed supported past this point — the unsupported
     // case already returned the translucent-tint fallback above.
-    val surfaceBlock: DrawScope.() -> Unit = remember(surfaceTintColor, config.surfaceOpacity, onDrawTint) {
+    val surfaceBlock: DrawScope.() -> Unit = remember(surfaceTintColor, config.surfaceOpacity, onDrawTint, upstream) {
         {
-            if (config.surfaceOpacity > 0f) {
+            // Upstream's shader tints the glass itself.
+            if (config.surfaceOpacity > 0f && !upstream) {
                 drawRect(
                     color = surfaceTintColor.copy(alpha = config.surfaceOpacity),
                     size = size,
@@ -754,3 +813,53 @@ private fun tintedRim(base: Color, config: GlassEffectConfig): Color {
 /** How coloured the film and the rim go at full strength. */
 private const val TINT_SATURATION = 0.55f
 private const val TINT_RIM_SATURATION = 0.85f
+
+/**
+ * The listener's glass, as liquid_glass_widgets' material takes it.
+ *
+ * Through upstream's own translation of designer parameters
+ * (`LiquidGlassSettings.figma`): the bend, as a percentage, sets the
+ * refractive index at `1 + bend × 0.2`; the edge depth is the bevel's
+ * thickness; colour splitting is a dispersion; the frost is the blur's sigma;
+ * the rim light is the light's intensity. Saturation is this app's vibrancy,
+ * the film is the one the bar wears, and the depth switch is upstream's edge
+ * absorption at the strength of its iOS 27 material. The optics — how these
+ * bend, tint and light the glass — are upstream's, in its shader.
+ *
+ * [blurScale] thickens the frost for the surfaces that need more than a pill,
+ * and [minBlur] is the least they may have, in logical pixels.
+ */
+@Composable
+fun GlassEffectConfig.toLiquidGlassSettings(
+    blurScale: Float = 1f,
+    minBlur: Float = 0f,
+): dev.lelonio.square.ui.glass.morph.LiquidGlassSettings {
+    val light = dev.lelonio.square.ui.theme.LocalLightTheme.current
+    val film = tinted(
+        when {
+            surfaceTintColor.isSpecified -> surfaceTintColor
+            light -> Color(0xFFFAFAFA)
+            else -> Color(0xFF23232A)
+        },
+        this,
+    ).copy(alpha = surfaceOpacity.coerceIn(0f, 1f))
+    val liquid = style != GlassStyle.BLUR
+    return dev.lelonio.square.ui.glass.morph.LiquidGlassSettings(
+        refractiveIndex = if (liquid) 1f + lensAmount.coerceIn(0f, 1f) * 0.2f else 1f,
+        thickness = if (liquid) (lensHeight * LENS_MAX_DP).coerceAtLeast(1f) else 1f,
+        chromaticAberration = if (liquid && chromaticAberration) 4f * DISPERSION_SHARE else 0f,
+        lightIntensity = if (liquid) highlightOpacity.coerceIn(0f, 1f) else 0f,
+        blur = (blurRadius * blurScale).coerceAtLeast(minBlur),
+        ambientStrength = 0.1f,
+        saturation = glassSaturation(vibrancy),
+        glassColor = film,
+        edgeAbsorption = if (depthEffect) 0.035f else 0f,
+    )
+}
+
+/** The dispersion colour splitting stands for, as a share of upstream's 0–100 %. */
+private const val DISPERSION_SHARE = 0.10f
+
+/** A finger on a glass surface: where, in its own pixels, and how far pressed (0..1). */
+@androidx.compose.runtime.Immutable
+data class GlassTouch(val position: androidx.compose.ui.geometry.Offset, val intensity: Float)
