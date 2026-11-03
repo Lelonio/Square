@@ -39,6 +39,38 @@ import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import kotlin.math.cos
 import kotlin.math.sin
 
+/**
+ * The AGSL material is an optional enhancement, not a prerequisite for the
+ * interface. A few GPU drivers reject its large program at compile time (for
+ * example the Adreno driver in Xiaomi M2012K11G on Android 14). Remember that
+ * result for this process so a failed compile cannot take the app down again.
+ */
+object LiquidGlassRenderer {
+    private var available by mutableStateOf(true)
+
+    val enabled: Boolean
+        get() = available && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+
+    fun groupShader(): android.graphics.RuntimeShader? = create("blend group") {
+        android.graphics.RuntimeShader(LiquidGlassShader.SOURCE)
+    }
+
+    fun unavailable(error: Throwable) {
+        if (available) {
+            android.util.Log.w("SquareGlass", "Liquid Glass is unavailable on this GPU; using compatible glass", error)
+            available = false
+        }
+    }
+
+    private inline fun create(label: String, factory: () -> android.graphics.RuntimeShader): android.graphics.RuntimeShader? {
+        if (!enabled) return null
+        return runCatching(factory).onFailure {
+            android.util.Log.w("SquareGlass", "could not compile Liquid Glass $label", it)
+            available = false
+        }.getOrNull()
+    }
+}
+
 /** Upstream's `GlassLensModel`. */
 enum class GlassLensModel { Spherical, Paraxial }
 
@@ -159,12 +191,7 @@ class LiquidGlassCapture internal constructor(
     internal var sharpShader: android.graphics.Shader? = null
     internal var blurredShader: android.graphics.Shader? = null
 
-    internal val shader: android.graphics.RuntimeShader? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            android.graphics.RuntimeShader(LiquidGlassShader.SOURCE)
-        } else {
-            null
-        }
+    internal val shader: android.graphics.RuntimeShader? = LiquidGlassRenderer.groupShader()
     internal val paint = android.graphics.Paint()
     internal val shapeData = FloatArray(LiquidGlassShader.MAX_SHAPES * LiquidGlassShader.SHAPE_STRIDE)
 

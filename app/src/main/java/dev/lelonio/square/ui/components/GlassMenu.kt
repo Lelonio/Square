@@ -14,6 +14,7 @@ import androidx.compose.ui.util.lerp
 import kotlin.math.roundToInt
 import kotlin.math.pow
 import dev.lelonio.square.ui.glass.morph.liquidGlassGroup
+import dev.lelonio.square.ui.glass.morph.LiquidGlassRenderer
 import dev.lelonio.square.ui.glass.toLiquidGlassSettings
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -300,6 +301,12 @@ fun BoxScope.GlassChoiceMenu(
     trigger: GlassMenuTrigger? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // The morph uses the large multi-shape AGSL program. If this GPU rejected
+    // it, retain the prior glass menu rather than leaving choices unpainted.
+    if (!LiquidGlassRenderer.enabled) {
+        CompatibleGlassChoiceMenu(visible, anchor, backdrop, onDismiss, content)
+        return
+    }
     // liquid_glass_widgets' GlassMenu, ported (glass_menu_internal.dart): the
     // control's glass (blob A) and the menu's (blob B) in one blend group; B
     // travels from the control to its place while growing into it, A shrinks
@@ -464,6 +471,62 @@ fun BoxScope.GlassChoiceMenu(
                     .padding(vertical = 12.dp),
                 content = content,
             )
+        }
+    }
+}
+
+/** The pre-morph pane, kept as the safe renderer fallback for constrained GPUs. */
+@Composable
+private fun BoxScope.CompatibleGlassChoiceMenu(
+    visible: Boolean,
+    anchor: IntRect,
+    backdrop: Backdrop,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val density = LocalDensity.current
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(120)),
+        exit = fadeOut(tween(120)),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(Modifier.fillMaxSize().clickable(interactionSource = null, indication = null, onClick = onDismiss))
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = scaleIn(tween(180), initialScale = 0.85f, transformOrigin = TopEnd) + fadeIn(tween(120)),
+        exit = scaleOut(tween(130), targetScale = 0.9f, transformOrigin = TopEnd) + fadeOut(tween(110)),
+        modifier = Modifier.align(Alignment.TopStart).offset {
+            val gap = with(density) { 8.dp.roundToPx() }
+            IntOffset(
+                (anchor.right - with(density) { CHOICE_MENU_WIDTH.roundToPx() } + gap).coerceAtLeast(gap),
+                anchor.bottom + gap,
+            )
+        },
+    ) {
+        val shape = RoundedCornerShape(20.dp)
+        val config = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
+        Box(
+            Modifier
+                .width(CHOICE_MENU_WIDTH)
+                .softShadow(shape, elevation = 22.dp, spot = 0.35f)
+                .liquidGlass(
+                    config = config,
+                    shape = shape,
+                    blurRadiusDp = config.blurRadius * MENU_BLUR_SCALE,
+                    highlightAlpha = 0.3f,
+                    ownBackdrop = backdrop,
+                )
+                .background(choiceFilm(), shape)
+                .border(1.dp, MenuEdge, shape)
+                .clip(shape),
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                dev.lelonio.square.ui.theme.LocalInkOverride provides dev.lelonio.square.ui.theme.AppInk,
+            ) {
+                Column(Modifier.padding(vertical = 4.dp), content = content)
+            }
         }
     }
 }

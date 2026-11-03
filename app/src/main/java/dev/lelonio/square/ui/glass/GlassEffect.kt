@@ -6,6 +6,7 @@
 package dev.lelonio.square.ui.glass
 
 import dev.lelonio.square.ui.glass.morph.liquidGlassMaterial
+import dev.lelonio.square.ui.glass.morph.LiquidGlassRenderer
 import android.app.ActivityManager
 import android.os.Build
 import androidx.compose.foundation.shape.CornerBasedShape
@@ -459,7 +460,7 @@ fun Modifier.liquidGlass(
     // in the shader, at the layer's own resolution: recorded at a fraction
     // and stretched back up, the rim came out soft and doubled. It is drawn
     // at full resolution, as upstream draws it.
-    val upstreamCapable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+    val upstreamCapable = LiquidGlassRenderer.enabled &&
         config.style != GlassStyle.BLUR && applyEdgeEffects
     val resolutionScale = if (upstreamCapable) 1f else backdropScale.coerceIn(0.05f, 1f)
     // A surface that names its own condition (the tab bar, mid-fold) still

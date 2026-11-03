@@ -28,7 +28,7 @@ fun BackdropEffectScope.liquidGlassMaterial(
     /** Upstream's touch intensity: 0 at rest, 1 pressed. */
     touchIntensity: Float = 0f,
 ) {
-    if (!isRuntimeShaderSupported()) return
+    if (!isRuntimeShaderSupported() || !LiquidGlassRenderer.enabled) return
     if (size.width <= 0f || size.height <= 0f) return
 
     // The recorded layer's pixels per logical pixel.
@@ -42,7 +42,9 @@ fun BackdropEffectScope.liquidGlassMaterial(
         ?.fastCoerceAtMost(size.minDimension / 2f)
         ?: (size.minDimension / 2f)
 
-    val shader = obtainRuntimeShader("LiquidGlassSingle", LiquidGlassShader.SOURCE_SINGLE)
+    val shader = runCatching {
+        obtainRuntimeShader("LiquidGlassSingle", LiquidGlassShader.SOURCE_SINGLE)
+    }.onFailure(LiquidGlassRenderer::unavailable).getOrNull() ?: return
 
     // The surface, as it sits in the recorded layer: inset by the padding
     // the blur asked for.
