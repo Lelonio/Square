@@ -60,7 +60,19 @@ class DownloadService : android.app.Service() {
         // Up front and unconditionally: Android gives a service started into
         // the foreground a few seconds to say so, and the queue's first answer
         // may take longer than that if it has to wait for a session.
-        goForeground(container.downloadQueue.status.value)
+        //
+        // Allowed to be refused. Android 15 gives downloads six hours a day in
+        // the background, and a service brought back by START_STICKY after
+        // that was refused the foreground and took the app down with it
+        // (#110). Refused, it stops; the queue picks up from the store when
+        // the app is next opened.
+        val started = runCatching { goForeground(container.downloadQueue.status.value) }
+        if (started.isFailure) {
+            android.util.Log.w(TAG, "not allowed in the foreground: ${started.exceptionOrNull()}")
+            foreground = false
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         // The audio comes down the librespot session, so there has to be one.
         // Harmless when there already is: the service guards its own repeated
@@ -93,6 +105,18 @@ class DownloadService : android.app.Service() {
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         foreground = false
         stopSelf()
+    }
+
+    /**
+     * The day's allowance for background downloads is used up (Android 15).
+     *
+     * Stopped here, as Android asks: a service still in the foreground a few
+     * seconds after this is treated as a crash.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        android.util.Log.w(TAG, "background time used up: stopping")
+        container.downloadQueue.stop()
+        stop()
     }
 
     override fun onDestroy() {
@@ -189,6 +213,7 @@ class DownloadService : android.app.Service() {
         private const val CHANNEL_ID = "downloads"
         private const val NOTIFICATION_ID = 42
         private const val ACTION_STOP = "dev.lelonio.square.action.STOP_DOWNLOADS"
+        private const val TAG = "SquareDownloads"
 
         /**
          * Starts working through whatever the store says is owed.
