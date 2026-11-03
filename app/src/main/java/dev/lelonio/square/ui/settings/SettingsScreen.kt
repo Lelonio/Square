@@ -451,10 +451,13 @@ fun SettingsScreen(
             StorageChart()
         }
 
-        if (shown == SettingsPage.Downloads && showSpotify && !sdkPlayback) groupHeading(Group.DOWNLOADS, open = "downloads" in openGroups) { toggleGroup("downloads") }
+        if (shown == SettingsPage.Downloads && !sdkPlayback) groupHeading(Group.DOWNLOADS, open = "downloads" in openGroups) { toggleGroup("downloads") }
 
-        if (shown == SettingsPage.Downloads && showSpotify && !sdkPlayback && "downloads" in openGroups) groupItem("downloads", Group.DOWNLOADS) {
-            DownloadsSection(backdrop)
+        // For YouTube Music too: its downloads wait for Wi-Fi like Spotify's,
+        // and with the section hidden there was no way to say they need not
+        // (#153). Only the parts that are Spotify's own stay with Spotify.
+        if (shown == SettingsPage.Downloads && !sdkPlayback && "downloads" in openGroups) groupItem("downloads", Group.DOWNLOADS) {
+            DownloadsSection(backdrop, spotify = showSpotify)
         }
 
         // The bitrate is librespot's; ExoPlayer takes what YouTube serves.
@@ -597,7 +600,7 @@ fun SettingsScreen(
 
         if (shown == SettingsPage.Playback && "covers" in openGroups) groupEnd(Group.COVERS)
 
-        if (shown == SettingsPage.Downloads && showSpotify && !sdkPlayback && "downloads" in openGroups) groupEnd(Group.DOWNLOADS)
+        if (shown == SettingsPage.Downloads && !sdkPlayback && "downloads" in openGroups) groupEnd(Group.DOWNLOADS)
 
         if (shown == SettingsPage.Downloads) groupHeading(Group.CLEANUP, open = "cleanup" in openGroups) { toggleGroup("cleanup") }
 
@@ -1915,7 +1918,11 @@ private fun Licences() {
  * almost always how much room this is taking.
  */
 @Composable
-private fun DownloadsSection(backdrop: Backdrop) {
+private fun DownloadsSection(
+    backdrop: Backdrop,
+    /** Spotify the source: its bitrate and its Liked Songs are offered too. */
+    spotify: Boolean = true,
+) {
     val context = LocalContext.current
     val app = remember(context) {
         context.applicationContext as dev.lelonio.square.SquareApplication
@@ -1958,18 +1965,21 @@ private fun DownloadsSection(backdrop: Backdrop) {
         RowDivider()
         InfoRow(stringResource(R.string.downloaded_tracks), files.size.toString())
 
-        RowDivider()
-        Text(
-            stringResource(R.string.download_quality),
-            style = MaterialTheme.typography.labelLarge,
-            color = InkDim,
-            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 14.dp),
-        )
-        dev.lelonio.square.data.DownloadQuality.entries.forEach { entry ->
-            ChoiceRow(
-                label = stringResource(entry.label),
-                selected = entry == quality,
-            ) { settings.setQuality(entry) }
+        // Spotify's bitrates; YouTube Music downloads what it serves.
+        if (spotify) {
+            RowDivider()
+            Text(
+                stringResource(R.string.download_quality),
+                style = MaterialTheme.typography.labelLarge,
+                color = InkDim,
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 14.dp),
+            )
+            dev.lelonio.square.data.DownloadQuality.entries.forEach { entry ->
+                ChoiceRow(
+                    label = stringResource(entry.label),
+                    selected = entry == quality,
+                ) { settings.setQuality(entry) }
+            }
         }
 
         RowDivider()
@@ -1981,8 +1991,9 @@ private fun DownloadsSection(backdrop: Backdrop) {
             onChange = settings::setWifiOnly,
         )
 
-        RowDivider()
-        DownloadSwitch(
+        // Spotify's Liked Songs, which the switch keeps downloaded.
+        if (spotify) RowDivider()
+        if (spotify) DownloadSwitch(
             label = stringResource(R.string.download_liked_songs),
             icon = PhosphorIcons.Regular.Heart,
             checked = likedSongs,
