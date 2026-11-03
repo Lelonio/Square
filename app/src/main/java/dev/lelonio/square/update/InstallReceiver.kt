@@ -36,6 +36,10 @@ class InstallReceiver : BroadcastReceiver() {
                 // user typed.
                 val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
                 android.util.Log.w(TAG, "install did not complete: $message")
+                // So the update is offered again; see Updater.installAbandoned.
+                (context.applicationContext as? dev.lelonio.square.SquareApplication)
+                    ?.updater
+                    ?.installAbandoned()
             }
         }
     }

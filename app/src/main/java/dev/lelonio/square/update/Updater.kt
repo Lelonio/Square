@@ -167,6 +167,7 @@ class Updater(context: Context) {
      * this one asks to be trusted.
      */
     fun install(update: State.Available) {
+        lastOffered = update
         if (!canInstall()) {
             _state.value = State.Failed(REASON_PERMISSION)
             return
@@ -297,6 +298,22 @@ class Updater(context: Context) {
 
     fun dismiss() {
         _state.value = State.Idle
+    }
+
+    /** What was last sent to the installer, to offer again if it did not go in. */
+    private var lastOffered: State.Available? = null
+
+    /**
+     * The installer did not install it: its dialog cancelled, or the install
+     * refused.
+     *
+     * Offered again rather than left at [State.Installing]. Nothing else moves
+     * the state on from there, so a dialog cancelled by mistake hid the update
+     * until the next release came out (#151).
+     */
+    fun installAbandoned() {
+        if (_state.value !is State.Installing) return
+        _state.value = lastOffered ?: State.Idle
     }
 
     companion object {
