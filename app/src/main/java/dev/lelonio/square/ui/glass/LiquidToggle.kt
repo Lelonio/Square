@@ -132,6 +132,7 @@ fun LiquidToggle(
     }
 
     val trackBackdrop = rememberLayerBackdrop()
+    val dispersion = LocalGlassEffectConfig.current.chromaticAberration
 
     Box(
         modifier,
@@ -180,7 +181,9 @@ fun LiquidToggle(
                         lens(
                             5f.dp.toPx() * progress,
                             10f.dp.toPx() * progress,
-                            chromaticAberration = true
+                            // LOCAL CHANGE: follows the colour-splitting
+                            // switch, as every other pane does (#147).
+                            chromaticAberration = dispersion
                         )
                     },
                     highlight = {
