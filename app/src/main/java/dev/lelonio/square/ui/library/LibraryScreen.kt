@@ -1,5 +1,6 @@
 package dev.lelonio.square.ui.library
 
+import dev.lelonio.square.ui.components.glassMenuTrigger
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.annotation.StringRes
@@ -227,8 +228,8 @@ fun LibraryScreen(
                 order = it
                 view.order = it.key
             }
-            var sortAnchor by remember { mutableStateOf(androidx.compose.ui.unit.IntOffset.Zero) }
-            val density = androidx.compose.ui.platform.LocalDensity.current
+            var sortAnchor by remember { mutableStateOf(androidx.compose.ui.unit.IntRect.Zero) }
+            val sortTrigger = dev.lelonio.square.ui.components.rememberGlassMenuTrigger()
 
             val artistItems = remember(artists) {
                 artists.map { artist ->
@@ -333,6 +334,7 @@ fun LibraryScreen(
                         onFilter = { filter = it },
                         onSort = { sortOpen = true },
                         onSortAnchor = { sortAnchor = it },
+                        sortTrigger = sortTrigger,
                         canEdit = canEdit,
                         onCreatePlaylist = onCreatePlaylist,
                         onOpenRecap = if (listeningEvents != null) ({ recapOpen = true }) else null,
@@ -479,9 +481,10 @@ fun LibraryScreen(
             // the one surface on screen that says so.
             GlassChoiceMenu(
                 visible = sortOpen,
-                anchor = sortAnchor.leftOf(density),
+                anchor = sortAnchor,
                 backdrop = rememberCombinedBackdrop(backdrop, listBackdrop),
                 onDismiss = { sortOpen = false },
+                trigger = sortTrigger,
             ) {
                 Order.entries.forEach { entry ->
                     GlassChoiceItem(
@@ -513,16 +516,6 @@ fun LibraryScreen(
 }
 
 /** Where a menu hanging off the sort button's right edge goes. */
-private fun androidx.compose.ui.unit.IntOffset.leftOf(
-    density: androidx.compose.ui.unit.Density,
-): androidx.compose.ui.unit.IntOffset {
-    val width = with(density) {
-        CHOICE_MENU_WIDTH.roundToPx()
-    }
-    val gap = with(density) { 8.dp.roundToPx() }
-    return androidx.compose.ui.unit.IntOffset((x - width + gap).coerceAtLeast(gap), y + gap)
-}
-
 /**
  * Opens whatever the tile stands for.
  *
@@ -554,7 +547,8 @@ private fun Header(
     onOrder: (Order) -> Unit,
     onFilter: (Filter) -> Unit,
     onSort: () -> Unit,
-    onSortAnchor: (androidx.compose.ui.unit.IntOffset) -> Unit,
+    onSortAnchor: (androidx.compose.ui.unit.IntRect) -> Unit,
+    sortTrigger: dev.lelonio.square.ui.components.GlassMenuTrigger? = null,
     canEdit: Boolean,
     onCreatePlaylist: () -> Unit,
     onOpenRecap: (() -> Unit)? = null,
@@ -668,12 +662,15 @@ private fun Header(
         Row(
             Modifier
                 .padding(start = 14.dp, top = 2.dp, bottom = 4.dp)
+                .then(if (sortTrigger != null) Modifier.glassMenuTrigger(sortTrigger) else Modifier)
                 .clip(RoundedCornerShape(50))
                 .clickable(onClick = onSort)
                 .onGloballyPositioned {
                     val bounds = it.boundsInRoot()
                     onSortAnchor(
-                        androidx.compose.ui.unit.IntOffset(
+                        androidx.compose.ui.unit.IntRect(
+                            bounds.left.toInt(),
+                            bounds.top.toInt(),
                             bounds.right.toInt(),
                             bounds.bottom.toInt(),
                         ),

@@ -3,11 +3,26 @@ package dev.lelonio.square.ui.components
 import dev.lelonio.square.ui.player.GlassInk
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.util.lerp
+import kotlin.math.roundToInt
+import kotlin.math.pow
+import dev.lelonio.square.ui.glass.morph.liquidGlassGroup
+import dev.lelonio.square.ui.glass.toLiquidGlassSettings
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,6 +50,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,7 +59,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.Check
@@ -273,17 +292,68 @@ private val CapsuleFilm = Color.White.copy(alpha = 0.14f)
 @Composable
 fun BoxScope.GlassChoiceMenu(
     visible: Boolean,
-    anchor: IntOffset,
+    /** The control this pane grows out of, in root-window pixels. */
+    anchor: IntRect,
     backdrop: Backdrop,
     onDismiss: () -> Unit,
+    /** The control itself, which the menu hides and hands back; see [glassMenuTrigger]. */
+    trigger: GlassMenuTrigger? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(120)),
-        exit = fadeOut(tween(120)),
-        modifier = Modifier.fillMaxSize(),
-    ) {
+    // liquid_glass_widgets' GlassMenu, ported (glass_menu_internal.dart): the
+    // control's glass (blob A) and the menu's (blob B) in one blend group; B
+    // travels from the control to its place while growing into it, A shrinks
+    // away, and the shader fuses the two into the liquid neck between them.
+    // On closing B flows back, and at the moment the spring reaches zero the
+    // glass hands over to the real control, which takes the bump.
+    // The rows' own height, measured where they are laid out below. The
+    // spring waits for it: the glass reads the page under the area the menu
+    // will cover, and an area that grew once the rows were measured read it
+    // a second time, leaving the glass missing for the frames that took.
+    var rowsHeight by remember { mutableIntStateOf(0) }
+    val capture = dev.lelonio.square.ui.glass.morph.rememberLiquidGlassCapture()
+    val morph = dev.lelonio.square.ui.glass.morph.rememberGlassMorphController(
+        visible && rowsHeight > 0 && capture.ready,
+    )
+    val showing by remember { derivedStateOf { morph.isShowing } }
+    if (!visible && !showing) {
+        if (trigger != null) androidx.compose.runtime.SideEffect { trigger.morph = null }
+        return
+    }
+
+    val density = LocalDensity.current
+    val dpr = density.density
+    // In logical pixels, as upstream lays the menu out.
+    val tx = anchor.left / dpr
+    val ty = anchor.top / dpr
+    val tw = anchor.width / dpr
+    val th = anchor.height / dpr
+    val triggerRadius = minOf(tw, th) / 2f
+    val menuWidth = CHOICE_MENU_WIDTH.value
+    val menuHeight = maxOf(rowsHeight / dpr, th)
+
+    // Upstream's _morphAlignment: towards the side of the screen the control
+    // is not on, and down unless there is room only above.
+    val window = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+    val screenWidth = window.width / dpr
+    val screenHeight = window.height / dpr
+    val alignX = if (tx > screenWidth / 2f) 1f else -1f
+    val spaceBelow = screenHeight - (ty + th)
+    val spaceAbove = ty
+    val alignY = if (spaceBelow < menuHeight && spaceAbove > menuHeight) 1f else -1f
+    val finalDx = -alignX * (menuWidth - tw) / 2f
+    val finalDy = -alignY * (menuHeight - th) / 2f
+
+    if (trigger != null) {
+        androidx.compose.runtime.SideEffect {
+            trigger.morph = morph
+            trigger.finalDx = finalDx * dpr
+            trigger.finalDy = finalDy * dpr
+        }
+    }
+
+    val dismissable by remember { derivedStateOf { morph.value.coerceIn(0f, 1f) > 0.3f } }
+    if (visible && dismissable) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -291,49 +361,312 @@ fun BoxScope.GlassChoiceMenu(
         )
     }
 
-    AnimatedVisibility(
-        visible = visible,
-        enter = scaleIn(tween(180), initialScale = 0.85f, transformOrigin = TopEnd) +
-            fadeIn(tween(120)),
-        exit = scaleOut(tween(130), targetScale = 0.9f, transformOrigin = TopEnd) +
-            fadeOut(tween(110)),
-        modifier = Modifier
+    // The area the glass is drawn over: control and menu, with room for the
+    // overshoot, the blend and the shadow.
+    val margin = MORPH_MARGIN.value
+    val menuLeft = if (alignX > 0f) tx + tw - menuWidth else tx
+    val menuTop = if (alignY < 0f) ty else ty + th - menuHeight
+    val area = androidx.compose.ui.geometry.Rect(
+        left = minOf(tx, menuLeft) - margin,
+        top = minOf(ty, menuTop) - margin,
+        right = maxOf(tx + tw, menuLeft + menuWidth) + margin,
+        bottom = maxOf(ty + th, menuTop + menuHeight) + margin,
+    )
+
+    val frame: () -> ChoiceMenuFrame = {
+        choiceMenuFrame(
+            morph = morph,
+            tx = tx - area.left,
+            ty = ty - area.top,
+            tw = tw,
+            th = th,
+            triggerRadius = triggerRadius,
+            menuWidth = menuWidth,
+            menuHeight = menuHeight,
+            finalDx = finalDx,
+            finalDy = finalDy,
+        )
+    }
+
+    // A fresh reading of the page for each opening, taken before its first
+    // frame is drawn.
+    val wasVisible = remember { booleanArrayOf(false) }
+    androidx.compose.runtime.SideEffect {
+        if (visible && !wasVisible[0]) capture.reset()
+        wasVisible[0] = visible
+    }
+    val darkPage = !dev.lelonio.square.ui.theme.lightPage()
+    Box(
+        Modifier
             .align(Alignment.TopStart)
-            .offset { anchor },
+            .offset { IntOffset((area.left * dpr).roundToInt(), (area.top * dpr).roundToInt()) }
+            .size(area.width.dp, area.height.dp)
+            .liquidGlassGroup(
+                backdrop = backdrop,
+                capture = capture,
+                // The listener's glass, frosted as menus are (see #132).
+                settings = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
+                    .toLiquidGlassSettings(blurScale = MENU_BLUR_SCALE, minBlur = MENU_MIN_BLUR),
+                darkPage = darkPage,
+            ) { frame().glass },
     ) {
-        val shape = RoundedCornerShape(20.dp)
-        // Real glass, refracting the page it opens over, as the page's own
-        // controls do — but thick: blurred far enough that the titles below
-        // are colour and not words, and filmed in the app's own surface colour
-        // so the rows read the same on any cover. A flat opaque pane looked
-        // like a hole in the page rather than something above it.
-        val config = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
-        Box(
-            Modifier
-                .width(CHOICE_MENU_WIDTH)
-                .softShadow(shape, elevation = 22.dp, spot = 0.35f)
-                .liquidGlass(
-                    config = config,
-                    shape = shape,
-                    blurRadiusDp = config.blurRadius * MENU_BLUR_SCALE,
-                    highlightAlpha = 0.3f,
-                    ownBackdrop = backdrop,
-                )
-                .background(choiceFilm(), shape)
-                .border(1.dp, MenuEdge, shape)
-                .clip(shape),
+        // The rows, inside blob B: laid out at the menu's width against its
+        // top right, scaled with the container and clipped to it, as
+        // upstream's _buildBodyContent and GlassContainer do.
+        androidx.compose.runtime.CompositionLocalProvider(
+            dev.lelonio.square.ui.theme.LocalInkOverride provides dev.lelonio.square.ui.theme.AppInk,
+            LocalChoiceRowMorph provides { frame().rows },
         ) {
-            // The app's own ink: a playlist's page rebuilds the theme from its
-            // cover, and its ink — white on a dark red page — is not the ink
-            // for a pale pane.
-            androidx.compose.runtime.CompositionLocalProvider(
-                dev.lelonio.square.ui.theme.LocalInkOverride provides dev.lelonio.square.ui.theme.AppInk,
-            ) {
-                Column(Modifier.padding(vertical = 4.dp), content = content)
-            }
+            Column(
+                Modifier
+                    .layout { measurable, _ ->
+                        val width = (menuWidth * dpr).roundToInt()
+                        val placeable = measurable.measure(
+                            androidx.compose.ui.unit.Constraints(minWidth = width, maxWidth = width),
+                        )
+                        rowsHeight = placeable.height
+                        layout(placeable.width, placeable.height) {
+                            // Against the body's corner on the menu's side, as
+                            // upstream's OverflowBox(alignment: _morphAlignment).
+                            fun columnLeft(body: androidx.compose.ui.geometry.Rect) =
+                                if (alignX > 0f) body.right - menuWidth else body.left
+                            fun columnTop(body: androidx.compose.ui.geometry.Rect) =
+                                if (alignY < 0f) body.top else body.bottom - placeable.height / dpr
+                            val body = frame().body
+                            placeable.placeWithLayer(
+                                x = (columnLeft(body) * dpr).roundToInt(),
+                                y = (columnTop(body) * dpr).roundToInt(),
+                            ) {
+                                val current = frame()
+                                val left = columnLeft(current.body)
+                                val top = columnTop(current.body)
+                                alpha = if (current.rowsPresent) 1f else 0f
+                                // About the body's centre, in the column's own pixels.
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
+                                    pivotFractionX = (current.body.center.x - left) / menuWidth,
+                                    pivotFractionY = (current.body.center.y - top) * dpr /
+                                        placeable.height.coerceAtLeast(1),
+                                )
+                                scaleX = current.containerScale
+                                scaleY = current.containerScale
+                                clip = true
+                                shape = RoundRectInColumn(
+                                    left = (current.body.left - left) * dpr,
+                                    top = (current.body.top - top) * dpr,
+                                    width = current.body.width * dpr,
+                                    height = current.body.height * dpr,
+                                    radius = current.radius * dpr,
+                                )
+                            }
+                        }
+                    }
+                    // Upstream's _kBodyVerticalPadding, above and below the rows.
+                    .padding(vertical = 12.dp),
+                content = content,
+            )
         }
     }
 }
+
+/**
+ * The control a [GlassChoiceMenu] grows out of.
+ *
+ * Upstream hides the real control while its glass is out — fading over the
+ * first fifth of the opening — and gives it back the moment the closing
+ * spring reaches zero, when it takes the menu's momentum: pushed along the
+ * menu's path and squashed, then settling.
+ */
+@Stable
+class GlassMenuTrigger {
+    internal var morph by mutableStateOf<dev.lelonio.square.ui.glass.morph.GlassMorphController?>(null)
+    internal var finalDx = 0f
+    internal var finalDy = 0f
+}
+
+@Composable
+fun rememberGlassMenuTrigger(): GlassMenuTrigger = remember { GlassMenuTrigger() }
+
+/** Applies [trigger]'s handover to the control it is put on. */
+fun Modifier.glassMenuTrigger(trigger: GlassMenuTrigger): Modifier = graphicsLayer {
+    val morph = trigger.morph ?: return@graphicsLayer
+    val raw = morph.value
+    val clamped = raw.coerceIn(0f, 1f)
+    val handoff = morph.isClosing && morph.hasHandedOff
+    alpha = when {
+        !morph.isShowing || handoff -> 1f
+        !morph.isClosing -> 1f - (clamped / 0.20f).coerceIn(0f, 1f)
+        else -> 0f
+    }
+    translationX = if (handoff) trigger.finalDx * raw else 0f
+    translationY = if (handoff) trigger.finalDy * raw else 0f
+    val impact = if (handoff) (1f + raw * 0.35f).coerceIn(0.88f, 1f) else 1f
+    scaleX = impact
+    scaleY = impact
+}
+
+/** What a row reads while the menu morphs: its opacity and its scale. */
+internal class ChoiceRowMorph(val opacity: Float, val scale: Float)
+
+internal val LocalChoiceRowMorph =
+    androidx.compose.runtime.compositionLocalOf<() -> ChoiceRowMorph?> { { null } }
+
+/** One frame of the choice menu. All in logical pixels, in the glass area's own space. */
+private class ChoiceMenuFrame(
+    val glass: dev.lelonio.square.ui.glass.morph.LiquidGlassFrame,
+    val body: androidx.compose.ui.geometry.Rect,
+    val radius: Float,
+    val containerScale: Float,
+    val rowsPresent: Boolean,
+    val rows: ChoiceRowMorph,
+)
+
+/** Upstream's GlassMenu geometry for one frame (_buildMorphingOverlay). */
+private fun choiceMenuFrame(
+    morph: dev.lelonio.square.ui.glass.morph.GlassMorphController,
+    tx: Float,
+    ty: Float,
+    tw: Float,
+    th: Float,
+    triggerRadius: Float,
+    menuWidth: Float,
+    menuHeight: Float,
+    finalDx: Float,
+    finalDy: Float,
+): ChoiceMenuFrame {
+    val state = morph.computeState(
+        finalDx = finalDx,
+        finalDy = finalDy,
+        adaptiveDamping = kotlin.math.abs(finalDy) > 100f,
+    )
+    val closing = morph.isClosing
+    val clampedValue = morph.value.coerceIn(0f, 1f)
+    // This app's glass is upstream's premium tier.
+    val isPremium = true
+
+    val currentHeight = if (state.sizeT < 0f) {
+        (th * (1f + state.sizeT * 0.25f)).coerceAtLeast(1f)
+    } else {
+        lerp(th, menuHeight, state.sizeT).coerceAtLeast(0f)
+    }
+    val currentWidth = if (state.sizeT < 0f) {
+        (tw * (1f + state.sizeT * 0.25f)).coerceAtLeast(1f)
+    } else {
+        lerp(tw, menuWidth, state.sizeT).coerceAtLeast(0f)
+    }
+
+    val maxRadius = minOf(currentWidth, currentHeight) / 2f
+    val radiusT = dev.lelonio.square.ui.glass.morph.FlutterCurves.easeInExpo(state.sizeT.coerceIn(0f, 1f))
+    val currentRadius = if (closing) {
+        if (isPremium) maxRadius else lerp(triggerRadius, CHOICE_MENU_RADIUS, radiusT)
+    } else {
+        lerp(maxRadius, CHOICE_MENU_RADIUS, radiusT)
+    }
+
+    val effectiveDx: Float
+    val effectiveDy: Float
+    if (closing) {
+        effectiveDx = finalDx * state.pathT
+        effectiveDy = finalDy * state.pathT
+    } else {
+        val maxAnchorDrift = 8f
+        effectiveDx = finalDx * state.sizeT +
+            (finalDx * (state.pathT - state.sizeT)).coerceIn(-maxAnchorDrift, maxAnchorDrift)
+        effectiveDy = finalDy * state.sizeT +
+            (finalDy * (state.pathT - state.sizeT)).coerceIn(-maxAnchorDrift, maxAnchorDrift)
+    }
+
+    val bodyLeft = tx + tw / 2f + effectiveDx - currentWidth / 2f
+    val bodyTop = ty + th / 2f + effectiveDy - currentHeight / 2f
+    val body = androidx.compose.ui.geometry.Rect(bodyLeft, bodyTop, bodyLeft + currentWidth, bodyTop + currentHeight)
+
+    val shapes = buildList {
+        // Blob A, the control's ghost: pushed by the closing bounce, scaled
+        // about its centre. Its radius is the control's own, unscaled, as
+        // upstream's shape keeps it; the shader clamps it to the size.
+        if (!closing || isPremium) {
+            val cx = tx + state.pushDx + tw / 2f
+            val cy = ty + state.pushDy + th / 2f
+            val w = tw * state.anchorScale
+            val h = th * state.anchorScale
+            add(
+                dev.lelonio.square.ui.glass.morph.LiquidShape(
+                    type = dev.lelonio.square.ui.glass.morph.LiquidShapeType.RoundedRectangle,
+                    bounds = androidx.compose.ui.geometry.Rect(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f),
+                    cornerRadius = triggerRadius,
+                ),
+            )
+        }
+        // Blob B, the menu body; a sub-pixel body registers nothing.
+        if (currentWidth >= 1f && currentHeight >= 1f) {
+            add(
+                dev.lelonio.square.ui.glass.morph.LiquidShape(
+                    type = dev.lelonio.square.ui.glass.morph.LiquidShapeType.RoundedRectangle,
+                    bounds = body,
+                    cornerRadius = currentRadius,
+                ),
+            )
+        }
+    }
+
+    val overlayOpacity = if (closing && morph.hasHandedOff) 0f else 1f
+    val rowsPresent = if (closing) clampedValue > 0.85f else clampedValue > 0.25f
+    val itemOpacity = if (closing) {
+        ((clampedValue - 0.85f) / 0.15f).coerceIn(0f, 1f)
+    } else {
+        ((clampedValue - 0.25f) / 0.45f).coerceIn(0f, 1f)
+    }
+    val itemScale = lerp(
+        0.7f,
+        1f,
+        dev.lelonio.square.ui.glass.morph.FlutterCurves.easeOut(((clampedValue - 0.25f) / 0.75f).coerceIn(0f, 1f)),
+    )
+
+    return ChoiceMenuFrame(
+        glass = dev.lelonio.square.ui.glass.morph.LiquidGlassFrame(
+            shapes = shapes,
+            blend = state.blend,
+            opacity = overlayOpacity,
+        ),
+        body = body,
+        radius = currentRadius,
+        containerScale = state.containerScale,
+        rowsPresent = rowsPresent && overlayOpacity > 0f,
+        rows = ChoiceRowMorph(itemOpacity, itemScale),
+    )
+}
+
+/** A rounded rectangle at a place inside the column it clips. */
+private class RoundRectInColumn(
+    private val left: Float,
+    private val top: Float,
+    private val width: Float,
+    private val height: Float,
+    private val radius: Float,
+) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(
+        size: androidx.compose.ui.geometry.Size,
+        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+        density: androidx.compose.ui.unit.Density,
+    ): androidx.compose.ui.graphics.Outline = androidx.compose.ui.graphics.Outline.Rounded(
+        androidx.compose.ui.geometry.RoundRect(
+            left, top, left + width, top + height,
+            androidx.compose.ui.geometry.CornerRadius(radius),
+        ),
+    )
+}
+
+/** Upstream's GlassMenu.menuBorderRadius default, in logical pixels. */
+private const val CHOICE_MENU_RADIUS = 32f
+
+/**
+ * The least a choice menu frosts, in logical pixels: upstream's own menu
+ * blur. Turned down further, the page shows through the rows sharp (#132).
+ */
+private const val MENU_MIN_BLUR = 10f
+
+/** Room around the glass for its overshoot, its blend and its shadow. */
+private val MORPH_MARGIN = 40.dp
+
 
 /**
  * What a menu adds to the material underneath it.
@@ -406,8 +739,10 @@ private const val MENU_FLOOR_OPACITY = 0.92f
  */
 @Composable
 fun GlassMenuRule() {
+    val morph = LocalChoiceRowMorph.current
     Box(
         Modifier
+            .choiceRowMorph(morph)
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 5.dp)
             .height(1.dp)
@@ -421,8 +756,10 @@ fun GlassChoiceItem(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val morph = LocalChoiceRowMorph.current
     Row(
         Modifier
+            .choiceRowMorph(morph)
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(start = 16.dp, end = 12.dp, top = 9.dp, bottom = 9.dp),
@@ -462,3 +799,11 @@ val CHOICE_MENU_WIDTH = 196.dp
 
 private val CheckIcon
     get() = com.adamglin.PhosphorIcons.Regular.Check
+
+/** Each row's opacity and scale while its menu morphs, as upstream's _buildListContent. */
+private fun Modifier.choiceRowMorph(morph: () -> ChoiceRowMorph?): Modifier = graphicsLayer {
+    val current = morph() ?: return@graphicsLayer
+    alpha = current.opacity
+    scaleX = current.scale
+    scaleY = current.scale
+}

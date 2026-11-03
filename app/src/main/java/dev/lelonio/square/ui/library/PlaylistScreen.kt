@@ -1,5 +1,6 @@
 package dev.lelonio.square.ui.library
 
+import dev.lelonio.square.ui.components.glassMenuTrigger
 import androidx.compose.ui.text.withLink
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
@@ -503,7 +504,8 @@ fun PlaylistScreen(
     val listBackdrop = rememberLayerBackdrop()
     val listBackdropFreeze = rememberBackdropFreeze()
 
-    var sortAnchor by remember { mutableStateOf(IntOffset.Zero) }
+    var sortAnchor by remember { mutableStateOf(androidx.compose.ui.unit.IntRect.Zero) }
+    val sortTrigger = dev.lelonio.square.ui.components.rememberGlassMenuTrigger()
 
     val density = LocalDensity.current
     val listState = rememberLazyListState()
@@ -871,6 +873,7 @@ fun PlaylistScreen(
                         onToggleMix = onToggleMix,
                         onSortOpen = { sortOpen = it },
                         onAnchor = { sortAnchor = it },
+                        sortTrigger = sortTrigger,
                         // Only where there is more than what is shown.
                         expandable = isArtist &&
                             query.isBlank() &&
@@ -1505,7 +1508,8 @@ fun PlaylistScreen(
         // over this, so it can be real glass instead of a dark card.
         GlassChoiceMenu(
             visible = sortOpen,
-            anchor = sortAnchor.leftOf(density),
+            anchor = sortAnchor,
+            trigger = sortTrigger,
             // The page and the rows together, as the library's menu does: the
             // rows' layer alone is transparent between them, and the glass had
             // nothing but empty space to bend.
@@ -1544,12 +1548,6 @@ fun PlaylistScreen(
  * Menus open leftwards from the control that owns them, because every one of
  * those controls is at the right-hand edge of the screen.
  */
-private fun IntOffset.leftOf(density: androidx.compose.ui.unit.Density): IntOffset {
-    val width = with(density) { CHOICE_MENU_WIDTH.roundToPx() }
-    val gap = with(density) { 8.dp.roundToPx() }
-    return IntOffset((x - width + gap).coerceAtLeast(gap), y + gap)
-}
-
 /**
  * The picture-first header: cover full bleed, everything else on top of it.
  *
@@ -2767,7 +2765,9 @@ private fun SectionHeader(
     large: Boolean = false,
     onSortOpen: (Boolean) -> Unit,
     /** Where the sort button is, for the menu drawn above the list. */
-    onAnchor: (IntOffset) -> Unit,
+    onAnchor: (androidx.compose.ui.unit.IntRect) -> Unit,
+    /** The sort button's handover to its menu; see GlassChoiceMenu. */
+    sortTrigger: dev.lelonio.square.ui.components.GlassMenuTrigger? = null,
     /** Whether there is more of this section than the page is showing. */
     expandable: Boolean = false,
     expanded: Boolean = false,
@@ -2837,9 +2837,18 @@ private fun SectionHeader(
         // while the mix is on; see `mixed` where the list is built.
         if (mix != true) IconButton(
             onClick = { onSortOpen(true) },
-            modifier = Modifier.onGloballyPositioned {
+            modifier = Modifier
+                .then(if (sortTrigger != null) Modifier.glassMenuTrigger(sortTrigger) else Modifier)
+                .onGloballyPositioned {
                 val root = it.boundsInRoot()
-                onAnchor(IntOffset(root.left.toInt(), root.bottom.toInt()))
+                onAnchor(
+                    androidx.compose.ui.unit.IntRect(
+                        root.left.toInt(),
+                        root.top.toInt(),
+                        root.right.toInt(),
+                        root.bottom.toInt(),
+                    ),
+                )
             },
         ) {
             run {
