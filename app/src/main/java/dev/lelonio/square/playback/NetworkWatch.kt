@@ -96,6 +96,10 @@ class NetworkWatch(context: Context, private val scope: CoroutineScope) {
 
     private fun evaluate() {
         val connected = connected()
+        // At once, unlike offline below: a handshake under way is given up on
+        // the moment it can only hang, and the downloads play (see engine.rs,
+        // NETWORK_GONE).
+        runCatching { dev.lelonio.square.nativecore.NativeBridge.setNetworkGone(!connected) }
         probeIfDoubtful()
         val returned = connected && lastConnected == false
         lastConnected = connected

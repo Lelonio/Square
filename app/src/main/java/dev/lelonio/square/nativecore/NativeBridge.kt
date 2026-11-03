@@ -615,6 +615,14 @@ object NativeBridge {
     fun setOfflineOnly(only: Boolean) = nativeSetOfflineOnly(only)
 
     /**
+     * Whether the phone has a network carrying anything.
+     *
+     * A handshake under way is given up on when it goes, so the engine starts
+     * on the downloads instead of waiting on a link with no signal.
+     */
+    fun setNetworkGone(gone: Boolean) = nativeSetNetworkGone(gone)
+
+    /**
      * Where downloaded tracks are kept.
      *
      * Call before downloading anything, and again if the listener moves the
@@ -668,6 +676,7 @@ object NativeBridge {
     private external fun nativeCanvas(trackUri: String): String
     private external fun nativeIsOffline(): Boolean
     private external fun nativeSetOfflineOnly(only: Boolean)
+    private external fun nativeSetNetworkGone(gone: Boolean)
     private external fun nativeSetDownloadRoot(path: String)
     private external fun nativeDownloadTrack(trackUri: String, bitrateKbps: Int): String
     private external fun nativeDownloadState(trackUri: String): String

@@ -708,17 +708,33 @@ fn build_bundle(
                 move || Box::new(crate::sink::AndroidSink::new(AudioFormat::S16, generation)),
             );
 
-            let connected = Spirc::new(
+            // Given up on when the network goes, or after a while. On mobile
+            // data with no coverage the handshake neither finishes nor fails:
+            // the socket opens and nothing comes back. No player exists until
+            // it ends, so a downloaded song tapped in the meantime was
+            // refused as "reconnecting" for as long as the phone had no
+            // signal. Given up on, it fails like any other handshake, and the
+            // engine starts on what is on the phone.
+            let handshake = Spirc::new(
                 connect_config.clone(),
                 session.clone(),
                 credentials.clone(),
                 player.clone(),
                 mixer_for_spirc.clone(),
-            )
-            .await;
+            );
+            let connected = tokio::select! {
+                result = handshake => result.map_err(|e| e.to_string()),
+                why = handshake_abandoned() => Err(why.to_string()),
+            };
 
             let (spirc, spirc_task) = match connected {
                 Ok(pair) => pair,
+                Err(e) if NETWORK_GONE.load(Ordering::SeqCst) || e == HANDSHAKE_TIMED_OUT => {
+                    // Not the credential's fault: it is kept, and the next
+                    // one is not tried on a network that answers nothing.
+                    session.shutdown();
+                    return Err(format!("connect failed: {e}"));
+                }
                 Err(e) => {
                     session.shutdown();
                     failure = format!("connect failed: {e}");
@@ -825,6 +841,39 @@ fn local_load(uris: &[String], index: u32, play: bool, position_ms: u32) -> Engi
     let parsed = SpotifyUri::from_uri(uri).map_err(|e| format!("bad uri {uri}: {e}"))?;
     log::info!("offline: loading {uri} at {position_ms}ms, play={play}");
     with_bundle(|e| e.player.load(parsed, play, position_ms))
+}
+
+/// Set by the app while it has no network that carries anything.
+///
+/// What [`handshake_abandoned`] watches. Not [`OFFLINE_ONLY`]: that one is
+/// also on while a session is being looked for again, and giving up on that
+/// handshake because of it would mean never getting the session back.
+static NETWORK_GONE: AtomicBool = AtomicBool::new(false);
+
+/// Told by the app's network watch whether a network is carrying anything.
+pub fn set_network_gone(gone: bool) {
+    if NETWORK_GONE.swap(gone, Ordering::SeqCst) != gone {
+        log::info!("network {}", if gone { "gone" } else { "back" });
+    }
+}
+
+/// How long a handshake may take before it is given up as going nowhere.
+const HANDSHAKE_LIMIT: Duration = Duration::from_secs(15);
+const HANDSHAKE_TIMED_OUT: &str = "the handshake timed out";
+
+/// Ends when a handshake is not worth waiting for: the network went, or
+/// [`HANDSHAKE_LIMIT`] passed.
+async fn handshake_abandoned() -> &'static str {
+    let started = std::time::Instant::now();
+    loop {
+        if NETWORK_GONE.load(Ordering::SeqCst) {
+            return "the network is gone";
+        }
+        if started.elapsed() >= HANDSHAKE_LIMIT {
+            return HANDSHAKE_TIMED_OUT;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
 }
 
 /// Set by the app when only downloads may be played.

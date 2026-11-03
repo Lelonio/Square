@@ -942,6 +942,17 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
     engine::set_offline_only(only == JNI_TRUE);
 }
 
+/// Whether the phone has a network carrying anything; see
+/// `engine::set_network_gone`.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetNetworkGone(
+    _env: JNIEnv,
+    _class: JClass,
+    gone: jboolean,
+) {
+    engine::set_network_gone(gone == JNI_TRUE);
+}
+
 // --------------------------------------------------------------- downloads
 
 /// Where downloads are kept. Called before anything is downloaded, and again
