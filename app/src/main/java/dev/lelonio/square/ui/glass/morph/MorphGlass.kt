@@ -51,8 +51,19 @@ object LiquidGlassRenderer {
     val enabled: Boolean
         get() = available && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 
+    /**
+     * The menus' blend group, on the single-input program the bars use.
+     *
+     * The full program reads a sharp and a blurred backdrop and re-evaluates
+     * the whole scene of shapes to clip between them; inlined, that is large
+     * enough that the Adreno driver took more than fifteen seconds to link it
+     * the first time a menu opened after an install, with the render thread
+     * and so the whole app frozen meanwhile (an ANR on the sort menus). Outside
+     * its shapes the shader draws nothing, so the sharp picture only ever
+     * showed in the rim's band, where the bars already read the blurred one.
+     */
     fun groupShader(): android.graphics.RuntimeShader? = create("blend group") {
-        android.graphics.RuntimeShader(LiquidGlassShader.SOURCE)
+        android.graphics.RuntimeShader(LiquidGlassShader.SOURCE_SINGLE)
     }
 
     fun unavailable(error: Throwable) {
@@ -276,15 +287,13 @@ fun Modifier.liquidGlassGroup(
             capture.generation += 1
         }
         if (!capture.ready) return@drawBehind
-        val sharp = capture.sharpShader ?: return@drawBehind
         val blurred = capture.blurredShader ?: return@drawBehind
 
         val current = frame()
         if (current.opacity <= 0f || current.shapes.isEmpty()) return@drawBehind
 
         val bounds = writeUniforms(shader, capture, settings, darkPage, current, dpr, size.width, size.height)
-        shader.setInputShader("sharpBackdrop", sharp)
-        shader.setInputShader("blurredBackdrop", blurred)
+        shader.setInputShader("content", blurred)
         capture.paint.shader = shader
         // Only where the glass or its shadow can be: everywhere else the
         // shader would only work out that it draws nothing.
