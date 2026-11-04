@@ -27,6 +27,21 @@ fun BackdropEffectScope.liquidGlassMaterial(
     touchPosition: androidx.compose.ui.geometry.Offset? = null,
     /** Upstream's touch intensity: 0 at rest, 1 pressed. */
     touchIntensity: Float = 0f,
+    /**
+     * A blend group's shapes, in the surface's own pixels at full resolution,
+     * in place of the surface's own outline: upstream's LiquidGlassBlendGroup,
+     * whose shapes melt into one another like drops where they come within
+     * [blendPx] of each other. At most [LiquidGlassShader.MAX_SHAPES].
+     */
+    groupShapes: List<LiquidShape>? = null,
+    /** Upstream's `LiquidGlassBlendGroup.blend`, in the surface's pixels. */
+    blendPx: Float = 0f,
+    /**
+     * Upstream's GlassShadow, drawn by the shader round the group's shapes.
+     * Only for a group: a single surface's layer ends at its outline, and its
+     * own shadow is drawn outside it.
+     */
+    groupShadow: Boolean = false,
 ) {
     if (!isRuntimeShaderSupported() || !LiquidGlassRenderer.enabled) return
     if (size.width <= 0f || size.height <= 0f) return
@@ -53,20 +68,55 @@ fun BackdropEffectScope.liquidGlassMaterial(
     val width = size.width
     val height = size.height
     val shapeData = FloatArray(LiquidGlassShader.MAX_SHAPES * LiquidGlassShader.SHAPE_STRIDE)
-    shapeData[0] = LiquidShapeType.RoundedRectangle.shaderIndex
-    shapeData[1] = left + width / 2f
-    shapeData[2] = top + height / 2f
-    shapeData[3] = width
-    shapeData[4] = height
-    shapeData[5] = radius
-    shapeData[6] = radius
-    // Upstream's matte, inflated for the anti-aliasing band (no blend here).
-    val inflate = 3f
+    // Upstream's matte, inflated for the anti-aliasing band and the blend.
+    val inflate = 3f + blendPx * contentScale * 0.25f
+    var geometryLeft = left
+    var geometryTop = top
+    var geometryRight = left + width
+    var geometryBottom = top + height
+    val shapes = groupShapes?.take(LiquidGlassShader.MAX_SHAPES)
+    if (shapes == null) {
+        shapeData[0] = LiquidShapeType.RoundedRectangle.shaderIndex
+        shapeData[1] = left + width / 2f
+        shapeData[2] = top + height / 2f
+        shapeData[3] = width
+        shapeData[4] = height
+        shapeData[5] = radius
+        shapeData[6] = radius
+    } else {
+        if (shapes.isEmpty()) return
+        geometryLeft = Float.POSITIVE_INFINITY
+        geometryTop = Float.POSITIVE_INFINITY
+        geometryRight = Float.NEGATIVE_INFINITY
+        geometryBottom = Float.NEGATIVE_INFINITY
+        shapes.forEachIndexed { index, s ->
+            val l = left + s.bounds.left * contentScale
+            val t = top + s.bounds.top * contentScale
+            val w = s.bounds.width * contentScale
+            val h = s.bounds.height * contentScale
+            geometryLeft = minOf(geometryLeft, l)
+            geometryTop = minOf(geometryTop, t)
+            geometryRight = maxOf(geometryRight, l + w)
+            geometryBottom = maxOf(geometryBottom, t + h)
+            val base = index * LiquidGlassShader.SHAPE_STRIDE
+            shapeData[base] = s.type.shaderIndex
+            shapeData[base + 1] = l + w / 2f
+            shapeData[base + 2] = t + h / 2f
+            shapeData[base + 3] = w
+            shapeData[base + 4] = h
+            shapeData[base + 5] = (s.cornerRadius * contentScale).fastCoerceAtMost(minOf(w, h) / 2f)
+            shapeData[base + 6] = (s.bottomCornerRadius * contentScale).fastCoerceAtMost(minOf(w, h) / 2f)
+        }
+    }
     val glass = settings.effectiveGlassColor
 
     shader.setFloatUniform("uSize", width + 2f * padding, height + 2f * padding)
-    shader.setFloatUniform("uGeometryOffset", left - inflate, top - inflate)
-    shader.setFloatUniform("uGeometrySize", width + 2f * inflate, height + 2f * inflate)
+    shader.setFloatUniform("uGeometryOffset", geometryLeft - inflate, geometryTop - inflate)
+    shader.setFloatUniform(
+        "uGeometrySize",
+        geometryRight - geometryLeft + 2f * inflate,
+        geometryBottom - geometryTop + 2f * inflate,
+    )
     shader.setFloatUniform("uGlassColor", glass.red, glass.green, glass.blue, glass.alpha)
     shader.setFloatUniform(
         "uOpticalProps",
@@ -114,14 +164,23 @@ fun BackdropEffectScope.liquidGlassMaterial(
     )
     shader.setFloatUniform("uLensModel", if (settings.lensModel == GlassLensModel.Paraxial) 1f else 0f)
     shader.setFloatUniform("uBodyShade", settings.effectiveBodyShade.coerceIn(0f, 1f))
-    shader.setFloatUniform("uNumShapes", 1f)
+    shader.setFloatUniform("uNumShapes", (shapes?.size ?: 1).toFloat())
     shader.setFloatUniform("uDpr", dpr)
-    shader.setFloatUniform("uBlend", 0f)
+    shader.setFloatUniform("uBlend", blendPx * contentScale)
     shader.setFloatUniform("uNativeEdge", if (settings.rimShade > 0f) 1f else 0f)
     shader.setFloatUniform("uShapeData", shapeData)
     shader.setFloatUniform("uOpacity", 1f)
-    shader.setFloatUniform("uShadowA", 0f, 0f, 0f, 0f)
-    shader.setFloatUniform("uShadowB", 0f, 0f, 0f, 0f)
+    // GlassShadow.defaults, as the blend group's writeUniforms draws it on
+    // light pages: an elevation and a contact shadow. A BoxShadow's sigma is
+    // 0.57735 × its blur radius + 0.5.
+    if (groupShadow) {
+        fun sigma(blurRadius: Float) = (blurRadius * 0.57735f + 0.5f) * dpr
+        shader.setFloatUniform("uShadowA", 15f / 255f, sigma(8f), 0f, 2f * dpr)
+        shader.setFloatUniform("uShadowB", 5f / 255f, sigma(2f), 0f, 1f * dpr)
+    } else {
+        shader.setFloatUniform("uShadowA", 0f, 0f, 0f, 0f)
+        shader.setFloatUniform("uShadowB", 0f, 0f, 0f, 0f)
+    }
 
     effect(RuntimeShaderEffect(shader, "content"))
 }

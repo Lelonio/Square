@@ -576,57 +576,65 @@ private fun Header(
                 )
             }
 
-            if (onOpenRecap != null) {
-                LiquidButton(
-                    onClick = onOpenRecap, backdrop = backdrop,
-                    modifier = Modifier.padding(end = 8.dp).size(42.dp),
-                    contentHeight = 42.dp, contentPadding = 0.dp,
-                ) {
-                    Icon(PhosphorIcons.Regular.ChartBar,
-                        contentDescription = stringResource(R.string.recap_title),
-                        tint = Ink, modifier = Modifier.size(20.dp))
-                }
-            }
+            // Upstream's blend group: a pressed button swells into its
+            // neighbour and the two melt like drops. The buttons sit 8 dp
+            // apart, and a blend any wider than the gap already pulls their
+            // outlines towards each other at rest.
+            dev.lelonio.square.ui.glass.GlassBlendGroup(backdrop = backdrop, blend = 8.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onOpenRecap != null) {
+                        LiquidButton(
+                            onClick = onOpenRecap, backdrop = backdrop,
+                            modifier = Modifier.padding(end = 8.dp).size(42.dp),
+                            contentHeight = 42.dp, contentPadding = 0.dp,
+                        ) {
+                            Icon(PhosphorIcons.Regular.ChartBar,
+                                contentDescription = stringResource(R.string.recap_title),
+                                tint = Ink, modifier = Modifier.size(20.dp))
+                        }
+                    }
 
-            // Only where a playlist can actually be made: on a source with no
-            // account signed in, a plus that always failed would be worse than
-            // no plus at all.
-            if (canEdit) {
-                LiquidButton(
-                    onClick = onCreatePlaylist,
-                    backdrop = backdrop,
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .size(42.dp),
-                    contentHeight = 42.dp,
-                    contentPadding = 0.dp,
-                ) {
-                    Icon(
-                        PhosphorIcons.Regular.Plus,
-                        contentDescription = stringResource(R.string.new_playlist),
-                        tint = Ink,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
+                    // Only where a playlist can actually be made: on a source with no
+                    // account signed in, a plus that always failed would be worse than
+                    // no plus at all.
+                    if (canEdit) {
+                        LiquidButton(
+                            onClick = onCreatePlaylist,
+                            backdrop = backdrop,
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .size(42.dp),
+                            contentHeight = 42.dp,
+                            contentPadding = 0.dp,
+                        ) {
+                            Icon(
+                                PhosphorIcons.Regular.Plus,
+                                contentDescription = stringResource(R.string.new_playlist),
+                                tint = Ink,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
 
-            // One button that swaps between the two arrangements rather than a
-            // pair of them: with two options, a toggle showing the *other* one
-            // is both smaller and unambiguous.
-            LiquidButton(
-                onClick = { onLayout(if (layout == Layout.GRID) Layout.LIST else Layout.GRID) },
-                backdrop = backdrop,
-                modifier = Modifier.size(42.dp),
-                contentHeight = 42.dp,
-                contentPadding = 0.dp,
-            ) {
-                Icon(
-                    if (layout == Layout.GRID) PhosphorIcons.Regular.ListBullets
-                    else PhosphorIcons.Regular.SquaresFour,
-                    contentDescription = stringResource(R.string.change_layout),
-                    tint = Ink,
-                    modifier = Modifier.size(20.dp),
-                )
+                    // One button that swaps between the two arrangements rather than a
+                    // pair of them: with two options, a toggle showing the *other* one
+                    // is both smaller and unambiguous.
+                    LiquidButton(
+                        onClick = { onLayout(if (layout == Layout.GRID) Layout.LIST else Layout.GRID) },
+                        backdrop = backdrop,
+                        modifier = Modifier.size(42.dp),
+                        contentHeight = 42.dp,
+                        contentPadding = 0.dp,
+                    ) {
+                        Icon(
+                            if (layout == Layout.GRID) PhosphorIcons.Regular.ListBullets
+                            else PhosphorIcons.Regular.SquaresFour,
+                            contentDescription = stringResource(R.string.change_layout),
+                            tint = Ink,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+            }
             }
         }
 

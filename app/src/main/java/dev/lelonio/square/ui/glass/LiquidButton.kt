@@ -1,12 +1,17 @@
-// Vendored from the Backdrop catalog app, Apache-2.0.
+// The press is liquid_glass_widgets' GlassButton, MIT:
 //
-//   https://github.com/Kyant0/AndroidLiquidGlass
-//   commit b18eb0ff12c616546a68c72e7d0097f1ab286c87
+//   lib/widgets/interactive/glass_button.dart
+//   https://github.com/sdegenaar/liquid_glass_widgets (commit 5911897)
 //
-// These are the library author's own example components rather than part of the
-// published artifact, so there is nothing to depend on — they have to be copied.
-// Kept as close to upstream as possible (package line and a few Material
-// swaps aside) so a later upstream fix can be diffed in; see LICENSE-backdrop.txt.
+// It inflates 17 dp along its longest side and undershoots once on release,
+// leans with a tremor towards a dragging finger, brightens while held and
+// carries a light under the finger that lights the rim nearest it; see
+// GlassInteraction.kt, where those parts are ported. The material is the
+// app's own liquidGlass, which is upstream's shader. The tint, wash and flat
+// options are this app's, for the chips and the wordmark; the layout
+// (a row with a height and padding) is what the screens were built on, from
+// the Backdrop catalog this button first came from (Apache-2.0, see
+// LICENSE-backdrop.txt).
 
 package dev.lelonio.square.ui.glass
 
@@ -21,24 +26,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.fastCoerceAtMost
-import androidx.compose.ui.util.lerp
 import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.ui.glass.shapes.ContinuousCapsule
-import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.tanh
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -47,7 +48,15 @@ fun LiquidButton(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    /** Upstream's `enabled`: a disabled button is drawn at half opacity and ignores touches. */
+    enabled: Boolean = true,
     isInteractive: Boolean = true,
+    /** Upstream's `shape`; this app's buttons are capsules. */
+    shape: CornerBasedShape = ContinuousCapsule(),
+    /** Upstream's `stretch`: how far the button leans with a dragging finger, 0 for none. */
+    stretch: Float = 0.5f,
+    /** Upstream's `interactionScale`: null for the native 17 dp growth, or a fixed factor. */
+    interactionScale: Float? = null,
     tint: Color = Color.Unspecified,
     /**
      * A wash of this control's own, over the shared film.
@@ -96,122 +105,80 @@ fun LiquidButton(
     flat: Boolean = false,
     content: @Composable RowScope.() -> Unit
 ) {
-    val animationScope = rememberCoroutineScope()
-
-    val interactiveHighlight = remember(animationScope) {
-        InteractiveHighlight(
-            animationScope = animationScope
-        )
-    }
+    val press = rememberGlassPressState()
+    press.enabled = enabled && isInteractive
+    press.stretch = stretch
+    press.pressGrowthDp = if (interactionScale == null) GlassPressDefaults.NativePressGrowthDp else null
+    press.interactionScale = interactionScale ?: 1f
+    val lightPage = dev.lelonio.square.ui.theme.LocalLightTheme.current
 
     // LOCAL CHANGE: the material is the app's, not this file's. Upstream picks
     // its own vibrancy, blur and lens here, which is right for a catalog of one
     // component and wrong in an app where the bottom bar is the reference: next
-    // to it these buttons read as a thinner, harder glass. What stays is
-    // everything that makes this a button rather than a pane — the press squash
-    // below, the pull towards the finger, the tint of an active control.
+    // to it these buttons read as a thinner, harder glass.
     val configured = LocalGlassEffectConfig.current
     val config = if (flat) configured.copy(style = GlassStyle.TRANSPARENT) else configured
+    // The shared film is drawn first; these are only what this particular
+    // control adds to it, then the ambient lift.
+    val drawSurface: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit = {
+        if (tint.isSpecified) {
+            drawRect(tint, blendMode = BlendMode.Hue)
+            drawRect(tint.copy(alpha = 0.75f))
+        }
+        if (surfaceColor.isSpecified) {
+            drawRect(surfaceColor)
+        }
+        if (wash.isSpecified) {
+            drawRect(
+                androidx.compose.ui.graphics.Brush.linearGradient(
+                    0f to wash,
+                    0.55f to wash.copy(alpha = wash.alpha * 0.34f),
+                    1f to Color.Transparent,
+                    start = androidx.compose.ui.geometry.Offset.Zero,
+                    end = androidx.compose.ui.geometry.Offset(size.width, size.height),
+                ),
+            )
+            // The light along the top, which is what says the
+            // surface is curved rather than printed.
+            drawRect(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.14f),
+                        Color.Transparent,
+                    ),
+                    endY = size.height * 0.6f,
+                ),
+            )
+        }
+        if (isInteractive) with(press) { drawAmbientLift(lightPage) }
+    }
+
+    // Upstream's LiquidGlassBlendGroup: inside one, the group draws this
+    // button's glass together with its neighbours', so they melt into one
+    // another as they meet, and the button draws only what sits on it.
+    val group = if (flat) null else LocalGlassBlendGroup.current
+    val member = remember(press, isInteractive) { GlassGroupMember(if (isInteractive) press else null) }
+    if (group != null) {
+        androidx.compose.runtime.DisposableEffect(group, member) {
+            group.register(member)
+            onDispose { group.unregister(member) }
+        }
+    }
+    val grouped = group != null && group.draws(member)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+
     Row(
         modifier
-            .liquidGlass(
-                config = config,
-                shape = ContinuousCapsule(),
-                blurRadiusDp = (config.blurRadius * blurScale).coerceAtLeast(0f),
-                // LOCAL CHANGE: buttons sample the screen at a fraction of their
-                // own resolution. There are a lot of them — five filter chips at
-                // the top of the home page alone — and each one is a capture plus
-                // a shader chain per frame: measured at 8ms a frame together.
-                // They are small, filmed and rounded, which is exactly where the
-                // upscaling does not show.
-                backdropScale = 0.4f,
-                // The bar's rim, so a button beside it is cut from the same pane.
-                highlightAlpha = dev.lelonio.square.ui.player.BarHighlightAlpha,
-                ownBackdrop = backdrop,
-                // Upstream's touch glint, on the rim nearest the finger.
-                touch = if (isInteractive) {
-                    remember(interactiveHighlight) {
-                        {
-                            GlassTouch(
-                                interactiveHighlight.touchPosition,
-                                interactiveHighlight.pressProgress,
-                            )
-                        }
-                    }
-                } else {
-                    null
-                },
-                layerBlock = if (isInteractive) {
-                    {
-                        val width = size.width
-                        val height = size.height
-
-                        val progress = interactiveHighlight.pressProgress
-                        val scale = lerp(1f, 1f + 4f.dp.toPx() / size.height, progress)
-
-                        val maxOffset = size.minDimension
-                        val initialDerivative = 0.05f
-                        val offset = interactiveHighlight.offset
-                        translationX = maxOffset * tanh(initialDerivative * offset.x / maxOffset)
-                        translationY = maxOffset * tanh(initialDerivative * offset.y / maxOffset)
-
-                        val maxDragScale = 4f.dp.toPx() / size.height
-                        val offsetAngle = atan2(offset.y, offset.x)
-                        scaleX =
-                            scale +
-                                    maxDragScale * abs(cos(offsetAngle) * offset.x / size.maxDimension) *
-                                    (width / height).fastCoerceAtMost(1f)
-                        scaleY =
-                            scale +
-                                    maxDragScale * abs(sin(offsetAngle) * offset.y / size.maxDimension) *
-                                    (height / width).fastCoerceAtMost(1f)
-                    }
-                } else {
-                    null
-                },
-                // The shared film is drawn first; these are only what this
-                // particular control adds to it.
-                onDrawTint = if (tint.isSpecified || surfaceColor.isSpecified || wash.isSpecified) {
-                    {
-                        if (tint.isSpecified) {
-                            drawRect(tint, blendMode = BlendMode.Hue)
-                            drawRect(tint.copy(alpha = 0.75f))
-                        }
-                        if (surfaceColor.isSpecified) {
-                            drawRect(surfaceColor)
-                        }
-                        if (wash.isSpecified) {
-                            drawRect(
-                                androidx.compose.ui.graphics.Brush.linearGradient(
-                                    0f to wash,
-                                    0.55f to wash.copy(alpha = wash.alpha * 0.34f),
-                                    1f to Color.Transparent,
-                                    start = androidx.compose.ui.geometry.Offset.Zero,
-                                    end = androidx.compose.ui.geometry.Offset(size.width, size.height),
-                                ),
-                            )
-                            // The light along the top, which is what says the
-                            // surface is curved rather than printed.
-                            drawRect(
-                                androidx.compose.ui.graphics.Brush.verticalGradient(
-                                    listOf(
-                                        Color.White.copy(alpha = 0.14f),
-                                        Color.Transparent,
-                                    ),
-                                    endY = size.height * 0.6f,
-                                ),
-                            )
-                        }
-                    }
-                } else {
-                    null
-                },
-            )
+            .then(if (enabled) Modifier else Modifier.graphicsLayer { alpha = 0.5f })
+            // Read outside the stretch, as upstream's Listener and
+            // GestureDetector sit outside LiquidStretch.
+            .then(if (isInteractive) press.gestureModifier else Modifier)
             .then(
                 if (onLongClick != null) {
                     Modifier.combinedClickable(
                         interactionSource = null,
                         indication = if (isInteractive) null else LocalIndication.current,
+                        enabled = enabled,
                         role = Role.Button,
                         onClick = onClick,
                         onLongClick = onLongClick,
@@ -220,20 +187,58 @@ fun LiquidButton(
                     Modifier.clickable(
                         interactionSource = null,
                         indication = if (isInteractive) null else LocalIndication.current,
+                        enabled = enabled,
                         role = Role.Button,
                         onClick = onClick,
                     )
                 }
             )
             .then(
-                if (isInteractive) {
+                if (grouped) {
                     Modifier
-                        .then(interactiveHighlight.modifier)
-                        .then(interactiveHighlight.gestureModifier)
+                        .onGloballyPositioned {
+                            member.coordinates = it
+                            member.cornerRadiusPx = shape.topStart.toPx(
+                                androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat()),
+                                density,
+                            )
+                        }
+                        .graphicsLayer {
+                            if (isInteractive) press.applyTo(this)
+                            clip = true
+                            this.shape = shape
+                        }
+                        .drawBehind(drawSurface)
                 } else {
-                    Modifier
+                    Modifier.liquidGlass(
+                        config = config,
+                        shape = shape,
+                        blurRadiusDp = (config.blurRadius * blurScale).coerceAtLeast(0f),
+                        // LOCAL CHANGE: buttons sample the screen at a fraction of their
+                        // own resolution: five filter chips at the top of the home page
+                        // alone measured 8ms a frame at full size. Upstream's material
+                        // overrides this to full resolution where it runs.
+                        backdropScale = 0.4f,
+                        // The bar's rim, so a button beside it is cut from the same pane.
+                        highlightAlpha = dev.lelonio.square.ui.player.BarHighlightAlpha,
+                        ownBackdrop = backdrop,
+                        // Upstream's touch specular, on the rim nearest the finger.
+                        touch = if (isInteractive) {
+                            remember(press) { { GlassTouch(press.touchPosition, press.touchIntensity) } }
+                        } else {
+                            null
+                        },
+                        layerBlock = if (isInteractive) {
+                            remember(press) { { press.applyTo(this) } }
+                        } else {
+                            null
+                        },
+                        onDrawTint = drawSurface,
+                    )
                 }
             )
+            // Over the label, inside the surface's clip, as GlassGlow paints.
+            .then(if (isInteractive) press.glowModifier(glassGlowColor(lightPage)) else Modifier)
             .height(contentHeight)
             .padding(horizontal = contentPadding),
         horizontalArrangement = Arrangement.spacedBy(8f.dp, Alignment.CenterHorizontally),

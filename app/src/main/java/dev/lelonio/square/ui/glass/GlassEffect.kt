@@ -454,6 +454,12 @@ fun Modifier.liquidGlass(
      * while the frame is drawn; null for a surface nobody presses.
      */
     touch: (() -> GlassTouch?)? = null,
+    /**
+     * A blend group's shapes in place of this surface's own outline: see
+     * GlassBlendGroup. Read while the frame is drawn. Only where upstream's
+     * material runs; elsewhere the members draw their own glass.
+     */
+    group: (() -> GlassGroupFrame)? = null,
 ): Modifier {
     val density = LocalDensity.current
     // Upstream's material draws its edge, its lighting and its anti-aliasing
@@ -634,12 +640,26 @@ fun Modifier.liquidGlass(
         upstreamSettings,
         upstreamBlurPx,
         touch,
+        group,
+        lightPage,
     ) {
         if (upstream) {
             {
                 if (upstreamBlurPx > 0f) blur(upstreamBlurPx)
-                val pressed = touch?.invoke()
-                liquidGlassMaterial(upstreamSettings, pressed?.position, pressed?.intensity ?: 0f)
+                if (group != null) {
+                    val frame = group()
+                    liquidGlassMaterial(
+                        upstreamSettings,
+                        frame.touch?.position,
+                        frame.touch?.intensity ?: 0f,
+                        groupShapes = frame.shapes,
+                        blendPx = frame.blendPx,
+                        groupShadow = lightPage,
+                    )
+                } else {
+                    val pressed = touch?.invoke()
+                    liquidGlassMaterial(upstreamSettings, pressed?.position, pressed?.intensity ?: 0f)
+                }
             }
         } else {
         {
@@ -721,9 +741,11 @@ fun Modifier.liquidGlass(
         }
     }
 
-    val shadowBlock: (() -> Shadow?)? = remember(applyEdgeEffects, upstream, lightPage) {
+    val shadowBlock: (() -> Shadow?)? = remember(applyEdgeEffects, upstream, lightPage, group) {
         when {
             !applyEdgeEffects -> null
+            // A group's shader draws the shadow round its own shapes.
+            upstream && group != null -> null
             // Upstream's GlassShadow.elevation, on light pages only, as
             // upstream draws it: 0x0F black, an 8 px blur, 2 px down.
             upstream -> if (lightPage) {

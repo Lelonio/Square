@@ -117,6 +117,7 @@ import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
 import dev.lelonio.square.R
 import dev.lelonio.square.ui.MainViewModel
 import dev.lelonio.square.ui.components.Artwork
+import dev.lelonio.square.ui.glass.GlassBlendGroup
 import dev.lelonio.square.ui.glass.LiquidButton
 import dev.lelonio.square.ui.library.formatDuration
 import dev.lelonio.square.ui.theme.softShadow
@@ -2531,103 +2532,109 @@ internal fun Controls(
      */
     toggles: Float = 1f,
 ) {
+    // One blend group, as upstream draws a row of glass buttons: a pressed
+    // disc swells towards its neighbour and melts into it as they meet.
+    // Upstream's own blend; a wider one than the gap between the discs would
+    // pull their outlines together at rest.
+    GlassBlendGroup(backdrop = backdrop, modifier = Modifier.fillMaxWidth()) {
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        // Their place is kept, so the discs do not slide; a press on the empty
-        // place does nothing but bring them back.
-        val togglesOn = toggles > 0.5f
-        Box(Modifier.graphicsLayer { alpha = toggles }) {
-            ToggleIcon(
-                icon = PhosphorIcons.Regular.Shuffle,
-                description = stringResource(if (state.smartShuffle) R.string.smart_shuffle else R.string.shuffle_play),
-                active = state.shuffleEnabled,
-                smart = state.smartShuffle,
-                onClick = { if (togglesOn) onToggleShuffle() },
-            )
-        }
+            // Their place is kept, so the discs do not slide; a press on the empty
+            // place does nothing but bring them back.
+            val togglesOn = toggles > 0.5f
+            Box(Modifier.graphicsLayer { alpha = toggles }) {
+                ToggleIcon(
+                    icon = PhosphorIcons.Regular.Shuffle,
+                    description = stringResource(if (state.smartShuffle) R.string.smart_shuffle else R.string.shuffle_play),
+                    active = state.shuffleEnabled,
+                    smart = state.smartShuffle,
+                    onClick = { if (togglesOn) onToggleShuffle() },
+                )
+            }
 
-        // Three discs of the same material, the middle one larger. The reference
-        // gives the transport its own row of circles rather than icons on a bar,
-        // and the size difference is the only thing marking the primary action —
-        // no fill, no accent.
-        RoundGlassButton(
-            backdrop = backdrop,
-            size = 62.dp,
-            enabled = state.hasPrevious,
-            onClick = onPrevious,
-        ) {
-            Icon(
-                PhosphorIcons.Fill.SkipBack,
-                contentDescription = stringResource(R.string.previous),
-                modifier = Modifier.size(30.dp),
-            )
-        }
+            // Three discs of the same material, the middle one larger. The reference
+            // gives the transport its own row of circles rather than icons on a bar,
+            // and the size difference is the only thing marking the primary action —
+            // no fill, no accent.
+            RoundGlassButton(
+                backdrop = backdrop,
+                size = 62.dp,
+                enabled = state.hasPrevious,
+                onClick = onPrevious,
+            ) {
+                Icon(
+                    PhosphorIcons.Fill.SkipBack,
+                    contentDescription = stringResource(R.string.previous),
+                    modifier = Modifier.size(30.dp),
+                )
+            }
 
-        // Ringed while a playlist plays as a Spotify Mix, as the official
-        // player's button is; see Mixes.playing.
-        val mixPlaying by dev.lelonio.square.playback.Mixes.playing.collectAsStateWithLifecycle()
-        Box(Modifier.mixRing(mixPlaying)) {
-        RoundGlassButton(backdrop = backdrop, size = 76.dp, onClick = onTogglePlay) {
-            // A ring around the icon while the track is still being fetched.
-            //
-            // Worth its place here and nowhere else: a YouTube track has to have
-            // its stream resolved before a single byte can be read, which takes
-            // long enough that a tap on play looks like it did nothing at all.
-            // Around the button rather than in place of it, so the control stays
-            // where it is and stays pressable.
-            // A Box, because the button lays its content out in a row and the
-            // ring belongs *around* the icon rather than beside it.
-            Box(contentAlignment = Alignment.Center) {
-                if (state.isBuffering) {
-                    CircularProgressIndicator(
-                        color = LocalContentColor.current.copy(alpha = 0.5f),
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(52.dp),
-                    )
-                }
-                Crossfade(
-                    state.wantsPlay,
-                    animationSpec = tween(180),
-                    label = "playPause",
-                ) { playing ->
-                    Icon(
-                        imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
-                        contentDescription = stringResource(if (playing) R.string.pause else R.string.play),
-                        modifier = Modifier.size(34.dp),
-                    )
+            // Ringed while a playlist plays as a Spotify Mix, as the official
+            // player's button is; see Mixes.playing.
+            val mixPlaying by dev.lelonio.square.playback.Mixes.playing.collectAsStateWithLifecycle()
+            Box(Modifier.mixRing(mixPlaying)) {
+            RoundGlassButton(backdrop = backdrop, size = 76.dp, onClick = onTogglePlay) {
+                // A ring around the icon while the track is still being fetched.
+                //
+                // Worth its place here and nowhere else: a YouTube track has to have
+                // its stream resolved before a single byte can be read, which takes
+                // long enough that a tap on play looks like it did nothing at all.
+                // Around the button rather than in place of it, so the control stays
+                // where it is and stays pressable.
+                // A Box, because the button lays its content out in a row and the
+                // ring belongs *around* the icon rather than beside it.
+                Box(contentAlignment = Alignment.Center) {
+                    if (state.isBuffering) {
+                        CircularProgressIndicator(
+                            color = LocalContentColor.current.copy(alpha = 0.5f),
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(52.dp),
+                        )
+                    }
+                    Crossfade(
+                        state.wantsPlay,
+                        animationSpec = tween(180),
+                        label = "playPause",
+                    ) { playing ->
+                        Icon(
+                            imageVector = if (playing) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
+                            contentDescription = stringResource(if (playing) R.string.pause else R.string.play),
+                            modifier = Modifier.size(34.dp),
+                        )
+                    }
                 }
             }
-        }
-        }
+            }
 
-        RoundGlassButton(
-            backdrop = backdrop,
-            size = 62.dp,
-            enabled = state.hasNext,
-            onClick = onNext,
-        ) {
-            Icon(
-                PhosphorIcons.Fill.SkipForward,
-                contentDescription = stringResource(R.string.next),
-                modifier = Modifier.size(30.dp),
-            )
-        }
+            RoundGlassButton(
+                backdrop = backdrop,
+                size = 62.dp,
+                enabled = state.hasNext,
+                onClick = onNext,
+            ) {
+                Icon(
+                    PhosphorIcons.Fill.SkipForward,
+                    contentDescription = stringResource(R.string.next),
+                    modifier = Modifier.size(30.dp),
+                )
+            }
 
-        Box(Modifier.graphicsLayer { alpha = toggles }) {
-            ToggleIcon(
-                icon = if (state.repeatMode == Player.REPEAT_MODE_ONE) {
-                    PhosphorIcons.Regular.RepeatOnce
-                } else {
-                    PhosphorIcons.Regular.Repeat
-                },
-                description = stringResource(R.string.repeat),
-                active = state.repeatMode != Player.REPEAT_MODE_OFF,
-                onClick = { if (togglesOn) onCycleRepeat() },
-            )
-        }
+            Box(Modifier.graphicsLayer { alpha = toggles }) {
+                ToggleIcon(
+                    icon = if (state.repeatMode == Player.REPEAT_MODE_ONE) {
+                        PhosphorIcons.Regular.RepeatOnce
+                    } else {
+                        PhosphorIcons.Regular.Repeat
+                    },
+                    description = stringResource(R.string.repeat),
+                    active = state.repeatMode != Player.REPEAT_MODE_OFF,
+                    onClick = { if (togglesOn) onCycleRepeat() },
+                )
+            }
+    }
     }
 }
 
