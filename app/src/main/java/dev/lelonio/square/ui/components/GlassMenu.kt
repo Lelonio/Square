@@ -857,14 +857,14 @@ fun GlassChoiceItem(
  */
 private const val MENU_BLUR_SCALE = 2f
 
-/** Narrow on purpose; the longest label still fits on one line. */
-val CHOICE_MENU_WIDTH = 196.dp
+/** Upstream's GlassMenu default width: 200 logical pixels. */
+val CHOICE_MENU_WIDTH = 200.dp
 
 private val CheckIcon
     get() = com.adamglin.PhosphorIcons.Regular.Check
 
 /** Each row's opacity and scale while its menu morphs, as upstream's _buildListContent. */
-private fun Modifier.choiceRowMorph(morph: () -> ChoiceRowMorph?): Modifier = graphicsLayer {
+internal fun Modifier.choiceRowMorph(morph: () -> ChoiceRowMorph?): Modifier = graphicsLayer {
     val current = morph() ?: return@graphicsLayer
     alpha = current.opacity
     scaleX = current.scale

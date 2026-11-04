@@ -72,8 +72,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import dev.lelonio.square.ui.components.CHOICE_MENU_WIDTH
-import dev.lelonio.square.ui.components.GlassChoiceItem
-import dev.lelonio.square.ui.components.GlassMenuRule
 import dev.lelonio.square.ui.components.GlassChoiceMenu
 import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
@@ -487,26 +485,28 @@ fun LibraryScreen(
                 trigger = sortTrigger,
             ) {
                 Order.entries.forEach { entry ->
-                    GlassChoiceItem(
+                    dev.lelonio.square.ui.components.GlassMenuItem(
                         stringResource(entry.label),
                         selected = entry == order,
-                    ) {
-                        sortOpen = false
-                        onOrderChosen(entry)
-                    }
+                        onClick = {
+                            sortOpen = false
+                            onOrderChosen(entry)
+                        },
+                    )
                 }
-                GlassMenuRule()
+                dev.lelonio.square.ui.components.GlassMenuDivider()
 
                 // Deliberately leaves the menu open: the direction is the one
                 // choice people flip back and forth to compare, and reopening
                 // for each flip makes a sort feel heavy.
-                GlassChoiceItem(
+                dev.lelonio.square.ui.components.GlassMenuItem(
                     stringResource(R.string.sort_descending),
                     selected = descending,
-                ) {
-                    descending = !descending
-                    view.descending = descending
-                }
+                    onClick = {
+                        descending = !descending
+                        view.descending = descending
+                    },
+                )
             }
             }
             }
@@ -664,42 +664,19 @@ private fun Header(
             }
         }
 
-        // The order, named, just above what it orders: read with the list
-        // rather than hunted for among the buttons, and out of the chips' way.
-        Row(
-            Modifier
-                .padding(start = 14.dp, top = 2.dp, bottom = 4.dp)
-                .then(if (sortTrigger != null) Modifier.glassMenuTrigger(sortTrigger) else Modifier)
-                .clip(RoundedCornerShape(50))
-                .clickable(onClick = onSort)
-                .onGloballyPositioned {
-                    val bounds = it.boundsInRoot()
-                    onSortAnchor(
-                        androidx.compose.ui.unit.IntRect(
-                            bounds.left.toInt(),
-                            bounds.top.toInt(),
-                            bounds.right.toInt(),
-                            bounds.bottom.toInt(),
-                        ),
-                    )
-                }
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                PhosphorIcons.Regular.ArrowsDownUp,
-                contentDescription = stringResource(R.string.sort),
-                tint = InkDim,
-                modifier = Modifier.size(16.dp),
-            )
-            Text(
-                stringResource(order.label),
-                style = MaterialTheme.typography.labelLarge,
-                color = InkDim,
-            )
-
-        }
+        // The order, named, just above what it orders: upstream's
+        // GlassPullDownButton with its label, which the sort menu grows out of.
+        dev.lelonio.square.ui.components.GlassPullDownButton(
+            icon = PhosphorIcons.Regular.ArrowsDownUp,
+            label = stringResource(order.label),
+            semanticLabel = stringResource(R.string.sort),
+            onOpen = onSort,
+            onAnchor = onSortAnchor,
+            backdrop = backdrop,
+            trigger = sortTrigger,
+            ink = Ink,
+            modifier = Modifier.padding(start = 20.dp, top = 2.dp, bottom = 4.dp),
+        )
     }
 }
 

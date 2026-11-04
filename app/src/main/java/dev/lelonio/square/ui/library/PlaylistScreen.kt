@@ -123,7 +123,6 @@ import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberCombinedBackdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberBackdropFreeze
 import dev.lelonio.square.ui.components.Artwork
 import dev.lelonio.square.ui.components.CHOICE_MENU_WIDTH
-import dev.lelonio.square.ui.components.GlassChoiceItem
 import dev.lelonio.square.ui.components.GlassChoiceMenu
 import dev.lelonio.square.ui.components.LazyScrollBar
 import dev.lelonio.square.ui.components.SwipeToQueue
@@ -647,8 +646,12 @@ fun PlaylistScreen(
                 // catalogue filed for this record, with the photograph
                 // dissolving into that colour rather than into a blurred
                 // continuation of itself.
-                .background(pageColor)
-                .layerBackdrop(pageBackdrop),
+                // Inside the recorded layer, not ahead of it: drawn before
+                // the layer, the colour was never in it, and every pane of
+                // glass below the picture read nothing and came out black (the
+                // sort button) or grey (its menu).
+                .layerBackdrop(pageBackdrop)
+                .background(pageColor),
         ) {
             // Every page is its own picture, filling the top of the screen:
             // the editorial photograph where the catalogue has one, and the
@@ -874,6 +877,7 @@ fun PlaylistScreen(
                         onSortOpen = { sortOpen = it },
                         onAnchor = { sortAnchor = it },
                         sortTrigger = sortTrigger,
+                        backdrop = pageBackdrop,
                         // Only where there is more than what is shown.
                         expandable = isArtist &&
                             query.isBlank() &&
@@ -1517,24 +1521,29 @@ fun PlaylistScreen(
             onDismiss = { sortOpen = false },
         ) {
             TrackSort.entries.forEach { option ->
-                GlassChoiceItem(stringResource(option.label), selected = option == sort) {
-                    sort = option
-                    onSortChange(option.name)
-                    sortOpen = false
-                }
+                dev.lelonio.square.ui.components.GlassMenuItem(
+                    stringResource(option.label),
+                    selected = option == sort,
+                    onClick = {
+                        sort = option
+                        onSortChange(option.name)
+                        sortOpen = false
+                    },
+                )
             }
-            dev.lelonio.square.ui.components.GlassMenuRule()
+            dev.lelonio.square.ui.components.GlassMenuDivider()
 
             // Deliberately leaves the menu open: the direction is the one choice
             // people flip back and forth to compare, and reopening for each flip
             // makes a sort feel heavy.
-            GlassChoiceItem(
+            dev.lelonio.square.ui.components.GlassMenuItem(
                 stringResource(R.string.sort_descending),
                 selected = descending,
-            ) {
-                descending = !descending
-                onSortDescendingChange(descending)
-            }
+                onClick = {
+                    descending = !descending
+                    onSortDescendingChange(descending)
+                },
+            )
         }
 
     }
@@ -2768,6 +2777,8 @@ private fun SectionHeader(
     onAnchor: (androidx.compose.ui.unit.IntRect) -> Unit,
     /** The sort button's handover to its menu; see GlassChoiceMenu. */
     sortTrigger: dev.lelonio.square.ui.components.GlassMenuTrigger? = null,
+    /** What the sort button's glass reads. */
+    backdrop: Backdrop? = null,
     /** Whether there is more of this section than the page is showing. */
     expandable: Boolean = false,
     expanded: Boolean = false,
@@ -2835,34 +2846,21 @@ private fun SectionHeader(
 
         // A mixed playlist plays in its own order, so there is nothing to sort
         // while the mix is on; see `mixed` where the list is built.
-        if (mix != true) IconButton(
-            onClick = { onSortOpen(true) },
-            modifier = Modifier
-                .then(if (sortTrigger != null) Modifier.glassMenuTrigger(sortTrigger) else Modifier)
-                .onGloballyPositioned {
-                val root = it.boundsInRoot()
-                onAnchor(
-                    androidx.compose.ui.unit.IntRect(
-                        root.left.toInt(),
-                        root.top.toInt(),
-                        root.right.toInt(),
-                        root.bottom.toInt(),
-                    ),
-                )
-            },
-        ) {
-            run {
-                Icon(
-                    PhosphorIcons.Bold.ArrowsDownUp,
-                    contentDescription = stringResource(R.string.sort),
-                    tint = if (sort == TrackSort.ORIGINAL) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+        if (mix != true && backdrop != null) {
+            // Upstream's GlassPullDownButton, which the sort menu grows out of.
+            dev.lelonio.square.ui.components.GlassPullDownButton(
+                icon = PhosphorIcons.Bold.ArrowsDownUp,
+                semanticLabel = stringResource(R.string.sort),
+                onOpen = { onSortOpen(true) },
+                onAnchor = onAnchor,
+                backdrop = backdrop,
+                trigger = sortTrigger,
+                ink = if (sort == TrackSort.ORIGINAL) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+            )
         }
     }
 }
