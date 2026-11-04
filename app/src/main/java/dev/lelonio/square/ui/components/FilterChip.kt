@@ -1,96 +1,69 @@
 package dev.lelonio.square.ui.components
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import dev.lelonio.square.ui.glass.pressable
-import dev.lelonio.square.ui.theme.Ink
+import androidx.compose.ui.unit.sp
+import dev.lelonio.square.ui.glass.AnchorStretchSettings
+import dev.lelonio.square.ui.glass.LiquidButton
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
 import dev.lelonio.square.ui.theme.lightPage
-import dev.lelonio.square.ui.theme.pageGround
 
 /**
- * One of a row of filters, drawn the way the reference draws them.
+ * One of a row of filters: liquid_glass_widgets' GlassChip, MIT.
  *
- * Flat, not glass. Every chip in this app used to be a pane of the same liquid
- * material as the bars, with the lit one filled a little harder and washed with
- * the artwork's colour. Over a tinted page that read as one family; over the
- * neutral ground these pages have now it reads as a row of grey lozenges with a
- * colour in them that belongs to something else on the screen.
+ *   lib/widgets/interactive/glass_chip.dart
+ *   https://github.com/sdegenaar/liquid_glass_widgets (commit 5911897)
  *
- * The reference is much plainer and says more with less: an unlit chip is a
- * whisper of the ink it is written in, and the lit one is the ink itself with
- * the page's own colour for a label. There is no third state and no accent —
- * being *on* is carried entirely by the inversion, which is legible at a glance
- * and in both themes without a single value changing side.
+ * A capsule of glass pressed as a GlassButton, but gently: a fixed 3 %
+ * growth, a third of the lean, and a light under the finger that covers 0.8
+ * of its short side. The label is 14 sp at medium weight in 90 % of the
+ * page's ink, and the chosen chip is filled with that ink at 10 % (30 % on a
+ * dark page); the light is tinted the same way.
  */
 @Composable
 fun FilterChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    backdrop: Backdrop,
     modifier: Modifier = Modifier,
 ) {
-    // An unlit chip is a card, not a film: on the reference it is white with a
-    // hairline round it, sitting on a grey page. Taken to this app's two sides
-    // that is "a shade away from the ground, outlined" — white on the light
-    // side, and a lift out of the floor on the dark one.
-    val resting = if (lightPage()) Color.White else Ink.copy(alpha = 0.09f)
+    val light = lightPage()
+    val base = if (light) Color.Black else Color.White
+    val contentColor = base.copy(alpha = 0.9f)
+    val selectedColor = base.copy(alpha = if (light) 0.1f else 0.3f)
+    val glowUnselected = base.copy(alpha = if (light) 0.05f else 0.2f)
 
-    // Eased, because a row of these is usually tapped along and a cut between
-    // two solid fills reads as the row redrawing itself.
-    val fill by animateColorAsState(
-        targetValue = if (selected) Ink else resting,
-        animationSpec = tween(durationMillis = 180),
-        label = "chipFill",
-    )
-    val labelInk by animateColorAsState(
-        targetValue = if (selected) pageGround() else Ink,
-        animationSpec = tween(durationMillis = 180),
-        label = "chipInk",
-    )
-    val edge by animateColorAsState(
-        targetValue = if (selected) Color.Transparent else Ink.copy(alpha = 0.14f),
-        animationSpec = tween(durationMillis = 180),
-        label = "chipEdge",
-    )
-
-    Box(
-        modifier
-            .clip(CircleShape)
-            .background(fill)
-            .border(1.dp, edge, CircleShape)
-            .pressable(onClick, shape = CircleShape, pressedScale = 0.94f)
-            .defaultMinSize(minHeight = CHIP_HEIGHT)
-            .padding(horizontal = CHIP_PADDING, vertical = 7.dp),
-        contentAlignment = Alignment.Center,
+    LiquidButton(
+        onClick = onClick,
+        backdrop = backdrop,
+        modifier = modifier,
+        interactionScale = 1.03f,
+        stretch = 0.3f,
+        anchor = AnchorStretchSettings(),
+        glowColor = if (selected) selectedColor else glowUnselected,
+        glowRadius = 0.8f,
+        // The theme's glow blur, which an explicit radius falls back to.
+        glowBlurSigma = 4f,
+        surfaceColor = if (selected) selectedColor else Color.Unspecified,
+        contentHeight = CHIP_HEIGHT,
+        contentPadding = 12.dp,
     ) {
         Text(
             label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = labelInk,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = contentColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
-/** Measured off the reference: shorter and tighter than the glass ones were. */
-private val CHIP_HEIGHT = 34.dp
-private val CHIP_PADDING = 16.dp
+/** Upstream's 8 dp of padding above and below a 14 sp line. */
+private val CHIP_HEIGHT = 33.dp

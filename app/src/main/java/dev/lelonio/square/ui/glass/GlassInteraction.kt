@@ -114,7 +114,13 @@ data class AnchorStretchSettings(
 object GlassPressDefaults {
     /** `LiquidStretch.nativePressGrowth`: the longest side grows by this much. */
     const val NativePressGrowthDp = 17f
-    const val AmbientBaseLight = 0.3f
+    /**
+     * LOCAL CHANGE: upstream lifts a held button by 0.3 white on a light page.
+     * Over this app's light film, which is already near white, that turned a
+     * held button into a plain white disc. The same lift a dark page gets is
+     * enough to say it is held.
+     */
+    const val AmbientBaseLight = 0.14f
     const val AmbientBaseLightDark = 0.14f
     const val AmbientLiftMs = 150
     const val AmbientLiftReverseMs = 60
@@ -182,10 +188,7 @@ class GlassPressState internal constructor(
         engaged = false
         val growth = pressGrowthDp != null
         scope.launch {
-            press.animateTo(
-                if (growth) 1f else interactionScale,
-                if (growth) GlassSpring.snappy(250, 0.1f) else GlassSpring.smooth(300),
-            )
+            press.animateTo(1f, if (growth) GlassSpring.snappy(250, 0.1f) else GlassSpring.smooth(300))
         }
         scope.launch { drag.animateTo(Offset.Zero, dragSpring(true)) }
         scope.launch { lift.animateTo(1f, tween(GlassPressDefaults.AmbientLiftMs, easing = LinearEasing)) }
@@ -218,10 +221,7 @@ class GlassPressState internal constructor(
         pressed = false
         val growth = pressGrowthDp != null
         scope.launch {
-            press.animateTo(
-                if (growth) 0f else 1f,
-                if (growth) GlassSpring.bouncy(280, 0.15f) else GlassSpring.smooth(300),
-            )
+            press.animateTo(0f, if (growth) GlassSpring.bouncy(280, 0.15f) else GlassSpring.smooth(300))
         }
         scope.launch { drag.animateTo(Offset.Zero, dragSpring(false)) }
         scope.launch { lift.animateTo(0f, tween(GlassPressDefaults.AmbientLiftReverseMs, easing = LinearEasing)) }
@@ -268,7 +268,8 @@ class GlassPressState internal constructor(
         val pressScale = if (growth != null) {
             1f + press.value * growth * density / max(w, h)
         } else {
-            press.value
+            // A fixed factor: upstream springs the scale itself from 1 to it.
+            1f + press.value * (interactionScale - 1f)
         }
 
         val stretchPx = drag.value * (stretch * density)
@@ -421,9 +422,13 @@ class GlassPressState internal constructor(
     }
 
     /** [drawGlow] over a control's content, as a modifier inside its surface. */
-    fun glowModifier(color: Color): Modifier = Modifier.drawWithContent {
+    fun glowModifier(
+        color: Color,
+        radius: Float = GlassPressDefaults.GlowRadius,
+        blurSigmaDp: Float = GlassPressDefaults.GlowBlurSigmaDp,
+    ): Modifier = Modifier.drawWithContent {
         drawContent()
-        drawGlow(color)
+        drawGlow(color, radius, blurSigmaDp)
     }
 
     private companion object {

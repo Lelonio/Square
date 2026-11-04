@@ -822,6 +822,7 @@ private fun FilterRow(selected: Feed, chips: List<Feed>, backdrop: Backdrop, onS
     ) {
         items(chips, key = { it.name }) { entry ->
             dev.lelonio.square.ui.components.FilterChip(
+                backdrop = backdrop,
                 label = stringResource(entry.label),
                 selected = entry == selected,
                 onClick = { onSelect(entry) },
@@ -1276,6 +1277,7 @@ private fun ChipRow(
         items(chips, key = { it.title }) { chip ->
             val isSelected = chip.title == selected
             dev.lelonio.square.ui.components.FilterChip(
+                backdrop = backdrop,
                 label = chip.title,
                 selected = isSelected,
                 // Pressing the chip that is already on takes the filter off,

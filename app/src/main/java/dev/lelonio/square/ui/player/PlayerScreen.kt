@@ -2534,8 +2534,6 @@ internal fun Controls(
 ) {
     // One blend group, as upstream draws a row of glass buttons: a pressed
     // disc swells towards its neighbour and melts into it as they meet.
-    // Upstream's own blend; a wider one than the gap between the discs would
-    // pull their outlines together at rest.
     GlassBlendGroup(backdrop = backdrop, modifier = Modifier.fillMaxWidth()) {
     Row(
         Modifier.fillMaxWidth(),

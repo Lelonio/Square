@@ -413,6 +413,7 @@ private fun KindRow(
             key = { it.name },
         ) { entry ->
             dev.lelonio.square.ui.components.FilterChip(
+                backdrop = backdrop,
                 label = stringResource(entry.label),
                 selected = entry == selected,
                 onClick = { onSelect(entry) },

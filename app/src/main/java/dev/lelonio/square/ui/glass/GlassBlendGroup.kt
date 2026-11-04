@@ -89,6 +89,8 @@ class GlassBlendGroupState internal constructor() {
         val surface = surface
         val shapes = ArrayList<LiquidShape>(LiquidGlassShader.MAX_SHAPES)
         var touch: GlassTouch? = null
+        // Where the members sit at rest, for the blend's ceiling below.
+        val resting = ArrayList<Rect>(LiquidGlassShader.MAX_SHAPES)
         if (surface != null && surface.isAttached) {
             for (member in members.take(LiquidGlassShader.MAX_SHAPES)) {
                 val coordinates = member.coordinates ?: continue
@@ -98,6 +100,7 @@ class GlassBlendGroupState internal constructor() {
                 val local = member.press?.stretchedBounds()
                     ?: Rect(0f, 0f, size.width.toFloat(), size.height.toFloat())
                 val bounds = local.translate(origin)
+                resting += Rect(origin, androidx.compose.ui.geometry.Size(size.width.toFloat(), size.height.toFloat()))
                 if (bounds.width <= 0f || bounds.height <= 0f) continue
                 val radius = (member.cornerRadiusPx ?: Float.MAX_VALUE)
                     .coerceAtMost(minOf(bounds.width, bounds.height) / 2f)
@@ -108,8 +111,24 @@ class GlassBlendGroupState internal constructor() {
                 }
             }
         }
-        return GlassGroupFrame(shapes, blendPx, touch)
+        // The smooth union pulls two outlines towards each other as soon as
+        // they are closer than the blend, so a blend wider than the gap
+        // between two resting members bends them into each other while
+        // nobody touches them. Held to the narrowest gap, they stay whole at
+        // rest and melt only as a pressed one swells across it.
+        var narrowest = Float.POSITIVE_INFINITY
+        for (i in resting.indices) for (j in i + 1 until resting.size) {
+            narrowest = minOf(narrowest, gapBetween(resting[i], resting[j]))
+        }
+        return GlassGroupFrame(shapes, minOf(blendPx, narrowest.coerceAtLeast(0f)), touch)
     }
+}
+
+/** The distance between two rectangles' edges, 0 where they touch or overlap. */
+private fun gapBetween(a: Rect, b: Rect): Float {
+    val dx = maxOf(0f, maxOf(a.left - b.right, b.left - a.right))
+    val dy = maxOf(0f, maxOf(a.top - b.bottom, b.top - a.bottom))
+    return kotlin.math.sqrt(dx * dx + dy * dy)
 }
 
 val LocalGlassBlendGroup = staticCompositionLocalOf<GlassBlendGroupState?> { null }

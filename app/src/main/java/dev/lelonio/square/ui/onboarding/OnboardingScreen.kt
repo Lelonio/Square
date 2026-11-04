@@ -166,7 +166,9 @@ private fun Welcome(language: String, onLanguage: (String) -> Unit) {
     // First screen, before a word of the setup: someone who cannot read this
     // page is exactly the person who needs the picker, and asking them to
     // finish the tutorial first to find it would be the wrong way round.
-    LanguageChips(language, onLanguage)
+    // Nothing glassy sits behind the onboarding pages, so the chips' glass
+    // samples nothing and shows only its own film and rim.
+    LanguageChips(language, dev.lelonio.square.ui.glass.backdrop.backdrops.emptyBackdrop(), onLanguage)
 }
 
 @Composable
@@ -331,7 +333,7 @@ private fun Done() {
  * task rather than as a choice already made for most people.
  */
 @Composable
-private fun LanguageChips(language: String, onLanguage: (String) -> Unit) {
+private fun LanguageChips(language: String, backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop, onLanguage: (String) -> Unit) {
     Row(
         Modifier
             .padding(top = 24.dp)
@@ -340,6 +342,7 @@ private fun LanguageChips(language: String, onLanguage: (String) -> Unit) {
     ) {
         AppLanguages.forEach { (tag, name) ->
             FilterChip(
+                backdrop = backdrop,
                 label = name.ifEmpty { stringResource(R.string.system_language) },
                 selected = tag == language,
                 onClick = { onLanguage(tag) },

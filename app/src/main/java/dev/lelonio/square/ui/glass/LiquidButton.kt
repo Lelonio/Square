@@ -57,6 +57,15 @@ fun LiquidButton(
     stretch: Float = 0.5f,
     /** Upstream's `interactionScale`: null for the native 17 dp growth, or a fixed factor. */
     interactionScale: Float? = null,
+    /** Upstream's `anchorStretchSettings`: how the lean is shaped. */
+    anchor: AnchorStretchSettings = AnchorStretchSettings.NativeTremor,
+    /**
+     * Upstream's `glowColor`, `glowRadius` and `glowBlurRadius`: the light
+     * under the finger. Unspecified for the native sheen.
+     */
+    glowColor: Color = Color.Unspecified,
+    glowRadius: Float = GlassPressDefaults.GlowRadius,
+    glowBlurSigma: Float = GlassPressDefaults.GlowBlurSigmaDp,
     tint: Color = Color.Unspecified,
     /**
      * A wash of this control's own, over the shared film.
@@ -110,6 +119,7 @@ fun LiquidButton(
     press.stretch = stretch
     press.pressGrowthDp = if (interactionScale == null) GlassPressDefaults.NativePressGrowthDp else null
     press.interactionScale = interactionScale ?: 1f
+    press.anchor = anchor
     val lightPage = dev.lelonio.square.ui.theme.LocalLightTheme.current
 
     // LOCAL CHANGE: the material is the app's, not this file's. Upstream picks
@@ -238,7 +248,11 @@ fun LiquidButton(
                 }
             )
             // Over the label, inside the surface's clip, as GlassGlow paints.
-            .then(if (isInteractive) press.glowModifier(glassGlowColor(lightPage)) else Modifier)
+            .then(if (isInteractive) press.glowModifier(
+                if (glowColor.isSpecified) glowColor else glassGlowColor(lightPage),
+                glowRadius,
+                glowBlurSigma,
+            ) else Modifier)
             .height(contentHeight)
             .padding(horizontal = contentPadding),
         horizontalArrangement = Arrangement.spacedBy(8f.dp, Alignment.CenterHorizontally),

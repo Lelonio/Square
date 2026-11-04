@@ -577,10 +577,8 @@ private fun Header(
             }
 
             // Upstream's blend group: a pressed button swells into its
-            // neighbour and the two melt like drops. The buttons sit 8 dp
-            // apart, and a blend any wider than the gap already pulls their
-            // outlines towards each other at rest.
-            dev.lelonio.square.ui.glass.GlassBlendGroup(backdrop = backdrop, blend = 8.dp) {
+            // neighbour and the two melt like drops.
+            dev.lelonio.square.ui.glass.GlassBlendGroup(backdrop = backdrop) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                     if (onOpenRecap != null) {
                         LiquidButton(
@@ -657,6 +655,7 @@ private fun Header(
             ) {
             Filter.entries.filter { it != Filter.PODCASTS || hasPodcasts }.forEach { entry ->
                 dev.lelonio.square.ui.components.FilterChip(
+                backdrop = backdrop,
                     label = stringResource(entry.label),
                     selected = entry == filter,
                     onClick = { onFilter(entry) },
