@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,7 +19,22 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.lelonio.square.ui.glass.pressable
 import dev.lelonio.square.ui.theme.InkDim
+
+/**
+ * Who is listening, and on which service: the home page's provenance line and
+ * picture, which every main tab's heading carries in the same places.
+ */
+@androidx.compose.runtime.Immutable
+data class TabAccount(
+    val service: String,
+    val name: String,
+    val avatarUrl: String?,
+    val onOpenSettings: () -> Unit,
+)
+
+val LocalTabAccount = androidx.compose.runtime.staticCompositionLocalOf<TabAccount?> { null }
 
 /**
  * The heading of a main tab, laid out as the home page's is, so the title
@@ -32,10 +49,15 @@ fun TabHeader(
     title: String,
     modifier: Modifier = Modifier,
     topPadding: Dp = 0.dp,
-    /** The line over the title; null keeps its room empty. */
+    /** The line over the title; null takes the account's, as the home page's. */
     overline: String? = null,
-    trailing: @Composable RowScope.() -> Unit = {},
+    /** The page's own buttons; null takes the account's picture. */
+    trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
+    val account = LocalTabAccount.current
+    val line = overline ?: account?.let {
+        listOf(it.service, it.name.takeIf { name -> name.isNotBlank() }).filterNotNull().joinToString(" · ")
+    }
     Column(modifier.fillMaxWidth().padding(top = topPadding)) {
         Row(
             Modifier
@@ -45,12 +67,12 @@ fun TabHeader(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    overline ?: " ",
+                    line ?: " ",
                     style = MaterialTheme.typography.labelLarge,
                     color = InkDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.graphicsLayer { alpha = if (overline == null) 0f else 1f },
+                    modifier = Modifier.graphicsLayer { alpha = if (line == null) 0f else 1f },
                 )
                 Box(
                     Modifier
@@ -70,8 +92,23 @@ fun TabHeader(
             Row(
                 Modifier.height(44.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                content = trailing,
-            )
+            ) {
+                if (trailing != null) {
+                    trailing()
+                } else if (account != null) {
+                    // The way into the settings, as on the home page.
+                    ProfilePicture(
+                        url = account.avatarUrl,
+                        name = account.name,
+                        size = 46.dp,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .pressable(account.onOpenSettings, pressedScale = 0.90f),
+                        decodeSize = 46.dp,
+                    )
+                }
+            }
         }
     }
 }

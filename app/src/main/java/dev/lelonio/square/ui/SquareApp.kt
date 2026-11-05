@@ -359,6 +359,33 @@ private val BarHeight = 61.dp
 private val TAB_ROUTES =
     setOf(Routes.HOME, Routes.NEW, Routes.RADIO, Routes.LIBRARY, Routes.SEARCH)
 
+/** The tabs in the order the bar shows them. */
+private val TAB_ORDER = listOf(Routes.HOME, Routes.NEW, Routes.RADIO, Routes.LIBRARY, Routes.SEARCH)
+
+/**
+ * +1 when moving to a tab to the right of the one left, -1 to the left; null
+ * when either end is not a main tab.
+ */
+private fun tabStep(from: String?, to: String?): Int? {
+    val a = TAB_ORDER.indexOf(from)
+    val b = TAB_ORDER.indexOf(to)
+    if (a < 0 || b < 0 || a == b) return null
+    return if (b > a) 1 else -1
+}
+
+/** The tabs' spring: settles without overshoot in about a third of a second. */
+private fun <T> tabSpring() = androidx.compose.animation.core.spring<T>(dampingRatio = 1f, stiffness = 380f)
+
+private fun tabEnter(step: Int): androidx.compose.animation.EnterTransition =
+    androidx.compose.animation.slideInHorizontally(tabSpring()) { it * step / 12 } +
+        androidx.compose.animation.fadeIn(tween(220)) +
+        androidx.compose.animation.scaleIn(tabSpring(), initialScale = 0.97f)
+
+private fun tabExit(step: Int): androidx.compose.animation.ExitTransition =
+    androidx.compose.animation.slideOutHorizontally(tabSpring()) { -it * step / 12 } +
+        androidx.compose.animation.fadeOut(tween(160)) +
+        androidx.compose.animation.scaleOut(tabSpring(), targetScale = 0.97f)
+
 /** How many stations the radio tab offers. Enough to scroll, few enough to read. */
 private const val RADIO_SEEDS = 36
 
@@ -1410,14 +1437,37 @@ fun SquareApp(
             { scrollActivity.scrolling || navFreeze.frozen() }
         }
 
+        // Who is listening, for the headings of the main tabs; see TabHeader.
+        // The settings are reached through the navigation below, wired once
+        // it exists.
+        val openSettings = remember { mutableStateOf<() -> Unit>({}) }
+        val serviceLabel = stringResource(
+            when (backend) {
+                dev.lelonio.square.backend.BackendId.SPOTIFY -> R.string.backend_spotify
+                dev.lelonio.square.backend.BackendId.YOUTUBE_MUSIC -> R.string.backend_youtube
+            },
+        )
+        val ready = state as? MainViewModel.UiState.Ready
+        val tabAccount = remember(serviceLabel, ready?.displayName, ready?.avatarUrl) {
+            dev.lelonio.square.ui.components.TabAccount(
+                service = serviceLabel,
+                name = ready?.displayName.orEmpty(),
+                avatarUrl = ready?.avatarUrl,
+                onOpenSettings = { openSettings.value() },
+            )
+        }
+
         CompositionLocalProvider(
             LocalContentColor provides Ink,
+            dev.lelonio.square.ui.components.LocalTabAccount provides tabAccount,
             dev.lelonio.square.ui.glass.LocalGlassEffectConfig provides glassConfig,
             dev.lelonio.square.ui.glass.LocalGlassFrozen provides pageMoving,
             dev.lelonio.square.ui.components.LocalGlassSheetHost provides sheetHost,
         ) {
             Box(Modifier.fillMaxSize()) {
                 val navController = rememberNavController()
+                // The settings, for the headings of the main tabs; see tabAccount.
+                androidx.compose.runtime.SideEffect { openSettings.value = { navController.navigate(Routes.SETTINGS) } }
                 val openList: (CatalogPlaylist) -> Unit = { playlist ->
                     if (playlist.uri == dev.lelonio.square.data.Catalog.DJ_URI) startDj()
                     else navController.openPlaylist(viewModel, playlist)
@@ -1664,19 +1714,37 @@ fun SquareApp(
                         // arrived over the old. Changing tab is not a push —
                         // neither place is on top of the other — so those
                         // crossfade, which is what the reference does too.
+                        //
+                        // A tab change moves the way the bar does: the new tab
+                        // comes in from the side its tab is on, a little way
+                        // and growing into place, while the old one goes the
+                        // other way. Going back to Home is a pop underneath,
+                        // and moves the same as any other tab change.
                         enterTransition = {
-                            if (targetState.destination.route in TAB_ROUTES ||
-                                targetState.destination.route == Routes.SEARCH
-                            ) {
+                            val step = tabStep(initialState.destination.route, targetState.destination.route)
+                            if (step != null) {
+                                tabEnter(step)
+                            } else if (targetState.destination.route in TAB_ROUTES) {
                                 fadeIn(tween(180))
                             } else {
                                 slideInHorizontally(tween(280)) { it / 5 } + fadeIn(tween(220))
                             }
                         },
-                        exitTransition = { fadeOut(tween(180)) },
-                        popEnterTransition = { fadeIn(tween(200)) },
+                        exitTransition = {
+                            val step = tabStep(initialState.destination.route, targetState.destination.route)
+                            if (step != null) tabExit(step) else fadeOut(tween(180))
+                        },
+                        popEnterTransition = {
+                            val step = tabStep(initialState.destination.route, targetState.destination.route)
+                            if (step != null) tabEnter(step) else fadeIn(tween(200))
+                        },
                         popExitTransition = {
-                            slideOutHorizontally(tween(260)) { it / 5 } + fadeOut(tween(200))
+                            val step = tabStep(initialState.destination.route, targetState.destination.route)
+                            if (step != null) {
+                                tabExit(step)
+                            } else {
+                                slideOutHorizontally(tween(260)) { it / 5 } + fadeOut(tween(200))
+                            }
                         },
                     ) {
                         composable(Routes.HOME) {
