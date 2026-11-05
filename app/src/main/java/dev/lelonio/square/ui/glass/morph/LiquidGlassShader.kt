@@ -596,11 +596,7 @@ half4 main(float2 fragCoord) {
                         + textureBilinear(refractedUV - tangent, physTexSize, invTexSize);
             refractColor = mix(refractColor, (refractColor + side) / 3.0, hairline);
         }
-        // Where the page beyond the edge was not recorded (a backdrop held to
-        // the surface's own bounds) the line takes the page under it.
-        if (hairline > 0.0 && refractColor.a < 0.999) {
-            refractColor += textureBilinear(screenUV, physTexSize, invTexSize) * (1.0 - refractColor.a);
-        }
+
     } else {
         float dispersionStrength = uChromaticAberration * 0.5;
         float2 redOffset = displacement * (1.0 + dispersionStrength);
@@ -612,6 +608,14 @@ half4 main(float2 fragCoord) {
         float4 greenSample = textureBilinear(greenUV, physTexSize, invTexSize);
         float blue = textureBilinear(blueUV, physTexSize, invTexSize).b;
         refractColor = float4(red, greenSample.g, blue, greenSample.a);
+    }
+
+    // Where the page beyond the edge was not recorded (a backdrop held to the
+    // surface's own bounds) the line takes the page under it, whichever way
+    // it was sampled: through the colour splitting too, which left the edge
+    // a black line on any phone with it switched on.
+    if (hairline > 0.0 && refractColor.a < 0.999) {
+        refractColor += textureBilinear(screenUV, physTexSize, invTexSize) * (1.0 - refractColor.a);
     }
 
     if (refractColor.a > 0.001) {
@@ -734,6 +738,15 @@ half4 main(float2 fragCoord) {
         float across = 1.0 - dot(rimN, uLightDirection) * dot(rimN, uLightDirection);
         across = pow(max(across, 0.0), 1.75);
         float shade = uRimConfig.x * 0.314 * mix(uRimConfig.z, 1.0, across);
+        // LOCAL CHANGE: the dark material's line eases off over a bright page.
+        // Upstream keeps it at full strength, as measured on the native
+        // material, and over a light cover it read as a black border round
+        // every control; over a dark page it is as it was. The light material
+        // (no bodyShade) is left alone.
+        if (uBodyShade > 0.0) {
+            float under = clamp(dot(refractColor.rgb, LUMA_WEIGHTS), 0.0, 1.0);
+            shade *= 1.0 - sstep(0.1, 0.6, under);
+        }
         finalColor.rgb = max(finalColor.rgb - float3(shade * hairline), 0.0);
     }
 
