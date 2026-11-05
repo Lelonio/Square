@@ -34,6 +34,21 @@ class SquareApplication : Application(), ImageLoaderFactory {
         super.onCreate()
         // First, so a crash anywhere below is written down; see Report.
         dev.lelonio.square.diagnostics.Report.install(this)
+        // Dev builds only: the glass's switches from adb, e.g.
+        //   adb shell am broadcast -a dev.lelonio.square.GLASS --ez frost false
+        if (BuildConfig.GLASS_FLAGS) {
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                object : android.content.BroadcastReceiver() {
+                    override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+                        if (intent.hasExtra("frost")) glass.setFrost(intent.getBooleanExtra("frost", true))
+                        if (intent.hasExtra("ios27")) glass.setIos27(intent.getBooleanExtra("ios27", true))
+                    }
+                },
+                android.content.IntentFilter("dev.lelonio.square.GLASS"),
+                androidx.core.content.ContextCompat.RECEIVER_EXPORTED,
+            )
+        }
         // Temporary, dev builds only; see WidevineProbe.
         // YouTube's language and country, before anything asks it for a page.
         language.applyToYouTube()

@@ -53,6 +53,7 @@ android {
         versionCode = 62
         versionName = "2.8.0"
         buildConfigField("boolean", "VERBOSE_LOG", "false")
+        buildConfigField("boolean", "GLASS_FLAGS", "false")
 
         // Bungee only for the ABIs that ship; see the splits below.
         externalNativeBuild {
@@ -130,6 +131,9 @@ android {
             // vendored InnerTube module writes through Timber, which is the
             // only view there is of a page that came back in the wrong shape.
             buildConfigField("boolean", "VERBOSE_LOG", "true")
+            // The glass's switches from adb, to measure one against the other
+            // without a build each: see SquareApplication.
+            buildConfigField("boolean", "GLASS_FLAGS", "true")
             // The real key when there is one: a build signed with a different
             // key than the copy already on the phone cannot replace it, and
             // uninstalling first would take the login and the saved queue with
