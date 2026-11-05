@@ -315,6 +315,22 @@ fun LibraryScreen(
                 // the list instead, as the first thing in it.
                 val sideways = androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
                     android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                // The order, a disc at the end of the filter chips, the size of
+                // the header's buttons: upstream's GlassPullDownButton, which
+                // the sort menu grows out of. The order chosen is ticked in it.
+                val sortButton: @Composable (Modifier) -> Unit = { buttonModifier ->
+                    dev.lelonio.square.ui.components.GlassPullDownButton(
+                        icon = PhosphorIcons.Regular.ArrowsDownUp,
+                        semanticLabel = stringResource(R.string.sort) + ": " + stringResource(order.label),
+                        onOpen = { sortOpen = true },
+                        onAnchor = { sortAnchor = it },
+                        backdrop = backdrop,
+                        trigger = sortTrigger,
+                        ink = Ink,
+                        buttonSize = 42.dp,
+                        modifier = buttonModifier,
+                    )
+                }
                 val heading: @Composable () -> Unit = {
                     Header(
                         count = playlists.size,
@@ -330,6 +346,7 @@ fun LibraryScreen(
                         },
                         onOrder = { onOrderChosen(it) },
                         onFilter = { filter = it },
+                        sort = { sortButton(Modifier.padding(end = 20.dp)) },
                         canEdit = canEdit,
                         onCreatePlaylist = onCreatePlaylist,
                         onOpenRecap = if (listeningEvents != null) ({ recapOpen = true }) else null,
@@ -337,26 +354,6 @@ fun LibraryScreen(
                 }
                 if (!sideways) heading()
 
-                // The order, named, just above what it orders and below the
-                // artists, which it does not order: upstream's
-                // GlassPullDownButton with its label, which the sort menu
-                // grows out of.
-                // Just the disc, at the end of the row, the size of the
-                // header's buttons: the order chosen is ticked in its menu.
-                val sortButton: @Composable (Modifier) -> Unit = { buttonModifier ->
-                    Box(buttonModifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                        dev.lelonio.square.ui.components.GlassPullDownButton(
-                            icon = PhosphorIcons.Regular.ArrowsDownUp,
-                            semanticLabel = stringResource(R.string.sort) + ": " + stringResource(order.label),
-                            onOpen = { sortOpen = true },
-                            onAnchor = { sortAnchor = it },
-                            backdrop = backdrop,
-                            trigger = sortTrigger,
-                            ink = Ink,
-                            buttonSize = 42.dp,
-                        )
-                    }
-                }
 
                 val listPadding = PaddingValues(
                     start = 20.dp,
@@ -416,10 +413,6 @@ fun LibraryScreen(
                             }
                         }
 
-                        item(span = { GridItemSpan(maxLineSpan) }, key = "sort") {
-                            sortButton(Modifier.padding(top = 2.dp, bottom = 4.dp))
-                        }
-
                         items(playlists, key = { "pl_${it.uri}" }) { playlist ->
                             GridTile(
                                 playlist,
@@ -474,10 +467,6 @@ fun LibraryScreen(
 
                         if (artists.isNotEmpty() && filter == Filter.ALL) {
                             item(key = "artists") { ArtistShelf(artists, onOpenArtist) }
-                        }
-
-                        item(key = "sort") {
-                            sortButton(Modifier.padding(top = 2.dp, bottom = 4.dp))
                         }
 
                         items(playlists, key = { "pl_${it.uri}" }) { playlist ->
@@ -570,6 +559,8 @@ private fun Header(
     onLayout: (Layout) -> Unit,
     onOrder: (Order) -> Unit,
     onFilter: (Filter) -> Unit,
+    /** The sort, at the end of the chips' row. */
+    sort: @Composable () -> Unit,
     canEdit: Boolean,
     onCreatePlaylist: () -> Unit,
     onOpenRecap: (() -> Unit)? = null,
@@ -683,6 +674,7 @@ private fun Header(
                 )
             }
             }
+            sort()
         }
     }
 }

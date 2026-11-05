@@ -197,7 +197,7 @@ fun HeroBackdrop(
         android.util.Log.i(
             "SquareArt",
             "hero: cover in ${coverAt - started} ms, copies in " +
-                "${android.os.SystemClock.elapsedRealtime() - coverAt} ms, ${artworkUrl.takeLast(50)}",
+                "${android.os.SystemClock.elapsedRealtime() - coverAt} ms, $artworkUrl",
         )
     }
     Box(modifier) {
