@@ -552,7 +552,12 @@ fun PlayerScreen(
     // there it keeps refracting it.
     var clipBottom by remember { mutableFloatStateOf(Float.MAX_VALUE) }
     var lowerTop by remember { mutableFloatStateOf(0f) }
-    val lowerBackdropAlone = if (lowerTop >= clipBottom) groundBackdrop else glassBackdrop
+    // Only for a clip, though: with the cover in its slot the same layer
+    // holds the cover and its extension down to the foot of the screen, which
+    // is what the panes sit on. Reading the ground alone there, the title
+    // refracted the sleeve's red from under a grey screen.
+    val showingClip = canvas != null && canvasReady
+    val lowerBackdropAlone = if (showingClip && lowerTop >= clipBottom) groundBackdrop else glassBackdrop
 
     // The panes over a moving Apple cover read the page's own blurred ground
     // instead of the cover. The cover is in the layer they refract, and every
