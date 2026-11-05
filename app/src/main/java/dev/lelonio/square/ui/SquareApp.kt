@@ -901,6 +901,9 @@ fun SquareApp(
     // so opening one over the player blurred the home page behind it instead of
     // the player it was opened from.
     val overlayBackdrop = rememberLayerBackdrop()
+    // Where the modal sheets are drawn, over that layer; see GlassSheetHost.
+    val sheetHost = remember { dev.lelonio.square.ui.components.GlassSheetHost() }
+    sheetHost.backdrop = overlayBackdrop
 
     // Where the player was left, read before anything is drawn.
     //
@@ -1411,6 +1414,7 @@ fun SquareApp(
             LocalContentColor provides Ink,
             dev.lelonio.square.ui.glass.LocalGlassEffectConfig provides glassConfig,
             dev.lelonio.square.ui.glass.LocalGlassFrozen provides pageMoving,
+            dev.lelonio.square.ui.components.LocalGlassSheetHost provides sheetHost,
         ) {
             Box(Modifier.fillMaxSize()) {
                 val navController = rememberNavController()
@@ -1577,7 +1581,7 @@ fun SquareApp(
                 // backdrop has nothing to refract — it came out flat.
                 var updateOpen by remember { mutableStateOf(false) }
                 val sheetsOpen = trackMenu != null || addToPlaylist.open || playlistMenu != null ||
-                    sharedTrack != null || friendsOpen || updateOpen
+                    sharedTrack != null || friendsOpen || updateOpen || sheetHost.open
                 // Kept on a little past the close, or the layer would stop
                 // being recorded while the sheet is still fading out over it
                 // and the panel would go black on the way down.
@@ -3592,31 +3596,29 @@ fun SquareApp(
                     }
                 }
 
-                unkeeping?.let { target ->
-                    dev.lelonio.square.ui.components.ConfirmDialog(
-                        title = stringResource(R.string.remove_download),
-                        message = stringResource(R.string.remove_download_confirm, target.name),
-                        confirmLabel = stringResource(R.string.remove_download_confirm_action),
-                        onConfirm = {
-                            viewModel.toggleDownload(target)
-                            unkeeping = null
-                        },
-                        onDismiss = { unkeeping = null },
-                    )
-                }
+                dev.lelonio.square.ui.components.ConfirmDialog(
+                    target = unkeeping,
+                    title = { stringResource(R.string.remove_download) },
+                    message = { stringResource(R.string.remove_download_confirm, it.name) },
+                    confirmLabel = stringResource(R.string.remove_download_confirm_action),
+                    onConfirm = { target ->
+                        viewModel.toggleDownload(target)
+                        unkeeping = null
+                    },
+                    onDismiss = { unkeeping = null },
+                )
 
-                deleting?.let { target ->
-                    dev.lelonio.square.ui.components.ConfirmDialog(
-                        title = stringResource(R.string.delete_playlist_title),
-                        message = stringResource(R.string.delete_playlist_message, target.name),
-                        confirmLabel = stringResource(R.string.delete),
-                        onConfirm = {
-                            viewModel.deletePlaylist(target.uri)
-                            deleting = null
-                        },
-                        onDismiss = { deleting = null },
-                    )
-                }
+                dev.lelonio.square.ui.components.ConfirmDialog(
+                    target = deleting,
+                    title = { stringResource(R.string.delete_playlist_title) },
+                    message = { stringResource(R.string.delete_playlist_message, it.name) },
+                    confirmLabel = stringResource(R.string.delete),
+                    onConfirm = { target ->
+                        viewModel.deletePlaylist(target.uri)
+                        deleting = null
+                    },
+                    onDismiss = { deleting = null },
+                )
 
                 val editing by viewModel.editingPlaylist.collectAsStateWithLifecycle()
                 editing?.let { edit ->
@@ -3900,6 +3902,9 @@ fun SquareApp(
                     onSelect = viewModel::addToPlaylist,
                     onDismiss = viewModel::closeAddToPlaylist,
                 )
+
+                // The sheets asked for from anywhere in the app.
+                sheetHost.Sheets()
 
                 // The curtain. Over the whole app, under nothing.
                 androidx.compose.animation.AnimatedVisibility(
