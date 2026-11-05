@@ -102,7 +102,12 @@ class GlassBlendGroupState internal constructor() {
                 val bounds = local.translate(origin)
                 resting += Rect(origin, androidx.compose.ui.geometry.Size(size.width.toFloat(), size.height.toFloat()))
                 if (bounds.width <= 0f || bounds.height <= 0f) continue
-                val radius = (member.cornerRadiusPx ?: Float.MAX_VALUE)
+                // The corner grows with the press, as upstream's stretch
+                // transforms the shape whole: a circle stays a circle, and
+                // the lift drawn inside the member's scaled clip covers it.
+                val restingShort = minOf(size.width, size.height).toFloat()
+                val growth = if (restingShort > 0f) minOf(bounds.width, bounds.height) / restingShort else 1f
+                val radius = ((member.cornerRadiusPx ?: Float.MAX_VALUE) * growth)
                     .coerceAtMost(minOf(bounds.width, bounds.height) / 2f)
                 shapes += LiquidShape(LiquidShapeType.RoundedRectangle, bounds, radius)
                 val press = member.press

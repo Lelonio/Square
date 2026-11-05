@@ -121,6 +121,10 @@ class GlassStore(private val context: Context) {
 
     fun setDepthEffect(value: Boolean) = putBoolean(KEY_DEPTH, value)
 
+    fun setIos27(value: Boolean) = putBoolean(KEY_IOS27, value)
+
+    fun setFrost(value: Boolean) = putBoolean(KEY_FROST, value)
+
     fun setPlayerEnabled(value: Boolean) = putBoolean(KEY_PLAYER, value)
 
     fun setMiniPlayerEnabled(value: Boolean) = putBoolean(KEY_MINI_PLAYER, value)
@@ -223,6 +227,8 @@ class GlassStore(private val context: Context) {
             highlightOpacity = prefs.getFloat(KEY_RIM, base.highlightOpacity),
             chromaticAberration = prefs.getBoolean(KEY_DISPERSION, base.chromaticAberration),
             depthEffect = prefs.getBoolean(KEY_DEPTH, base.depthEffect),
+            ios27 = prefs.getBoolean(KEY_IOS27, base.ios27),
+            frost = prefs.getBoolean(KEY_FROST, base.frost),
             playerEnabled = prefs.getBoolean(KEY_PLAYER, base.playerEnabled),
             miniPlayerEnabled = prefs.getBoolean(KEY_MINI_PLAYER, base.miniPlayerEnabled),
             navBarEnabled = prefs.getBoolean(KEY_NAV_BAR, base.navBarEnabled),
@@ -266,6 +272,8 @@ class GlassStore(private val context: Context) {
         const val KEY_RIM = "rim"
         const val KEY_DISPERSION = "dispersion"
         const val KEY_DEPTH = "depth"
+        const val KEY_IOS27 = "ios27"
+        const val KEY_FROST = "frost"
         const val KEY_PLAYER = "player"
         const val KEY_MINI_PLAYER = "mini_player"
         const val KEY_NAV_BAR = "nav_bar"

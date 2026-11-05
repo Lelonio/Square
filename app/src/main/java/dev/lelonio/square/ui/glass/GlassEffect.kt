@@ -58,6 +58,21 @@ data class GlassEffectConfig(
     val lensHeight: Float = 0.4f,
     /** 0..1, mapped to 0..[LENS_MAX_DP] dp of lens refraction amount. 0.6 = 60%. */
     val lensAmount: Float = 0.6f,
+    /**
+     * The glass is liquid_glass_widgets' iOS 27 material, `ios27Light` or
+     * `ios27Dark` with the page, rather than the sliders below.
+     */
+    val ios27: Boolean = true,
+    /**
+     * iOS 27's frost, its heavy cloud. Off, a plain blur stands in for it:
+     * the frost costs about as much again as the rest of the glass.
+     */
+    val frost: Boolean = true,
+    /**
+     * The dark glass whatever the page: the player's, which sits on every
+     * colour a record can have, and dark reads over all of them.
+     */
+    val darkGlass: Boolean = false,
     val chromaticAberration: Boolean = false,
     val depthEffect: Boolean = false,
     /**
@@ -617,15 +632,28 @@ fun Modifier.liquidGlass(
     // always worn is its glass colour, so a pane still follows what is behind
     // it. Below Android 13 the chain below is the app's own, as before.
     val upstream = upstreamCapable
-    val upstreamSettings = config.toLiquidGlassSettings().copy(
-        blur = blurRadiusDp,
-        glassColor = surfaceTintColor.copy(alpha = config.surfaceOpacity.coerceIn(0f, 1f)),
-    )
+    val lightPage = !config.darkGlass && isLightGlassPage()
+    val upstreamSettings = if (config.ios27) {
+        ios27Settings(lightPage, config)
+    } else {
+        config.toLiquidGlassSettings().copy(
+            blur = blurRadiusDp,
+            glassColor = surfaceTintColor.copy(alpha = config.surfaceOpacity.coerceIn(0f, 1f)),
+        )
+    }
     // Upstream's blur is a sigma in logical pixels; Android's takes a radius.
-    val upstreamBlurPx = dev.lelonio.square.ui.glass.morph.blurRadiusForSigma(
-        with(density) { blurRadiusDp.dp.toPx() },
-    ) * resolutionScale
-    val lightPage = dev.lelonio.square.ui.theme.LocalLightTheme.current
+    // Under a frost a blur the shader can draw itself has no pass of its own.
+    val upstreamBlurPx = if (
+        upstreamSettings.effectiveFrost > 0f &&
+        upstreamSettings.effectiveBlur * density.density <=
+        dev.lelonio.square.ui.glass.morph.LiquidGlassSettings.FROST_GHOST_MAX_SIGMA
+    ) {
+        0f
+    } else {
+        dev.lelonio.square.ui.glass.morph.blurRadiusForSigma(
+            with(density) { upstreamSettings.effectiveBlur.dp.toPx() },
+        ) * resolutionScale
+    }
 
     val effectsBlock: BackdropEffectScope.() -> Unit = remember(
         saturation,
@@ -741,11 +769,23 @@ fun Modifier.liquidGlass(
         }
     }
 
-    val shadowBlock: (() -> Shadow?)? = remember(applyEdgeEffects, upstream, lightPage, group) {
+    val shadowBlock: (() -> Shadow?)? = remember(applyEdgeEffects, upstream, lightPage, group, config.ios27) {
         when {
             !applyEdgeEffects -> null
             // A group's shader draws the shadow round its own shapes.
             upstream && group != null -> null
+            // ios27Light's own shadow; ios27Dark has none.
+            upstream && config.ios27 -> if (lightPage) {
+                {
+                    Shadow(
+                        radius = 10.dp,
+                        offset = androidx.compose.ui.unit.DpOffset(0.dp, 7.dp),
+                        color = Color.Black.copy(alpha = 4f / 255f),
+                    )
+                }
+            } else {
+                null
+            }
             // Upstream's GlassShadow.elevation, on light pages only, as
             // upstream draws it: 0x0F black, an 8 px blur, 2 px down.
             upstream -> if (lightPage) {
@@ -886,3 +926,46 @@ private const val DISPERSION_SHARE = 0.10f
 /** A finger on a glass surface: where, in its own pixels, and how far pressed (0..1). */
 @androidx.compose.runtime.Immutable
 data class GlassTouch(val position: androidx.compose.ui.geometry.Offset, val intensity: Float)
+
+/**
+ * liquid_glass_widgets' iOS 27 material for the page, `ios27Light` or
+ * `ios27Dark`, with the listener's sliders laid over it: each moves its term
+ * of the material by how far it sits from its own default, so at the
+ * defaults this is the preset exactly. Without the frost, a blur of a
+ * quarter of its sigma stands in for it.
+ */
+fun ios27Settings(light: Boolean, config: GlassEffectConfig): dev.lelonio.square.ui.glass.morph.LiquidGlassSettings {
+    val base = if (light) {
+        dev.lelonio.square.ui.glass.morph.LiquidGlassSettings.Ios27Light
+    } else {
+        dev.lelonio.square.ui.glass.morph.LiquidGlassSettings.Ios27Dark
+    }
+    val d = GlassEffectConfig()
+    fun ratio(value: Float, default: Float) = if (default > 0f) (value / default).coerceAtLeast(0f) else 1f
+    val frost = base.frost * ratio(config.blurRadius, d.blurRadius)
+    val film = base.glassColor.alpha * ratio(config.surfaceOpacity, d.surfaceOpacity)
+    val tuned = base.copy(
+        saturation = 1f + (base.saturation - 1f) * ratio(config.vibrancy, d.vibrancy),
+        frost = frost,
+        thickness = (base.thickness * ratio(config.lensHeight, d.lensHeight)).coerceAtLeast(1f),
+        refractiveIndex = 1f + (base.refractiveIndex - 1f) * ratio(config.lensAmount, d.lensAmount),
+        glassColor = tinted(base.glassColor, config).copy(alpha = film.coerceIn(0f, 1f)),
+        rimLight = base.rimLight * ratio(config.highlightOpacity, d.highlightOpacity),
+        chromaticAberration = if (config.chromaticAberration) 4f * DISPERSION_SHARE else 0f,
+        edgeAbsorption = base.edgeAbsorption * (if (config.depthEffect) 2f else 1f),
+    )
+    if (config.frost) return tuned
+    return tuned.copy(frost = 0f, blur = maxOf(tuned.blur, frost * 0.25f))
+}
+
+/**
+ * Whether the glass here sits on a light page. A page with ink of its own
+ * (the player, a playlist over its artwork) says what it is by that ink:
+ * light letters sit on a dark page. Elsewhere, the app's theme.
+ */
+@Composable
+fun isLightGlassPage(): Boolean =
+    !LocalGlassEffectConfig.current.darkGlass &&
+    (dev.lelonio.square.ui.theme.LocalInkOverride.current
+        ?.let { it.luminance() < 0.5f }
+        ?: dev.lelonio.square.ui.theme.LocalLightTheme.current)

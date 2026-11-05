@@ -117,6 +117,19 @@ data class LiquidGlassSettings(
     val lensModel: GlassLensModel = GlassLensModel.Spherical,
     val bodyMode: GlassBodyMode = GlassBodyMode.Adaptive,
     val pinchStrength: Float = 0f,
+    /**
+     * iOS 27's frost: a heavy blur of the backdrop, a Gaussian sigma in
+     * logical pixels, laid over a lightly blurred copy of it at
+     * [frostOpacity]. 0, the default, leaves the glass as it was.
+     */
+    val frost: Float = 0f,
+    val frostOpacity: Float = 1f,
+    /** How far the copy may stray from the cloud, one side only; see upstream. */
+    val frostClamp: Float = 0f,
+    /** How many times a white pixel outweighs a black one in the cloud. */
+    val frostWeight: Float = 1f,
+    /** The same, for the copy of the content showing through the frost. */
+    val blurWeight: Float = 1f,
 ) {
     val effectiveGlassColor: Color get() = glassColor.copy(alpha = glassColor.alpha * visibility)
     val effectiveThickness: Float get() = thickness * visibility
@@ -134,10 +147,65 @@ data class LiquidGlassSettings(
     val effectiveBodyShade: Float get() = bodyShade * visibility
     val effectiveSaturation: Float get() = 1f + (saturation - 1f) * visibility
     val effectiveRefractiveIndex: Float get() = 1f + (refractiveIndex - 1f) * visibility
+    val effectiveFrost: Float get() = frost * visibility
 
     companion object {
         /** Upstream's `GlassDefaults.lightAngle`: 0.75π. */
         const val DEFAULT_LIGHT_ANGLE = (0.75 * 3.14159265358979).toFloat()
+
+        /**
+         * Upstream's `LiquidGlassSettings.ios27Light`: iOS 27's
+         * `glassEffect(.regular)` in the light appearance, as measured
+         * against the native control.
+         */
+        val Ios27Light = LiquidGlassSettings(
+            glassColor = Color(0x87F8F8F8),
+            saturation = 2.1f,
+            blur = 0.6f,
+            blurWeight = 0.8f,
+            frost = 14f,
+            frostOpacity = 0.73f,
+            frostClamp = 0.4f,
+            frostWeight = 2.0f,
+            thickness = 32f,
+            refractiveIndex = 1.24f,
+            lensModel = GlassLensModel.Paraxial,
+            lightAngle = (Math.PI / 2).toFloat(),
+            lightIntensity = 0f,
+            fresnelStrength = 0f,
+            chromaticAberration = 0f,
+            edgeAbsorption = 0.035f,
+            rimShade = 1f,
+            rimLight = 1f,
+        )
+
+        /** Upstream's `LiquidGlassSettings.ios27Dark`; see [Ios27Light]. */
+        val Ios27Dark = LiquidGlassSettings(
+            glassColor = Color(0x1FFFFFFF),
+            saturation = 1.4f,
+            blur = 0.6f,
+            blurWeight = 2.5f,
+            frost = 14f,
+            frostOpacity = 0.85f,
+            frostClamp = -0.45f,
+            frostWeight = 0.5f,
+            thickness = 32f,
+            refractiveIndex = 1.24f,
+            lensModel = GlassLensModel.Paraxial,
+            lightAngle = (-Math.PI / 2).toFloat(),
+            lightIntensity = 0f,
+            fresnelStrength = 0f,
+            chromaticAberration = 0f,
+            edgeAbsorption = 0.035f,
+            rimShade = 1f,
+            rimShadeEnds = 0f,
+            rimLight = 1.15f,
+            bodyShade = 0.28f,
+            shadowElevation = 0f,
+        )
+
+        /** Upstream's frostGhostMaxSigma: the widest blur, in physical px, the shader draws itself under a frost. */
+        const val FROST_GHOST_MAX_SIGMA = 2.4f
 
         /**
          * What upstream's GlassMenu falls back to with no theme above it: the

@@ -422,6 +422,8 @@
     <string name="glass_tint_strength">Tint strength</string>
     <string name="glass_dispersion">Colour splitting</string>
     <string name="glass_dispersion_note">Light breaking into colour at the edges, as thick glass does.</string>
+    <string name="glass_ios27">iOS 27 glass</string>
+    <string name="glass_frost">Frost</string>
     <string name="glass_depth">Depth</string>
     <string name="glass_depth_note">Makes the surface read as a thicker slab. Costs more than it shows on small controls.</string>
     <string name="glass_where_bar">Glass on the bottom bar</string>

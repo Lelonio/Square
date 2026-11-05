@@ -120,7 +120,7 @@ fun LiquidButton(
     press.pressGrowthDp = if (interactionScale == null) GlassPressDefaults.NativePressGrowthDp else null
     press.interactionScale = interactionScale ?: 1f
     press.anchor = anchor
-    val lightPage = dev.lelonio.square.ui.theme.LocalLightTheme.current
+    val lightPage = isLightGlassPage()
 
     // LOCAL CHANGE: the material is the app's, not this file's. Upstream picks
     // its own vibrancy, blur and lens here, which is right for a catalog of one

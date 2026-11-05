@@ -58,6 +58,7 @@ import com.adamglin.phosphoricons.regular.Aperture
 import com.adamglin.phosphoricons.regular.Swatches
 import com.adamglin.phosphoricons.regular.Highlighter
 import com.adamglin.phosphoricons.regular.Sparkle
+import com.adamglin.phosphoricons.regular.Snowflake
 import com.adamglin.phosphoricons.regular.Waves
 import com.adamglin.phosphoricons.regular.MagicWand
 import com.adamglin.phosphoricons.regular.Sun
@@ -154,6 +155,26 @@ fun GlassPage(backdrop: Backdrop, contentPadding: PaddingValues, header: @Compos
                             label = stringResource(entry.label),
                             selected = entry == profile,
                         ) { store.setProfile(entry) }
+                    }
+                    if (liquid) {
+                        SettingsDivider()
+                        GlassSwitch(
+                            label = stringResource(R.string.glass_ios27),
+                            icon = PhosphorIcons.Regular.Sparkle,
+                            checked = config.ios27,
+                            backdrop = backdrop,
+                            onChange = store::setIos27,
+                        )
+                        if (config.ios27) {
+                            SettingsDivider()
+                            GlassSwitch(
+                                label = stringResource(R.string.glass_frost),
+                                icon = PhosphorIcons.Regular.Snowflake,
+                                checked = config.frost,
+                                backdrop = backdrop,
+                                onChange = store::setFrost,
+                            )
+                        }
                     }
                     SettingsDivider()
                     // The saturation of what shows through. Blur averages colour

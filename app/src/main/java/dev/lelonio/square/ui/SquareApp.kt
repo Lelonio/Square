@@ -3065,8 +3065,8 @@ fun SquareApp(
                                   playerFilm.copy(alpha = 0.5f),
                               dev.lelonio.square.ui.glass.LocalGlassEffectConfig provides
                                   dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current.let {
-                                      if (it.surfaceTintColor.isSpecified) it
-                                      else it.copy(surfaceTintColor = playerFilm)
+                                      if (it.surfaceTintColor.isSpecified) it.copy(darkGlass = true)
+                                      else it.copy(surfaceTintColor = playerFilm, darkGlass = true)
                                   },
                           ) {
                             PlayerScreen(

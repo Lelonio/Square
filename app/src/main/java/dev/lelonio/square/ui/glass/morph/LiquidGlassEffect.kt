@@ -10,6 +10,8 @@ import dev.lelonio.square.ui.glass.backdrop.BackdropEffectScope
 import dev.lelonio.square.ui.glass.backdrop.effects.effect
 import dev.lelonio.square.ui.glass.backdrop.internal.RuntimeShaderEffect
 import dev.lelonio.square.ui.glass.backdrop.isRuntimeShaderSupported
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import dev.lelonio.square.ui.glass.backdrop.asAndroidRuntimeShader
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -48,6 +50,10 @@ fun BackdropEffectScope.liquidGlassMaterial(
 
     // The recorded layer's pixels per logical pixel.
     val dpr = density * contentScale
+    // iOS 27's frost: its cloud is blurred from beyond the surface, as
+    // upstream's backdrop blur reads the page around the clip.
+    val frostRadius = if (settings.effectiveFrost > 0f) blurRadiusForSigma(settings.effectiveFrost * dpr) else 0f
+    if (frostRadius > padding) padding = frostRadius
     val scale = dpr / 3f
     // A shape with no corner of its own (a capsule) is upstream's
     // borderRadius 9999, which the shader clamps to half the short side.
@@ -164,6 +170,19 @@ fun BackdropEffectScope.liquidGlassMaterial(
     )
     shader.setFloatUniform("uLensModel", if (settings.lensModel == GlassLensModel.Paraxial) 1f else 0f)
     shader.setFloatUniform("uBodyShade", settings.effectiveBodyShade.coerceIn(0f, 1f))
+    val ghostSigma = settings.effectiveBlur * dpr
+    shader.setFloatUniform(
+        "uFrost",
+        if (frostRadius > 0f) {
+            // Eased in over its first 2 pt, and kept above 0 so it doubles as the switch.
+            maxOf(settings.frostOpacity.coerceIn(0f, 1f) * (settings.effectiveFrost / 2f).coerceIn(0f, 1f), 1e-3f)
+        } else {
+            0f
+        },
+        settings.frostClamp.coerceIn(-1f, 1f),
+        if (ghostSigma > LiquidGlassSettings.FROST_GHOST_MAX_SIGMA) 0f else ghostSigma,
+        settings.blurWeight.coerceAtLeast(0f),
+    )
     shader.setFloatUniform("uNumShapes", (shapes?.size ?: 1).toFloat())
     shader.setFloatUniform("uDpr", dpr)
     shader.setFloatUniform("uBlend", blendPx * contentScale)
@@ -182,7 +201,72 @@ fun BackdropEffectScope.liquidGlassMaterial(
         shader.setFloatUniform("uShadowB", 0f, 0f, 0f, 0f)
     }
 
+    if (frostRadius > 0f && android.os.Build.VERSION.SDK_INT >= 33) {
+        val rows = frostRows(settings, frostRadius, shapes?.size ?: 1, shapeData, blendPx * contentScale) ?: return
+        renderEffect = rows
+    }
     effect(RuntimeShaderEffect(shader, "content"))
+}
+
+/**
+ * Upstream's frost pass, as a RenderEffect graph over the backdrop recorded
+ * so far: the backdrop weighted by its luminance (frostWeight), blurred at
+ * the frost's sigma into the odd rows inside the shapes, and left sharp
+ * everywhere else, for the render pass to make the ghost, the clamp and the
+ * mix from.
+ */
+@androidx.annotation.RequiresApi(33)
+private fun BackdropEffectScope.frostRows(
+    settings: LiquidGlassSettings,
+    radius: Float,
+    shapeCount: Int,
+    shapeData: FloatArray,
+    blend: Float,
+): androidx.compose.ui.graphics.RenderEffect? {
+    val cloudShader = runCatching { obtainRuntimeShader("LiquidGlassRowsCloud", LiquidGlassShader.SOURCE_ROWS) }
+        .onFailure(LiquidGlassRenderer::unavailable).getOrNull() ?: return null
+    val sharpShader = obtainRuntimeShader("LiquidGlassRowsSharp", LiquidGlassShader.SOURCE_ROWS)
+    for ((s, cloud) in listOf(cloudShader to 1f, sharpShader to 0f)) {
+        s.setFloatUniform("uRowsCloud", cloud)
+        s.setFloatUniform("uNumShapes", shapeCount.toFloat())
+        s.setFloatUniform("uShapeData", shapeData)
+        s.setFloatUniform("uBlend", blend)
+    }
+    val input = renderEffect?.asAndroidRenderEffect()
+    val weight = settings.frostWeight
+    val base = if (weight > 1f) 1f / weight else 1f
+    val slope = if (weight > 1f) 1f - 1f / weight else weight - 1f
+    val weighted = if (weight != 1f && weight > 0f) {
+        val filter = android.graphics.ColorMatrixColorFilter(
+            floatArrayOf(
+                1f, 0f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f, 0f,
+                0f, 0f, 1f, 0f, 0f,
+                slope * 0.2126f, slope * 0.7152f, slope * 0.0722f, base, 0f,
+            ),
+        )
+        if (input == null) {
+            android.graphics.RenderEffect.createColorFilterEffect(filter)
+        } else {
+            android.graphics.RenderEffect.createColorFilterEffect(filter, input)
+        }
+    } else {
+        input
+    }
+    val cloud = if (weighted == null) {
+        android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.MIRROR)
+    } else {
+        android.graphics.RenderEffect.createBlurEffect(radius, radius, weighted, android.graphics.Shader.TileMode.MIRROR)
+    }
+    fun rows(shader: dev.lelonio.square.ui.glass.backdrop.RuntimeShader, inner: android.graphics.RenderEffect?): android.graphics.RenderEffect {
+        val e = android.graphics.RenderEffect.createRuntimeShaderEffect(shader.asAndroidRuntimeShader(), "content")
+        return if (inner == null) e else android.graphics.RenderEffect.createChainEffect(e, inner)
+    }
+    return android.graphics.RenderEffect.createBlendModeEffect(
+        rows(sharpShader, weighted),
+        rows(cloudShader, cloud),
+        android.graphics.BlendMode.PLUS,
+    ).asComposeRenderEffect()
 }
 
 /**

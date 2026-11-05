@@ -55,6 +55,26 @@ internal object LiquidGlassShader {
             .replace("float centre = clipSDF(p0 + 1.0);", "float centre = -3.0;")
     }
 
+    /**
+     * Upstream's frost rows: what the frost pass leaves in the backdrop the
+     * render pass reads. [uRowsCloud] 1 keeps the cloud on the odd rows
+     * inside the shapes' outlines; 0 keeps the sharp backdrop everywhere
+     * else. The two are added together, which is upstream's frost pass
+     * clipped to the shapes and to alternate rows.
+     */
+    val SOURCE_ROWS: String by lazy {
+        SOURCE_SINGLE.replace("half4 main(float2 fragCoord) {", "half4 glassMain(float2 fragCoord) {") + """
+uniform float uRowsCloud;
+
+half4 main(float2 fragCoord) {
+    float inside = clamp(0.5 - clipSDF(fragCoord), 0.0, 1.0);
+    float cloud = inside * mod(floor(fragCoord.y), 2.0);
+    float keep = uRowsCloud > 0.5 ? cloud : 1.0 - cloud;
+    return content.eval(fragCoord) * half(keep);
+}
+"""
+    }
+
     const val SOURCE = """
 uniform shader sharpBackdrop;
 uniform shader blurredBackdrop;
@@ -76,6 +96,11 @@ uniform float uTouchIntensity;
 uniform float3 uRimConfig;
 uniform float uLensModel;
 uniform float uBodyShade;
+// x: frostOpacity (0 = no frost), y: frostClamp, z: ghost blur sigma in
+// physical px, w: blurWeight. Under a frost the backdrop this pass reads
+// holds the frost's cloud on odd rows inside the shapes and the sharp
+// backdrop everywhere else: see frostAt() and liquidGlassMaterial().
+uniform float4 uFrost;
 
 uniform float uNumShapes;
 uniform float uDpr;
@@ -330,6 +355,81 @@ float4 textureBilinear(float2 uv, float2 size, float2 invSize) {
     return mix(cTop, cBot, f.y);
 }
 
+// Nearest texel at pixel [p] (whole pixels) as straight RGB.
+float3 texelAt(float2 p) {
+    float4 c = backdropWithClip(p + 0.5, 1.0);
+    return c.a > 0.001 ? c.rgb / c.a : c.rgb;
+}
+
+// The frost at [p], with the cloud read at [q] (kept a few px inside the
+// shape, where the cloud rows are).
+//
+// Ghost: a Gaussian of uFrost.z px over the sharp (even) rows around p,
+// each texel weighted by its luminance (uFrost.w, blurWeight).
+// Cloud: the two odd rows either side of q, which hold the frost's blur.
+// The ghost is held within frostClamp of the cloud on one side, then the
+// cloud is laid over it at frostOpacity:
+//   frost = op * cloud + (1 - op) * max(ghost, cloud - clamp)   (clamp > 0)
+//   frost = op * cloud + (1 - op) * min(ghost, cloud - clamp)   (clamp < 0)
+float3 frostAt(float2 p, float2 q) {
+    float2 qb = floor(q);
+    float ya = qb.y - mod(qb.y + 1.0, 2.0);
+    float t = clamp((q.y - (ya + 0.5)) * 0.5, 0.0, 1.0);
+    float3 cloud = mix(texelAt(float2(qb.x, ya)), texelAt(float2(qb.x, ya + 2.0)), t);
+    if (uFrost.x >= 1.0) {
+        return cloud;
+    }
+
+    float sigma = max(uFrost.z, 0.3);
+    float2 base = floor(p);
+    float cy = base.y - mod(base.y, 2.0);
+    float inv2s2 = 1.0 / (2.0 * sigma * sigma);
+    float slope = uFrost.w - 1.0;
+    float3 acc = float3(0.0);
+    float wsum = 0.0;
+    if (uFrost.z <= 0.3) {
+        // At the floor sigma only the three columns around p on the two
+        // even rows either side carry weight (upstream: 6 taps within
+        // 0.03/255 of all 45).
+        for (int j = 0; j <= 1; j++) {
+            float y = cy + 2.0 * float(j);
+            float dy = y + 0.5 - p.y;
+            float wy = exp(-dy * dy * inv2s2);
+            for (int i = 3; i <= 5; i++) {
+                float x = base.x + float(i - 4);
+                float dx = x + 0.5 - p.x;
+                float3 c = texelAt(float2(x, y));
+                float w = wy * exp(-dx * dx * inv2s2) * (1.0 + slope * dot(c, LUMA_WEIGHTS));
+                acc += w * c;
+                wsum += w;
+            }
+        }
+    } else {
+        // 9 columns at 1 px and 5 even rows at 2 px: +-4 px, which holds the
+        // widest sigma left to this pass (2.4 px).
+        for (int j = -2; j <= 2; j++) {
+            float y = cy + 2.0 * float(j);
+            float dy = y + 0.5 - p.y;
+            float wy = exp(-dy * dy * inv2s2);
+            for (int i = 0; i < 9; i++) {
+                float x = base.x + float(i - 4);
+                float dx = x + 0.5 - p.x;
+                float3 c = texelAt(float2(x, y));
+                float w = wy * exp(-dx * dx * inv2s2) * (1.0 + slope * dot(c, LUMA_WEIGHTS));
+                acc += w * c;
+                wsum += w;
+            }
+        }
+    }
+    float3 ghost = acc / max(wsum, 1e-5);
+
+    float k = uFrost.y;
+    float3 held = k > 0.0 ? max(ghost, cloud - k)
+                : k < 0.0 ? min(ghost, cloud - k)
+                : ghost;
+    return mix(held, cloud, clamp(uFrost.x, 0.0, 1.0));
+}
+
 half4 main(float2 fragCoord) {
     float uRefractiveIndex = uOpticalProps.x;
     float uChromaticAberration = uOpticalProps.y;
@@ -453,6 +553,7 @@ half4 main(float2 fragCoord) {
     float rimDist = uThickness * (1.0 - cosTerm);
     float dprScale = max(0.1, uEdgeConfig.z);
 
+    float2 lensDisplacement = displacement;
     float hairline = 0.0;
     if (uRimConfig.x > 0.001) {
         hairline = 1.0 - sstep(0.75 * dprScale, 2.0 * dprScale, rimDist);
@@ -478,7 +579,11 @@ half4 main(float2 fragCoord) {
     }
 
     float4 refractColor;
-    if (dot(normalXY, normalXY) < 1e-4) {
+    if (uFrost.x > 0.0 && hairline <= 0.0) {
+        // Frosted body: the frost below replaces the colour, and only
+        // whether a backdrop was captured here is kept.
+        refractColor = float4(0.0, 0.0, 0.0, backdropWithClip(screenUV * physTexSize, 1.0).a);
+    } else if (dot(normalXY, normalXY) < 1e-4) {
         refractColor = textureBilinear(screenUV, physTexSize, invTexSize);
     } else if (uChromaticAberration < 0.01) {
         float2 refractedUV = screenUV + displacement * invTexSize;
@@ -490,6 +595,11 @@ half4 main(float2 fragCoord) {
             float4 side = textureBilinear(refractedUV + tangent, physTexSize, invTexSize)
                         + textureBilinear(refractedUV - tangent, physTexSize, invTexSize);
             refractColor = mix(refractColor, (refractColor + side) / 3.0, hairline);
+        }
+        // Where the page beyond the edge was not recorded (a backdrop held to
+        // the surface's own bounds) the line takes the page under it.
+        if (hairline > 0.0 && refractColor.a < 0.999) {
+            refractColor += textureBilinear(screenUV, physTexSize, invTexSize) * (1.0 - refractColor.a);
         }
     } else {
         float dispersionStrength = uChromaticAberration * 0.5;
@@ -506,6 +616,18 @@ half4 main(float2 fragCoord) {
 
     if (refractColor.a > 0.001) {
         refractColor.rgb /= refractColor.a;
+    }
+
+    if (uFrost.x > 0.0) {
+        // The frosted, lensed body; the hairline keeps the sharp sample just
+        // outside the shape that it was given above.
+        float2 fp = fragCoord + lensDisplacement;
+        float2 inward = normalXY / max(length(normalXY), 1e-4)
+                      * max(0.0, 4.0 * dprScale - rimDist);
+        float2 fq = fragCoord - inward;
+        float3 frost = frostAt(fp, fq);
+        refractColor.rgb = mix(frost, refractColor.rgb, hairline);
+        refractColor.a = step(0.001, refractColor.a);
     }
 
     float4 bodyGlassColor = uGlassColor;

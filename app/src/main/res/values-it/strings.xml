@@ -402,6 +402,8 @@
     <string name="glass_tint_strength">Intensità della tinta</string>
     <string name="glass_dispersion">Separazione dei colori</string>
     <string name="glass_dispersion_note">La luce che si scompone in colori ai bordi, come nel vetro spesso.</string>
+    <string name="glass_ios27">Vetro iOS 27</string>
+    <string name="glass_frost">Frost</string>
     <string name="glass_depth">Profondità</string>
     <string name="glass_depth_note">Fa sembrare la superficie una lastra più spessa. Sui controlli piccoli costa più di quanto si veda.</string>
     <string name="glass_where_bar">Vetro nella barra in basso</string>
