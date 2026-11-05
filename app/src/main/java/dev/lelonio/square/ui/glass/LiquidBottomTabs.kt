@@ -126,7 +126,12 @@ fun LiquidBottomTabs(
     val isLightTheme = !isSystemInDarkTheme()
 
     val tabsBackdrop = rememberLayerBackdrop()
-    val surfaceBackdrop = LocalLiquidBottomTabsSurfaceBackdrop.current
+    // The bar's own glass, as the slot shows it at rest: upstream's resting
+    // pill is a 10 % tint laid over the bar, which goes on under it. The
+    // folding bar records its shell for this; a group drawing its own records
+    // it here.
+    val ownSurface = if (drawContainer) rememberLayerBackdrop() else null
+    val surfaceBackdrop = LocalLiquidBottomTabsSurfaceBackdrop.current ?: ownSurface
 
     // LOCAL CHANGE: the width is read where it is used, not in composition.
     //
@@ -238,29 +243,40 @@ fun LiquidBottomTabs(
             )
         }
 
+        // LOCAL CHANGE: the shell is made of the app's glass, like every
+        // other pane. Drawn on its own, under the tabs rather than with them,
+        // and recorded, so the slot can show the glass under it at rest
+        // without a second copy of the icons; see ownSurface.
+        if (ownSurface != null) {
+            Box(
+                Modifier
+                    .graphicsLayer {
+                        translationX = panelOffset
+                    }
+                    .layerBackdrop(ownSurface)
+                    .liquidGlass(
+                        config = LocalGlassEffectConfig.current,
+                        shape = ContinuousCapsule(),
+                        // Follows the setting like everything else; the shell of a
+                        // panel switcher is not a different material from the bar.
+                        blurRadiusDp = LocalGlassEffectConfig.current.blurRadius,
+                        ownBackdrop = backdrop,
+                        layerBlock = {
+                            val progress = dampedDragAnimation.pressProgress
+                            val scale = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                    )
+                    .height(height)
+                    .fillMaxWidth(),
+            )
+        }
         Row(
             Modifier
                 .graphicsLayer {
                     translationX = panelOffset
                 }
-                // LOCAL CHANGE: the shell is made of the app's glass, like every
-                // other pane. The puck below keeps its own recipe on purpose —
-                // what it does is press-driven, a bend and a rim that only exist
-                // while a finger is on it, which is not a material.
-                .then(if (drawContainer) Modifier.liquidGlass(
-                    config = LocalGlassEffectConfig.current,
-                    shape = ContinuousCapsule(),
-                    // Follows the setting like everything else; the shell of a
-                    // panel switcher is not a different material from the bar.
-                    blurRadiusDp = LocalGlassEffectConfig.current.blurRadius,
-                    ownBackdrop = backdrop,
-                    layerBlock = {
-                        val progress = dampedDragAnimation.pressProgress
-                        val scale = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
-                        scaleX = scale
-                        scaleY = scale
-                    },
-                ) else Modifier)
                 // Clip the row's rectangular touch glow, not its selector siblings.
                 .clip(ContinuousCapsule())
                 .then(interactiveHighlight.modifier)
@@ -361,7 +377,10 @@ fun LiquidBottomTabs(
                     // it until progress reaches exactly zero stacked two films
                     // on release, then removed one abruptly: a white flash.
                     with(backdrop) { drawBackdrop(density, coordinates, layerBlock) }
-                    val progress = dampedDragAnimation.pressProgress.coerceIn(0f, 1f)
+                    // The bar's glass, whole: at rest the slot is the bar
+                    // with upstream's tint on it, and pressed the lens bends
+                    // the bar as upstream's does.
+                    val progress = if (surfaceBackdrop != null) 1f else 0f
                     if (surfaceBackdrop != null && progress > 0f) {
                         surfacePaint.alpha = progress
                         val canvas = drawContext.canvas
@@ -395,8 +414,12 @@ fun LiquidBottomTabs(
                         // page itself, and drawn clear it let the page
                         // straight through the bar. The frost lifts as it is
                         // pressed, down to upstream's clear lens.
-                        vibrancy()
-                        blur(8f.dp.toPx() * (1f - dampedDragAnimation.pressProgress.coerceIn(0f, 1f)))
+                        // Over the bar's own glass there is nothing to add at
+                        // rest: upstream's innerBlur is 0.
+                        if (surfaceBackdrop == null) {
+                            vibrancy()
+                            blur(8f.dp.toPx() * (1f - dampedDragAnimation.pressProgress.coerceIn(0f, 1f)))
+                        }
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                             // LOCAL CHANGE: liquid_glass_widgets' indicator
                             // glass, coming in with the press.
@@ -431,7 +454,8 @@ fun LiquidBottomTabs(
                         } else {
                             1f - progress
                         }
-                        drawRect(containerColor, alpha = resting)
+                        // Upstream's resting pill is the tint alone.
+                        if (surfaceBackdrop == null) drawRect(containerColor, alpha = resting)
                         drawRect(
                             indicatorColor ?: if (isLightTheme) Color.Black.copy(0.1f)
                             else Color.White.copy(0.1f),

@@ -443,7 +443,9 @@ fun HomeScreen(
                     visible.forEachIndexed { index, shelf ->
                         item(key = "shelf-heading-$index-${shelf.title}", contentType = "shelf") {
                             Box(Modifier.animateItem(fadeInSpec = tween(320), placementSpec = null, fadeOutSpec = null)) {
-                                Heading(shelf.title)
+                                // The first sits just under the chips, which
+                                // carry the header's margin already.
+                                Heading(shelf.title, top = if (index == 0) 12.dp else 30.dp)
                             }
                         }
                         item(key = "shelf-$index-${shelf.title}", contentType = "shelf") {
@@ -760,7 +762,7 @@ private fun Header(
                     nameHeight = 22.dp,
                     plate = backdrop,
                     modifier = Modifier
-                        .padding(top = 4.dp)
+                        .padding(top = 10.dp)
                         .graphicsLayer {
                             val scale = 1f - 0.22f * collapse()
                             scaleX = scale
@@ -818,7 +820,7 @@ private fun FilterRow(selected: Feed, chips: List<Feed>, backdrop: Backdrop, onS
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(top = 14.dp, bottom = 10.dp),
+        modifier = Modifier.padding(top = 18.dp, bottom = 6.dp),
     ) {
         items(chips, key = { it.name }) { entry ->
             dev.lelonio.square.ui.components.FilterChip(
@@ -1174,8 +1176,8 @@ private fun <T> Carousel(
 }
 
 @Composable
-private fun Heading(text: String, strapline: String? = null) {
-    Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 30.dp)) {
+private fun Heading(text: String, strapline: String? = null, top: androidx.compose.ui.unit.Dp = 30.dp) {
+    Column(Modifier.padding(start = 24.dp, end = 24.dp, top = top)) {
         // Above the title, smaller and quieter, the way the service writes it:
         // "MIX", "START RADIO FROM A SONG", an artist's name. It is most of
         // what tells two shelves with the same title apart.

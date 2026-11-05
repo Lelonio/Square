@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.lelonio.square.ui.glass.AnchorStretchSettings
@@ -32,10 +33,14 @@ fun FilterChip(
     onClick: () -> Unit,
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
+    /** Upstream's leading `icon`, 16 across and 6 from the label. */
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    /** Upstream's `labelColor` and `iconColor`: the page's ink unless given. */
+    ink: Color = Color.Unspecified,
 ) {
     val light = lightPage()
     val base = if (light) Color.Black else Color.White
-    val contentColor = base.copy(alpha = 0.9f)
+    val contentColor = if (ink != Color.Unspecified) ink else base.copy(alpha = 0.9f)
     val selectedColor = base.copy(alpha = if (light) 0.1f else 0.3f)
     val glowUnselected = base.copy(alpha = if (light) 0.05f else 0.2f)
 
@@ -54,14 +59,29 @@ fun FilterChip(
         contentHeight = CHIP_HEIGHT,
         contentPadding = 12.dp,
     ) {
-        Text(
-            label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = contentColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // One child, so the button's own 8 between children does not add to
+        // upstream's 6 between the icon and the label.
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+        ) {
+            if (icon != null) {
+                androidx.compose.material3.Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = androidx.compose.ui.Modifier.size(16.dp),
+                )
+            }
+            Text(
+                label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

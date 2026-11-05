@@ -2840,7 +2840,7 @@ private fun SectionHeader(
         }
         }
 
-        if (mix != null) MixPill(on = mix, onClick = onToggleMix)
+        if (mix != null) MixPill(on = mix, onClick = onToggleMix, backdrop = backdrop)
 
         // A mixed playlist plays in its own order, so there is nothing to sort
         // while the mix is on; see `mixed` where the list is built.
@@ -3216,34 +3216,28 @@ private fun TrackRow(
  * pill with the mixer's sliders and the word, its rim lit while it is on.
  */
 @Composable
-private fun MixPill(on: Boolean, onClick: () -> Unit) {
+private fun MixPill(
+    on: Boolean,
+    onClick: () -> Unit,
+    backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop?,
+) {
     val accent = MaterialTheme.colorScheme.primary
-    val ink = if (on) accent else MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
-        Modifier
+    // Upstream's GlassChip, its icon and label in the accent while it is on,
+    // as the official app lights it; the app's page where nothing is handed.
+    dev.lelonio.square.ui.components.FilterChip(
+        label = stringResource(R.string.mix),
+        selected = on,
+        onClick = onClick,
+        backdrop = backdrop ?: dev.lelonio.square.ui.glass.LocalAppBackdrop.current,
+        icon = PhosphorIcons.Regular.SlidersHorizontal,
+        ink = if (on) accent else Color.Unspecified,
+        modifier = Modifier
             .padding(end = 4.dp)
-            .clip(ContinuousCapsule)
-            .background(if (on) accent.copy(alpha = 0.16f) else Color.Transparent)
-            .border(1.dp, ink.copy(alpha = if (on) 0.9f else 0.4f), ContinuousCapsule)
-            .pressable(onClick, shape = ContinuousCapsule, pressedScale = 0.95f)
-            .semantics { role = androidx.compose.ui.semantics.Role.Switch; stateDescription = if (on) "on" else "off" }
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(
-            PhosphorIcons.Regular.SlidersHorizontal,
-            contentDescription = null,
-            tint = ink,
-            modifier = Modifier.size(15.dp),
-        )
-        Text(
-            stringResource(R.string.mix),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = ink,
-        )
-    }
+            .semantics {
+                role = androidx.compose.ui.semantics.Role.Switch
+                stateDescription = if (on) "on" else "off"
+            },
+    )
 }
 
 /**

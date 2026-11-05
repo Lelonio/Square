@@ -298,7 +298,15 @@ object AppleCatalog {
         remembered(key)?.let { row ->
             // Filed before the editorial pictures were asked for as WebP.
             val kept = runCatching { json.decodeFromString<Album>(row) }.getOrNull()
-                ?.let { it.copy(heroUrl = it.heroUrl?.let(::asWebp), coverUrl = it.coverUrl?.let(::asWebp)) }
+                ?.let {
+                    // And without the generated portrait; see tall().
+                    val generated = it.heroUrl?.contains(SUPER_HERO_CROP) == true
+                    it.copy(
+                        heroUrl = if (generated) null else it.heroUrl?.let(::asWebp),
+                        heroAspect = if (generated) null else it.heroAspect,
+                        coverUrl = it.coverUrl?.let(::asWebp),
+                    )
+                }
             synchronized(cache) { cache[key] = kept }
             return kept
         }
@@ -678,11 +686,18 @@ object AppleCatalog {
      * ones, only the second exists. Reading just the first was why a record
      * could open as its sleeve while an edition of it opened as a photograph.
      */
+    /**
+     * A record's editorial portrait.
+     *
+     * Not `superHeroTall`, which is not a picture of its own: it is the square
+     * sleeve set at the top and carried down on a dark floor, which the player
+     * already does with the sleeve itself (see HeroBackdrop's extension). And
+     * Apple makes it when it is asked for, at every size: measured on sixty
+     * records never asked for before, the first byte came after 2.3 to 3.7 s
+     * at the size the player wants, where the sleeve arrives in 0.15.
+     */
     private fun kotlinx.serialization.json.JsonObject.tall(): String? =
-        get("editorialArtwork")?.jsonObject?.let { art ->
-            art["staticDetailTall"]?.jsonObject?.template()
-                ?: art["superHeroTall"]?.jsonObject?.template()
-        }
+        get("editorialArtwork")?.jsonObject?.get("staticDetailTall")?.jsonObject?.template()
 
     private suspend fun search(
         term: String,
@@ -892,6 +907,9 @@ object AppleCatalog {
 
     /** How long a remembered answer is still the right one. */
     private const val CACHE_MS = 30L * 24 * 60 * 60 * 1000
+
+    /** The crop code of the portrait Apple generates out of a sleeve; see tall(). */
+    private const val SUPER_HERO_CROP = "SHT.AMTPPS01"
 
     private const val KEY_TOKEN = "token"
     private const val KEY_TOKEN_UNTIL = "token-until"
