@@ -48,6 +48,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -373,6 +375,7 @@ fun LibraryScreen(
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                         modifier = Modifier
                             .fillMaxSize()
+                            .topFade { scrolledAway(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) }
                             .nestedScroll(listBackdropFreeze.connection)
                             .layerBackdrop(
                                 listBackdrop,
@@ -433,6 +436,7 @@ fun LibraryScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         modifier = Modifier
                             .fillMaxSize()
+                            .topFade { scrolledAway(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
                             .nestedScroll(listBackdropFreeze.connection)
                             .layerBackdrop(
                                 listBackdrop,
@@ -862,3 +866,35 @@ private fun Modifier.bleed(horizontal: androidx.compose.ui.unit.Dp): Modifier =
         )
         layout(constraints.maxWidth, placeable.height) { placeable.place(-extra, 0) }
     }
+
+/**
+ * How far the list has gone under the header, 0 at the top and 1 once it has
+ * scrolled [FADE_DISTANCE_PX]: the home page's measure.
+ */
+private fun scrolledAway(index: Int, offset: Int): Float =
+    if (index > 0) 1f else (offset / FADE_DISTANCE_PX).coerceIn(0f, 1f)
+
+/**
+ * The list fading out as it passes under the chips, as the home page's does:
+ * a mask over its top [FADE_FRACTION], coming in as it scrolls. Read while
+ * drawing, so the scroll does not recompose the page.
+ */
+private fun Modifier.topFade(amount: () -> Float): Modifier = this
+    .graphicsLayer(compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen)
+    .drawWithContent {
+        drawContent()
+        val a = amount()
+        if (a > 0.01f) {
+            drawRect(
+                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    (FADE_FRACTION * a) to Color.Black,
+                ),
+                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+            )
+        }
+    }
+
+/** The home page's: the fade's depth as a share of the list, and how soon it comes in. */
+private const val FADE_FRACTION = 0.045f
+private const val FADE_DISTANCE_PX = 140f
