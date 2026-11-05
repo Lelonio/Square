@@ -122,16 +122,15 @@ fun NewScreen(
 
     LazyColumn(
         contentPadding = PaddingValues(
-            top = contentPadding.calculateTopPadding() + 8.dp,
+            top = contentPadding.calculateTopPadding(),
             bottom = contentPadding.calculateBottomPadding(),
         ),
     ) {
+        // Where every main tab's heading is; see TabHeader.
         item(contentType = "title") {
-            Text(
-                stringResource(R.string.tab_new),
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 14.dp),
+            dev.lelonio.square.ui.components.TabHeader(
+                title = stringResource(R.string.tab_new),
+                modifier = Modifier.padding(bottom = 14.dp),
             )
         }
 

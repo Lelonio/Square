@@ -11,6 +11,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -576,22 +578,36 @@ private fun Header(
             .fillMaxWidth()
             .padding(top = topPadding),
     ) {
+        // Laid out as every main tab's heading is (see TabHeader): the title
+        // in the wordmark's letters where the wordmark stands on the home
+        // page, the count over it where the account is there.
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(start = 24.dp, end = 20.dp, top = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(start = 24.dp, end = 20.dp, top = 18.dp),
+            verticalAlignment = Alignment.Bottom,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.library), style = MaterialTheme.typography.displayLarge)
                 // Counting whatever the chips are showing, and saying so: the
                 // same number labelled "playlists" under the albums chip is a
                 // line that contradicts the screen it sits on.
                 Text(
                     stringResource(filter.count, count),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelLarge,
                     color = InkDim,
                 )
+                Box(
+                    Modifier
+                        .padding(top = 10.dp)
+                        .height(44.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    dev.lelonio.square.ui.components.SquareTitle(
+                        stringResource(R.string.library),
+                        height = dev.lelonio.square.ui.components.TITLE_HEIGHT,
+                        modifier = Modifier.offset(y = -dev.lelonio.square.ui.components.TITLE_HEIGHT * 0.15f),
+                    )
+                }
             }
 
             // Upstream's blend group: a pressed button swells into its

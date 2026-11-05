@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -102,18 +103,29 @@ fun RadioScreen(
         contentPadding = PaddingValues(
             start = 16.dp,
             end = 16.dp,
-            top = contentPadding.calculateTopPadding() + 8.dp,
+            top = contentPadding.calculateTopPadding(),
             bottom = contentPadding.calculateBottomPadding(),
         ),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
+        // Where every main tab's heading is (see TabHeader), out of the
+        // grid's own 16 to the page's edge.
         item(key = "tab_radio_title", span = { GridItemSpan(maxLineSpan) }) {
-            Text(
-                stringResource(R.string.tab_radio),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 4.dp, bottom = 6.dp),
+            dev.lelonio.square.ui.components.TabHeader(
+                title = stringResource(R.string.tab_radio),
+                modifier = Modifier
+                    .layout { measurable, constraints ->
+                        val bleed = 16.dp.roundToPx()
+                        val placeable = measurable.measure(
+                            constraints.copy(
+                                minWidth = constraints.maxWidth + 2 * bleed,
+                                maxWidth = constraints.maxWidth + 2 * bleed,
+                            ),
+                        )
+                        layout(constraints.maxWidth, placeable.height) { placeable.place(-bleed, 0) }
+                    }
+                    .padding(bottom = 6.dp),
             )
         }
 

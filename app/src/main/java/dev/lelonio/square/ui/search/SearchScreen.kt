@@ -150,6 +150,14 @@ fun SearchScreen(
         // it. A page that answers a query by drawing a second box asks which of
         // the two is listening.
 
+        // Its heading where every main tab's is; see TabHeader.
+        item(contentType = "title") {
+            dev.lelonio.square.ui.components.TabHeader(
+                title = stringResource(R.string.search),
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+
         if (!state.results.isEmpty && !state.loading) {
             item(contentType = "chips") {
                 // Videos only where the source has them: Spotify's search does not.
