@@ -576,24 +576,14 @@ private fun PresetRow(
 
 @Composable
 private fun SavePresetDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.save_preset)) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                singleLine = true,
-                label = { Text(stringResource(R.string.name)) },
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(name) }) { Text(stringResource(R.string.save)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
+    // Upstream's GlassSheet with a field, as every question for a name is.
+    dev.lelonio.square.ui.components.NameDialog(
+        title = stringResource(R.string.save_preset),
+        initial = "",
+        confirmLabel = stringResource(R.string.save),
+        placeholder = stringResource(R.string.name),
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
     )
 }
 

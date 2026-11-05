@@ -65,62 +65,13 @@ fun AddToPlaylistSheet(
     onSelect: (CatalogPlaylist) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize()) {
-    // The page out of focus, like the track sheet: this covers the player as
-    // often as it covers a list, and a scrim alone left both perfectly readable
-    // underneath.
-    AnimatedVisibility(
+    // Upstream's GlassSheet, over the whole app; see GlassSheetHost.
+    dev.lelonio.square.ui.components.GlassSheet(
         visible = state.open,
-        enter = fadeIn(tween(200)),
-        exit = fadeOut(tween(180)),
-        modifier = Modifier.fillMaxSize(),
+        onDismiss = onDismiss,
+        scrollable = false,
     ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { RectangleShape },
-                    effects = { blur(28f.dp.toPx()) },
-                    onDrawSurface = { drawRect(Color.Black.copy(alpha = 0.42f)) },
-                )
-                .clickable(interactionSource = null, indication = null, onClick = onDismiss),
-        )
-    }
-
-    AnimatedVisibility(
-        visible = state.open,
-        // Up from the bottom edge, since that is where it sits.
-        enter = slideInVertically(tween(240)) { it / 6 } + fadeIn(tween(180)),
-        exit = slideOutVertically(tween(180)) { it / 6 } + fadeOut(tween(150)),
-        modifier = Modifier.align(Alignment.BottomCenter),
-    ) {
-        // Back closes it, as it closes the track menu (#132).
-        androidx.activity.compose.BackHandler(onBack = onDismiss)
-        GlassSurface(
-            backdrop = backdrop,
-            shape = RoundedCornerShape(28.dp),
-            surfaceColor = GlassFilm,
-            // Heavier than the page behind it: the panel samples the unblurred
-            // layer, so at the usual radius the rows underneath came through
-            // sharper inside the sheet than outside it.
-            blurScale = 23.0f,
-            // Never clear, whatever the frost is set to; see TrackSheet.
-            minBlurDp = 24f,
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(28.dp))
-                // Swallows taps so one inside the sheet does not dismiss it.
-                .clickable(interactionSource = null, indication = null) {},
-        ) {
-            Column(Modifier.padding(vertical = 18.dp)) {
-                Text(
-                    stringResource(R.string.add_to_playlist),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = GlassInk,
-                    modifier = Modifier.padding(start = 22.dp, end = 22.dp),
-                )
+                dev.lelonio.square.ui.components.SheetTitle(stringResource(R.string.add_to_playlist))
                 Text(
                     // Says what is being added: the sheet can outlive the track
                     // that opened it, since playback carries on underneath.
@@ -129,10 +80,10 @@ fun AddToPlaylistSheet(
                     color = GlassInkDim,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    // Room under the title: at a large text size the two
-                    // lines met, and the song read as part of the heading
-                    // (#148).
-                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 14.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 22.dp, end = 22.dp, top = 4.dp, bottom = 14.dp),
                 )
 
                 if (state.error != null) {
@@ -187,9 +138,6 @@ fun AddToPlaylistSheet(
                         }
                     }
                 }
-            }
-        }
-    }
     }
 }
 

@@ -1,16 +1,9 @@
 package dev.lelonio.square.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,26 +11,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.unit.sp
 import dev.lelonio.square.R
-import dev.lelonio.square.ui.theme.Ink
-import dev.lelonio.square.ui.theme.InkDim
+import dev.lelonio.square.ui.glass.LiquidButton
+import dev.lelonio.square.ui.glass.LocalAppBackdrop
 
 /**
- * Asks for one line of text — a playlist's name, on the way in or on the way to
- * being changed.
- *
- * Its own dialog rather than a sheet: this is a question with an answer, and
- * the keyboard has to come up over whatever is behind it. Built out of the
- * app's own surfaces for the same reason every other control is.
+ * Asks for one line of text — a playlist's name, on the way in or on the way
+ * to being changed: upstream's GlassSheet, with the field focused and the
+ * keyboard under it.
  */
 @Composable
 fun NameDialog(
@@ -46,76 +34,89 @@ fun NameDialog(
     confirmLabel: String,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
+    placeholder: String = stringResource(R.string.playlist_name),
 ) {
     var text by remember(initial) { mutableStateOf(initial) }
-    val shape = RoundedCornerShape(24.dp)
-
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .menuSkin(shape)
-                .padding(22.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = Ink)
-
-            Box(
-                Modifier
-                    .padding(top = 18.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(FieldFill)
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-            ) {
-                if (text.isEmpty()) {
-                    Text(
-                        stringResource(R.string.playlist_name),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = InkDim,
-                    )
-                }
-                BasicTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = Ink),
-                    cursorBrush = SolidColor(Ink),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            Row(
-                Modifier
-                    .padding(top = 18.dp)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            ) {
-                DialogAction(stringResource(R.string.cancel), InkDim, onDismiss)
-                // Nothing to create or save while the field is empty, and a
-                // playlist called nothing is not something either service will
-                // take anyway.
-                DialogAction(
-                    confirmLabel,
-                    if (text.isBlank()) InkDim else Ink,
-                ) { if (text.isNotBlank()) onConfirm(text) }
-            }
-        }
+    GlassSheet(
+        visible = true,
+        onDismiss = onDismiss,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp),
+        scrollable = false,
+    ) {
+        SheetTitle(title)
+        GlassSearchBar(
+            query = text,
+            onQuery = { text = it },
+            placeholder = placeholder,
+            icon = null,
+            imeAction = ImeAction.Done,
+            autoFocus = true,
+            onSubmit = { if (it.isNotBlank()) onConfirm(it) },
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        // Nothing to create or save while the field is empty, and a playlist
+        // called nothing is not something either service will take anyway.
+        SheetButtons(
+            cancel = onDismiss,
+            confirmLabel = confirmLabel,
+            confirmEnabled = text.isNotBlank(),
+            confirm = { if (text.isNotBlank()) onConfirm(text) },
+        )
     }
 }
 
+/** A sheet's heading, centred at 17 as a sheet's navigation title is. */
 @Composable
-private fun DialogAction(label: String, color: Color, onClick: () -> Unit) {
+internal fun SheetTitle(title: String) {
     Text(
-        label,
-        style = MaterialTheme.typography.bodyLarge,
-        color = color,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+        title,
+        fontSize = 17.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = if (dev.lelonio.square.ui.theme.LocalLightTheme.current) Color.Black else Color.White,
+        style = MaterialTheme.typography.titleMedium,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 
-
-private val FieldFill = Color.White.copy(alpha = 0.08f)
+/** Cancel and the answer, two glass capsules side by side, the answer lit. */
+@Composable
+internal fun SheetButtons(
+    cancel: () -> Unit,
+    confirmLabel: String,
+    confirmEnabled: Boolean = true,
+    destructive: Boolean = false,
+    cancelLabel: String = stringResource(R.string.cancel),
+    confirm: () -> Unit,
+) {
+    val light = dev.lelonio.square.ui.theme.LocalLightTheme.current
+    val ink = if (light) Color.Black else Color.White
+    val accent = if (destructive) {
+        if (light) Color(0xFFFF3B30) else Color(0xFFFF453A)
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        LiquidButton(
+            onClick = cancel,
+            backdrop = LocalGlassSheetHost.current?.backdrop ?: LocalAppBackdrop.current,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(cancelLabel, color = ink, fontSize = 17.sp)
+        }
+        LiquidButton(
+            onClick = confirm,
+            backdrop = LocalGlassSheetHost.current?.backdrop ?: LocalAppBackdrop.current,
+            enabled = confirmEnabled,
+            tint = accent,
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(confirmLabel, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}

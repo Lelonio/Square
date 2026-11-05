@@ -100,6 +100,9 @@ fun GlassSearchBar(
     autoFocus: Boolean = false,
     /** How present the contents are, read while drawing. */
     contentAlpha: () -> Float = { 1f },
+    /** The magnifier; null for a plain field, upstream's GlassTextField. */
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = PhosphorIcons.Regular.MagnifyingGlass,
+    imeAction: ImeAction = ImeAction.Search,
 ) {
     val light = isLightGlassPage()
     val surfaceBackdrop = backdrop ?: LocalAppBackdrop.current
@@ -164,16 +167,18 @@ fun GlassSearchBar(
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                PhosphorIcons.Regular.MagnifyingGlass,
-                contentDescription = null,
-                tint = iconColor,
-                modifier = Modifier.size(20.dp),
-            )
+            if (icon != null) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
             Box(
                 Modifier
                     .weight(1f)
-                    .padding(start = 8.dp),
+                    .padding(start = if (icon != null) 8.dp else 0.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 val style = TextStyle(fontSize = 16.sp, lineHeight = 1.2.em, color = textColor)
@@ -194,8 +199,11 @@ fun GlassSearchBar(
                     singleLine = true,
                     textStyle = style,
                     cursorBrush = SolidColor(textColor),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSubmit?.invoke(field.text) }),
+                    keyboardOptions = KeyboardOptions(imeAction = imeAction),
+                    keyboardActions = KeyboardActions(
+                        onSearch = { onSubmit?.invoke(field.text) },
+                        onDone = { onSubmit?.invoke(field.text) },
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focus)

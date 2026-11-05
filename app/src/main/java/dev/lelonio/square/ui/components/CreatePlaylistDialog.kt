@@ -94,20 +94,20 @@ fun CreatePlaylistDialog(
     val shape = RoundedCornerShape(24.dp)
     val create = { if (name.isNotBlank() && !busy) onCreate(name, description, public, cover) }
 
-    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .menuSkin(shape)
-                .padding(22.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = Ink)
+    // Upstream's GlassSheet, the keyboard under it.
+    GlassSheet(
+        visible = true,
+        onDismiss = { if (!busy) onDismiss() },
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp),
+        enableDrag = !busy,
+    ) {
+            SheetTitle(title)
 
             if (loading) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 36.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(strokeWidth = 2.dp, color = Ink, modifier = Modifier.size(22.dp))
                 }
-                return@Column
+                return@GlassSheet
             }
 
             Row(
@@ -206,7 +206,12 @@ fun CreatePlaylistDialog(
                             color = InkDim,
                         )
                     }
-                    Switch(on = public)
+                    dev.lelonio.square.ui.glass.LiquidToggle(
+                        selected = { public },
+                        onSelect = { if (!busy) public = it },
+                        backdrop = LocalGlassSheetHost.current?.backdrop
+                            ?: dev.lelonio.square.ui.glass.LocalAppBackdrop.current,
+                    )
                 }
             }
 
@@ -219,31 +224,20 @@ fun CreatePlaylistDialog(
                 )
             }
 
-            Row(
-                Modifier
-                    .padding(top = 18.dp)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Action(stringResource(R.string.cancel), if (busy) InkDim.copy(alpha = 0.5f) else InkDim) {
-                    if (!busy) onDismiss()
+            if (busy) {
+                Box(Modifier.fillMaxWidth().padding(top = 26.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(strokeWidth = 2.dp, color = Ink, modifier = Modifier.size(22.dp))
                 }
-                if (busy) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        color = Ink,
-                        modifier = Modifier
-                            .padding(horizontal = 26.dp)
-                            .size(18.dp),
-                    )
-                } else {
-                    // Nothing to create while the name is empty: neither
-                    // service takes a playlist called nothing.
-                    Action(confirmLabel, if (name.isBlank()) InkDim else Ink, create)
-                }
+            } else {
+                // Nothing to create while the name is empty: neither service
+                // takes a playlist called nothing.
+                SheetButtons(
+                    cancel = onDismiss,
+                    confirmLabel = confirmLabel,
+                    confirmEnabled = name.isNotBlank(),
+                    confirm = create,
+                )
             }
-        }
     }
 
     // The keyboard up at once for a new playlist: the name is what that sheet

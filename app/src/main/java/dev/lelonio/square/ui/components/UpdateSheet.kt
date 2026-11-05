@@ -77,70 +77,24 @@ fun UpdateSheet(
     backdrop: Backdrop,
     visible: Boolean,
 ) {
-    AnimatedVisibility(
+    // Upstream's GlassSheet. Not to be put away by a tap beside it or a drag
+    // while a download is running, since there would be nothing to come back
+    // to.
+    GlassSheet(
         visible = visible,
-        enter = fadeIn(tween(220)),
-        exit = fadeOut(tween(180)),
+        onDismiss = { if (!downloading) onDismiss() },
+        enableDrag = !downloading,
+        scrollable = false,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp),
     ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                // The page goes back rather than away: turned down, and left
-                // where it was. Blurring it too was tried and read as the app
-                // going out of focus rather than as one panel coming forward —
-                // the sharp panel over the dark page says it on its own.
-                // Behind what this holds, not over it: drawn after the
-                // content it would dim the panel too, which is the one thing on
-                // the screen that has to stay lit.
-                .background(DIM)
-                // Swallows what lands outside the panel. Dismissing by tapping
-                // there is deliberately not offered while a download is
-                // running, since there would be nothing to come back to.
-                .pressable(onClick = { if (!downloading) onDismiss() }),
-            contentAlignment = Alignment.Center,
-        ) {
-            AnimatedVisibility(
-                visible = visible,
-                enter = scaleIn(tween(240), initialScale = 0.92f) + fadeIn(tween(240)),
-                exit = scaleOut(tween(160), targetScale = 0.94f) + fadeOut(tween(160)),
-            ) {
-                Column(
-                    Modifier
-                        .padding(horizontal = 28.dp)
-                        .fillMaxWidth()
-                        .liquidGlass(
-                            // Every parameter of the material comes from here:
-                            // the frost, the edge, the film, the colour. A
-                            // dialog is not a special surface, and one with
-                            // glass of its own would be the only thing in the
-                            // app that ignores what the user set.
-                            config = LocalGlassEffectConfig.current,
-                            shape = PANEL,
-                            ownBackdrop = backdrop,
-                            // Not the material: what makes the panel the lit
-                            // thing on a screen that has gone dark. It samples
-                            // the page as it was — sharp, and never dimmed —
-                            // so it already comes through brighter than its
-                            // own surroundings, and this lifts it the rest of
-                            // the way.
-                            onDrawTint = { drawRect(LIFT) },
-                        )
-                        // Nothing behind the panel takes a tap through it.
-                        .pressable(onClick = {}),
-                ) {
-                    Text(
-                        stringResource(R.string.update_available, version),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = GlassInk,
-                        modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 24.dp),
-                    )
+                    SheetTitle(stringResource(R.string.update_available, version))
                     size?.let {
                         Text(
                             it,
                             style = MaterialTheme.typography.bodySmall,
                             color = GlassInkDim,
-                            modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 4.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         )
                     }
 
@@ -155,7 +109,7 @@ fun UpdateSheet(
                             style = MaterialTheme.typography.bodyMedium,
                             color = GlassInkDim,
                             modifier = Modifier
-                                .padding(start = 24.dp, end = 24.dp, top = 14.dp)
+                                .padding(top = 14.dp)
                                 // Capped and scrolled: a release with a long
                                 // list of changes should not push its own
                                 // buttons off the screen.
@@ -170,7 +124,7 @@ fun UpdateSheet(
                             color = MaterialTheme.colorScheme.primary,
                             trackColor = GlassInk.copy(alpha = 0.18f),
                             modifier = Modifier
-                                .padding(start = 24.dp, end = 24.dp, top = 24.dp)
+                                .padding(top = 24.dp)
                                 .fillMaxWidth(),
                         )
                         Text(
@@ -179,40 +133,16 @@ fun UpdateSheet(
                                 ?: stringResource(R.string.update_downloading),
                             style = MaterialTheme.typography.bodySmall,
                             color = GlassInkDim,
-                            modifier = Modifier.padding(
-                                start = 24.dp,
-                                end = 24.dp,
-                                top = 10.dp,
-                                bottom = 24.dp,
-                            ),
+                            modifier = Modifier.padding(top = 10.dp),
                         )
                     } else {
-                        Row(
-                            Modifier
-                                .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 24.dp)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            DialogAction(
-                                label = stringResource(R.string.later),
-                                container = FILM.copy(alpha = 0.2f),
-                                content = GlassInk,
-                                onClick = onDismiss,
-                                modifier = Modifier.weight(1f),
-                            )
-                            DialogAction(
-                                label = stringResource(R.string.update_now),
-                                container = MaterialTheme.colorScheme.primary,
-                                content = Color.White,
-                                onClick = onInstall,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
+                        SheetButtons(
+                            cancel = onDismiss,
+                            cancelLabel = stringResource(R.string.later),
+                            confirmLabel = stringResource(R.string.update_now),
+                            confirm = onInstall,
+                        )
                     }
-                }
-            }
-        }
     }
 }
 
