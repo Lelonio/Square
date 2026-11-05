@@ -15,6 +15,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -84,6 +86,9 @@ fun LiquidToggle(
     val dragWidth = with(density) { 20f.dp.toPx() }
     val animationScope = rememberCoroutineScope()
     var didDrag by remember { mutableStateOf(false) }
+    // Whether the finger now down has moved the thumb: a drag is not a tap
+    // as well. Set by the thumb, read by the tap on the whole switch.
+    var movedThisPress by remember { mutableStateOf(false) }
     var fraction by remember { mutableFloatStateOf(if (selected()) 1f else 0f) }
     val dampedDragAnimation = remember(animationScope) {
         DampedDragAnimation(
@@ -99,15 +104,14 @@ fun LiquidToggle(
                     fraction = if (targetValue >= 0.5f) 1f else 0f
                     onSelect(fraction == 1f)
                     didDrag = false
-                } else {
-                    fraction = if (selected()) 0f else 1f
-                    onSelect(fraction == 1f)
                 }
+                // A tap is the whole switch's; see below.
             },
             onDrag = { _, dragAmount ->
                 if (!didDrag) {
                     didDrag = dragAmount.x != 0f
                 }
+                if (dragAmount.x != 0f) movedThisPress = true
                 val delta = dragAmount.x / dragWidth
                 fraction =
                     if (isLtr) (fraction + delta).fastCoerceIn(0f, 1f)
@@ -136,7 +140,20 @@ fun LiquidToggle(
     val dispersion = LocalGlassEffectConfig.current.chromaticAberration
 
     Box(
-        modifier,
+        modifier
+            // Upstream's GlassSwitch flips wherever it is tapped, track or
+            // thumb, and only once: the thumb's own gesture leaves taps to this.
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = { movedThisPress = false },
+                    onTap = {
+                        if (!movedThisPress) {
+                            fraction = if (selected()) 0f else 1f
+                            onSelect(fraction == 1f)
+                        }
+                    },
+                )
+            },
         contentAlignment = Alignment.CenterStart
     ) {
         Box(

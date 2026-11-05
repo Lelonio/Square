@@ -193,8 +193,6 @@ fun CreatePlaylistDialog(
                     Modifier
                         .padding(top = 14.dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable(enabled = !busy) { public = !public }
                         .padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
