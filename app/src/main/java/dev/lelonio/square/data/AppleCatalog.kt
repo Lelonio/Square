@@ -813,7 +813,13 @@ object AppleCatalog {
             }
             .build()
 
+        val started = android.os.SystemClock.elapsedRealtime()
         client.newCall(request).execute().use { response ->
+            android.util.Log.i(
+                TAG,
+                "timing: ${response.code} in ${android.os.SystemClock.elapsedRealtime() - started} ms " +
+                    url.substringBefore('?').takeLast(60),
+            )
             if (response.code == 401 || response.code == 403) {
                 // Rotated, or refused. Either way the one we hold is no use —
                 // including the one on disk, or the next run would start by

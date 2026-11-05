@@ -5781,6 +5781,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         _nowPlayingArtPending.value = true
+        val artStarted = android.os.SystemClock.elapsedRealtime()
         nowPlayingArtJob = viewModelScope.launch {
             launch {
                 delay(ART_WAIT_MS)
@@ -5839,9 +5840,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (record.isBlank()) delay(ALBUM_WAIT_MS)
 
+            val askedAt = android.os.SystemClock.elapsedRealtime()
             val found = dev.lelonio.square.data.AppleCatalog.album(record, artist)
                 .takeIf { record.isNotBlank() }
             _nowPlayingArt.value = found
+            android.util.Log.i(
+                TAG,
+                "art timing: '$record' asked after ${askedAt - artStarted} ms, answered in " +
+                    "${android.os.SystemClock.elapsedRealtime() - askedAt} ms, hero=${found?.heroUrl != null}",
+            )
 
             // No record found, or one with no sleeve of its own: ask for the
             // song instead. Spotify's largest cover is 640 across and the player

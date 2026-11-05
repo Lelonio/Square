@@ -169,20 +169,36 @@ fun HeroBackdrop(
             value = null
             return@produceState
         }
-        value = coroutineScope {
-            // The largest print there is, since this one fills the screen;
-            // the url as given when there is no larger one, and offline, where
-            // only the copy kept on the phone may be drawn.
-            val cover = async {
-                val large = spotifyLargeUrl(artworkUrl)
-                val sharper = large != artworkUrl && !dev.lelonio.square.playback.OfflineMode.active.value
-                (if (sharper) loadArt(context, large, COVER_PX) else null)
-                    ?: loadArt(context, artworkUrl, COVER_PX)
+        val started = android.os.SystemClock.elapsedRealtime()
+        // The largest print there is, since this one fills the screen; the url
+        // as given when there is no larger one, and offline, where only the
+        // copy kept on the phone may be drawn.
+        //
+        // The picture first, and its small copies after, out of the file it
+        // left in the disk cache. Asked for together, the three were three
+        // downloads of the same file, nothing deduplicating them, and the
+        // cover waited for the slowest: on a cold cache an Apple portrait took
+        // three times as long to arrive as it needed to.
+        val large = spotifyLargeUrl(artworkUrl)
+        val sharper = large != artworkUrl && !dev.lelonio.square.playback.OfflineMode.active.value
+        val sharp = if (sharper) loadArt(context, large, COVER_PX) else null
+        val cover = sharp ?: loadArt(context, artworkUrl, COVER_PX)
+        val loaded = if (sharp != null) large else artworkUrl
+        val coverAt = android.os.SystemClock.elapsedRealtime()
+        value = if (cover == null) {
+            null
+        } else {
+            coroutineScope {
+                val edge = async { if (extended) loadArt(context, loaded, EXTENSION_PX) else null }
+                val blur = async { loadArt(context, loaded, HERO_BLUR_PX, blurred = true) }
+                ArtSet(cover, edge.await(), blur.await(), zoom)
             }
-            val edge = async { if (extended) loadArt(context, artworkUrl, EXTENSION_PX) else null }
-            val blur = async { loadArt(context, artworkUrl, HERO_BLUR_PX, blurred = true) }
-            cover.await()?.let { ArtSet(it, edge.await(), blur.await(), zoom) }
         }
+        android.util.Log.i(
+            "SquareArt",
+            "hero: cover in ${coverAt - started} ms, copies in " +
+                "${android.os.SystemClock.elapsedRealtime() - coverAt} ms, ${artworkUrl.takeLast(50)}",
+        )
     }
     Box(modifier) {
         if (extended && artworkUrl != null) {
