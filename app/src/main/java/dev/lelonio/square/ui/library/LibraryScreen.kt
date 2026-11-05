@@ -330,15 +330,33 @@ fun LibraryScreen(
                         },
                         onOrder = { onOrderChosen(it) },
                         onFilter = { filter = it },
-                        onSort = { sortOpen = true },
-                        onSortAnchor = { sortAnchor = it },
-                        sortTrigger = sortTrigger,
                         canEdit = canEdit,
                         onCreatePlaylist = onCreatePlaylist,
                         onOpenRecap = if (listeningEvents != null) ({ recapOpen = true }) else null,
                     )
                 }
                 if (!sideways) heading()
+
+                // The order, named, just above what it orders and below the
+                // artists, which it does not order: upstream's
+                // GlassPullDownButton with its label, which the sort menu
+                // grows out of.
+                // Just the disc, at the end of the row, the size of the
+                // header's buttons: the order chosen is ticked in its menu.
+                val sortButton: @Composable (Modifier) -> Unit = { buttonModifier ->
+                    Box(buttonModifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        dev.lelonio.square.ui.components.GlassPullDownButton(
+                            icon = PhosphorIcons.Regular.ArrowsDownUp,
+                            semanticLabel = stringResource(R.string.sort) + ": " + stringResource(order.label),
+                            onOpen = { sortOpen = true },
+                            onAnchor = { sortAnchor = it },
+                            backdrop = backdrop,
+                            trigger = sortTrigger,
+                            ink = Ink,
+                            buttonSize = 42.dp,
+                        )
+                    }
+                }
 
                 val listPadding = PaddingValues(
                     start = 20.dp,
@@ -374,6 +392,7 @@ fun LibraryScreen(
                                 query = query,
                                 onQuery = { query = it },
                                 placeholder = stringResource(R.string.search_library),
+                                backdrop = backdrop,
                                 modifier = Modifier.padding(bottom = 4.dp),
                             )
                         }
@@ -395,6 +414,10 @@ fun LibraryScreen(
                             item(span = { GridItemSpan(maxLineSpan) }, key = "artists") {
                                 ArtistShelf(artists, onOpenArtist)
                             }
+                        }
+
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "sort") {
+                            sortButton(Modifier.padding(top = 2.dp, bottom = 4.dp))
                         }
 
                         items(playlists, key = { "pl_${it.uri}" }) { playlist ->
@@ -431,11 +454,8 @@ fun LibraryScreen(
                                 query = query,
                                 onQuery = { query = it },
                                 placeholder = stringResource(R.string.search_library),
-                                modifier = Modifier.padding(
-                                    start = 20.dp,
-                                    end = 20.dp,
-                                    bottom = 6.dp,
-                                ),
+                                backdrop = backdrop,
+                                modifier = Modifier.padding(bottom = 6.dp),
                             )
                         }
 
@@ -454,6 +474,10 @@ fun LibraryScreen(
 
                         if (artists.isNotEmpty() && filter == Filter.ALL) {
                             item(key = "artists") { ArtistShelf(artists, onOpenArtist) }
+                        }
+
+                        item(key = "sort") {
+                            sortButton(Modifier.padding(top = 2.dp, bottom = 4.dp))
                         }
 
                         items(playlists, key = { "pl_${it.uri}" }) { playlist ->
@@ -546,9 +570,6 @@ private fun Header(
     onLayout: (Layout) -> Unit,
     onOrder: (Order) -> Unit,
     onFilter: (Filter) -> Unit,
-    onSort: () -> Unit,
-    onSortAnchor: (androidx.compose.ui.unit.IntRect) -> Unit,
-    sortTrigger: dev.lelonio.square.ui.components.GlassMenuTrigger? = null,
     canEdit: Boolean,
     onCreatePlaylist: () -> Unit,
     onOpenRecap: (() -> Unit)? = null,
@@ -663,20 +684,6 @@ private fun Header(
             }
             }
         }
-
-        // The order, named, just above what it orders: upstream's
-        // GlassPullDownButton with its label, which the sort menu grows out of.
-        dev.lelonio.square.ui.components.GlassPullDownButton(
-            icon = PhosphorIcons.Regular.ArrowsDownUp,
-            label = stringResource(order.label),
-            semanticLabel = stringResource(R.string.sort),
-            onOpen = onSort,
-            onAnchor = onSortAnchor,
-            backdrop = backdrop,
-            trigger = sortTrigger,
-            ink = Ink,
-            modifier = Modifier.padding(start = 20.dp, top = 2.dp, bottom = 4.dp),
-        )
     }
 }
 

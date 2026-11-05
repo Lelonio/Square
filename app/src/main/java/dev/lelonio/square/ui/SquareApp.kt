@@ -69,6 +69,7 @@ import dev.lelonio.square.ui.glass.floatingtabbar.sharedSearchTab
 import dev.lelonio.square.ui.glass.floatingtabbar.FloatingTabBarDefaults
 import dev.lelonio.square.ui.glass.floatingtabbar.rememberFloatingTabBarScrollConnection
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
 import dev.lelonio.square.ui.glass.liquidGlass
 import dev.lelonio.square.ui.glass.pressable
 import androidx.compose.ui.platform.LocalConfiguration
@@ -2952,7 +2953,9 @@ fun SquareApp(
                                 )
                             },
                             onClick = {
-                                if (searching && searchOpen) {
+                                // Folded, the field has nowhere to be: the tap
+                                // opens the bar into it rather than closing it.
+                                if (searching && searchOpen && !tabBarScroll.isInline) {
                                     // Already typing: this is the way out of it.
                                     // The field goes and the keyboard with it,
                                     // the results stay where they are.
@@ -2962,6 +2965,7 @@ fun SquareApp(
                                 } else {
                                     viewModel.clearPageHistory()
                                     searchOpen = true
+                                    tabBarScroll.expand()
                                     navController.switchTab(Routes.SEARCH)
                                 }
                             },
@@ -2984,6 +2988,7 @@ fun SquareApp(
                                 onClick = {
                                     viewModel.clearPageHistory()
                                     searchOpen = true
+                                    tabBarScroll.expand()
                                     navController.switchTab(Routes.SEARCH)
                                 },
                             )
@@ -4411,14 +4416,21 @@ private fun BarSearchField(
         }
     }
 
+    // The field inside the searchable bar, at GlassTextField.search's
+    // measures: 12 in from the bar's edge, the magnifier 20 across and 8 from
+    // the words, the words at 16, the clear button 18, fading and growing in.
+    val light = dev.lelonio.square.ui.glass.isLightGlassPage()
+    val iconColor = if (light) Color(0x99000000) else Color(0x99FFFFFF)
+    val textColor = ink.copy(alpha = 0.9f)
+    val textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, lineHeight = 1.2.em, color = textColor)
     Row(
-        modifier.padding(horizontal = 16.dp),
+        modifier.padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            PhosphorIcons.Bold.MagnifyingGlass,
+            PhosphorIcons.Regular.MagnifyingGlass,
             contentDescription = null,
-            tint = ink.copy(alpha = 0.7f),
+            tint = iconColor,
             modifier = Modifier.size(20.dp),
         )
         BasicTextField(
@@ -4428,18 +4440,17 @@ private fun BarSearchField(
                 if (it.text != query) onQuery(it.text)
             },
             singleLine = true,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = ink),
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(ink),
+            textStyle = textStyle,
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(textColor),
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 12.dp)
+                .padding(start = 8.dp)
                 .focusRequester(focus),
             decorationBox = { field ->
                 if (query.isEmpty()) {
                     Text(
                         stringResource(R.string.search_placeholder),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = ink.copy(alpha = 0.5f),
+                        style = textStyle.copy(color = ink.copy(alpha = 0.5f)),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -4447,13 +4458,20 @@ private fun BarSearchField(
                 field()
             },
         )
-        if (query.isNotEmpty()) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = query.isNotEmpty(),
+            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) +
+                androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(180)),
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180)) +
+                androidx.compose.animation.scaleOut(androidx.compose.animation.core.tween(180)),
+        ) {
             Icon(
                 PhosphorIcons.Fill.XCircle,
                 contentDescription = stringResource(R.string.clear),
-                tint = Ink.copy(alpha = 0.55f),
+                tint = iconColor,
                 modifier = Modifier
-                    .size(22.dp)
+                    .padding(start = 8.dp)
+                    .size(18.dp)
                     .pressable(onClick = { onQuery("") }, pressedScale = 0.9f),
             )
         }

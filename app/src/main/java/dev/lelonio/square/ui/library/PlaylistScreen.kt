@@ -1367,8 +1367,6 @@ fun PlaylistScreen(
                 // turning into another rather than a box arriving.
                 backdrop = pageBackdrop,
                 height = 42.dp,
-                ink = chromeInk,
-                hint = chromeInk.copy(alpha = 0.55f),
                 autoFocus = true,
                 // The writing arrives after the pane has somewhere to put it.
                 contentAlpha = { ((readSearch() - 0.35f) / 0.65f).coerceIn(0f, 1f) },
