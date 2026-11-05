@@ -102,7 +102,7 @@ private fun Modifier.card(
 ): Modifier {
     val glass = if (backdrop != null) {
         Modifier.liquidGlass(
-            config = LocalGlassEffectConfig.current,
+            config = LocalGlassEffectConfig.current.copy(sheet = true),
             shape = shape,
             ownBackdrop = backdrop,
         )

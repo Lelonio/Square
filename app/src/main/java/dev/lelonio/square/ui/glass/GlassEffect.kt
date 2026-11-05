@@ -73,6 +73,13 @@ data class GlassEffectConfig(
      * colour a record can have, and dark reads over all of them.
      */
     val darkGlass: Boolean = false,
+    /**
+     * A sheet's material: the frost all cloud, without the copy of the page
+     * showing through it, under a denser tint, as a sheet's thick material is
+     * natively. Over a whole page the copy let its covers and titles be read
+     * through the sheet.
+     */
+    val sheet: Boolean = false,
     val chromaticAberration: Boolean = false,
     val depthEffect: Boolean = false,
     /**
@@ -957,8 +964,16 @@ fun ios27Settings(light: Boolean, config: GlassEffectConfig): dev.lelonio.square
         chromaticAberration = if (config.chromaticAberration) 4f * DISPERSION_SHARE else 0f,
         edgeAbsorption = base.edgeAbsorption * (if (config.depthEffect) 2f else 1f),
     )
-    if (config.frost) return tuned
-    return tuned.copy(frost = 0f, blur = maxOf(tuned.blur, frost * 0.25f))
+    val material = if (config.sheet) {
+        tuned.copy(
+            frostOpacity = 1f,
+            glassColor = (if (light) Color(0xFFF2F2F7) else Color(0xFF1C1C1E)).copy(alpha = 0.55f),
+        )
+    } else {
+        tuned
+    }
+    if (config.frost) return material
+    return material.copy(frost = 0f, blur = maxOf(material.blur, frost * 0.25f))
 }
 
 /**

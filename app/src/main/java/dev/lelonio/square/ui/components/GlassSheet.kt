@@ -182,7 +182,7 @@ fun GlassSheet(
                             },
                         )
                         .liquidGlass(
-                            config = LocalGlassEffectConfig.current,
+                            config = LocalGlassEffectConfig.current.copy(sheet = true),
                             shape = shape,
                             ownBackdrop = host?.backdrop
                                 ?: dev.lelonio.square.ui.glass.LocalAppBackdrop.current,
