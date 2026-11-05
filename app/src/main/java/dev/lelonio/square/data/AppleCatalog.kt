@@ -296,7 +296,9 @@ object AppleCatalog {
         synchronized(cache) { if (cache.containsKey(key)) return cache[key] as Album? }
 
         remembered(key)?.let { row ->
+            // Filed before the editorial pictures were asked for as WebP.
             val kept = runCatching { json.decodeFromString<Album>(row) }.getOrNull()
+                ?.let { it.copy(heroUrl = it.heroUrl?.let(::asWebp), coverUrl = it.coverUrl?.let(::asWebp)) }
             synchronized(cache) { cache[key] = kept }
             return kept
         }
@@ -833,6 +835,11 @@ object AppleCatalog {
         }
     }
 
+    /** A filled JPEG address as the WebP the same address serves; see [size]. */
+    private fun asWebp(url: String): String =
+        if (!url.contains("mzstatic.com")) url
+        else url.replace(Regex("(/\\d+x\\d+[A-Za-z0-9.]*?)\\.jpg(\\?[^/]*)?$"), "$1.webp$2")
+
     /** Apple gives a URL with the size still to be filled in. */
     private fun kotlinx.serialization.json.JsonObject.template(): String? =
         get("url")?.jsonPrimitive?.content
@@ -866,9 +873,20 @@ object AppleCatalog {
         // logo has to come back as a PNG cropped `sr`, or the transparency it is
         // made of is flattened onto white and the artist name arrives as a white
         // slab — so the segment is rewritten rather than filled in.
+        val simple = Regex("/\\d+x\\d+[a-z]{2}\\.(jpg|png|webp)$")
+        if (simple.containsMatchIn(filled)) {
+            return filled.replace(simple, "/" + width + "x" + height + crop + "." + format)
+        }
+        // An editorial picture's segment carries a crop of its own and a
+        // query, `.../1600x2134SHT.AMTPPS01.jpg?l=it-IT`, which the pattern
+        // above leaves alone: those came down as JPEGs three times the size
+        // of the WebP the same address serves (918KB against 308KB measured).
+        // The crop is kept, since it is what frames the picture; only the
+        // file type changes.
+        if (format != "webp") return filled
         return filled.replace(
-            Regex("/\\d+x\\d+[a-z]{2}\\.(jpg|png|webp)$"),
-            "/" + width + "x" + height + crop + "." + format,
+            Regex("(/\\d+x\\d+[A-Za-z0-9.]*?)\\.(jpg|png)(\\?[^/]*)?$"),
+            "$1.webp$3",
         )
     }
 

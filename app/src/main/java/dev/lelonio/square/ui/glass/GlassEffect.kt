@@ -769,19 +769,22 @@ fun Modifier.liquidGlass(
         }
     }
 
-    val shadowBlock: (() -> Shadow?)? = remember(applyEdgeEffects, upstream, lightPage, group, config.ios27) {
+    val shadowBlock: (() -> Shadow?)? = remember(applyEdgeEffects, upstream, lightPage, group, config.ios27, upstreamSettings) {
         when {
             !applyEdgeEffects -> null
             // A group's shader draws the shadow round its own shapes.
             upstream && group != null -> null
-            // ios27Light's own shadow; ios27Dark has none.
+            // The material's own shadow (upstream's effectiveShadow, its
+            // first layer): ios27Light's long faint one, none on ios27Dark.
             upstream && config.ios27 -> if (lightPage) {
-                {
-                    Shadow(
-                        radius = 10.dp,
-                        offset = androidx.compose.ui.unit.DpOffset(0.dp, 7.dp),
-                        color = Color.Black.copy(alpha = 4f / 255f),
-                    )
+                upstreamSettings.effectiveShadow.firstOrNull()?.let { layer ->
+                    {
+                        Shadow(
+                            radius = layer.blurRadius.dp,
+                            offset = androidx.compose.ui.unit.DpOffset(layer.offsetX.dp, layer.offsetY.dp),
+                            color = Color.Black.copy(alpha = layer.alpha),
+                        )
+                    }
                 }
             } else {
                 null

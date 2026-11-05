@@ -299,6 +299,8 @@ fun BoxScope.GlassChoiceMenu(
     onDismiss: () -> Unit,
     /** The control itself, which the menu hides and hands back; see [glassMenuTrigger]. */
     trigger: GlassMenuTrigger? = null,
+    /** Upstream's `menuWidth`: 200 unless the rows need more. */
+    width: androidx.compose.ui.unit.Dp = CHOICE_MENU_WIDTH,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // The morph uses the large multi-shape AGSL program. If this GPU rejected
@@ -336,7 +338,7 @@ fun BoxScope.GlassChoiceMenu(
     val tw = anchor.width / dpr
     val th = anchor.height / dpr
     val triggerRadius = minOf(tw, th) / 2f
-    val menuWidth = CHOICE_MENU_WIDTH.value
+    val menuWidth = width.value
     val menuHeight = maxOf(rowsHeight / dpr, th)
 
     // Upstream's _morphAlignment: towards the side of the screen the control
@@ -411,9 +413,20 @@ fun BoxScope.GlassChoiceMenu(
             .liquidGlassGroup(
                 backdrop = backdrop,
                 capture = capture,
-                // The listener's glass, frosted as menus are (see #132).
-                settings = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
-                    .toLiquidGlassSettings(blurScale = MENU_BLUR_SCALE, minBlur = MENU_MIN_BLUR),
+                // The listener's glass, frosted as menus are (see #132). Under
+                // the iOS 27 material, the material itself, as upstream's menu
+                // inherits the theme's: this path reads a sharp and a blurred
+                // copy of the page and has no frost pass, so the frost's cloud
+                // is its blur, at the frost's own sigma.
+                settings = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current.let { config ->
+                    if (config.ios27) {
+                        dev.lelonio.square.ui.glass.ios27Settings(!darkPage, config).let {
+                            if (it.frost > 0f) it.copy(blur = maxOf(it.blur, it.frost), frost = 0f) else it
+                        }
+                    } else {
+                        config.toLiquidGlassSettings(blurScale = MENU_BLUR_SCALE, minBlur = MENU_MIN_BLUR)
+                    }
+                },
                 darkPage = darkPage,
             ) { frame().glass },
     ) {

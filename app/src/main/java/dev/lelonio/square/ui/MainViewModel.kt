@@ -5660,6 +5660,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      *
      * Fails quietly and cancels freely: nothing on screen depends on it.
      */
+    /**
+     * [prefetchArt] for a song queued on another device, whose record's name
+     * did not come with it.
+     */
+    fun prefetchRemoteArt(uri: String, title: String, artist: String) {
+        if (artist.isBlank() || dev.lelonio.square.playback.OfflineMode.active.value) return
+        viewModelScope.launch {
+            val record = withContext(Dispatchers.IO) {
+                runCatching { container.activeBackend.tracksOf(uri).firstOrNull()?.album }.getOrNull()
+            }.orEmpty()
+            prefetchArt(title, record, artist)
+        }
+    }
+
     fun prefetchArt(title: String, album: String, artist: String) {
         if (artist.isBlank() || dev.lelonio.square.playback.OfflineMode.active.value) return
         prefetchArtJob?.cancel()

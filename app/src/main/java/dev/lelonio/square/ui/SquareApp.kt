@@ -664,6 +664,15 @@ fun SquareApp(
         }
     }
 
+    // Playing on another device, the phone's own timeline holds nothing: the
+    // next song is in that device's queue, without its record's name, which is
+    // asked for as the player asks for it. On its own key, since that queue
+    // can arrive after the song does.
+    val remoteNext = remote?.next?.firstOrNull()
+    LaunchedEffect(remoteNext?.uri) {
+        remoteNext?.let { viewModel.prefetchRemoteArt(it.uri, it.title, it.artist) }
+    }
+
     // Everything the account has actually touched, one station per artist.
     //
     // It used to be the two lists of top tracks and nothing else, and those are

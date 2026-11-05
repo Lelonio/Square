@@ -496,6 +496,8 @@ fun LibraryScreen(
                 backdrop = rememberCombinedBackdrop(backdrop, listBackdrop),
                 onDismiss = { sortOpen = false },
                 trigger = sortTrigger,
+                // "Aperte di recente" and its tick do not fit in 200.
+                width = 240.dp,
             ) {
                 Order.entries.forEach { entry ->
                     dev.lelonio.square.ui.components.GlassMenuItem(

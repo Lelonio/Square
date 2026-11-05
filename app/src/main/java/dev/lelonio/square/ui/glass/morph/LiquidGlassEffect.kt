@@ -192,10 +192,19 @@ fun BackdropEffectScope.liquidGlassMaterial(
     // GlassShadow.defaults, as the blend group's writeUniforms draws it on
     // light pages: an elevation and a contact shadow. A BoxShadow's sigma is
     // 0.57735 × its blur radius + 0.5.
-    if (groupShadow) {
+    // The settings' own shadows (upstream's effectiveShadow): the elevation's
+    // pair by default, ios27Light's one long faint shadow, none on ios27Dark.
+    val shadows = if (groupShadow) settings.effectiveShadow else emptyList()
+    if (shadows.isNotEmpty()) {
         fun sigma(blurRadius: Float) = (blurRadius * 0.57735f + 0.5f) * dpr
-        shader.setFloatUniform("uShadowA", 15f / 255f, sigma(8f), 0f, 2f * dpr)
-        shader.setFloatUniform("uShadowB", 5f / 255f, sigma(2f), 0f, 1f * dpr)
+        val a = shadows[0]
+        shader.setFloatUniform("uShadowA", a.alpha, sigma(a.blurRadius), a.offsetX * dpr, a.offsetY * dpr)
+        val b = shadows.getOrNull(1)
+        if (b != null) {
+            shader.setFloatUniform("uShadowB", b.alpha, sigma(b.blurRadius), b.offsetX * dpr, b.offsetY * dpr)
+        } else {
+            shader.setFloatUniform("uShadowB", 0f, 0f, 0f, 0f)
+        }
     } else {
         shader.setFloatUniform("uShadowA", 0f, 0f, 0f, 0f)
         shader.setFloatUniform("uShadowB", 0f, 0f, 0f, 0f)

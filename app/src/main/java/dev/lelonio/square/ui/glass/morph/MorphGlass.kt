@@ -82,6 +82,15 @@ object LiquidGlassRenderer {
     }
 }
 
+/** One of upstream's BoxShadows under the glass: black at [alpha], in logical pixels. */
+@Immutable
+data class GlassShadowLayer(
+    val alpha: Float,
+    val blurRadius: Float,
+    val offsetX: Float = 0f,
+    val offsetY: Float = 0f,
+)
+
 /** Upstream's `GlassLensModel`. */
 enum class GlassLensModel { Spherical, Paraxial }
 
@@ -130,7 +139,27 @@ data class LiquidGlassSettings(
     val frostWeight: Float = 1f,
     /** The same, for the copy of the content showing through the frost. */
     val blurWeight: Float = 1f,
+    /**
+     * Upstream's `shadow`: the glass's own shadows on a light page, in place
+     * of the elevation's. Null takes [shadowElevation]'s.
+     */
+    val shadow: List<GlassShadowLayer>? = null,
 ) {
+    /**
+     * Upstream's `effectiveShadow`: [shadow] where given, else the default
+     * pair scaled by the elevation, either way faded with [visibility].
+     */
+    val effectiveShadow: List<GlassShadowLayer>
+        get() {
+            shadow?.let { list -> return list.map { it.copy(alpha = it.alpha * visibility) } }
+            val e = effectiveShadowElevation
+            if (e <= 0f) return emptyList()
+            return listOf(
+                GlassShadowLayer(alpha = (0.06f * e).coerceIn(0f, 1f), blurRadius = 8f * e, offsetY = 2f * e),
+                GlassShadowLayer(alpha = (0.02f * e).coerceIn(0f, 1f), blurRadius = 2f * e, offsetY = 1f * e),
+            )
+        }
+
     val effectiveGlassColor: Color get() = glassColor.copy(alpha = glassColor.alpha * visibility)
     val effectiveThickness: Float get() = thickness * visibility
     val effectiveBlur: Float get() = blur * visibility
@@ -177,6 +206,7 @@ data class LiquidGlassSettings(
             edgeAbsorption = 0.035f,
             rimShade = 1f,
             rimLight = 1f,
+            shadow = listOf(GlassShadowLayer(alpha = 4f / 255f, blurRadius = 10f, offsetY = 7f)),
         )
 
         /** Upstream's `LiquidGlassSettings.ios27Dark`; see [Ios27Light]. */
