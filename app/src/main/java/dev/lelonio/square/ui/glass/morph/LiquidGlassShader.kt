@@ -387,10 +387,12 @@ float3 frostAt(float2 p, float2 q) {
     float slope = uFrost.w - 1.0;
     float3 acc = float3(0.0);
     float wsum = 0.0;
-    if (uFrost.z <= 0.3) {
-        // At the floor sigma only the three columns around p on the two
-        // even rows either side carry weight (upstream: 6 taps within
-        // 0.03/255 of all 45).
+    // LOCAL CHANGE: always the six taps. Upstream takes them only at its
+    // floor sigma and 45 above it; at the iOS 27 material's 1.6 px the 45
+    // cost a third of the frames a scroll dropped on this phone, for a ghost
+    // that is at most 15 % of what shows (frostOpacity) and held within the
+    // clamp of the cloud. Six taps at the real sigma blur it a little less.
+    if (true) {
         for (int j = 0; j <= 1; j++) {
             float y = cy + 2.0 * float(j);
             float dy = y + 0.5 - p.y;

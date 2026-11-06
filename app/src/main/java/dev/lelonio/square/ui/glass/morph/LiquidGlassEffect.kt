@@ -51,9 +51,12 @@ fun BackdropEffectScope.liquidGlassMaterial(
     // The recorded layer's pixels per logical pixel.
     val dpr = density * contentScale
     // iOS 27's frost: its cloud is blurred from beyond the surface, as
-    // upstream's backdrop blur reads the page around the clip.
+    // upstream's backdrop blur reads the page around the clip. Half the
+    // blur's reach of it, and the rest mirrored: the whole reach grew every
+    // surface's layer by its radius on each side, nearly four times the
+    // pixels on a chip, for an edge that reads the same.
     val frostRadius = if (settings.effectiveFrost > 0f) blurRadiusForSigma(settings.effectiveFrost * dpr) else 0f
-    if (frostRadius > padding) padding = frostRadius
+    if (frostRadius * FROST_REACH > padding) padding = frostRadius * FROST_REACH
     val scale = dpr / 3f
     // A shape with no corner of its own (a capsule) is upstream's
     // borderRadius 9999, which the shader clamps to half the short side.
@@ -277,6 +280,9 @@ private fun BackdropEffectScope.frostRows(
         android.graphics.BlendMode.PLUS,
     ).asComposeRenderEffect()
 }
+
+/** How much of the frost's blur radius a surface records beyond its edge. */
+private const val FROST_REACH = 0.5f
 
 /**
  * Upstream's blur pass takes a Gaussian sigma; Android's takes a radius it
