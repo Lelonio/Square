@@ -43,6 +43,13 @@ class SquareApplication : Application(), ImageLoaderFactory {
                     override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
                         if (intent.hasExtra("frost")) glass.setFrost(intent.getBooleanExtra("frost", true))
                         if (intent.hasExtra("ios27")) glass.setIos27(intent.getBooleanExtra("ios27", true))
+                        // As a GPU that refuses the library's shader leaves it,
+                        // until the app is started again.
+                        if (intent.hasExtra("upstream") && !intent.getBooleanExtra("upstream", true)) {
+                            dev.lelonio.square.ui.glass.morph.LiquidGlassRenderer.unavailable(
+                                IllegalStateException("switched off from adb"),
+                            )
+                        }
                     }
                 },
                 android.content.IntentFilter("dev.lelonio.square.GLASS"),

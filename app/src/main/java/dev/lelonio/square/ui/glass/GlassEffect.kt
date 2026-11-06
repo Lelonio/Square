@@ -662,9 +662,26 @@ fun Modifier.liquidGlass(
         ) * resolutionScale
     }
 
+    // Where the library's shader cannot run (a GPU driver that refuses to
+    // compile it, or below Android 13) the chain below is the app's own, and
+    // the iOS 27 switch changed nothing on it. There the material is
+    // approximated with what the chain has: the frost's blur, or the blur that
+    // stands in for it, the preset's saturation and its tint in place of the
+    // app's film.
+    val approx27 = !upstream && config.ios27 && !plainBlur
+    val chainSaturation = if (approx27) upstreamSettings.effectiveSaturation else saturation
+    val chainBlurPx = if (approx27) {
+        dev.lelonio.square.ui.glass.morph.blurRadiusForSigma(
+            with(density) { maxOf(upstreamSettings.effectiveFrost, upstreamSettings.effectiveBlur).dp.toPx() },
+        ) * resolutionScale
+    } else {
+        blurPx
+    }
+    val chainTint = if (approx27) upstreamSettings.glassColor else surfaceTintColor.copy(alpha = config.surfaceOpacity)
+
     val effectsBlock: BackdropEffectScope.() -> Unit = remember(
-        saturation,
-        blurPx,
+        chainSaturation,
+        chainBlurPx,
         applyEdgeEffects,
         plainBlur,
         lensHeightPx,
@@ -698,11 +715,11 @@ fun Modifier.liquidGlass(
             }
         } else {
         {
-            if (saturation != 1f) {
-                colorControls(saturation = saturation)
+            if (chainSaturation != 1f) {
+                colorControls(saturation = chainSaturation)
             }
-            if (blurPx > 0f) {
-                blur(blurPx)
+            if (chainBlurPx > 0f) {
+                blur(chainBlurPx)
             }
             if (!plainBlur &&
                 applyEdgeEffects &&
@@ -815,12 +832,12 @@ fun Modifier.liquidGlass(
 
     // RenderEffect is guaranteed supported past this point — the unsupported
     // case already returned the translucent-tint fallback above.
-    val surfaceBlock: DrawScope.() -> Unit = remember(surfaceTintColor, config.surfaceOpacity, onDrawTint, upstream) {
+    val surfaceBlock: DrawScope.() -> Unit = remember(chainTint, onDrawTint, upstream) {
         {
             // Upstream's shader tints the glass itself.
-            if (config.surfaceOpacity > 0f && !upstream) {
+            if (chainTint.alpha > 0f && !upstream) {
                 drawRect(
-                    color = surfaceTintColor.copy(alpha = config.surfaceOpacity),
+                    color = chainTint,
                     size = size,
                 )
             }
