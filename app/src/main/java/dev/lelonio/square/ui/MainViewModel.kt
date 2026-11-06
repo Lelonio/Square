@@ -3001,21 +3001,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (_savedShows.value.isEmpty()) _savedShows.value = runCatching { readSavedShows() }.getOrDefault(emptyList())
             return _savedShows.value.any { it.uri == uri }
         }
-        if (!container.webApi.isReady && !container.tokenStore.isLoggedIn) return null
-        val id = uri.substringAfterLast(':')
-        return runCatching {
-            when {
-                uri.startsWith("spotify:album:") ->
-                    container.api.albumsAreSaved(id).firstOrNull()
-
-                uri.startsWith("spotify:playlist:") ->
-                    container.api.playlistIsFollowed(id, container.api.me().id).firstOrNull()
-
-                else -> null
-            }
-        }
-            .onFailure { android.util.Log.w(TAG, "cannot tell if kept: ${describe(it)}") }
+        if (!uri.startsWith("spotify:album:") && !uri.startsWith("spotify:playlist:")) return null
+        // The gateway first, as the web player asks: it answers for anyone
+        // signed in. The Web API's check for a followed playlist is one Spotify
+        // has closed to newer applications, and a failure there took the plus
+        // off every playlist for whoever had one of those.
+        runCatching { container.gateway.inLibrary(listOf(uri))?.firstOrNull() }
             .getOrNull()
+            ?.let { return it }
+        val id = uri.substringAfterLast(':')
+        if (container.webApi.isReady || container.tokenStore.isLoggedIn) {
+            runCatching {
+                when {
+                    uri.startsWith("spotify:album:") ->
+                        container.api.albumsAreSaved(id).firstOrNull()
+                    else ->
+                        container.api.playlistIsFollowed(id, container.api.me().id).firstOrNull()
+                }
+            }
+                .onFailure { android.util.Log.w(TAG, "cannot tell if kept: ${describe(it)}") }
+                .getOrNull()
+                ?.let { return it }
+        }
+        // Last, what the library already shows: whether it is in there.
+        val library = (_state.value as? UiState.Ready)?.playlists ?: return null
+        return library.any { it.uri == uri }
     }
 
     /**
@@ -3045,6 +3055,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         uri.removePrefix(dev.lelonio.square.backend.youtube.YouTubeBackend.PLAYLIST_PREFIX),
                         save = !was,
                     ).getOrThrow()
+
+                // Through the gateway as the web player keeps them, which works
+                // for anyone signed in; the Web API where it will not.
+                container.gateway.setInLibrary(listOf(uri), keep = !was) -> Unit
 
                 uri.startsWith("spotify:album:") ->
                     if (was) container.api.removeAlbums(id) else container.api.saveAlbums(id)

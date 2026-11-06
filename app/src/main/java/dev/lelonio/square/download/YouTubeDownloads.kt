@@ -29,7 +29,7 @@ object YouTubeDownloads {
 
     /** Takes a kept song off the phone, whichever source it belongs to. */
     fun forget(context: Context, trackUri: String) {
-        if (trackUri.startsWith(YouTubeBackend.TRACK_PREFIX)) {
+        if (YouTubeBackend.isSong(trackUri)) {
             remove(context, trackUri)
         } else {
             dev.lelonio.square.nativecore.NativeBridge.removeDownload(trackUri)
@@ -38,7 +38,7 @@ object YouTubeDownloads {
 
     /** Stops a song that is still coming, whichever source it belongs to. */
     fun stop(trackUri: String) {
-        if (trackUri.startsWith(YouTubeBackend.TRACK_PREFIX)) {
+        if (YouTubeBackend.isSong(trackUri)) {
             cancel(trackUri)
         } else {
             dev.lelonio.square.nativecore.NativeBridge.cancelDownload(trackUri)
@@ -62,7 +62,7 @@ object YouTubeDownloads {
 
     /** The finished file for a song, or null when it is not on the phone. */
     fun fileFor(context: Context, trackUri: String): File? {
-        if (!trackUri.startsWith(YouTubeBackend.TRACK_PREFIX)) return null
+        if (!YouTubeBackend.isSong(trackUri)) return null
         val id = YouTubeBackend.videoIdOfUri(trackUri)
         return directory(context).listFiles()?.firstOrNull {
             it.nameWithoutExtension == id && it.extension != PARTIAL
@@ -75,7 +75,7 @@ object YouTubeDownloads {
 
     /** Takes the song off the phone, finished or not. */
     fun remove(context: Context, trackUri: String) {
-        if (!trackUri.startsWith(YouTubeBackend.TRACK_PREFIX)) return
+        if (!YouTubeBackend.isSong(trackUri)) return
         val id = YouTubeBackend.videoIdOfUri(trackUri)
         directory(context).listFiles()
             ?.filter { it.name.startsWith("$id.") }

@@ -980,6 +980,12 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         /** The id half of a `ytmusic:track:` URI, for the stream resolver. */
         fun videoIdOfUri(uri: String): String = uri.substringAfterLast(':')
 
+        /**
+         * Whether [uri] is a YouTube song, as a song or as a video: both are a
+         * file of their own when kept, never the Spotify engine's.
+         */
+        fun isSong(uri: String): Boolean = uri.startsWith(TRACK_PREFIX) || uri.startsWith(VIDEO_PREFIX)
+
         private const val PLAYLIST_URL = "https://www.youtube.com/playlist?list="
 
         private val ANONYMOUS = BackendAuthState.LoggedIn("YouTube Music")

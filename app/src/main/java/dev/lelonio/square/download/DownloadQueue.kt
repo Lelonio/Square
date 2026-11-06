@@ -215,6 +215,7 @@ class DownloadQueue(
                     continue
                 }
 
+                youTubeOffline = false
                 val batch = pending.take(PARALLEL)
                 val currentUri = batch.firstOrNull()
                 publish(waiting = null, currentTrackUri = currentUri)
@@ -227,7 +228,9 @@ class DownloadQueue(
                 // Without this the pump would find them pending again
                 // immediately and spin at full speed against whatever said no.
                 if (outcomes.all { it == Outcome.NOT_NOW }) {
-                    publish(waiting = Waiting.ENGINE)
+                    // What is being waited for, said as it is: a YouTube song
+                    // held back is waiting for the network, not for Spotify.
+                    publish(waiting = if (youTubeOffline) Waiting.NETWORK else Waiting.ENGINE)
                     if (throttled) {
                         delay(coolOff)
                         coolOff = (coolOff * 2).coerceAtMost(MAX_COOL_OFF_MS)
@@ -329,7 +332,7 @@ class DownloadQueue(
                         coversTried += uri
                         // A YouTube Music song has no engine record to ask; its
                         // cover is the one the store kept with the song.
-                        val cover = if (uri.startsWith(YouTubeBackend.TRACK_PREFIX)) {
+                        val cover = if (YouTubeBackend.isSong(uri)) {
                             store.trackOf(uri)?.artworkUrl ?: return@async
                         } else {
                             runCatching { NativeBridge.downloadState(uri) }
@@ -375,7 +378,7 @@ class DownloadQueue(
 
         for (uri in missing) {
             extrasTried += uri
-            if (uri.startsWith(YouTubeBackend.TRACK_PREFIX)) {
+            if (YouTubeBackend.isSong(uri)) {
                 store.trackOf(uri)?.artworkUrl?.let { runCatching { DownloadExtras.keep(it, "art") } }
                 continue
             }
@@ -421,7 +424,7 @@ class DownloadQueue(
             // The rest is Spotify's: its words, its tall pictures and its
             // Canvas are looked up by a Spotify track, and a YouTube Music song
             // would be asked about them on every run and never have them.
-            (!trackUri.startsWith(YouTubeBackend.TRACK_PREFIX) && needsSpotifyExtras(trackUri))
+            (!YouTubeBackend.isSong(trackUri) && needsSpotifyExtras(trackUri))
 
     private fun needsSpotifyExtras(trackUri: String): Boolean =
         !DownloadExtras.asked("lyrics", trackUri) ||
@@ -448,7 +451,9 @@ class DownloadQueue(
     private enum class Outcome { DONE, FAILED, NOT_NOW }
 
     private suspend fun attempt(trackUri: String): Outcome {
-        if (trackUri.startsWith(YouTubeBackend.TRACK_PREFIX)) return attemptYouTube(trackUri)
+        // A YouTube song or video is fetched here, never by the Spotify engine:
+        // a video sent there waited on "Waiting for Spotify" for good (#159).
+        if (YouTubeBackend.isSong(trackUri)) return attemptYouTube(trackUri)
         val kbps = settings.quality.value.kbps
         val outcome = runCatching {
             withContext(Dispatchers.IO) { NativeBridge.downloadTrack(trackUri, kbps) }
@@ -517,7 +522,10 @@ class DownloadQueue(
             // Taken off the list while it was coming.
             error is kotlinx.coroutines.CancellationException -> Outcome.FAILED
             // The network, which is worth another go once it is back.
-            error is java.io.IOException && !online() -> Outcome.NOT_NOW
+            error is java.io.IOException && !online() -> {
+                youTubeOffline = true
+                Outcome.NOT_NOW
+            }
             // With the network up, a song YouTube will not hand over — an
             // address that answers 403, a read that times out — is this
             // song's failure, and goes through the store's backoff like any
@@ -531,14 +539,25 @@ class DownloadQueue(
         }
     }
 
-    /** Whether there is a network the system has checked reaches the internet. */
+    /**
+     * Whether there is a network that says it reaches the internet.
+     *
+     * Not whether the system has validated it: behind a VPN or a private DNS
+     * that check can fail on a network that works, and a YouTube song waited
+     * for it for ever (#159, #162). An error on a network that is there goes
+     * through the store's backoff instead, and is tried again.
+     */
     private fun online(): Boolean {
         val manager = connectivity ?: return false
         val capabilities = manager.activeNetwork
             ?.let(manager::getNetworkCapabilities)
             ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
+
+    /** Set when a YouTube song was held back for the network, not the engine. */
+    @Volatile
+    private var youTubeOffline = false
 
     /**
      * Everything a downloaded song carries besides the song: the sleeve, the
