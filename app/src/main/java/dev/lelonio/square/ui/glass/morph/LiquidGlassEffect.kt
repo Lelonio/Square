@@ -57,6 +57,10 @@ fun BackdropEffectScope.liquidGlassMaterial(
     // pixels on a chip, for an edge that reads the same.
     val frostRadius = if (settings.effectiveFrost > 0f) blurRadiusForSigma(settings.effectiveFrost * dpr) else 0f
     if (frostRadius * FROST_REACH > padding) padding = frostRadius * FROST_REACH
+    // Under a frost the page shows only as its colours, which move slowly
+    // however fast the page does: a capture held while it scrolls is taken
+    // again less often, and each taking costs the frost's whole chain.
+    if (frostRadius > 0f) holdRefreshMillis = FROST_HOLD_REFRESH_MS
     val scale = dpr / 3f
     // A shape with no corner of its own (a capsule) is upstream's
     // borderRadius 9999, which the shader clamps to half the short side.
@@ -280,6 +284,9 @@ private fun BackdropEffectScope.frostRows(
         android.graphics.BlendMode.PLUS,
     ).asComposeRenderEffect()
 }
+
+/** How long a frosted surface holds its capture while the page under it moves. */
+private const val FROST_HOLD_REFRESH_MS = 300f
 
 /** How much of the frost's blur radius a surface records beyond its edge. */
 private const val FROST_REACH = 0.5f

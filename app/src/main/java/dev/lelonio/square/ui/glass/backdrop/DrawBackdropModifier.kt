@@ -590,7 +590,7 @@ private class DrawBackdropNode(
             // recordings across a fold instead of one per frame, and leaves
             // nothing at the end big enough to see.
             val now = System.nanoTime()
-            val heldLongEnough = (now - lastRecordedAt) / 1_000_000f >= HoldRefreshMillis
+            val heldLongEnough = (now - lastRecordedAt) / 1_000_000f >= (effectScope.holdRefreshMillis ?: HoldRefreshMillis)
             val holding = frozen() &&
                 hasRecording &&
                 !heldLongEnough &&

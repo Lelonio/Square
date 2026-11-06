@@ -38,6 +38,13 @@ sealed interface BackdropEffectScope : Density, RuntimeShaderCache {
     var padding: Float
 
     var renderEffect: RenderEffect?
+
+    /**
+     * Vendored addition: how long a capture held while the page moves may go
+     * before it is taken again, in milliseconds; null for the default. Set by
+     * an effect whose result changes slowly with the page under it.
+     */
+    var holdRefreshMillis: Float?
 }
 
 internal abstract class BackdropEffectScopeImpl : BackdropEffectScope, RuntimeShaderCache {
@@ -49,6 +56,7 @@ internal abstract class BackdropEffectScopeImpl : BackdropEffectScope, RuntimeSh
     override var padding: Float = 0f
     override var contentScale: Float = 1f
     override var renderEffect: RenderEffect? = null
+    override var holdRefreshMillis: Float? = null
 
     private val runtimeShaderCache = RuntimeShaderCacheImpl()
 
@@ -85,6 +93,7 @@ internal abstract class BackdropEffectScopeImpl : BackdropEffectScope, RuntimeSh
     fun apply(effects: BackdropEffectScope.() -> Unit) {
         padding = 0f
         renderEffect = null
+        holdRefreshMillis = null
         effects()
     }
 

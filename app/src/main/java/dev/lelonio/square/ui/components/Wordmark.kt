@@ -128,56 +128,28 @@ fun AppPlate(
     modifier: Modifier = Modifier,
 ) {
     val accent = androidx.compose.material3.MaterialTheme.colorScheme.primary
+    // The iOS 27 glass, its own edge and light, over the artwork behind the
+    // page: that layer stands still while the page scrolls, so the pane is
+    // not taken again on every frame of it.
     dev.lelonio.square.ui.glass.LiquidButton(
         onClick = {},
         backdrop = backdrop,
         isInteractive = false,
-        flat = true,
-        modifier = modifier
-            .size(size)
-            // Brightest at the top left and gone by the bottom right, which is
-            // the one thing an even ring cannot do: a flat rim reads as a
-            // sticker, a graded one as an edge catching light.
-            .border(
-                0.8.dp,
-                androidx.compose.ui.graphics.Brush.linearGradient(
-                    0f to Color.White.copy(alpha = 0.62f),
-                    0.5f to Color.White.copy(alpha = 0.20f),
-                    1f to Color.White.copy(alpha = 0.06f),
-                ),
-                androidx.compose.foundation.shape.CircleShape,
-            ),
+        modifier = modifier.size(size),
         contentHeight = size,
         contentPadding = 0.dp,
     ) {
         Box(Modifier.size(size), contentAlignment = Alignment.Center) {
-            // Over the glass rather than under it.
-            //
-            // The material draws a film across whatever it is given, and a wash
-            // painted underneath came out through it as flat grey — the thing
-            // this exists to avoid. Above the film it is what the pane is
-            // holding: the accent the app takes from the artwork playing, which
-            // slides to a new colour every time the music changes.
+            // A veil of the accent the app takes from the artwork playing,
+            // light enough that the glass is what reads: it slides to a new
+            // colour every time the music changes.
             androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
-                drawRect(
-                    androidx.compose.ui.graphics.Brush.linearGradient(
-                        0f to accent.copy(alpha = 0.62f),
-                        0.5f to accent.copy(alpha = 0.30f),
-                        1f to accent.copy(alpha = 0.08f),
-                        start = androidx.compose.ui.geometry.Offset.Zero,
-                        end = androidx.compose.ui.geometry.Offset(size.toPx(), size.toPx()),
-                    ),
-                )
-                // The light on it, which is what makes it read as curved rather
-                // than as a coloured circle.
                 drawCircle(
-                    androidx.compose.ui.graphics.Brush.radialGradient(
-                        listOf(Color.White.copy(alpha = 0.34f), Color.Transparent),
-                        center = androidx.compose.ui.geometry.Offset(
-                            this.size.width * 0.30f,
-                            this.size.height * 0.20f,
-                        ),
-                        radius = this.size.width * 0.62f,
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        0f to accent.copy(alpha = 0.34f),
+                        1f to accent.copy(alpha = 0f),
+                        start = androidx.compose.ui.geometry.Offset.Zero,
+                        end = androidx.compose.ui.geometry.Offset(this.size.width, this.size.height),
                     ),
                 )
             }
