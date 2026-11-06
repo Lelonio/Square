@@ -71,7 +71,7 @@ fun BackdropEffectScope.liquidGlassMaterial(
         ?: (size.minDimension / 2f)
 
     val shader = runCatching {
-        obtainRuntimeShader("LiquidGlassSingle", LiquidGlassShader.SOURCE_SINGLE)
+        if (groupShapes == null) obtainRuntimeShader("LiquidGlassOne", LiquidGlassShader.SOURCE_SINGLE_ONE) else obtainRuntimeShader("LiquidGlassSingle", LiquidGlassShader.SOURCE_SINGLE)
     }.onFailure(LiquidGlassRenderer::unavailable).getOrNull() ?: return
 
     // The surface, as it sits in the recorded layer: inset by the padding

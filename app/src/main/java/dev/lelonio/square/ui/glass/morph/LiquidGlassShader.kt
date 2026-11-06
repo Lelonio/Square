@@ -43,7 +43,7 @@ internal object LiquidGlassShader {
      * both sides of the outline.
      */
     val SOURCE_SINGLE: String by lazy {
-        SOURCE
+        val single = SOURCE
             .replace(
                 "uniform shader sharpBackdrop;\nuniform shader blurredBackdrop;",
                 "uniform shader content;",
@@ -52,8 +52,70 @@ internal object LiquidGlassShader {
                 Regex("float4 backdropWithClip\\(float2 p, float clip\\) \\{[^}]*\\}"),
                 "float4 backdropWithClip(float2 p, float clip) { return float4(content.eval(p)); }",
             )
-            .replace("float centre = clipSDF(p0 + 1.0);", "float centre = -3.0;")
+            // The page under the whole layer is one picture here, so there is
+            // no clip to look up: the coverage tests and their four extra
+            // scene evaluations per sample were dead weight that Android 14's
+            // compiler still counted towards its program size limit ("program
+            // is too large", which left the glass off on those phones).
+            .replace(
+                Regex("float4 backdropAt\\(float2 p\\) \\{[^}]*\\}"),
+                "float4 backdropAt(float2 p) { return float4(content.eval(p)); }",
+            )
+        replaceBetween(
+            single,
+            "float4 textureBilinear(float2 uv, float2 size, float2 invSize) {",
+            "// Nearest texel at pixel [p] (whole pixels) as straight RGB.",
+            TEXTURE_BILINEAR_SINGLE,
+        )
+            // Every shape this program is given is a rounded rectangle (the
+            // bars, the buttons, the groups, the menus' blobs), so the
+            // squircle and the ellipse were never drawn, only counted.
+            .replace(
+                Regex("float getShapeSDF\\(float type, float2 p, float2 center, float2 size, float rTop, float rBottom\\) \\{[^}]*\\}"),
+                "float getShapeSDF(float type, float2 p, float2 center, float2 size, float rTop, float rBottom) { return sdfRRectAsym(p - center, size / 2.0, rTop, rBottom); }",
+            )
     }
+
+    /**
+     * [SOURCE_SINGLE] for one surface on its own, the shape the material is
+     * given everywhere but a blend group: the scene is that one shape, not a
+     * blend of four, which is most of what the program does five times a
+     * pixel.
+     */
+    val SOURCE_SINGLE_ONE: String by lazy {
+        SOURCE_SINGLE
+            .replace(
+                Regex("float sceneSDF\\(float2 p, float k\\) \\{[^}]*\\}"),
+                "float sceneSDF(float2 p, float k) { return sdf0(p); }",
+            )
+            .replace(
+                Regex("float clipSDF\\(float2 p\\) \\{[^}]*\\}"),
+                "float clipSDF(float2 p) { return sdf0(p); }",
+            )
+    }
+
+    /** Between [from] and [to], exclusive of [to], [with] in place. */
+    private fun replaceBetween(text: String, from: String, to: String, with: String): String {
+        val a = text.indexOf(from)
+        val b = text.indexOf(to, a)
+        require(a >= 0 && b > a) { "markers not found" }
+        return text.substring(0, a) + with + text.substring(b)
+    }
+
+    /** The bilinear sample, over one picture: four taps and no coverage. */
+    private const val TEXTURE_BILINEAR_SINGLE = """
+float4 textureBilinear(float2 uv, float2 size, float2 invSize) {
+    float2 px = uv * size - 0.5;
+    float2 f = fract(px);
+    float2 p0 = floor(px);
+    float4 c0 = float4(content.eval(p0 + 0.5));
+    float4 c1 = float4(content.eval(p0 + float2(1.5, 0.5)));
+    float4 c2 = float4(content.eval(p0 + float2(0.5, 1.5)));
+    float4 c3 = float4(content.eval(p0 + 1.5));
+    return mix(mix(c0, c1, f.x), mix(c2, c3, f.x), f.y);
+}
+
+"""
 
     /**
      * Upstream's frost rows: what the frost pass leaves in the backdrop the
@@ -63,7 +125,7 @@ internal object LiquidGlassShader {
      * clipped to the shapes and to alternate rows.
      */
     val SOURCE_ROWS: String by lazy {
-        SOURCE_SINGLE.replace("half4 main(float2 fragCoord) {", "half4 glassMain(float2 fragCoord) {") + """
+        SOURCE_SINGLE.substringBefore("half4 main(float2 fragCoord) {") + """
 uniform float uRowsCloud;
 
 half4 main(float2 fragCoord) {
@@ -392,35 +454,17 @@ float3 frostAt(float2 p, float2 q) {
     // cost a third of the frames a scroll dropped on this phone, for a ghost
     // that is at most 15 % of what shows (frostOpacity) and held within the
     // clamp of the cloud. Six taps at the real sigma blur it a little less.
-    if (true) {
-        for (int j = 0; j <= 1; j++) {
-            float y = cy + 2.0 * float(j);
-            float dy = y + 0.5 - p.y;
-            float wy = exp(-dy * dy * inv2s2);
-            for (int i = 3; i <= 5; i++) {
-                float x = base.x + float(i - 4);
-                float dx = x + 0.5 - p.x;
-                float3 c = texelAt(float2(x, y));
-                float w = wy * exp(-dx * dx * inv2s2) * (1.0 + slope * dot(c, LUMA_WEIGHTS));
-                acc += w * c;
-                wsum += w;
-            }
-        }
-    } else {
-        // 9 columns at 1 px and 5 even rows at 2 px: +-4 px, which holds the
-        // widest sigma left to this pass (2.4 px).
-        for (int j = -2; j <= 2; j++) {
-            float y = cy + 2.0 * float(j);
-            float dy = y + 0.5 - p.y;
-            float wy = exp(-dy * dy * inv2s2);
-            for (int i = 0; i < 9; i++) {
-                float x = base.x + float(i - 4);
-                float dx = x + 0.5 - p.x;
-                float3 c = texelAt(float2(x, y));
-                float w = wy * exp(-dx * dx * inv2s2) * (1.0 + slope * dot(c, LUMA_WEIGHTS));
-                acc += w * c;
-                wsum += w;
-            }
+    for (int j = 0; j <= 1; j++) {
+        float y = cy + 2.0 * float(j);
+        float dy = y + 0.5 - p.y;
+        float wy = exp(-dy * dy * inv2s2);
+        for (int i = 3; i <= 5; i++) {
+            float x = base.x + float(i - 4);
+            float dx = x + 0.5 - p.x;
+            float3 c = texelAt(float2(x, y));
+            float w = wy * exp(-dx * dx * inv2s2) * (1.0 + slope * dot(c, LUMA_WEIGHTS));
+            acc += w * c;
+            wsum += w;
         }
     }
     float3 ghost = acc / max(wsum, 1e-5);
