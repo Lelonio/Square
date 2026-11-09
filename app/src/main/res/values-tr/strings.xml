@@ -669,4 +669,11 @@
     <string name="podcasts">Podcast\'ler</string>
     <string name="new_episodes">Podcast\'lerinden yeni bölümler</string>
     <string name="podcast_count">%1$d podcast</string>
+    <string name="lyrics_delay">Şarkı sözü gecikmesi</string>
+    <string name="theme_pure_black">Saf siyah</string>
+    <string name="theme_pure_black_note">Koyu temada sayfalar gerçek siyah üzerinde: OLED ekranda bu pikseller kapalıdır.</string>
+    <string name="lyrics_folder_title">Şarkı sözü dosyaları</string>
+    <string name="lyrics_folder_choose">Müzik klasörünü seç</string>
+    <string name="lyrics_folder_forget">Klasörü unut</string>
+    <string name="lyrics_folder_note">Square, şarkının yanındaki aynı adlı .lrc dosyasını gösterir; örneğin sarki.mp3 ve sarki.lrc. Android 13\'ten itibaren müziğinin bulunduğu klasörü bilmesi gerekir. Şarkının etiketlerine yazılmış sözler onsuz da okunur.</string>
 </resources>

@@ -723,4 +723,11 @@
     <string name="podcasts">Podcasts</string>
     <string name="new_episodes">New episodes from your podcasts</string>
     <string name="podcast_count">%1$d podcasts</string>
+    <string name="lyrics_delay">Lyrics delay</string>
+    <string name="theme_pure_black">Pure black</string>
+    <string name="theme_pure_black_note">In the dark theme, pages on true black: on an OLED screen those pixels are off.</string>
+    <string name="lyrics_folder_title">Lyrics files</string>
+    <string name="lyrics_folder_choose">Choose your music folder</string>
+    <string name="lyrics_folder_forget">Forget the folder</string>
+    <string name="lyrics_folder_note">Square shows an .lrc file with the same name as the song beside it, like song.mp3 and song.lrc. From Android 13 it needs to be shown the folder your music is in. Lyrics written into the song’s tags are read without it.</string>
 </resources>

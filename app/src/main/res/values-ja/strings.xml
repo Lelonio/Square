@@ -712,5 +712,12 @@
     <string name="podcasts">ポッドキャスト</string>
     <string name="new_episodes">フォロー中のポッドキャストの新着エピソード</string>
     <string name="podcast_count">%1$d 件のポッドキャスト</string>
+    <string name="lyrics_delay">歌詞の遅延</string>
+    <string name="theme_pure_black">完全な黒</string>
+    <string name="theme_pure_black_note">ダークテーマでページを本当の黒にします。OLED 画面ではその画素が消灯します。</string>
+    <string name="lyrics_folder_title">歌詞ファイル</string>
+    <string name="lyrics_folder_choose">音楽フォルダを選ぶ</string>
+    <string name="lyrics_folder_forget">フォルダを解除</string>
+    <string name="lyrics_folder_note">Square は曲の隣にある同じ名前の .lrc ファイル(song.mp3 と song.lrc など)を表示します。Android 13 以降は音楽のあるフォルダを指定する必要があります。曲のタグに書き込まれた歌詞は指定しなくても読み込まれます。</string>
 </resources>
 

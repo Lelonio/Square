@@ -671,4 +671,11 @@
     <string name="podcasts">पॉडकास्ट</string>
     <string name="new_episodes">आपके पॉडकास्ट के नए एपिसोड</string>
     <string name="podcast_count">%1$d पॉडकास्ट</string>
+    <string name="lyrics_delay">बोल की देरी</string>
+    <string name="theme_pure_black">शुद्ध काला</string>
+    <string name="theme_pure_black_note">डार्क थीम में पेज असली काले पर: OLED स्क्रीन पर वे पिक्सल बंद रहते हैं।</string>
+    <string name="lyrics_folder_title">बोल की फ़ाइलें</string>
+    <string name="lyrics_folder_choose">संगीत फ़ोल्डर चुनें</string>
+    <string name="lyrics_folder_forget">फ़ोल्डर भूल जाएँ</string>
+    <string name="lyrics_folder_note">Square गाने के बगल में उसी नाम की .lrc फ़ाइल दिखाता है, जैसे song.mp3 और song.lrc। Android 13 से उसे आपके संगीत का फ़ोल्डर बताना पड़ता है। गाने के टैग में लिखे बोल इसके बिना भी पढ़े जाते हैं।</string>
 </resources>

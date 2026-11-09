@@ -656,4 +656,11 @@
     <string name="podcasts">Podcasts</string>
     <string name="new_episodes">Novos episódios dos seus podcasts</string>
     <string name="podcast_count">%1$d podcasts</string>
+    <string name="lyrics_delay">Atraso da letra</string>
+    <string name="theme_pure_black">Preto puro</string>
+    <string name="theme_pure_black_note">No tema escuro, páginas em preto real: numa tela OLED esses pixels ficam apagados.</string>
+    <string name="lyrics_folder_title">Arquivos de letras</string>
+    <string name="lyrics_folder_choose">Escolher a pasta de música</string>
+    <string name="lyrics_folder_forget">Esquecer a pasta</string>
+    <string name="lyrics_folder_note">O Square mostra um arquivo .lrc com o mesmo nome da música ao lado dela, como musica.mp3 e musica.lrc. A partir do Android 13 ele precisa saber em que pasta está sua música. Letras gravadas nas tags da música são lidas sem ela.</string>
 </resources>

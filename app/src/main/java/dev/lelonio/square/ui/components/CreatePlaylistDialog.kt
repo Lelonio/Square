@@ -72,6 +72,8 @@ fun CreatePlaylistDialog(
     confirmLabel: String,
     /** Description, visibility and cover; see MusicBackend.describesPlaylists. */
     describes: Boolean,
+    /** Whether a cover can be picked: as [describes], or always when editing. */
+    pickCover: Boolean = describes,
     busy: Boolean,
     error: String?,
     onCreate: (name: String, description: String, public: Boolean, cover: Uri?) -> Unit,
@@ -114,7 +116,7 @@ fun CreatePlaylistDialog(
                 Modifier.padding(top = 18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (describes) {
+                if (pickCover) {
                     Box(
                         Modifier
                             .size(COVER)
@@ -146,7 +148,7 @@ fun CreatePlaylistDialog(
                 Column(
                     Modifier
                         .weight(1f)
-                        .padding(start = if (describes) 14.dp else 0.dp),
+                        .padding(start = if (pickCover) 14.dp else 0.dp),
                 ) {
                     Field(
                         value = name,
@@ -157,7 +159,7 @@ fun CreatePlaylistDialog(
                         onDone = create,
                         modifier = Modifier.focusRequester(focus),
                     )
-                    if (describes) {
+                    if (pickCover) {
                         Text(
                             stringResource(
                                 if (cover == null && initial?.artworkUrl == null) R.string.choose_cover else R.string.change_cover,

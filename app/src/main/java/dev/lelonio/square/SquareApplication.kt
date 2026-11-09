@@ -92,10 +92,12 @@ class SquareApplication : Application(), ImageLoaderFactory {
         // that opens on Spotify's and changes it a second later.
         dev.lelonio.square.data.AppleCatalog.attach(this)
         dev.lelonio.square.data.LocalFileBindings.attach(this)
+        dev.lelonio.square.data.PlaylistCovers.attach(this)
         dev.lelonio.square.backend.lyrics.LyricsLibrary.attach(
             this,
             spicyKey = { preferences.spicyLyricsKey.value },
             preferred = { preferences.preferredLyricsSource.value },
+            lyricsFolder = { preferences.lyricsFolder.value },
         )
 
         // Two things feed the offline state, and one thing reads it out to the

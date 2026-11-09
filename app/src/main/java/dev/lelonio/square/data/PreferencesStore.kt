@@ -195,6 +195,58 @@ class PreferencesStore(context: Context) {
         prefs.edit().putString(KEY_THEME_MODE, value.name).apply()
     }
 
+    private val _pureBlack = MutableStateFlow(prefs.getBoolean(KEY_PURE_BLACK, false))
+
+    /**
+     * Pages on true black in the dark theme, rather than the near-black they
+     * are otherwise (#139): on an OLED screen black is the pixel switched off.
+     */
+    val pureBlack: StateFlow<Boolean> = _pureBlack.asStateFlow()
+
+    fun setPureBlack(value: Boolean) {
+        _pureBlack.value = value
+        prefs.edit().putBoolean(KEY_PURE_BLACK, value).apply()
+    }
+
+    private val _lyricsFolder = MutableStateFlow(prefs.getString(KEY_LYRICS_FOLDER, null).orEmpty())
+
+    /**
+     * The music folder the listener gave access to, as a tree URI, or blank:
+     * how `.lrc` files beside their songs are read from Android 13 on, where
+     * the audio permission no longer reaches them. See LocalLyrics.
+     */
+    val lyricsFolder: StateFlow<String> = _lyricsFolder.asStateFlow()
+
+    fun setLyricsFolder(value: String) {
+        _lyricsFolder.value = value
+        prefs.edit().putString(KEY_LYRICS_FOLDER, value).apply()
+    }
+
+    private val _lyricsOffsets = MutableStateFlow(
+        prefs.all.mapNotNull { (key, value) ->
+            if (key.startsWith(KEY_LYRICS_OFFSET_PREFIX) && value is Int) {
+                key.removePrefix(KEY_LYRICS_OFFSET_PREFIX) to value
+            } else {
+                null
+            }
+        }.toMap(),
+    )
+
+    /**
+     * How late the words are shown, in milliseconds, by the output the sound
+     * goes to (#143). Headphones over Bluetooth play the sound a moment after
+     * the player has it, and how long a moment depends on the headphones; the
+     * phone's speaker needs nothing. Absent means none.
+     */
+    val lyricsOffsets: StateFlow<Map<String, Int>> = _lyricsOffsets.asStateFlow()
+
+    fun setLyricsOffset(output: String, ms: Int) {
+        _lyricsOffsets.value = if (ms == 0) _lyricsOffsets.value - output else _lyricsOffsets.value + (output to ms)
+        prefs.edit().apply {
+            if (ms == 0) remove(KEY_LYRICS_OFFSET_PREFIX + output) else putInt(KEY_LYRICS_OFFSET_PREFIX + output, ms)
+        }.apply()
+    }
+
     /** Where the moving covers come from; see [animatedCoverSource]. */
     enum class CoverSource { SPOTIFY, APPLE_MUSIC }
 
@@ -425,6 +477,9 @@ class PreferencesStore(context: Context) {
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_YOUTUBE_QUALITY = "youtube_quality"
         const val KEY_LYRICS_STYLE = "lyrics_style"
+        const val KEY_PURE_BLACK = "pure_black"
+        const val KEY_LYRICS_FOLDER = "lyrics_folder"
+        const val KEY_LYRICS_OFFSET_PREFIX = "lyrics_offset:"
         const val KEY_SPICY_LYRICS = "spicy_lyrics_key"
         const val KEY_PREFERRED_LYRICS = "preferred_lyrics_source"
         const val KEY_KEEP_PLAYING = "keep_playing_on_close"

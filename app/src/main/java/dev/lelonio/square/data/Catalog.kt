@@ -49,6 +49,13 @@ data class CatalogTrack(
      * how anybody places an album.
      */
     val year: String = "",
+    /**
+     * The day the record came out, as precisely as the source knows it: a
+     * whole date, a year and month, or only the year (#161). Empty where the
+     * source does not say. Shown where a single record or song is the subject;
+     * a list keeps to [year].
+     */
+    val releaseDate: String = "",
     val durationMs: Long = 0,
     val explicit: Boolean = false,
     val smartRecommended: Boolean = false,
@@ -200,6 +207,7 @@ fun TrackDto.toCatalogTrack(addedAt: String? = null): CatalogTrack = CatalogTrac
     album = album?.name.orEmpty(),
     albumUri = album?.uri,
     year = album?.releaseDate?.take(4).orEmpty(),
+    releaseDate = album?.releaseDate.orEmpty(),
     durationMs = durationMs,
     explicit = explicit,
     artworkUrl = album?.images?.firstOrNull()?.url,

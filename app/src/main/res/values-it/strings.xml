@@ -695,4 +695,11 @@
     <string name="podcasts">Podcast</string>
     <string name="new_episodes">Nuovi episodi dei tuoi podcast</string>
     <string name="podcast_count">%1$d podcast</string>
+    <string name="lyrics_delay">Ritardo testi</string>
+    <string name="theme_pure_black">Nero puro</string>
+    <string name="theme_pure_black_note">Nel tema scuro, pagine su nero vero: su uno schermo OLED quei pixel sono spenti.</string>
+    <string name="lyrics_folder_title">File dei testi</string>
+    <string name="lyrics_folder_choose">Scegli la cartella della musica</string>
+    <string name="lyrics_folder_forget">Dimentica la cartella</string>
+    <string name="lyrics_folder_note">Square mostra il file .lrc con lo stesso nome della canzone accanto a essa, come canzone.mp3 e canzone.lrc. Da Android 13 deve sapere in quale cartella è la tua musica. I testi scritti nei tag della canzone si leggono anche senza.</string>
 </resources>

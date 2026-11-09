@@ -373,6 +373,26 @@ internal fun EffectsPanel(
             onReset = { onReverb(0f) },
         )
 
+        // How late the words come, for the headphones in use (#143): the
+        // sound reaches Bluetooth headphones a moment after the player has
+        // it, and the words are timed to the player. Kept per output, so the
+        // phone's speaker stays as it was.
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val store = remember(context) {
+            (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+        }
+        val output = rememberAudioOutput()
+        val offsets by store.lyricsOffsets.collectAsStateWithLifecycle()
+        EffectSlider(
+            label = stringResource(R.string.lyrics_delay) + (output.name?.let { " · $it" } ?: ""),
+            value = (offsets[output.key] ?: 0) / 1000f,
+            scale = DelayScale,
+            reading = { "%+.2f s".format(it) },
+            backdrop = backdrop,
+            onChange = { store.setLyricsOffset(output.key, (it * 1000).roundToInt()) },
+            onReset = { store.setLyricsOffset(output.key, 0) },
+        )
+
         SleepTimerRow()
     }
 }
@@ -615,6 +635,13 @@ private object RatioScale : SliderScale {
     override val positions = -1f..1f
     override fun position(value: Float) = (ln(value.toDouble()) / ln(2.0)).toFloat()
     override fun value(position: Float) = 2f.pow(position)
+}
+
+/** Seconds either way, the words later to the right. */
+private object DelayScale : SliderScale {
+    override val positions = -1f..1f
+    override fun position(value: Float) = value
+    override fun value(position: Float) = position
 }
 
 /** For a plain amount, where the number already means what it says. */

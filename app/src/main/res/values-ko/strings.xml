@@ -680,4 +680,11 @@
     <string name="podcasts">팟캐스트</string>
     <string name="new_episodes">내 팟캐스트의 새 에피소드</string>
     <string name="podcast_count">팟캐스트 %1$d개</string>
+    <string name="lyrics_delay">가사 지연</string>
+    <string name="theme_pure_black">완전한 검정</string>
+    <string name="theme_pure_black_note">다크 테마에서 페이지를 진짜 검정으로 표시합니다. OLED 화면에서는 해당 픽셀이 꺼집니다.</string>
+    <string name="lyrics_folder_title">가사 파일</string>
+    <string name="lyrics_folder_choose">음악 폴더 선택</string>
+    <string name="lyrics_folder_forget">폴더 해제</string>
+    <string name="lyrics_folder_note">Square는 노래 옆에 있는 같은 이름의 .lrc 파일(song.mp3와 song.lrc 등)을 표시합니다. Android 13부터는 음악이 있는 폴더를 지정해야 합니다. 노래 태그에 기록된 가사는 지정하지 않아도 읽습니다.</string>
 </resources>

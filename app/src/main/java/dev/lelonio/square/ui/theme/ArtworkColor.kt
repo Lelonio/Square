@@ -106,7 +106,14 @@ fun scrimColor(): Color {
 
 /** The colour every page's own colour is mixed towards. */
 @Composable
-fun pageGround(): Color = if (lightPage()) PageCeiling else PageFloor
+fun pageGround(): Color = when {
+    lightPage() -> PageCeiling
+    LocalPureBlack.current -> Color.Black
+    else -> PageFloor
+}
+
+/** The listener's pure black for the dark pages; see PreferencesStore.pureBlack. */
+val LocalPureBlack = androidx.compose.runtime.staticCompositionLocalOf { false }
 
 /**
  * The page tone for a cover.

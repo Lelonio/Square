@@ -746,7 +746,10 @@ fun PlaylistScreen(
             onOpenArtist = { artist ->
                 artist.uri?.let { onOpenItem(dev.lelonio.square.data.SearchItem(it, artist.name, "", null)) }
             },
-            year = state.tracks.firstOrNull()?.year.orEmpty()
+            // The whole day where the source knows it (#161).
+            year = state.tracks.firstOrNull()
+                ?.let { releaseDateLabel(it.releaseDate.ifEmpty { it.year }) }
+                .orEmpty()
                 .takeIf { state.kind == MainViewModel.DetailKind.ALBUM }
                 .orEmpty(),
             updatedAt = updated,
@@ -2375,7 +2378,7 @@ private fun LatestReleaseCard(
  * inventing a day it did not come out on.
  */
 @Composable
-private fun releaseDateLabel(date: String): String {
+internal fun releaseDateLabel(date: String): String {
     if (date.isBlank()) return ""
     return runCatching {
         when (date.length) {

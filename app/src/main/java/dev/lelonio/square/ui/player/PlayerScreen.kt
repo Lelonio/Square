@@ -2871,6 +2871,17 @@ private fun LyricsStage(
     val style by preferences.lyricsStyle.collectAsStateWithLifecycle()
     var optionsOpen by remember(query?.uri) { androidx.compose.runtime.mutableStateOf(false) }
 
+    // The words shown as late as the listener set for these headphones (#143):
+    // the position they follow is the player's, less the delay, and a line
+    // pressed seeks to where it is heard rather than where it is shown.
+    val output = rememberAudioOutput()
+    val offsets by preferences.lyricsOffsets.collectAsStateWithLifecycle()
+    val delayMs by androidx.compose.runtime.rememberUpdatedState((offsets[output.key] ?: 0).toLong())
+    val heardMs = remember(positionMs) {
+        androidx.compose.runtime.derivedStateOf { (positionMs.value - delayMs).coerceAtLeast(0L) }
+    }
+    val seekHeard: (Long) -> Unit = { onSeek((it + delayMs).coerceAtLeast(0L)) }
+
     // Off when a song starts: turning it on is asking to read this one.
     var translated by androidx.compose.runtime.saveable.rememberSaveable(lyrics) {
         androidx.compose.runtime.mutableStateOf(false)
@@ -2955,9 +2966,9 @@ private fun LyricsStage(
             ) {
                 ClassicLyricsView(
                     lyrics = shown ?: lyrics,
-                    positionMs = positionMs,
+                    positionMs = heardMs,
                     showTranslation = translated,
-                    onSeek = onSeek,
+                    onSeek = seekHeard,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -2970,10 +2981,10 @@ private fun LyricsStage(
             ) {
                 LyricsView(
                     lyrics = shown ?: lyrics,
-                    positionMs = positionMs,
+                    positionMs = heardMs,
                     isPlaying = isPlaying,
                     showTranslation = translated,
-                    onSeek = onSeek,
+                    onSeek = seekHeard,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

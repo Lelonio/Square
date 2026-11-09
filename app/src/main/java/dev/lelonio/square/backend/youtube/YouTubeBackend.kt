@@ -527,7 +527,12 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
             uri.startsWith(VIDEOS_PREFIX) -> wholePlaylist(id).map(::toVideoTrack)
 
             // A record opened from the player, by the album's own id.
-            uri.startsWith(ALBUM_PREFIX) -> YouTube.album(id).getOrThrow().songs.map(::toCatalogTrack)
+            // YouTube Music dates a record by its year alone, which every
+            // song on it then carries.
+            uri.startsWith(ALBUM_PREFIX) -> YouTube.album(id).getOrThrow().let { page ->
+                val year = page.album.year?.takeIf { it > 0 }?.toString().orEmpty()
+                page.songs.map { toCatalogTrack(it).copy(year = year, releaseDate = year) }
+            }
 
             // An artist has no track list of its own, so what "open an artist"
             // means here is the same as everywhere else: their best-known

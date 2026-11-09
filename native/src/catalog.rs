@@ -308,7 +308,36 @@ fn track_json(track: &Track) -> Value {
         "durationMs": track.duration,
         "explicit": track.is_explicit,
         "artworkUrl": largest_cover(&track.album.covers),
+        "year": release_year(track),
+        "releaseDate": release_date(track),
     })
+}
+
+/// The year the track's record came out, or "" where the metadata has none.
+fn release_year(track: &Track) -> String {
+    let year = track.album.date.year();
+    if year > 0 { year.to_string() } else { String::new() }
+}
+
+/// The day the track's record came out, as "YYYY-MM-DD", or the year alone.
+///
+/// librespot fills a missing month and day with the first of January, so a
+/// record dated only by its year arrives as 1 January. That date is taken to
+/// mean the year alone: printing a day it did not come out on is worse than
+/// leaving out the day of the few records that really did come out on it.
+fn release_date(track: &Track) -> String {
+    let date = &track.album.date;
+    let year = date.year();
+    if year <= 0 {
+        return String::new();
+    }
+    let month = u8::from(date.month());
+    let day = date.day();
+    if month == 1 && day == 1 {
+        year.to_string()
+    } else {
+        format!("{year:04}-{month:02}-{day:02}")
+    }
 }
 
 /// The cover of one playlist, as a URL, or `null`.

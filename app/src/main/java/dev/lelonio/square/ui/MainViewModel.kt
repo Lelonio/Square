@@ -2692,7 +2692,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 name = string(R.string.downloaded_tracks),
                 artworkUrl = dev.lelonio.square.ui.components.DOWNLOADS_COVER,
             ),
-        ) + playlists.filterNot { it.uri == DownloadStore.SINGLES || it.uri == LocalLibrary.CONTEXT_URI }
+        ) + dev.lelonio.square.data.PlaylistCovers.apply(
+            playlists.filterNot { it.uri == DownloadStore.SINGLES || it.uri == LocalLibrary.CONTEXT_URI },
+        )
             .distinctBy { it.uri }
 
     /** Covers already looked up, so a second visit to the home page is free. */
@@ -2891,12 +2893,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun publishPlaylist(published: PlaylistState) {
         val state = published.copy(tracks = withDeviceFiles(published.tracks))
         val current = _playlist.value
+        // The listener's own cover over whatever the service answers (#157).
+        val chosen = state.uri?.let(dev.lelonio.square.data.PlaylistCovers::coverFor)
         _playlist.value = if (current.uri != state.uri) {
-            state
+            if (chosen != null) state.copy(artworkUrl = chosen) else state
         } else {
             state.copy(
                 name = state.name.ifEmpty { current.name },
-                artworkUrl = state.artworkUrl ?: current.artworkUrl,
+                artworkUrl = chosen ?: state.artworkUrl ?: current.artworkUrl,
                 description = state.description.ifEmpty { current.description },
                 saved = state.saved ?: current.saved,
                 mine = state.mine ?: current.mine,
@@ -4273,7 +4277,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         var base = PlaylistState(
             uri = playlist.uri,
             name = playlist.name,
-            artworkUrl = playlist.artworkUrl,
+            artworkUrl = dev.lelonio.square.data.PlaylistCovers.coverFor(playlist.uri) ?: playlist.artworkUrl,
             kind = kind,
         )
 
@@ -5206,6 +5210,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         _playlist.value = _playlist.value.copy(name = trimmed, description = description.trim())
                     }
                     invalidateContext(uri)
+                    // A service that takes no picture: kept on this phone (#157).
+                    if (cover != null && !backend.describesPlaylists) {
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                dev.lelonio.square.data.PlaylistCovers.save(uri, coverJpeg(cover))
+                            }
+                        }.onFailure {
+                            android.util.Log.e(TAG, "local playlist cover failed: ${chain(it)}", it)
+                        }.getOrNull()?.let { file ->
+                            (_state.value as? UiState.Ready)?.let { ready ->
+                                _state.value = ready.copy(
+                                    playlists = ready.playlists.map { if (it.uri == uri) it.copy(artworkUrl = file) else it },
+                                )
+                            }
+                            if (_playlist.value.uri == uri) _playlist.value = _playlist.value.copy(artworkUrl = file)
+                        }
+                    }
                     if (cover != null && backend.describesPlaylists) {
                         runCatching {
                             val jpeg = withContext(Dispatchers.Default) { coverJpeg(cover) }
@@ -5334,6 +5355,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         runCatching { container.activeBackend.deletePlaylist(uri) }
+            .onSuccess { dev.lelonio.square.data.PlaylistCovers.forget(uri) }
             .onFailure {
                 android.util.Log.e(TAG, "delete playlist failed: ${chain(it)}", it)
                 val current = _state.value as? UiState.Ready

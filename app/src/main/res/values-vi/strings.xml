@@ -716,4 +716,11 @@
     <string name="podcasts">Podcast</string>
     <string name="new_episodes">Tập mới từ podcast của bạn</string>
     <string name="podcast_count">%1$d podcast</string>
+    <string name="lyrics_delay">Độ trễ lời bài hát</string>
+    <string name="theme_pure_black">Đen tuyệt đối</string>
+    <string name="theme_pure_black_note">Trong giao diện tối, trang nằm trên nền đen thật: trên màn hình OLED các điểm ảnh đó được tắt.</string>
+    <string name="lyrics_folder_title">Tệp lời bài hát</string>
+    <string name="lyrics_folder_choose">Chọn thư mục nhạc</string>
+    <string name="lyrics_folder_forget">Quên thư mục</string>
+    <string name="lyrics_folder_note">Square hiển thị tệp .lrc cùng tên với bài hát nằm cạnh nó, như baihat.mp3 và baihat.lrc. Từ Android 13, ứng dụng cần biết thư mục chứa nhạc của bạn. Lời được ghi trong thẻ của bài hát vẫn được đọc mà không cần.</string>
 </resources>

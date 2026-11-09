@@ -656,4 +656,11 @@
     <string name="podcasts">Podcasts</string>
     <string name="new_episodes">Neue Folgen deiner Podcasts</string>
     <string name="podcast_count">%1$d Podcasts</string>
+    <string name="lyrics_delay">Songtext-Verzögerung</string>
+    <string name="theme_pure_black">Reines Schwarz</string>
+    <string name="theme_pure_black_note">Im dunklen Design Seiten auf echtem Schwarz: Auf einem OLED-Bildschirm sind diese Pixel aus.</string>
+    <string name="lyrics_folder_title">Songtext-Dateien</string>
+    <string name="lyrics_folder_choose">Musikordner wählen</string>
+    <string name="lyrics_folder_forget">Ordner vergessen</string>
+    <string name="lyrics_folder_note">Square zeigt eine .lrc-Datei mit demselben Namen wie der Song daneben an, etwa song.mp3 und song.lrc. Ab Android 13 muss es den Ordner deiner Musik kennen. In den Tags des Songs gespeicherte Songtexte werden auch ohne ihn gelesen.</string>
 </resources>

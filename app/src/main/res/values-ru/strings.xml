@@ -685,4 +685,11 @@
     <string name="podcasts">Подкасты</string>
     <string name="new_episodes">Новые выпуски ваших подкастов</string>
     <string name="podcast_count">Подкастов: %1$d</string>
+    <string name="lyrics_delay">Задержка текста</string>
+    <string name="theme_pure_black">Чистый чёрный</string>
+    <string name="theme_pure_black_note">В тёмной теме страницы на настоящем чёрном: на OLED-экране эти пиксели выключены.</string>
+    <string name="lyrics_folder_title">Файлы текстов</string>
+    <string name="lyrics_folder_choose">Выбрать папку с музыкой</string>
+    <string name="lyrics_folder_forget">Забыть папку</string>
+    <string name="lyrics_folder_note">Square показывает файл .lrc с тем же именем, что и песня, рядом с ней, например song.mp3 и song.lrc. Начиная с Android 13 ему нужно указать папку с музыкой. Тексты, записанные в теги песни, читаются и без неё.</string>
 </resources>

@@ -3706,6 +3706,9 @@ fun SquareApp(
                         title = stringResource(R.string.edit_playlist),
                         confirmLabel = stringResource(R.string.save),
                         describes = viewModel.describesPlaylists,
+                        // Every source: where it takes no picture, the
+                        // picture is kept on this phone (#157).
+                        pickCover = true,
                         busy = edit.busy,
                         error = edit.error,
                         initial = edit.details,
@@ -3763,7 +3766,13 @@ fun SquareApp(
                 TrackSheet(
                     visible = trackMenu != null,
                     title = menu?.track?.name.orEmpty(),
-                    subtitle = menu?.track?.artist.orEmpty(),
+                    // And when it came out, where the source says (#161).
+                    subtitle = listOf(
+                        menu?.track?.artist.orEmpty(),
+                        dev.lelonio.square.ui.library.releaseDateLabel(
+                            menu?.track?.let { it.releaseDate.ifEmpty { it.year } }.orEmpty(),
+                        ),
+                    ).filter { it.isNotBlank() }.joinToString(" · "),
                     artworkUrl = menu?.track?.artworkUrl,
                     backdrop = overlayBackdrop,
                     onDismiss = { trackMenu = null },

@@ -83,6 +83,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import com.adamglin.phosphoricons.regular.DeviceMobile
 import com.adamglin.phosphoricons.regular.Moon
+import com.adamglin.phosphoricons.regular.CircleHalf
+import com.adamglin.phosphoricons.regular.FolderOpen
 import com.adamglin.phosphoricons.regular.Sun
 import com.adamglin.phosphoricons.regular.Package
 import com.adamglin.phosphoricons.regular.FilmStrip
@@ -584,6 +586,13 @@ fun SettingsScreen(
             PreferredLyricsSection(showSpotify)
         }
 
+        // Where the phone's own .lrc files are; needed from Android 13 (#158).
+        if (shown == SettingsPage.Playback && "lyrics" in openGroups &&
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU
+        ) groupItem("lyrics-folder", Group.LYRICS) {
+            LyricsFolderSection()
+        }
+
         // Spicy Lyrics is asked by Spotify track id, so only on that source.
         if (shown == SettingsPage.Playback && showSpotify && "lyrics" in openGroups) groupItem("spicy-lyrics", Group.LYRICS) {
             SpicyLyricsSection()
@@ -699,6 +708,28 @@ fun SettingsScreen(
                             dev.lelonio.square.data.PreferencesStore.ThemeMode.DARK -> PhosphorIcons.Regular.Moon
                         },
                     ) { store.setThemeMode(choice) }
+                }
+                // True black under the dark theme, for OLED screens (#139).
+                val pureBlack by store.pureBlack.collectAsStateWithLifecycle()
+                RowDivider()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { store.setPureBlack(!pureBlack) }
+                        .padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    RowIcon(PhosphorIcons.Regular.CircleHalf)
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.theme_pure_black), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            stringResource(R.string.theme_pure_black_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = InkDim,
+                        )
+                    }
+                    PlainToggle(checked = pureBlack, onChange = store::setPureBlack)
                 }
             }
         }
@@ -1772,6 +1803,75 @@ private fun PreferredLyricsSection(showSpotify: Boolean) {
         RowDivider()
         Text(
             stringResource(R.string.lyrics_preferred_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+        )
+    }
+}
+
+/**
+ * The music folder `.lrc` files are read from, beside their songs.
+ *
+ * Only from Android 13, where the audio permission stopped reaching files that
+ * are not audio; before that they are read without asking. See LocalLyrics.
+ */
+@Composable
+private fun LyricsFolderSection() {
+    val context = LocalContext.current
+    val store = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+    }
+    val folder by store.lyricsFolder.collectAsStateWithLifecycle()
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                tree,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+        // Let go of the folder this replaces, so the grants do not pile up.
+        folder.takeIf { it.isNotBlank() && it != tree.toString() }?.let { old ->
+            runCatching {
+                context.contentResolver.releasePersistableUriPermission(
+                    android.net.Uri.parse(old),
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+        }
+        store.setLyricsFolder(tree.toString())
+    }
+    // "primary:Music" reads as "Music"; the root of a card as its name.
+    val name = remember(folder) {
+        folder.takeIf { it.isNotBlank() }?.let { uri ->
+            runCatching {
+                android.provider.DocumentsContract.getTreeDocumentId(android.net.Uri.parse(uri))
+                    .let { id -> id.substringAfter(':').ifBlank { id.substringBefore(':') } }
+            }.getOrNull()
+        }
+    }
+    Section(stringResource(R.string.lyrics_folder_title)) {
+        ActionRow(
+            name ?: stringResource(R.string.lyrics_folder_choose),
+            destructive = false,
+            icon = PhosphorIcons.Regular.FolderOpen,
+        ) { runCatching { pick.launch(null) } }
+        if (name != null) {
+            RowDivider()
+            ActionRow(stringResource(R.string.lyrics_folder_forget), destructive = true) {
+                runCatching {
+                    context.contentResolver.releasePersistableUriPermission(
+                        android.net.Uri.parse(folder),
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                }
+                store.setLyricsFolder("")
+            }
+        }
+        RowDivider()
+        Text(
+            stringResource(R.string.lyrics_folder_note),
             style = MaterialTheme.typography.bodySmall,
             color = InkDim,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),

@@ -17,6 +17,8 @@ import kotlinx.serialization.json.Json
 
 /** Where a song's words can come from; see [LyricsLibrary]. */
 enum class LyricsSource(val label: String) {
+    /** A `.lrc` beside one of the phone's own songs, or the words in its tags; see LocalLyrics. */
+    LOCAL_FILE("LRC"),
     AMLL("AMLL"),
     SPICY_LYRICS("Spicy Lyrics"),
     APPLE_MUSIC("Apple Music"),
@@ -49,8 +51,15 @@ object LyricsLibrary {
     private val json = Json { ignoreUnknownKeys = true }
     private var directory: File? = null
 
-    fun attach(context: Context, spicyKey: () -> String = { "" }, preferred: () -> String = { "" }) {
+    fun attach(
+        context: Context,
+        spicyKey: () -> String = { "" },
+        preferred: () -> String = { "" },
+        lyricsFolder: () -> String = { "" },
+    ) {
         directory = File(context.applicationContext.cacheDir, "lyrics").apply { mkdirs() }
+        LocalLyrics.attach(context)
+        LocalLyrics.folder = lyricsFolder
         SpicyLyrics.key = spicyKey
         this.preferred = preferred
     }
@@ -93,7 +102,10 @@ object LyricsLibrary {
                 LyricsSource.KUGOU, LyricsSource.LYRICS_OVH,
             )
         } else {
-            listOf(
+            // The phone's own song's own words first: whoever wrote an LRC for
+            // it, or tagged it, meant those (#158).
+            listOfNotNull(
+                LyricsSource.LOCAL_FILE.takeIf { LocalLyrics.handles(uri) },
                 LyricsSource.APPLE_MUSIC, LyricsSource.BETTER_LYRICS, LyricsSource.LRCLIB,
                 LyricsSource.NETEASE, LyricsSource.KUGOU, LyricsSource.LYRICS_OVH,
             )
@@ -103,6 +115,7 @@ object LyricsLibrary {
     suspend fun fetch(source: LyricsSource, query: LyricsQuery): Lyrics? = runCatching {
         val (_, title, artist, duration) = query
         when (source) {
+            LyricsSource.LOCAL_FILE -> LocalLyrics.lyrics(query.uri)
             LyricsSource.AMLL -> Amll.lyrics(query.uri)
             LyricsSource.SPICY_LYRICS -> SpicyLyrics.lyrics(query.uri)
             LyricsSource.APPLE_MUSIC -> Lossless.lyrics(title, artist, duration)
@@ -174,6 +187,12 @@ object LyricsLibrary {
     ): Lyrics? {
         // The listener's own pick, and nothing else: what it has, or nothing.
         if (preferred != null) return answered[preferred]
+        // Words the listener put beside their own song win over any archive's,
+        // however finely those are timed; and are worth the moment they take.
+        if (LyricsSource.LOCAL_FILE in order) {
+            if (LyricsSource.LOCAL_FILE !in answered && !final) return null
+            answered[LyricsSource.LOCAL_FILE]?.let { return it }
+        }
         for (source in order) {
             if (source !in answered) {
                 if (final) continue else return null
@@ -200,6 +219,11 @@ object LyricsLibrary {
      * when a source further down had it word by word.
      */
     suspend fun lyrics(query: LyricsQuery): Lyrics? {
+        // Read fresh every time and never kept: the file is the listener's,
+        // and an edit to it should show on the next play.
+        if (LocalLyrics.handles(query.uri)) {
+            fetch(LyricsSource.LOCAL_FILE, query)?.let { return it }
+        }
         cached(query.uri, query.title)?.takeIf { it.chosen || shows(query.uri, it.lyrics) }?.let { entry ->
             // Picked by an older rule, or before a source existed: looked at
             // again once a session, unless the listener chose it.

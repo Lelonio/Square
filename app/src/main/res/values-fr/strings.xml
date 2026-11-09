@@ -656,4 +656,11 @@
     <string name="podcasts">Podcasts</string>
     <string name="new_episodes">Nouveaux épisodes de vos podcasts</string>
     <string name="podcast_count">%1$d podcasts</string>
+    <string name="lyrics_delay">Décalage des paroles</string>
+    <string name="theme_pure_black">Noir pur</string>
+    <string name="theme_pure_black_note">En thème sombre, pages sur un vrai noir : sur un écran OLED, ces pixels sont éteints.</string>
+    <string name="lyrics_folder_title">Fichiers de paroles</string>
+    <string name="lyrics_folder_choose">Choisir le dossier de musique</string>
+    <string name="lyrics_folder_forget">Oublier le dossier</string>
+    <string name="lyrics_folder_note">Square affiche un fichier .lrc portant le même nom que le morceau, à côté de lui, comme morceau.mp3 et morceau.lrc. Depuis Android 13, il doit connaître le dossier de ta musique. Les paroles inscrites dans les tags du morceau sont lues sans lui.</string>
 </resources>

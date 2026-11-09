@@ -328,8 +328,13 @@ fun ChosenTheme(content: @Composable () -> Unit) {
             }
         }
     }
+    val pureBlack by remember(context) {
+        (context.applicationContext as? dev.lelonio.square.SquareApplication)?.preferences?.pureBlack
+            ?: kotlinx.coroutines.flow.MutableStateFlow(false)
+    }.collectAsState()
     CompositionLocalProvider(
         androidx.compose.ui.platform.LocalConfiguration provides configuration,
+        LocalPureBlack provides pureBlack,
         content = content,
     )
 }
