@@ -50,6 +50,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import dev.lelonio.square.ui.components.horizontalEdgeFade
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
@@ -679,11 +680,14 @@ private fun Header(
                 .padding(top = 14.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Scrolled sideways rather than squeezed, edge to edge.
+            // Scrolled sideways rather than squeezed, edge to edge, and fading
+            // out where it runs on under the sort button (#166).
+            val chipsScroll = rememberScrollState()
             Row(
                 Modifier
                     .weight(1f)
-                    .horizontalScroll(rememberScrollState())
+                    .horizontalEdgeFade(chipsScroll)
+                    .horizontalScroll(chipsScroll)
                     .padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {

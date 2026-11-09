@@ -276,6 +276,15 @@ fun LiquidBottomTabs(
             Modifier
                 .graphicsLayer {
                     translationX = panelOffset
+                    // Grown with its shell, as it was when the shell was drawn
+                    // on it: grown alone, the shell stood out past both ends of
+                    // the row under a finger (#170).
+                    if (ownSurface != null) {
+                        val progress = dampedDragAnimation.pressProgress
+                        val scale = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
+                        scaleX = scale
+                        scaleY = scale
+                    }
                 }
                 // Clip the row's rectangular touch glow, not its selector siblings.
                 .clip(ContinuousCapsule())

@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
+import dev.lelonio.square.ui.components.horizontalEdgeFade
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -407,10 +408,12 @@ private fun SleepTimerRow() {
         modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
     )
 
+    val rowScroll = rememberScrollState()
     Row(
         Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .horizontalEdgeFade(rowScroll)
+            .horizontalScroll(rowScroll),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -502,10 +505,12 @@ private fun PresetRow(
         modifier = Modifier.padding(bottom = 8.dp),
     )
 
+    val rowScroll = rememberScrollState()
     Row(
         Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .horizontalEdgeFade(rowScroll)
+            .horizontalScroll(rowScroll),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

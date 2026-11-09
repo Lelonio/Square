@@ -133,6 +133,10 @@ object Report {
             .putExtra(Intent.EXTRA_STREAM, uri)
             .putExtra(Intent.EXTRA_SUBJECT, file.name)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // As clip data too: the chooser reads the file for its preview, and the
+        // grant only reaches it through the clip ("Permission Denial: reading
+        // ... FileProvider uri ... from uid=1000" in a report from Android 11).
+        send.clipData = android.content.ClipData.newUri(context.contentResolver, file.name, uri)
         context.startActivity(
             Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
