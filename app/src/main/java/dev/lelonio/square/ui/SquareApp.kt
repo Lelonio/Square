@@ -373,18 +373,30 @@ private fun tabStep(from: String?, to: String?): Int? {
     return if (b > a) 1 else -1
 }
 
-/** The tabs' spring: settles without overshoot in about a third of a second. */
-private fun <T> tabSpring() = androidx.compose.animation.core.spring<T>(dampingRatio = 1f, stiffness = 380f)
+/*
+ * A tab change has to survive being interrupted, because the bar invites it:
+ * drag the indicator back and forth and every release is another change (#171).
+ * The first version slid, faded and scaled both pages on a spring that took
+ * half a second to settle, so a quick run of changes stacked three or four
+ * half-faded pages over each other, every one of them scaling — and a scaled
+ * page re-records all the glass on it each frame.
+ *
+ * So the page left goes almost at once and goes nowhere, and only the page
+ * arriving moves: in from the side its tab is on, a short way, starting as the
+ * old one is nearly gone. However fast the changes come, no more than two
+ * pages are ever on screen, and only one of them for more than a tenth of a
+ * second. Nothing scales.
+ */
+private const val TAB_EXIT_MS = 100
 
 private fun tabEnter(step: Int): androidx.compose.animation.EnterTransition =
-    androidx.compose.animation.slideInHorizontally(tabSpring()) { it * step / 12 } +
-        androidx.compose.animation.fadeIn(tween(220)) +
-        androidx.compose.animation.scaleIn(tabSpring(), initialScale = 0.97f)
+    androidx.compose.animation.slideInHorizontally(
+        tween(260, easing = androidx.compose.animation.core.EaseOutCubic),
+    ) { it * step / 16 } +
+        androidx.compose.animation.fadeIn(tween(180, delayMillis = TAB_EXIT_MS / 2))
 
-private fun tabExit(step: Int): androidx.compose.animation.ExitTransition =
-    androidx.compose.animation.slideOutHorizontally(tabSpring()) { -it * step / 12 } +
-        androidx.compose.animation.fadeOut(tween(160)) +
-        androidx.compose.animation.scaleOut(tabSpring(), targetScale = 0.97f)
+private fun tabExit(): androidx.compose.animation.ExitTransition =
+    androidx.compose.animation.fadeOut(tween(TAB_EXIT_MS))
 
 /** How many stations the radio tab offers. Enough to scroll, few enough to read. */
 private const val RADIO_SEEDS = 36
@@ -1732,7 +1744,7 @@ fun SquareApp(
                         },
                         exitTransition = {
                             val step = tabStep(initialState.destination.route, targetState.destination.route)
-                            if (step != null) tabExit(step) else fadeOut(tween(180))
+                            if (step != null) tabExit() else fadeOut(tween(180))
                         },
                         popEnterTransition = {
                             val step = tabStep(initialState.destination.route, targetState.destination.route)
@@ -1741,7 +1753,7 @@ fun SquareApp(
                         popExitTransition = {
                             val step = tabStep(initialState.destination.route, targetState.destination.route)
                             if (step != null) {
-                                tabExit(step)
+                                tabExit()
                             } else {
                                 slideOutHorizontally(tween(260)) { it / 5 } + fadeOut(tween(200))
                             }

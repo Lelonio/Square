@@ -686,6 +686,7 @@ private fun Header(
             Row(
                 Modifier
                     .weight(1f)
+                    .then(dev.lelonio.square.ui.components.SideScrollNoBack)
                     .horizontalEdgeFade(chipsScroll)
                     .horizontalScroll(chipsScroll)
                     .padding(horizontal = 20.dp),

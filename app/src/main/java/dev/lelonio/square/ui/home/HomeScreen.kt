@@ -820,7 +820,7 @@ private fun FilterRow(selected: Feed, chips: List<Feed>, backdrop: Backdrop, onS
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(top = 18.dp, bottom = 6.dp),
+        modifier = Modifier.padding(top = 18.dp, bottom = 6.dp).then(dev.lelonio.square.ui.components.SideScrollNoBack),
     ) {
         items(chips, key = { it.name }) { entry ->
             dev.lelonio.square.ui.components.FilterChip(
@@ -1274,7 +1274,7 @@ private fun ChipRow(
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(top = 16.dp),
+        modifier = Modifier.padding(top = 16.dp).then(dev.lelonio.square.ui.components.SideScrollNoBack),
     ) {
         items(chips, key = { it.title }) { chip ->
             val isSelected = chip.title == selected

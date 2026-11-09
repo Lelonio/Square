@@ -414,7 +414,7 @@ private fun KindRow(
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp).then(dev.lelonio.square.ui.components.SideScrollNoBack),
     ) {
         items(
             Kind.entries.filter { (it != Kind.VIDEOS || hasVideos) && (it != Kind.PODCASTS || hasPodcasts) },

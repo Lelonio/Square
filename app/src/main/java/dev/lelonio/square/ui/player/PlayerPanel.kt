@@ -412,6 +412,7 @@ private fun SleepTimerRow() {
     Row(
         Modifier
             .fillMaxWidth()
+            .then(dev.lelonio.square.ui.components.SideScrollNoBack)
             .horizontalEdgeFade(rowScroll)
             .horizontalScroll(rowScroll),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -509,6 +510,7 @@ private fun PresetRow(
     Row(
         Modifier
             .fillMaxWidth()
+            .then(dev.lelonio.square.ui.components.SideScrollNoBack)
             .horizontalEdgeFade(rowScroll)
             .horizontalScroll(rowScroll),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

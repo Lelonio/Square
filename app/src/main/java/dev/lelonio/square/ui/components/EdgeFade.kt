@@ -1,6 +1,7 @@
 package dev.lelonio.square.ui.components
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -37,3 +38,13 @@ fun Modifier.horizontalEdgeFade(state: ScrollState, width: Dp = 24.dp): Modifier
             blendMode = BlendMode.DstIn,
         )
     }
+
+/**
+ * For a row that scrolls sideways from one edge of the screen to the other:
+ * keeps the system's back gesture off it. With gesture navigation a drag that
+ * starts at either edge is "back", and a row of chips or presets runs right to
+ * both, so trying to scroll it from where it starts left the tab or closed the
+ * page instead (#172). The row is short, well inside the room Android allows an
+ * app to take from each edge, and the back gesture still works everywhere else.
+ */
+val SideScrollNoBack: Modifier = Modifier.systemGestureExclusion()
