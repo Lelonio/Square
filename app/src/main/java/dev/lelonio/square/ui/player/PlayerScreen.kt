@@ -188,6 +188,9 @@ private const val PAUSED_DIM = 0.55f
 /** How far the picture behind an open panel goes down. */
 private const val PANEL_DIM = 0.26f
 
+/** How far the room behind the player is blurred under an open panel. */
+private val PANEL_BLUR = 26.dp
+
 private const val CANVAS_HANDOVER = 500
 
 /** The shape the catalogue files an extended cover in: three by four. */
@@ -643,7 +646,7 @@ fun PlayerScreen(
     )
 
     val canvasBlur by animateDpAsState(
-        targetValue = if (panelOpen) 26.dp else 0.dp,
+        targetValue = if (panelOpen) PANEL_BLUR else 0.dp,
         animationSpec = tween(320),
         label = "canvasBlur",
     )
@@ -693,6 +696,19 @@ fun PlayerScreen(
     val coverAccent by dev.lelonio.square.ui.theme.rememberArtworkColor(state.artworkUrl)
     val coverTone = dev.lelonio.square.ui.theme.pageColorFor(coverAccent)
 
+    // Under a panel the room behind is already blurred (canvasBlur), and the
+    // glass's own frost on top of it was a second cloud over the first: every
+    // pane and button went milky as soon as a view opened. The frost gives way
+    // as the blur comes in, the same 320 ms, so the glass over a blurred room
+    // is clear glass, and over the sharp cover the frosted glass it was.
+    val outerGlass = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
+    val roomBlurred = (canvasBlur / PANEL_BLUR).coerceIn(0f, 1f)
+    val panelGlass = remember(outerGlass, roomBlurred) {
+        outerGlass.copy(blurRadius = outerGlass.blurRadius * (1f - roomBlurred))
+    }
+    androidx.compose.runtime.CompositionLocalProvider(
+        dev.lelonio.square.ui.glass.LocalGlassEffectConfig provides panelGlass,
+    ) {
     Box(
         Modifier
             .fillMaxSize()
@@ -1876,6 +1892,7 @@ fun PlayerScreen(
             }
         }
 
+    }
     }
 }
 
