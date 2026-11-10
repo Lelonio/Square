@@ -82,10 +82,15 @@ class MainActivity : ComponentActivity() {
                 android.graphics.Color.TRANSPARENT,
             ),
         )
-        if (intent?.opensPlayer() == true) {
-            openPlayer++
+        // Only on a fresh start. Re-created — a theme or a language changed —
+        // the intent is still the one that opened the app, and taking it again
+        // put that link's page over whatever the listener had opened since.
+        if (savedInstanceState == null) {
+            if (intent?.opensPlayer() == true) {
+                openPlayer++
+            }
+            intent?.let(::takeLink)
         }
-        intent?.let(::takeLink)
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

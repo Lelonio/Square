@@ -426,6 +426,12 @@ object NativeBridge {
     /** The account's own playlists, as raw JSON from the access point. */
     fun rootlist(): String = nativeRootlist()
 
+    /**
+     * Puts a playlist in the account's library or takes it out, as a change to
+     * the rootlist. Blocking; throws when the access point refuses.
+     */
+    fun setInRootlist(uri: String, keep: Boolean) = nativeSetInRootlist(uri, keep)
+
     /** JSON array of track URIs contained in a playlist, album or collection. */
     fun contextTracks(contextUri: String): String = nativeContextTracks(contextUri)
 
@@ -669,6 +675,7 @@ object NativeBridge {
     private external fun nativeUsername(): String
     private external fun nativeCollectionUri(): String
     private external fun nativeRootlist(): String
+    private external fun nativeSetInRootlist(uri: String, keep: Boolean)
     private external fun nativeContextTracks(contextUri: String): String
     private external fun nativeTracksMetadata(urisJson: String): String
     private external fun nativeLyrics(trackUri: String): String

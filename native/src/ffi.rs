@@ -345,6 +345,17 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRoo
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetInRootlist(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+    keep: jboolean,
+) {
+    let uri = read_string(&mut env, &uri);
+    guard(&mut env, "SetInRootlist", || catalog::set_in_rootlist(&uri?, keep != 0));
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeContextTracks(
     mut env: JNIEnv,
     _class: JClass,

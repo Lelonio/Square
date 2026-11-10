@@ -268,6 +268,42 @@ class Gateway(private val keys: PathfinderKeys) {
     }
 
     /**
+     * The artists the account follows, all of them, as the web player's
+     * "Artists" chip reads them from the library.
+     *
+     * The Web API's list of them answers only to an application of the
+     * listener's own and shares its quota with every other call it makes, so a
+     * busy minute left "New from your artists" with an error and nothing else.
+     * Null when the gateway will not answer, and the caller goes to
+     * the Web API then.
+     */
+    suspend fun followedArtists(): List<ArtistDto>? {
+        keys.refresh()
+        val artists = mutableListOf<ArtistDto>()
+        var offset = 0
+        while (true) {
+            val raw = runCatching {
+                query(
+                    operation = "libraryV3",
+                    hash = keys.libraryContents,
+                    variables = """{"filters":["Artists"],"order":null,"textFilter":"",""" +
+                        """"features":["LIKED_SONGS","YOUR_EPISODES_V2","PRERELEASES","PRERELEASES_V2","CLIPS","EVENTS"],""" +
+                        """"limit":$ARTISTS_PAGE,"offset":$offset,"flatten":false,"expandedFolders":[],""" +
+                        """"folderUri":null,"includeFoldersWhenFlattening":true}""",
+                )
+            }
+                .onFailure { android.util.Log.i(TAG, "followed artists unavailable: ${it.message}") }
+                .getOrNull() ?: return null
+            val page = parseFollowedArtists(raw) ?: return null
+            artists += page.first
+            offset += ARTISTS_PAGE
+            if (page.first.isEmpty() || offset >= page.second) break
+        }
+        return artists.distinctBy { it.uri }
+    }
+
+
+    /**
      * Puts [uris] in the account's library, or takes them out: shows, which the
      * Web API keeps behind a registered application, and anything else the web
      * player keeps the same way. True when the gateway took it.
@@ -397,5 +433,38 @@ class Gateway(private val keys: PathfinderKeys) {
 
         /** Podcasts followed, a page: more than most people follow. */
         const val SHOWS_PAGE = 50
+
+        /** Artists followed, a page: the web player's own size for the chip. */
+        const val ARTISTS_PAGE = 50
     }
 }
+
+/** One page of [followedArtists]: the artists on it, and how many there are in all. */
+internal fun parseFollowedArtists(json: String): Pair<List<ArtistDto>, Int>? = runCatching {
+    val library = org.json.JSONObject(json).getJSONObject("data")
+        .getJSONObject("me")
+        .getJSONObject("libraryV3")
+    if (library.optString("__typename") != "LibraryPage") return null
+    val items = library.optJSONArray("items") ?: org.json.JSONArray()
+    val artists = (0 until items.length()).mapNotNull { index ->
+        val data = items.optJSONObject(index)?.optJSONObject("item")?.optJSONObject("data")
+            ?: return@mapNotNull null
+        if (data.optString("__typename") != "Artist") return@mapNotNull null
+        val uri = data.optString("uri").takeIf { it.startsWith("spotify:artist:") } ?: return@mapNotNull null
+        val sources = data.optJSONObject("visuals")?.optJSONObject("avatarImage")?.optJSONArray("sources")
+        ArtistDto(
+            id = uri.substringAfterLast(':'),
+            uri = uri,
+            name = data.optJSONObject("profile")?.optString("name").orEmpty(),
+            images = (0 until (sources?.length() ?: 0)).mapNotNull { i ->
+                val source = sources?.optJSONObject(i) ?: return@mapNotNull null
+                ImageDto(
+                    url = source.optString("url").takeIf { it.isNotEmpty() } ?: return@mapNotNull null,
+                    width = source.optInt("width").takeIf { it > 0 },
+                    height = source.optInt("height").takeIf { it > 0 },
+                )
+            }.sortedByDescending { it.width ?: 0 },
+        )
+    }
+    artists to library.optInt("totalCount", artists.size)
+}.getOrNull()

@@ -2725,11 +2725,13 @@ private fun RoundGlassButton(
         onClick = { if (enabled) onClick() },
         onLongClick = if (enabled) onLongClick else null,
         backdrop = backdrop,
-        modifier = modifier
-            .size(size)
-            // Dimmed rather than removed when there is nowhere to go: a control
-            // that disappears makes the whole row jump.
-            .graphicsLayer { alpha = if (enabled) 1f else 0.4f },
+        // Dimmed rather than removed when there is nowhere to go: a control
+        // that disappears makes the whole row jump. Through the button's own
+        // `enabled`, which also stops it answering a press: dimmed from out
+        // here, it still grew under a held finger, and the glass growing out
+        // of the dimmed layer showed as a square box inside the disc.
+        enabled = enabled,
+        modifier = modifier.size(size),
         contentHeight = size,
         contentPadding = 0.dp,
         // Matched to the bottom bar and the mini player. At the upstream 2dp

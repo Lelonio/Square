@@ -1054,7 +1054,9 @@ class LibrespotPlayer(
         // is the only moment in the app where taking the account's playback is
         // what they meant. Everything else that reaches the engine leaves the
         // other device alone; see engine.rs.
-        if (runCatching { NativeBridge.playbackElsewhere }.getOrDefault(false)) {
+        // Offline there is no account to take it from: the track plays from
+        // the phone, and asking Spotify first only holds it up.
+        if (!OfflineMode.active.value && runCatching { NativeBridge.playbackElsewhere }.getOrDefault(false)) {
             android.util.Log.i("SquarePlayer", "taking playback back for this device")
             runCatching { NativeBridge.takeOver() }
                 .onFailure { android.util.Log.w("SquarePlayer", "could not take over", it) }

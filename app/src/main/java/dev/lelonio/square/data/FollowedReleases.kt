@@ -15,14 +15,25 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /** Public discographies are cached per artist; the private follow list is read afresh. */
-class FollowedReleases(private val api: SpotifyApi, private val directory: File) {
+class FollowedReleases(
+    private val api: SpotifyApi,
+    private val directory: File,
+    private val gateway: Gateway? = null,
+) {
     data class Result(val albums: List<AlbumDto>, val artistCount: Int, val failedArtists: Int)
 
     @Serializable
     private data class Entry(val savedAt: Long, val albums: List<AlbumDto>)
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun artists(): List<ArtistDto> {
+    /**
+     * Everyone the account follows: from the library through the gateway, which
+     * answers for anyone signed in, and the Web API only when it will not.
+     */
+    suspend fun artists(): List<ArtistDto> = gateway?.followedArtists() ?: webArtists()
+
+    /** The same, from the Web API alone: an application of the listener's own. */
+    suspend fun webArtists(): List<ArtistDto> {
         val gathered = mutableListOf<ArtistDto>()
         val cursors = mutableSetOf<String>()
         var after: String? = null

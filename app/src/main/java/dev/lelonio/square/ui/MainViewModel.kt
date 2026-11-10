@@ -353,7 +353,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val error: String? = null,
     )
     private val followedReleaseRepository by lazy {
-        dev.lelonio.square.data.FollowedReleases(container.api, java.io.File(getApplication<SquareApplication>().cacheDir, "followed-releases"))
+        dev.lelonio.square.data.FollowedReleases(
+            container.api,
+            java.io.File(getApplication<SquareApplication>().cacheDir, "followed-releases"),
+            container.gateway,
+        )
     }
     private val _followedReleases = MutableStateFlow(FollowedReleaseState())
     val followedReleases = _followedReleases.asStateFlow()
@@ -3060,9 +3064,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         save = !was,
                     ).getOrThrow()
 
+                // A playlist goes into the rootlist, as Spotify's own clients
+                // put one there: the gateway refuses playlists, and the Web
+                // API's follow answers only to an application of one's own.
+                uri.startsWith("spotify:playlist:") &&
+                    withContext(Dispatchers.IO) {
+                        runCatching { NativeBridge.setInRootlist(uri, keep = !was) }
+                            .onFailure { android.util.Log.w(TAG, "rootlist refused: ${describe(it)}") }
+                            .isSuccess
+                    } -> Unit
+
                 // Through the gateway as the web player keeps them, which works
                 // for anyone signed in; the Web API where it will not.
-                container.gateway.setInLibrary(listOf(uri), keep = !was) -> Unit
+                !uri.startsWith("spotify:playlist:") &&
+                    container.gateway.setInLibrary(listOf(uri), keep = !was) -> Unit
 
                 uri.startsWith("spotify:album:") ->
                     if (was) container.api.removeAlbums(id) else container.api.saveAlbums(id)
@@ -6665,12 +6680,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .getOrDefault(emptyList())
             return@launch
         }
-        if (!container.webApi.isReady) {
+        // The gateway first: it answers for anyone signed in, and without an
+        // application of one's own it is the only thing that does.
+        val fromLibrary = container.gateway.followedArtists()
+        if (fromLibrary == null && !container.webApi.isReady) {
             _followedArtists.value = emptyList()
             return@launch
         }
         runCatching {
-            followedReleaseRepository.artists().mapNotNull { artist ->
+            (fromLibrary ?: followedReleaseRepository.webArtists()).mapNotNull { artist ->
                 SearchItem(
                     uri = artist.uri ?: return@mapNotNull null,
                     title = artist.name, subtitle = "",

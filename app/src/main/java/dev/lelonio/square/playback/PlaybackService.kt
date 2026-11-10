@@ -622,10 +622,20 @@ class PlaybackService : MediaLibraryService() {
         // The notification, the lock screen and anything else holding a media
         // controller read the player and nothing else, so without this they
         // showed a stopped app while the account was playing in the next room.
+        //
+        // Not while offline. The account can go on naming another device for
+        // as long as the session stands — on Wi-Fi it stands all day — and the
+        // player sends play, pause and skips to whichever device it mirrors:
+        // a downloaded song tapped offline was loaded here and then "played"
+        // on a device in another room, and nothing was heard at all.
         scope.launch {
-            dev.lelonio.square.data.RemoteConnect.playback.collect { elsewhere ->
-                librespot?.showRemote(elsewhere?.let { describeRemote(it) })
-            }
+            kotlinx.coroutines.flow.combine(
+                dev.lelonio.square.data.RemoteConnect.playback,
+                OfflineMode.active,
+            ) { elsewhere, offline -> elsewhere.takeIf { !offline } }
+                .collect { elsewhere ->
+                    librespot?.showRemote(elsewhere?.let { describeRemote(it) })
+                }
         }
 
         // Same reasoning for the source itself: swapping backends is swapping

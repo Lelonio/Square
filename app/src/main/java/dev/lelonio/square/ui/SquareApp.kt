@@ -2109,9 +2109,17 @@ fun SquareApp(
                             // While this screen is up, a page opened from it is
                             // opened *over* it; once it is gone, whatever it was
                             // showing is not "the page you were on" any more.
+                            //
+                            // Not when the activity is only being re-created,
+                            // for a new theme or language: the page is coming
+                            // straight back, and closing it emptied the list
+                            // until the app was opened again.
+                            val hostActivity = LocalContext.current.hostActivity()
                             DisposableEffect(Unit) {
                                 viewModel.detailShown()
-                                onDispose { viewModel.detailClosed() }
+                                onDispose {
+                                    if (hostActivity?.isChangingConfigurations != true) viewModel.detailClosed()
+                                }
                             }
 
                             // The system gesture, answered the same way as the
@@ -4607,3 +4615,10 @@ private const val AUDIBLE_TIMEOUT_MS = 5_000L
 
 /** How long the player's glass takes to become the next song's colour. */
 private const val PLAYER_FILM_FADE_MS = 700
+
+/** The activity behind a context, through whatever wraps it. */
+private tailrec fun android.content.Context.hostActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.hostActivity()
+    else -> null
+}

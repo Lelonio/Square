@@ -79,6 +79,67 @@ pub fn rootlist() -> EngineResult<String> {
     })
 }
 
+/// Puts a playlist in the account's library, or takes it out.
+///
+/// The way Spotify's own clients do it: a change to the rootlist, the list of
+/// lists. Neither of the other two ways works for everyone. The gateway's
+/// `addToLibrary` takes records, artists, songs and shows but refuses a
+/// playlist outright — the web player itself never sends it one — and the Web
+/// API's follow endpoint answers only to an application of the listener's
+/// own, so for anyone signing in without one the plus turned to a tick and
+/// straight back.
+///
+/// Added at the top, as a client adds one, and removed by URI rather than by
+/// position, so neither needs the list's current revision.
+pub fn set_in_rootlist(uri: &str, keep: bool) -> EngineResult<()> {
+    use librespot_protocol::playlist4_external::{op, Add, Delta, Item, ItemAttributes, ListChanges, Op, Rem};
+
+    if !uri.starts_with("spotify:playlist:") {
+        return Err(format!("not a playlist: {uri}"));
+    }
+    let session = with_session(|s| s.clone())?;
+    let uri = uri.to_string();
+    block_on(async move {
+        let mut item = Item::new();
+        item.set_uri(uri.clone());
+        let mut operation = Op::new();
+        if keep {
+            let mut attributes = ItemAttributes::new();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|since| since.as_millis() as i64)
+                .unwrap_or_default();
+            attributes.set_timestamp(now);
+            item.attributes = protobuf::MessageField::some(attributes);
+            let mut add = Add::new();
+            add.set_add_first(true);
+            add.items.push(item);
+            operation.set_kind(op::Kind::ADD);
+            operation.add = protobuf::MessageField::some(add);
+        } else {
+            let mut rem = Rem::new();
+            rem.set_items_as_key(true);
+            rem.items.push(item);
+            operation.set_kind(op::Kind::REM);
+            operation.rem = protobuf::MessageField::some(rem);
+        }
+        let mut delta = Delta::new();
+        delta.ops.push(operation);
+        let mut changes = ListChanges::new();
+        changes.deltas.push(delta);
+
+        let user = session.username();
+        let endpoint = format!("/playlist/v2/user/{user}/rootlist/changes");
+        session
+            .spclient()
+            .request_with_protobuf(&Method::POST, &endpoint, None, &changes)
+            .await
+            .map_err(|e| format!("rootlist change failed: {e}"))?;
+        log::info!("rootlist: playlist {}", if keep { "added" } else { "removed" });
+        Ok(())
+    })
+}
+
 /// Lyrics for a track, as the access point's own JSON.
 ///
 /// Returns `null` rather than an error when Spotify has no lyrics for the
