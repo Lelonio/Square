@@ -19,6 +19,7 @@
     <string name="credits">Об авторах</string>
     <string name="karaoke">Караоке</string>
     <string name="translation">Перевод</string>
+    <string name="pronunciation">Произношение</string>
     <string name="karaoke_on">Караоке %d%%</string>
     <string name="pip_listen">Только звук</string>
     <string name="remove_from_queue">Убрать из очереди</string>

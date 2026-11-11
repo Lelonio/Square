@@ -23,6 +23,7 @@
     <string name="credits">Credits</string>
     <string name="karaoke">Karaoke</string>
     <string name="translation">Translation</string>
+    <string name="pronunciation">Pronunciation</string>
     <string name="karaoke_on">Karaoke %d%%</string>
     <string name="pip_listen">Listen only</string>
     <string name="remove_from_queue">Remove from queue</string>

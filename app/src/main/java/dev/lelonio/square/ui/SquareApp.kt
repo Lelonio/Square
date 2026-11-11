@@ -1811,7 +1811,32 @@ fun SquareApp(
                                     )
                                 },
                                 onPlayTrending = { tracks, index ->
-                                    onPlay(tracks, index, null, false, trendingLabel, 0L)
+                                    val seed = tracks.getOrNull(index)
+                                    val youtube = seed != null && (
+                                        seed.uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.TRACK_PREFIX) ||
+                                            seed.uri.startsWith(dev.lelonio.square.backend.youtube.YouTubeBackend.VIDEO_PREFIX)
+                                        )
+                                    if (seed == null || !youtube) {
+                                        onPlay(tracks, index, null, false, trendingLabel, 0L)
+                                    } else {
+                                        // A song picked from YouTube's shelves plays
+                                        // on into its radio, as YouTube Music does:
+                                        // the shelf in its own order was the same
+                                        // dozen songs every time, and none of them
+                                        // new (#180). The shelf itself when the
+                                        // radio is slow or will not come.
+                                        scope.launch {
+                                            val radio = kotlinx.coroutines.withTimeoutOrNull(3_000L) {
+                                                viewModel.radioFor(seed.uri)
+                                            }.orEmpty()
+                                            if (radio.isEmpty()) {
+                                                onPlay(tracks, index, null, false, trendingLabel, 0L)
+                                                return@launch
+                                            }
+                                            val queue = listOf(seed) + radio.filterNot { it.uri == seed.uri }
+                                            onPlay(queue, 0, viewModel.stationFor(seed.uri), true, radioOf(seed.name), 0L)
+                                        }
+                                    }
                                 },
                                 onPickYouTubeChip = viewModel::selectYouTubeChip,
                                 onLoadMoreYouTube = viewModel::loadMoreYouTubeHome,

@@ -55,6 +55,10 @@ fun TranslationToggle(
     onChange: (Boolean) -> Unit,
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
+    /** The glyph on and off, and what it says; the pronunciation switch uses this too. */
+    iconOn: androidx.compose.ui.graphics.vector.ImageVector = PhosphorIcons.Fill.Translate,
+    iconOff: androidx.compose.ui.graphics.vector.ImageVector = PhosphorIcons.Regular.Translate,
+    description: String = stringResource(R.string.translation),
 ) {
     var pressed by remember { mutableStateOf(false) }
     val change by rememberUpdatedState(onChange)
@@ -130,8 +134,8 @@ fun TranslationToggle(
             )
         } else {
             Icon(
-                if (on) PhosphorIcons.Fill.Translate else PhosphorIcons.Regular.Translate,
-                contentDescription = stringResource(R.string.translation),
+                if (on) iconOn else iconOff,
+                contentDescription = description,
                 // White throughout, as the dial is: the filled glyph is what
                 // says it is on, and a coloured one competes with the artwork.
                 tint = Color.White,

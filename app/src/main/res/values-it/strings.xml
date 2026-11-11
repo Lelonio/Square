@@ -13,6 +13,7 @@
     <string name="credits">Crediti</string>
     <string name="karaoke">Karaoke</string>
     <string name="translation">Traduzione</string>
+    <string name="pronunciation">Pronuncia</string>
     <string name="karaoke_on">Karaoke %d%%</string>
     <string name="pip_listen">Solo audio</string>
     <string name="remove_from_queue">Togli dalla coda</string>

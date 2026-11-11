@@ -13,6 +13,7 @@
     <string name="credits">크레딧</string>
     <string name="karaoke">노래방</string>
     <string name="translation">번역</string>
+    <string name="pronunciation">발음</string>
     <string name="karaoke_on">노래방 %d%%</string>
     <string name="pip_listen">듣기만 하기</string>
     <string name="remove_from_queue">대기열에서 삭제</string>

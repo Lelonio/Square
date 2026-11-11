@@ -17,6 +17,7 @@
     <string name="credits">श्रेय</string>
     <string name="karaoke">कराओके</string>
     <string name="translation">अनुवाद</string>
+    <string name="pronunciation">उच्चारण</string>
     <string name="karaoke_on">कराओके %d%%</string>
     <string name="pip_listen">केवल ऑडियो</string>
     <string name="remove_from_queue">कतार से हटाएं</string>

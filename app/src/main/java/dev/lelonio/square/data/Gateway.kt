@@ -37,22 +37,32 @@ class Gateway(private val keys: PathfinderKeys) {
      * Null when the gateway will not answer, which leaves the caller its own
      * way in.
      */
-    suspend fun artistPlaylists(artistUri: String): List<SearchItem>? {
+    suspend fun artistPlaylists(artistUri: String): List<SearchItem>? =
+        artistOverview(artistUri)?.let(ArtistPlaylists::parse)
+
+    /**
+     * An artist's whole page as the web player reads it: top songs in
+     * Spotify's order, albums, singles and EPs, the newest release, listeners
+     * and biography. Answered for anyone logged in, unlike the Web API's
+     * artist endpoints; see SpotifyWebArtist.parseOverview.
+     *
+     * Null when the gateway will not answer.
+     */
+    suspend fun artistOverview(artistUri: String): String? {
         keys.refresh()
         // The web player's own variables. Its locale is a path segment, which
         // English does without.
         val language = java.util.Locale.getDefault().language
         val locale = if (language == "en") "" else "intl-$language"
         return runCatching {
-            ArtistPlaylists.parse(
-                query(
-                    operation = "queryArtistOverview",
-                    hash = keys.artistOverview,
-                    variables = """{"uri":"$artistUri","locale":"$locale","preReleaseV2":true}""",
-                ),
+            query(
+                operation = "queryArtistOverview",
+                hash = keys.artistOverview,
+                variables = """{"uri":"$artistUri","locale":"$locale","preReleaseV2":true,""" +
+                    """"includeMusicVideoPreviews":false}""",
             )
         }
-            .onFailure { android.util.Log.i(TAG, "artist playlists unavailable: ${it.message}") }
+            .onFailure { android.util.Log.i(TAG, "artist page unavailable: ${it.message}") }
             .getOrNull()
     }
 

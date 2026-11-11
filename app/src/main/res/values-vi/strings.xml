@@ -21,6 +21,7 @@
     <string name="credits">Ghi công</string>
     <string name="karaoke">Karaoke</string>
     <string name="translation">Bản dịch</string>
+    <string name="pronunciation">Phát âm</string>
     <string name="karaoke_on">Karaoke %d%%</string>
     <string name="pip_listen">Chỉ nghe</string>
     <string name="remove_from_queue">Bỏ khỏi hàng đợi</string>

@@ -3010,6 +3010,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return _savedShows.value.any { it.uri == uri }
         }
         if (!uri.startsWith("spotify:album:") && !uri.startsWith("spotify:playlist:")) return null
+        // A playlist is in the library when it is in the rootlist, which is
+        // where the plus puts it. The gateway's own check does not look there
+        // and said no for every playlist, so the plus never turned to a tick
+        // on one that was already kept.
+        if (uri.startsWith("spotify:playlist:")) {
+            runCatching { withContext(Dispatchers.IO) { NativeBridge.rootlist() } }
+                .mapCatching { org.json.JSONArray(it) }
+                .onFailure { android.util.Log.w(TAG, "rootlist not read: ${describe(it)}") }
+                .getOrNull()
+                ?.let { list -> return (0 until list.length()).any { list.optJSONObject(it)?.optString("uri") == uri } }
+        }
         // The gateway first, as the web player asks: it answers for anyone
         // signed in. The Web API's check for a followed playlist is one Spotify
         // has closed to newer applications, and a failure there took the plus
@@ -5775,7 +5786,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * those, it is looked up once, on the tap.
      */
     suspend fun albumOf(trackUri: String): CatalogPlaylist? {
-        if (!trackUri.startsWith("spotify:track:") || !container.webApi.isReady) return null
+        if (!trackUri.startsWith("spotify:track:")) return null
+        // The engine first: it knows every track's record, and asking the Web
+        // API instead needs the listener's own app on the developer site. A
+        // playlist's songs without the address reached only that, and the
+        // title in the player did nothing for everyone else (#186).
+        runCatching { Catalog.tracks(listOf(trackUri)).firstOrNull() }
+            .onFailure { android.util.Log.w(TAG, "engine has no album for $trackUri: ${describe(it)}") }
+            .getOrNull()
+            ?.takeIf { it.albumUri != null }
+            ?.let { track ->
+                return CatalogPlaylist(uri = track.albumUri!!, name = track.album, artworkUrl = track.artworkUrl)
+            }
+        if (!container.webApi.isReady) return null
         val id = trackUri.substringAfterLast(':')
         val dto = runCatching { container.api.track(id) }
             .onFailure { android.util.Log.w(TAG, "no album for $trackUri: ${describe(it)}") }
@@ -6111,7 +6134,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val id = uri.substringAfterLast(':')
         val market = userCountry
 
-        // Primary: Web API if custom developer app is configured
+        // First, for everyone: the page as Spotify's own web player reads it,
+        // songs in its order, singles and EPs apart. The rest below is what
+        // there is when the gateway will not answer (#183).
+        // The gateway goes through the engine. Opened as the app starts, the
+        // page asked before the engine was up and fell to the Web API's
+        // thinner one; a few seconds' wait is the better page.
+        if (container.spotifySignedIn) withTimeoutOrNull(8000L) { awaitEngine() }
+        val overviewJson = runCatching {
+            withTimeoutOrNull(5000L) { container.gateway.artistOverview(uri) }
+        }.getOrNull()
+        val overview = overviewJson?.let { json ->
+            dev.lelonio.square.data.SpotifyWebArtist.parseOverview(
+                json,
+                id,
+                getApplication<SquareApplication>().resources,
+            )
+        }
+        android.util.Log.i(
+            TAG,
+            "artist overview $uri: " + (overview?.let {
+                "${it.tracks.size} songs, ${it.albums.size} albums, ${it.singles.size} singles, latest=${it.latest?.uri}"
+            } ?: "none"),
+        )
+        if (overview != null && (overview.tracks.isNotEmpty() || overview.albums.isNotEmpty() || overview.singles.isNotEmpty())) {
+            // The gateway's top songs name their record by address only; the
+            // engine fills in the rest, in the same order.
+            val enriched = runCatching {
+                withTimeoutOrNull(3000L) { Catalog.tracks(overview.tracks.map { it.uri }) }
+            }.getOrNull()
+                ?.associateBy { it.uri }
+                ?.let { byUri -> overview.tracks.map { byUri[it.uri] ?: it } }
+                ?: overview.tracks
+            // Whether the account follows them comes with the page.
+            val isFollowed = runCatching {
+                org.json.JSONObject(overviewJson.orEmpty()).getJSONObject("data").getJSONObject("artistUnion")
+                    .getBoolean("saved")
+            }.getOrNull() ?: _followedArtists.value.any { it.uri == uri }
+            _playlist.value = _playlist.value.let {
+                if (it.uri == uri) it.copy(following = isFollowed) else it
+            }
+            return@coroutineScope overview.copy(
+                tracks = enriched,
+                name = overview.name ?: knownName.takeIf { it.isNotEmpty() },
+            )
+        }
+
+        // Then the Web API, if a custom developer app is configured
         if (container.webApi.isReady) {
             val tracksDeferred = async {
                 runCatching {

@@ -21,7 +21,11 @@ import dev.lelonio.square.data.LocalLibrary
 @OptIn(UnstableApi::class)
 object LocalPlayerFactory {
 
-    fun create(host: PlaybackHost): Player = ExoPlayer.Builder(host.context, renderers(host))
+    // Wrapped so a song queued from a folder plays next instead of after the
+    // whole folder; see PlayNextPlayer.
+    fun create(host: PlaybackHost): Player = PlayNextPlayer(build(host))
+
+    private fun build(host: PlaybackHost): ExoPlayer = ExoPlayer.Builder(host.context, renderers(host))
         .setMediaSourceFactory(
             DefaultMediaSourceFactory(
                 ResolvingDataSource.Factory(

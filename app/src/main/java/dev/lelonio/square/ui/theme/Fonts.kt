@@ -36,3 +36,13 @@ val Inter = FontFamily(
         )
     },
 )
+
+/**
+ * The face an artist's name is set in on their page, where the catalogue has
+ * no lettering of their own for it.
+ *
+ * A serif drawn for display sizes, so the name reads as the page's headline
+ * rather than as the app's interface shouted larger. Instrument Serif, under
+ * the SIL Open Font License; see assets/licenses/InstrumentSerif-OFL.txt.
+ */
+val InstrumentSerif = FontFamily(Font(R.font.instrument_serif, weight = FontWeight.Normal))

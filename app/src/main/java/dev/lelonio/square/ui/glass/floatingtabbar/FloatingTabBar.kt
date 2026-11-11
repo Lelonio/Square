@@ -50,6 +50,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -343,6 +344,25 @@ fun FloatingTabBar(
             },
             contentAlignment = Alignment.BottomStart
         ) { target ->
+            // LOCAL CHANGE: the shape on its way out takes no touches. It stays
+            // composed for the whole fold, under the one growing in, and a tap
+            // on the search field before it had grown over the tabs landed on
+            // whichever tab was still there: Library, or Radio (#189).
+            val leaving = transition.targetState == androidx.compose.animation.EnterExitState.PostExit
+            Box(
+                if (leaving) {
+                    Modifier.pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                    .changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+                } else {
+                    Modifier
+                },
+            ) {
             if (target == FloatingTabBarVisual.SEARCH) {
                 SearchExpandedBar(
                     scope = scope,
@@ -390,6 +410,7 @@ fun FloatingTabBar(
                     tabBarContentModifier = tabBarContentModifier,
                     animatedVisibilityScope = this@AnimatedContent
                 )
+            }
             }
         }
     }

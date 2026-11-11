@@ -40,44 +40,64 @@ pub fn username() -> EngineResult<String> {
 pub fn rootlist() -> EngineResult<String> {
     let session = with_session(|s| s.clone())?;
     block_on(async move {
-        let bytes = session
-            .spclient()
-            .get_rootlist(0, None)
-            .await
-            .map_err(|e| format!("rootlist failed: {e}"))?;
-
-        let list = SelectedListContent::parse_from_bytes(&bytes)
-            .map_err(|e| format!("rootlist was not a SelectedListContent: {e}"))?;
-
         let me = session.username();
-        let contents = list.contents;
-        let playlists: Vec<Value> = contents
-            .items
-            .iter()
-            .enumerate()
-            .filter(|(_, item)| item.uri().starts_with("spotify:playlist:"))
-            .map(|(index, item)| {
-                let meta = contents.meta_items.get(index);
-                let name = meta
-                    .map(|meta| meta.attributes.name())
-                    .filter(|name| !name.is_empty())
-                    .unwrap_or("Senza nome");
-                let artwork = meta.and_then(|meta| image_url(meta.attributes.picture()));
-                // Whose it is, from the index itself: the Web API answers 404
-                // for Spotify's own lists to an application in development
-                // mode, which left saved editorial playlists looking editable.
-                let mine = meta
-                    .map(|meta| meta.owner_username())
-                    .filter(|owner| !owner.is_empty())
-                    .map(|owner| owner == me);
-                json!({ "uri": item.uri(), "name": name, "artworkUrl": artwork, "mine": mine })
-            })
-            .collect();
+        let mut playlists: Vec<Value> = Vec::new();
+        // A page at a time. Asked for without a length, the service answers
+        // with the first 120 entries and no more, so an account with more
+        // playlists than that had a library that stopped at 120, and a plus
+        // that never ticked for the ones after.
+        let mut from = 0usize;
+        loop {
+            let bytes = session
+                .spclient()
+                .get_rootlist(from, Some(ROOTLIST_PAGE))
+                .await
+                .map_err(|e| format!("rootlist failed: {e}"))?;
+
+            let list = SelectedListContent::parse_from_bytes(&bytes)
+                .map_err(|e| format!("rootlist was not a SelectedListContent: {e}"))?;
+
+            let total = list.length() as usize;
+            let contents = list.contents;
+            let got = contents.items.len();
+            playlists.extend(
+                contents
+                    .items
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, item)| item.uri().starts_with("spotify:playlist:"))
+                    .map(|(index, item)| {
+                        let meta = contents.meta_items.get(index);
+                        let name = meta
+                            .map(|meta| meta.attributes.name())
+                            .filter(|name| !name.is_empty())
+                            .unwrap_or("Senza nome");
+                        let artwork = meta.and_then(|meta| image_url(meta.attributes.picture()));
+                        // Whose it is, from the index itself: the Web API answers 404
+                        // for Spotify's own lists to an application in development
+                        // mode, which left saved editorial playlists looking editable.
+                        let mine = meta
+                            .map(|meta| meta.owner_username())
+                            .filter(|owner| !owner.is_empty())
+                            .map(|owner| owner == me);
+                        json!({ "uri": item.uri(), "name": name, "artworkUrl": artwork, "mine": mine })
+                    }),
+            );
+            from += got;
+            // An empty page ends it whatever the total says, so a wrong count
+            // cannot keep this asking for ever.
+            if got == 0 || from >= total {
+                break;
+            }
+        }
 
         log::info!("rootlist returned {} playlists", playlists.len());
         Ok(Value::from(playlists).to_string())
     })
 }
+
+/// How many rootlist entries one request asks for; see [rootlist].
+const ROOTLIST_PAGE: usize = 500;
 
 /// Puts a playlist in the account's library, or takes it out.
 ///

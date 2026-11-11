@@ -578,8 +578,11 @@ class PlaybackService : MediaLibraryService() {
                 AudioEffects.speed,
                 AudioEffects.pitch,
             ) { speed, pitch -> speed to pitch }.collect { (speed, pitch) ->
-                (player as? androidx.media3.exoplayer.ExoPlayer)?.playbackParameters =
-                    androidx.media3.common.PlaybackParameters(speed, pitch)
+                // The phone's own files play through PlayNextPlayer, around
+                // the ExoPlayer; the YouTube player has its own way.
+                val exo = player as? androidx.media3.exoplayer.ExoPlayer
+                    ?: player.takeIf { playerKind == PlayerKind.LOCAL }
+                exo?.playbackParameters = androidx.media3.common.PlaybackParameters(speed, pitch)
             }
         }
 

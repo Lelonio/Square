@@ -245,7 +245,8 @@ private fun PlaylistRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Artwork(
-            url = playlist.artworkUrl,
+            // The cover the listener chose, where they chose one (#189).
+            url = dev.lelonio.square.data.PlaylistCovers.coverFor(playlist.uri) ?: playlist.artworkUrl,
             title = playlist.name,
             modifier = Modifier.size(44.dp),
             corner = 10.dp,

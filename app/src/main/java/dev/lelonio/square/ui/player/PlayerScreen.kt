@@ -128,6 +128,8 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.regular.DeviceRotate
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.fill.TextAa
+import com.adamglin.phosphoricons.regular.TextAa
 import com.adamglin.phosphoricons.fill.Heart
 import com.adamglin.phosphoricons.fill.Pause
 import com.adamglin.phosphoricons.fill.MicrophoneStage
@@ -586,7 +588,17 @@ fun PlayerScreen(
     // like different glass (#85); moved to the cover's layer, the tabs at the
     // foot took its dark end and came out grey under brown panes.
     val panelBackdrop = groundBackdrop
-    val lowerBackdrop = if (panel != PlayerPanel.NONE) panelBackdrop else lowerBackdropMoving
+    // The title, the transport and the tabs read under a panel what they read
+    // over the cover: the cover's layer, with its tone at the foot. On the
+    // ground they turned a pale grey the moment a view opened, while the
+    // cover had them in the record's colour. The ground only where the cover's
+    // layer moves (a clip, a moving cover): there it would be blurred again
+    // with every frame.
+    val lowerBackdrop = if (panel != PlayerPanel.NONE && (showingClip || coverMoving)) {
+        panelBackdrop
+    } else {
+        lowerBackdropMoving
+    }
 
     // Lyrics take over the middle of the screen rather than opening a panel at
     // the bottom, and the Canvas goes out of focus behind them: a clip is
@@ -696,19 +708,10 @@ fun PlayerScreen(
     val coverAccent by dev.lelonio.square.ui.theme.rememberArtworkColor(state.artworkUrl)
     val coverTone = dev.lelonio.square.ui.theme.pageColorFor(coverAccent)
 
-    // Under a panel the room behind is already blurred (canvasBlur), and the
-    // glass's own frost on top of it was a second cloud over the first: every
-    // pane and button went milky as soon as a view opened. The frost gives way
-    // as the blur comes in, the same 320 ms, so the glass over a blurred room
-    // is clear glass, and over the sharp cover the frosted glass it was.
-    val outerGlass = dev.lelonio.square.ui.glass.LocalGlassEffectConfig.current
-    val roomBlurred = (canvasBlur / PANEL_BLUR).coerceIn(0f, 1f)
-    val panelGlass = remember(outerGlass, roomBlurred) {
-        outerGlass.copy(blurRadius = outerGlass.blurRadius * (1f - roomBlurred))
-    }
-    androidx.compose.runtime.CompositionLocalProvider(
-        dev.lelonio.square.ui.glass.LocalGlassEffectConfig provides panelGlass,
-    ) {
+    // The glass keeps its frost under a panel too. It used to give way as
+    // the room behind blurred, and the transport, the title and the tab bar
+    // turned from the cover's tinted glass to a pale grey one at every
+    // change of view; the same glass on every view is the one the cover has.
     Box(
         Modifier
             .fillMaxSize()
@@ -1893,7 +1896,6 @@ fun PlayerScreen(
         }
 
     }
-    }
 }
 
 /**
@@ -2582,7 +2584,10 @@ internal fun Controls(
             RoundGlassButton(
                 backdrop = backdrop,
                 size = 62.dp,
-                enabled = state.hasPrevious,
+                // With nothing before it, it still takes the song back to its
+                // start (#173): greyed out, a listener on the first track had
+                // to drag the bar back by hand.
+                enabled = state.hasPrevious || state.hasItem,
                 onClick = onPrevious,
             ) {
                 Icon(
@@ -2937,14 +2942,46 @@ private fun LyricsStage(
         translating = false
     }
 
-    val shown = remember(lyrics, machine) {
-        val answers = machine
-        if (lyrics == null || answers == null) {
+    // The words spelt in Latin letters, for a song in a script the listener
+    // does not read; see Romanize. Off when a song starts, like the
+    // translation, and offered only where there is something to spell out.
+    var romanized by androidx.compose.runtime.saveable.rememberSaveable(lyrics) {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    val canRomanize = remember(lyrics) {
+        dev.lelonio.square.backend.lyrics.Romanize.available &&
+            dev.lelonio.square.backend.lyrics.Romanize.wanted(lyrics?.lines.orEmpty().map { it.text })
+    }
+    var spelt by remember(lyrics) { androidx.compose.runtime.mutableStateOf<List<String>?>(null) }
+    androidx.compose.runtime.LaunchedEffect(lyrics, romanized) {
+        if (!romanized || lyrics == null || spelt != null) return@LaunchedEffect
+        // Off the main thread: ICU builds its rules the first time it is asked.
+        spelt = runCatching {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                dev.lelonio.square.backend.lyrics.Romanize.lines(lyrics.lines.map { it.text })
+            }
+        }.getOrNull()
+    }
+
+    // Under each line, the pronunciation first and the meaning after it, in
+    // the place the translation has always had.
+    val shown = remember(lyrics, machine, spelt, translated, romanized) {
+        if (lyrics == null) {
             lyrics
         } else {
             lyrics.copy(
                 lines = lyrics.lines.mapIndexed { index, line ->
-                    line.copy(translation = answers.getOrNull(index)?.takeIf { it.isNotBlank() })
+                    val meaning = if (translated) {
+                        machine?.getOrNull(index)?.takeIf { it.isNotBlank() } ?: line.translation
+                    } else {
+                        null
+                    }
+                    val sound = spelt?.getOrNull(index)?.takeIf { romanized && it.isNotBlank() }
+                    line.copy(
+                        translation = listOfNotNull(sound, meaning?.takeIf { it.isNotBlank() })
+                            .joinToString("\n")
+                            .ifEmpty { null },
+                    )
                 },
             )
         }
@@ -2986,7 +3023,7 @@ private fun LyricsStage(
                 ClassicLyricsView(
                     lyrics = shown ?: lyrics,
                     positionMs = heardMs,
-                    showTranslation = translated,
+                    showTranslation = translated || romanized,
                     onSeek = seekHeard,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -3002,7 +3039,7 @@ private fun LyricsStage(
                     lyrics = shown ?: lyrics,
                     positionMs = heardMs,
                     isPlaying = isPlaying,
-                    showTranslation = translated,
+                    showTranslation = translated || romanized,
                     onSeek = seekHeard,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -3036,7 +3073,14 @@ private fun LyricsStage(
                 // translation to sit above, so it takes that place instead.
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 6.dp, bottom = if (lyrics != null) 106.dp else 56.dp),
+                    .padding(
+                        end = 6.dp,
+                        bottom = when {
+                            lyrics == null -> 56.dp
+                            canRomanize -> 156.dp
+                            else -> 106.dp
+                        },
+                    ),
             )
         }
 
@@ -3059,6 +3103,24 @@ private fun LyricsStage(
                     // side would read as belonging to something else.
                     .align(Alignment.BottomEnd)
                     .padding(end = 6.dp, bottom = 56.dp),
+            )
+        }
+
+        // The pronunciation, in the same column: beside the translation
+        // because the two answer the same reader, one who does not read the
+        // song's language.
+        if (lyrics != null && !optionsOpen && canRomanize) {
+            TranslationToggle(
+                on = romanized,
+                busy = romanized && spelt == null,
+                onChange = { romanized = it },
+                backdrop = backdrop,
+                iconOn = com.adamglin.PhosphorIcons.Fill.TextAa,
+                iconOff = com.adamglin.PhosphorIcons.Regular.TextAa,
+                description = stringResource(R.string.pronunciation),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 6.dp, bottom = 106.dp),
             )
         }
 
@@ -3173,7 +3235,7 @@ private fun SongCard(
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CardButton(PhosphorIcons.Fill.SkipBack, stringResource(R.string.previous), 40.dp, state.hasPrevious, onPrevious)
+                CardButton(PhosphorIcons.Fill.SkipBack, stringResource(R.string.previous), 40.dp, state.hasPrevious || state.hasItem, onPrevious)
                 CardButton(
                     if (state.wantsPlay) PhosphorIcons.Fill.Pause else PhosphorIcons.Fill.Play,
                     stringResource(if (state.wantsPlay) R.string.pause else R.string.play),

@@ -70,6 +70,10 @@ internal object GatewayTracks {
             artistUri = credited.firstOrNull()?.uri,
             artists = credited,
             album = album?.optString("name").orEmpty(),
+            // The record's address as well as its name: without it the title
+            // in the player had to ask the Web API where the song came from,
+            // which answers only those with an app of their own (#186).
+            albumUri = album?.optString("uri")?.takeIf { it.startsWith("spotify:album:") },
             // The library calls it `duration` and a playlist calls it
             // `trackDuration`, for the same number.
             durationMs = (data.optJSONObject("duration") ?: data.optJSONObject("trackDuration"))

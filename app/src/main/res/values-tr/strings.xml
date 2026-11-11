@@ -17,6 +17,7 @@
     <string name="credits">Katkıda bulunanlar</string>
     <string name="karaoke">Karaoke</string>
     <string name="translation">Çeviri</string>
+    <string name="pronunciation">Telaffuz</string>
     <string name="karaoke_on">Karaoke %%%d</string>
     <string name="pip_listen">Yalnızca ses</string>
     <string name="remove_from_queue">Sıradan çıkar</string>

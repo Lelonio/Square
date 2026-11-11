@@ -94,6 +94,22 @@ object SpotifyWebArtist {
         return null
     }
 
+    /**
+     * The same page from the gateway's `queryArtistOverview`; see
+     * Gateway.artistOverview.
+     *
+     * The web page used to carry this very object in its HTML and no longer
+     * does: it ships the player and fetches the artist afterwards, so reading
+     * the HTML found nothing, and an artist's page fell through to a search
+     * for their name — someone else's songs in the wrong order, and no singles
+     * or EPs at all (#183).
+     */
+    fun parseOverview(json: String, artistId: String, resources: Resources? = null): ArtistPage? = runCatching {
+        val artist = JSONObject(json).getJSONObject("data").getJSONObject("artistUnion")
+        if (artist.optString("__typename") != "Artist") return null
+        parseArtistData(artist, artistId, resources)
+    }.getOrNull()
+
     private fun parseArtistData(data: JSONObject, artistId: String, resources: Resources?): ArtistPage {
         val profile = data.optJSONObject("profile")
         val name = profile?.optString("name").orEmpty()
@@ -169,6 +185,7 @@ object SpotifyWebArtist {
                         artistUri = credited.firstOrNull()?.uri,
                         artists = credited,
                         album = albumName,
+                        albumUri = albumObj?.optString("uri")?.takeIf { it.startsWith("spotify:album:") },
                         durationMs = durationMs,
                         explicit = explicit,
                         artworkUrl = coverArt,
@@ -198,8 +215,12 @@ object SpotifyWebArtist {
                         ?: 0
                     val yearStr = if (yearInt > 0) yearInt.toString() else ""
 
+                    val trackCount = rel.optJSONObject("tracks")?.optInt("totalCount") ?: 0
                     val label = when (type) {
-                        "SINGLE" -> resources?.getString(R.string.single) ?: "Single"
+                        "EP" -> "EP"
+                        // Spotify files EPs under singles; more than one song
+                        // is what the Web API path calls an EP too.
+                        "SINGLE" -> if (trackCount > 1) "EP" else resources?.getString(R.string.single) ?: "Single"
                         "ALBUM" -> resources?.getString(R.string.album) ?: "Album"
                         "COMPILATION" -> resources?.getString(R.string.compilation) ?: "Compilation"
                         else -> ""
@@ -247,14 +268,56 @@ object SpotifyWebArtist {
             } else null
         } else null
 
+        val related = data.optJSONObject("relatedContent")
+
+        // Records of others this artist is on, as the page's own row.
+        val appearsOn = mutableListOf<SearchItem>()
+        related?.optJSONObject("appearsOn")?.optJSONArray("items")?.let { groups ->
+            for (i in 0 until groups.length()) {
+                val releases = groups.optJSONObject(i)?.optJSONObject("releases")?.optJSONArray("items") ?: continue
+                for (j in 0 until releases.length()) {
+                    val rel = releases.optJSONObject(j) ?: continue
+                    val uri = rel.optString("uri").takeIf { it.startsWith("spotify:album:") } ?: continue
+                    val by = rel.optJSONObject("artists")?.optJSONArray("items")?.optJSONObject(0)
+                        ?.optJSONObject("profile")?.optString("name").orEmpty()
+                    appearsOn += SearchItem(
+                        uri = uri,
+                        title = rel.optString("name"),
+                        subtitle = by,
+                        artworkUrl = extractBestImage(rel.optJSONObject("coverArt")?.optJSONArray("sources"), 300),
+                    )
+                }
+            }
+        }
+
+        val relatedArtists = mutableListOf<SearchItem>()
+        related?.optJSONObject("relatedArtists")?.optJSONArray("items")?.let { items ->
+            for (i in 0 until items.length()) {
+                val other = items.optJSONObject(i) ?: continue
+                val uri = other.optString("uri").takeIf { it.startsWith("spotify:artist:") } ?: continue
+                val otherName = other.optJSONObject("profile")?.optString("name").orEmpty()
+                if (otherName.isEmpty()) continue
+                relatedArtists += SearchItem(
+                    uri = uri,
+                    title = otherName,
+                    subtitle = resources?.getString(R.string.artist) ?: "Artist",
+                    artworkUrl = extractBestImage(
+                        other.optJSONObject("visuals")?.optJSONObject("avatarImage")?.optJSONArray("sources"),
+                        320,
+                    ),
+                )
+            }
+        }
+
         return ArtistPage(
             playlists = emptyList(),
             tracks = tracks.take(5),
             latest = latestRelease,
             albums = albumsList,
             singles = singlesList,
-            appearsOn = emptyList(),
-            relatedArtists = emptyList(),
+            // A record and its reissue under the same name read as one.
+            appearsOn = appearsOn.distinctBy { "${it.title.lowercase()}|${it.subtitle.lowercase()}" },
+            relatedArtists = relatedArtists,
             followers = followersCount,
             genres = emptyList(),
             monthlyListeners = monthlyListenersFormatted,

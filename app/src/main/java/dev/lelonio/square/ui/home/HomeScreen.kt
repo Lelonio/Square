@@ -1206,7 +1206,10 @@ private fun Heading(text: String, strapline: String? = null, top: androidx.compo
 @Composable
 private fun QuickPicks(tracks: List<CatalogTrack>, onPlay: (Int) -> Unit) {
     val columns = tracks.chunked(QUICK_PICK_ROWS)
-    val width = LocalConfiguration.current.screenWidthDp.dp - 44.dp
+    // A phone's width at most: wider, in landscape or on a tablet, a column
+    // was the whole screen with two lines of text at its edges and nothing
+    // between them (#180).
+    val width = (LocalConfiguration.current.screenWidthDp.dp - 44.dp).coerceAtMost(400.dp)
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),

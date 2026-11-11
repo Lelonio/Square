@@ -173,7 +173,7 @@ class PathfinderKeys(context: Context) {
         const val DEFAULT_BROWSE_SECTION =
             "b13c1cccbfcb6947753c2613411b3566485c21fd5f36d80a80bb64be61ba2d51"
         const val DEFAULT_ARTIST_OVERVIEW =
-            "9f8134ef565e78621f1e1793555bd6633c5ac144ae0f89604ed3ae3f80b3c8e6"
+            "eafb1620d783ece118e72fbfede2b0064483e029d3c1aafafa1c2de0e25a89e7"
         const val DEFAULT_PLAYLIST_SECTION =
             "2615df403a9043c1d7d3094fbeb4c9653b07b11a33d8081fbd31f0f7959ff4a1"
         const val DEFAULT_SHOW =

@@ -1643,7 +1643,13 @@ private fun DetailHeader(
                 // Gone by the time the header is half closed: below that there
                 // is no room for a cover and a two-line title, and watching them
                 // be squeezed is worse than watching them leave.
-                .graphicsLayer { alpha = (1f - collapse() * 2f).coerceIn(0f, 1f) },
+                .graphicsLayer {
+                    alpha = (1f - collapse() * 2f).coerceIn(0f, 1f)
+                    // Faded per drawing rather than through a buffer: a
+                    // buffer is cut to this column, and a round button grown
+                    // under a finger was cut flat along the bottom (#179).
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+                },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // The record itself, as an object on the page. The reference draws
@@ -2103,7 +2109,13 @@ private fun ArtistHeader(
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp)
                 .padding(bottom = 24.dp)
-                .graphicsLayer { alpha = (1f - collapse() * 2f).coerceIn(0f, 1f) },
+                .graphicsLayer {
+                    alpha = (1f - collapse() * 2f).coerceIn(0f, 1f)
+                    // Faded per drawing rather than through a buffer: a
+                    // buffer is cut to this column, and a round button grown
+                    // under a finger was cut flat along the bottom (#179).
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+                },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Set in capitals and as large as the name allows. The reference
@@ -2136,8 +2148,13 @@ private fun ArtistHeader(
                     // loses the spelling the artist chose.
                     text = name,
                     style = MaterialTheme.typography.displaySmall.copy(
-                        fontSize = nameSize(name),
-                        lineHeight = nameSize(name) * 1.04f,
+                        // A serif set for the page, as a magazine sets a name
+                        // across a portrait; see InstrumentSerif. Larger than
+                        // the sans was: the face is narrow and light, and at
+                        // the same size it reads a step smaller.
+                        fontFamily = dev.lelonio.square.ui.theme.InstrumentSerif,
+                        fontSize = nameSize(name) * 1.18f,
+                        lineHeight = nameSize(name) * 1.18f,
                         // The photo behind it is somebody's face and cannot be
                         // relied on for contrast. A soft shadow costs nothing
                         // and keeps the name readable over a white shirt.
@@ -2154,7 +2171,7 @@ private fun ArtistHeader(
                             18f,
                         ),
                     ),
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.Normal,
                     // The name sits partly on the photograph and partly on the
                     // page, so it takes the page's ink rather than a fixed
                     // white: on a light page a white name over a pale ground is
@@ -2587,14 +2604,14 @@ private fun CircleAction(
         backdrop = backdrop,
         // See GlassCapsule: over the page's flat colour the refraction has
         // nothing to bend, and only the film and the rim say this is glass.
-        modifier = Modifier
-            .size(size)
-            // A film of its own over the glass. The reference's round controls
-            // read as pale discs against the photograph rather than as holes
-            // cut in it, and refraction alone cannot do that over a picture as
-            // dark as most artist photographs are.
-            .background(Color.White.copy(alpha = 0.17f), CircleShape)
-            .border(0.6.dp, Color.White.copy(alpha = 0.26f), CircleShape),
+        modifier = Modifier.size(size),
+        // A film of its own over the glass. The reference's round controls
+        // read as pale discs against the photograph rather than as holes cut
+        // in it, and refraction alone cannot do that over a picture as dark as
+        // most artist photographs are. Inside the glass, so it grows with it
+        // under a finger: painted on the button's place instead, it stayed
+        // behind as a smaller disc inside the grown one (#179).
+        surfaceColor = Color.White.copy(alpha = 0.17f),
         contentHeight = size,
         contentPadding = 0.dp,
     ) {
@@ -3340,9 +3357,8 @@ private fun MixPlayButton(onPlay: () -> Unit, backdrop: Backdrop, ink: Color) {
         LiquidButton(
             onClick = onPlay,
             backdrop = backdrop,
-            modifier = Modifier
-                .background(Color.White.copy(alpha = 0.17f), ContinuousCapsule)
-                .border(0.6.dp, Color.White.copy(alpha = 0.26f), ContinuousCapsule),
+            // Inside the glass, as CircleAction's.
+            surfaceColor = Color.White.copy(alpha = 0.17f),
             contentHeight = 50.dp,
             contentPadding = 28.dp,
         ) {

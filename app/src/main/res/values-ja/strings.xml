@@ -18,6 +18,7 @@
     <string name="credits">クレジット</string>
     <string name="karaoke">カラオケ</string>
     <string name="translation">翻訳</string>
+    <string name="pronunciation">読み方</string>
     <string name="karaoke_on">カラオケ %d%%</string>
     <string name="pip_listen">音声のみで再生</string>
     <string name="remove_from_queue">キューから削除</string>
