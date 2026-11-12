@@ -207,33 +207,18 @@ class AudioOutput {
         }
 
         val fresh = reverb == null
-        // On this track's own session where the device allows it, on the output
-        // mix where it does not.
-        //
-        // An effect on the output mix is fed *before* the level of the track
-        // that feeds it, which is what lets it be attached at all — and what
-        // made a ducked song come back as a whisper in a cathedral: from
-        // Android 8 the system ducks a track by itself, without telling the
-        // app, so the music dropped and the room did not. An effect on the
-        // session is processed inside the track, so whatever attenuates the
-        // track afterwards attenuates the room with it, whoever does the
-        // attenuating.
+        // On the output mix, always. It used to go inside this track's own
+        // session where the device allowed it, so that the system's own
+        // ducking took the room down with the music. But on a session the
+        // platform builds the *insert* Environmental Reverb, which takes over
+        // the track's volume (EFFECT_FLAG_VOLUME_CTRL) and on some phones
+        // never applies it: with the reverb on, the music played at full
+        // volume whatever the volume keys said, muted included (OnePlus,
+        // Android 17). The ducking that the session was for is now the app's
+        // own (AudioFocusController asks to be told rather than ducked), and
+        // [duckReverb] takes the room down with it.
         val effect = reverb ?: run {
-            val session = runCatching { output.audioSessionId }.getOrDefault(0)
-            val made = if (session != 0) {
-                runCatching { EnvironmentalReverb(0, session) }
-                    .onSuccess {
-                        reverbOnSession = true
-                        android.util.Log.i(TAG, "reverb inside this session ($session)")
-                    }
-                    .onFailure {
-                        android.util.Log.w(TAG, "no reverb on the session: ${it.message}")
-                    }
-                    .getOrNull()
-            } else {
-                null
-            }
-            made ?: runCatching {
+            runCatching {
                 // Priority 0: no reason to outbid anything else on the mix.
                 reverbOnSession = false
                 EnvironmentalReverb(0, 0)

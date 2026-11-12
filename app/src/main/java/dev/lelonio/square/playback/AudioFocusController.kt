@@ -42,9 +42,12 @@ class AudioFocusController(
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build(),
         )
-        // Duck rather than pause for notifications: pausing for a two-second
-        // chime is more disruptive than briefly dropping the volume.
-        .setWillPauseWhenDucked(false)
+        // Told rather than ducked. The app still ducks rather than pauses for
+        // a notification (onDuck, not onPause, on CAN_DUCK), but does it
+        // itself: the reverb is an auxiliary effect on the output mix, which
+        // the system's own ducking does not reach, so a song ducked by the
+        // system came back as mostly room. Ducking here lowers both.
+        .setWillPauseWhenDucked(true)
         .setOnAudioFocusChangeListener(::onFocusChange)
         .build()
 
