@@ -358,6 +358,7 @@ fun BoxScope.GlassChoiceMenu(
             trigger.morph = morph
             trigger.finalDx = finalDx * dpr
             trigger.finalDy = finalDy * dpr
+            trigger.iconScale = minOf(menuWidth / tw, menuHeight / th).coerceIn(1f, 2.5f)
         }
     }
 
@@ -485,6 +486,15 @@ fun BoxScope.GlassChoiceMenu(
                 content = content,
             )
         }
+        val iconContent = trigger?.iconContent
+        if (trigger != null && iconContent != null) {
+            Box(
+                Modifier
+                    .offset { IntOffset(((tx - area.left) * dpr).roundToInt(), ((ty - area.top) * dpr).roundToInt()) }
+                    .size(tw.dp, th.dp)
+                    .glassMenuTriggerContent(trigger, inMenu = true),
+            ) { iconContent() }
+        }
     }
 }
 
@@ -557,6 +567,8 @@ class GlassMenuTrigger {
     internal var morph by mutableStateOf<dev.lelonio.square.ui.glass.morph.GlassMorphController?>(null)
     internal var finalDx = 0f
     internal var finalDy = 0f
+    internal var iconScale = 1f
+    internal var iconContent by mutableStateOf<(@Composable () -> Unit)?>(null)
 }
 
 @Composable
@@ -568,16 +580,67 @@ fun Modifier.glassMenuTrigger(trigger: GlassMenuTrigger): Modifier = graphicsLay
     val raw = morph.value
     val clamped = raw.coerceIn(0f, 1f)
     val handoff = morph.isClosing && morph.hasHandedOff
-    alpha = when {
-        !morph.isShowing || handoff -> 1f
-        !morph.isClosing -> 1f - (clamped / 0.20f).coerceIn(0f, 1f)
-        else -> 0f
-    }
+    alpha = if (!morph.isShowing || handoff) 1f else 0f
     translationX = if (handoff) trigger.finalDx * raw else 0f
     translationY = if (handoff) trigger.finalDy * raw else 0f
     val impact = if (handoff) (1f + raw * 0.35f).coerceIn(0.88f, 1f) else 1f
     scaleX = impact
     scaleY = impact
+}
+
+fun Modifier.glassMenuTriggerContent(trigger: GlassMenuTrigger, inMenu: Boolean = false): Modifier = graphicsLayer {
+    val morph = trigger.morph ?: return@graphicsLayer
+    val raw = morph.value
+    val handoff = morph.isClosing && morph.hasHandedOff
+    val withGlass = morph.isShowing && !handoff
+    alpha = when {
+        !withGlass -> if (inMenu) 0f else 1f
+        !inMenu -> 0f
+        else -> {
+            val growth = morph.computeState(trigger.finalDx, trigger.finalDy).sizeT.coerceIn(0f, 1f)
+            1f - smoothFade(growth / 0.7f)
+        }
+    }
+    if (handoff) {
+        translationX = trigger.finalDx * raw
+        translationY = trigger.finalDy * raw
+    } else if (morph.isShowing) {
+        val state = morph.computeState(
+            finalDx = trigger.finalDx,
+            finalDy = trigger.finalDy,
+            adaptiveDamping = kotlin.math.abs(trigger.finalDy) / density > 100f,
+        )
+        if (morph.isClosing) {
+            translationX = trigger.finalDx * state.pathT
+            translationY = trigger.finalDy * state.pathT
+        } else {
+            val drift = 8f * density
+            translationX = trigger.finalDx * state.sizeT +
+                (trigger.finalDx * (state.pathT - state.sizeT)).coerceIn(-drift, drift)
+            translationY = trigger.finalDy * state.sizeT +
+                (trigger.finalDy * (state.pathT - state.sizeT)).coerceIn(-drift, drift)
+        }
+    }
+    var scale = if (handoff) (1f + raw * 0.35f).coerceIn(0.88f, 1f) else 1f
+    if (inMenu && withGlass) {
+        val grown = morph.computeState(trigger.finalDx, trigger.finalDy).sizeT.coerceIn(0f, 1f)
+        scale = 1f + (trigger.iconScale - 1f) * grown
+        val radius = ICON_BLUR_DP * density * grown
+        renderEffect = if (radius >= 0.5f) {
+            androidx.compose.ui.graphics.BlurEffect(radius, radius, androidx.compose.ui.graphics.TileMode.Decal)
+        } else {
+            null
+        }
+    }
+    scaleX = scale
+    scaleY = scale
+}
+
+private const val ICON_BLUR_DP = 5f
+
+private fun smoothFade(t: Float): Float {
+    val c = t.coerceIn(0f, 1f)
+    return c * c * (3f - 2f * c)
 }
 
 /** What a row reads while the menu morphs: its opacity and its scale. */
@@ -632,11 +695,7 @@ private fun choiceMenuFrame(
 
     val maxRadius = minOf(currentWidth, currentHeight) / 2f
     val radiusT = dev.lelonio.square.ui.glass.morph.FlutterCurves.easeInExpo(state.sizeT.coerceIn(0f, 1f))
-    val currentRadius = if (closing) {
-        if (isPremium) maxRadius else lerp(triggerRadius, CHOICE_MENU_RADIUS, radiusT)
-    } else {
-        lerp(maxRadius, CHOICE_MENU_RADIUS, radiusT)
-    }
+    val currentRadius = lerp(maxRadius, CHOICE_MENU_RADIUS, radiusT)
 
     val effectiveDx: Float
     val effectiveDy: Float
@@ -685,16 +744,16 @@ private fun choiceMenuFrame(
     }
 
     val overlayOpacity = if (closing && morph.hasHandedOff) 0f else 1f
-    val rowsPresent = if (closing) clampedValue > 0.85f else clampedValue > 0.25f
+    val rowsPresent = if (closing) clampedValue > 0.72f else clampedValue > 0.5f
     val itemOpacity = if (closing) {
-        ((clampedValue - 0.85f) / 0.15f).coerceIn(0f, 1f)
+        smoothFade((clampedValue - 0.72f) / 0.25f)
     } else {
-        ((clampedValue - 0.25f) / 0.45f).coerceIn(0f, 1f)
+        smoothFade((clampedValue - 0.5f) / 0.42f)
     }
     val itemScale = lerp(
-        0.7f,
+        0.92f,
         1f,
-        dev.lelonio.square.ui.glass.morph.FlutterCurves.easeOut(((clampedValue - 0.25f) / 0.75f).coerceIn(0f, 1f)),
+        dev.lelonio.square.ui.glass.morph.FlutterCurves.easeOut(((clampedValue - 0.5f) / 0.5f).coerceIn(0f, 1f)),
     )
 
     return ChoiceMenuFrame(

@@ -52,11 +52,11 @@ data class SpringDescription(val mass: Float, val stiffness: Float, val damping:
 
 object LiquidMorphPhysics {
 
-    val openSpring = SpringDescription(mass = 1f, stiffness = 120f, damping = 16f)
-    val closeSpring = SpringDescription(mass = 1f, stiffness = 200f, damping = 21f)
-    const val closeVelocityHint = -3.2f
+    val openSpring = SpringDescription(mass = 1f, stiffness = 125f, damping = 17.5f)
+    val closeSpring = SpringDescription(mass = 1f, stiffness = 190f, damping = 22.5f)
+    const val closeVelocityHint = -2.6f
 
-    private const val backOutAmplitude = 2.5f
+    private const val backOutAmplitude = 2.0f
     private const val minBackOutAmplitude = 0.7f
     private const val adaptiveThresholdDy = 100f
     private const val anchorEaseDuration = 0.4f
@@ -126,19 +126,21 @@ object LiquidMorphPhysics {
         val currentDy = finalDy * pathT
 
         val anchorScale = if (isClosing) {
-            (1f - (clampedValue - 0.45f) / 0.40f).coerceIn(0f, 1f)
+            1f - smootherStep((clampedValue - 0.45f) / 0.40f)
         } else {
-            (1f - (clampedValue / anchorEaseDuration)).coerceIn(0f, 1f)
+            1f - smootherStep(clampedValue / anchorEaseDuration)
         }
 
         val blendAttenuation = computeBlendAttenuation(scaleDelta)
         val blend = if (isClosing) {
             val proximityT = (1f - clampedValue / closeProximityThreshold).coerceIn(0f, 1f)
             val eased = FlutterCurves.easeOut(proximityT)
-            (eased * maxBlend * blendAttenuation).coerceIn(0f, maxBlend)
+            val settle = smootherStep(clampedValue / 0.15f)
+            (eased * maxBlend * blendAttenuation * settle).coerceIn(0f, maxBlend)
         } else {
             val separation = abs(pathT - sizeT)
-            (separation * blendMultiplier * blendAttenuation).coerceIn(0f, maxBlend)
+            val neck = (separation * blendMultiplier * blendAttenuation).coerceIn(0f, maxBlend)
+            maxBlend * smootherStep(neck / maxBlend)
         }
 
         val containerScale = when {

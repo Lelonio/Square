@@ -21,6 +21,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -77,24 +81,11 @@ fun GlassPullDownButton(
     ink: Color = GlassInk,
     buttonSize: Dp = 44.dp,
 ) {
-    LiquidButton(
-        onClick = onOpen,
-        backdrop = backdrop,
-        modifier = modifier
-            .then(if (label.isNullOrEmpty()) Modifier.size(buttonSize) else Modifier.height(buttonSize))
-            .then(if (trigger != null) Modifier.glassMenuTrigger(trigger) else Modifier)
-            .onGloballyPositioned { onAnchor(it.boundsInRoot().toIntRect()) }
-            .then(
-                if (semanticLabel != null) {
-                    Modifier.semantics { contentDescription = semanticLabel }
-                } else {
-                    Modifier
-                },
-            ),
-        contentHeight = buttonSize,
-        contentPadding = if (label.isNullOrEmpty()) 0.dp else 16.dp,
-    ) {
-        Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
+    val sizeModifier = if (label.isNullOrEmpty()) Modifier.size(buttonSize) else Modifier.height(buttonSize)
+    val padding = if (label.isNullOrEmpty()) 0.dp else 16.dp
+    @Composable
+    fun RowScope.Items(modifier: Modifier) {
+        Icon(icon, contentDescription = null, tint = ink, modifier = modifier.size(20.dp))
         if (!label.isNullOrEmpty()) {
             // Upstream's 8 px gap is the button's own row spacing here.
             Text(
@@ -104,7 +95,50 @@ fun GlassPullDownButton(
                 color = ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = modifier,
             )
+        }
+    }
+    if (trigger != null) {
+        androidx.compose.runtime.SideEffect {
+            trigger.iconContent = {
+                Row(
+                    Modifier.fillMaxSize().padding(horizontal = padding),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { Items(Modifier) }
+            }
+        }
+        androidx.compose.runtime.DisposableEffect(trigger) { onDispose { trigger.iconContent = null } }
+    }
+    Box(modifier.then(sizeModifier)) {
+        LiquidButton(
+            onClick = onOpen,
+            backdrop = backdrop,
+            modifier = sizeModifier
+                .then(if (trigger != null) Modifier.glassMenuTrigger(trigger) else Modifier)
+                .onGloballyPositioned { onAnchor(it.boundsInRoot().toIntRect()) }
+                .then(
+                    if (semanticLabel != null) {
+                        Modifier.semantics { contentDescription = semanticLabel }
+                    } else {
+                        Modifier
+                    },
+                ),
+            contentHeight = buttonSize,
+            contentPadding = padding,
+        ) {
+            Items(Modifier.alpha(0f))
+        }
+        Row(
+            Modifier
+                .matchParentSize()
+                .then(if (trigger != null) Modifier.glassMenuTriggerContent(trigger) else Modifier)
+                .padding(horizontal = padding),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Items(Modifier)
         }
     }
 }
