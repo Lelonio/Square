@@ -282,10 +282,12 @@ private fun BackdropEffectScope.frostRows(
     // of the material's blur, 1.6 px here) and at 15-27 % of the frost they
     // left every hard edge of the page standing in the glass: over a cover
     // with text on it the frost read as no frost at all, and switching it
-    // off, which puts a plain blur in its place, looked frostier. A small
-    // blur of the platform's, a sixth of the frost's sigma, keeps the page's
-    // shapes and colours in the glass without its edges, for about what one
-    // more blur pass costs; the shader's six taps then soften it further.
+    // off, which puts a plain blur in its place, looked frostier. A blur of
+    // the platform's keeps the page's shapes and colours in the glass
+    // without its edges, for about what one more blur pass costs. Its sigma
+    // is a little over the quarter of the frost's that stands in for the
+    // frost when it is off, so the frost is never the less blurred of the
+    // two; at a sixth, text behind a dark bar still showed through.
     val sigma = radius * 0.57735f + 0.5f
     val ghostRadius = blurRadiusForSigma(sigma * GHOST_SHARE)
     val ghost = when {
@@ -305,7 +307,7 @@ private fun BackdropEffectScope.frostRows(
 }
 
 /** The ghost's blur, as a share of the frost's sigma; see frostRows. */
-private const val GHOST_SHARE = 0.15f
+private const val GHOST_SHARE = 0.3f
 
 /** How long a frosted surface holds its capture while the page under it moves. */
 private const val FROST_HOLD_REFRESH_MS = 300f
