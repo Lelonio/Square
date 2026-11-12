@@ -46,3 +46,24 @@ val Inter = FontFamily(
  * the SIL Open Font License; see assets/licenses/InstrumentSerif-OFL.txt.
  */
 val InstrumentSerif = FontFamily(Font(R.font.instrument_serif, weight = FontWeight.Normal))
+
+/**
+ * [content] with the system font scale held at [max] at most.
+ *
+ * For chrome of a fixed height: the tab bar and the mini player keep their size
+ * whatever the font setting, so text there that grew with it was cut off. Like
+ * iOS's tab bar, it follows the setting a little way and then stops.
+ */
+@androidx.compose.runtime.Composable
+fun CappedFontScale(max: Float = 1.15f, content: @androidx.compose.runtime.Composable () -> Unit) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    if (density.fontScale <= max) {
+        content()
+    } else {
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides
+                androidx.compose.ui.unit.Density(density.density, max),
+            content = content,
+        )
+    }
+}

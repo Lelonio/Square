@@ -594,6 +594,7 @@
     <string name="theme_dark">Koyu</string>
     <string name="font_title">Yazı tipi</string>
     <string name="font_system">Telefonun yazı tipini kullan</string>
+    <string name="font_serif_artists">Sanatçı adları serif yazı tipinde</string>
     <string name="youtube_quality_auto">Otomatik: Wi-Fi’da yüksek, mobil veride düşük</string>
     <string name="youtube_quality_high">Yüksek (yaklaşık 128 kbps)</string>
     <string name="youtube_quality_low">Düşük, veri tasarrufu (yaklaşık 48 kbps)</string>

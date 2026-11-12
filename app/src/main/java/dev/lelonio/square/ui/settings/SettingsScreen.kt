@@ -51,6 +51,7 @@ import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowLeft
 import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.TextAa
+import com.adamglin.phosphoricons.regular.TextItalic
 import com.adamglin.phosphoricons.regular.ArrowUpRight
 import com.adamglin.phosphoricons.regular.CaretDown
 import com.adamglin.phosphoricons.regular.CaretRight
@@ -761,6 +762,7 @@ fun SettingsScreen(
                 (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
             }
             val systemFont by store.systemFont.collectAsStateWithLifecycle()
+            val serifNames by store.serifArtistNames.collectAsStateWithLifecycle()
             Section(stringResource(R.string.font_title)) {
                 DownloadSwitch(
                     label = stringResource(R.string.font_system),
@@ -768,6 +770,14 @@ fun SettingsScreen(
                     backdrop = backdrop,
                     icon = PhosphorIcons.Regular.TextAa,
                     onChange = store::setSystemFont,
+                )
+                RowDivider()
+                DownloadSwitch(
+                    label = stringResource(R.string.font_serif_artists),
+                    checked = serifNames,
+                    backdrop = backdrop,
+                    icon = PhosphorIcons.Regular.TextItalic,
+                    onChange = store::setSerifArtistNames,
                 )
             }
         }

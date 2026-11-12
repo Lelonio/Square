@@ -1223,6 +1223,11 @@ pub fn reconnect() -> EngineResult<()> {
         // first is still building.
         return Ok(());
     }
+    if OFFLINE.load(Ordering::SeqCst) {
+        let result = reconnect_from_offline();
+        RECONNECTING.store(false, Ordering::SeqCst);
+        return result;
+    }
     let taken = (|| -> EngineResult<_> {
         let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
         let engine = guard.as_mut().ok_or("engine not started")?;
@@ -1291,6 +1296,56 @@ pub fn reconnect() -> EngineResult<()> {
     });
     RECONNECTING.store(false, Ordering::SeqCst);
     installed
+}
+
+/// [`reconnect`] from an offline engine: the new session is built beside the
+/// offline player rather than in place of it.
+///
+/// Offline, the player is what is playing the downloads, and the tries to get
+/// a session back come every minute for as long as the phone has a network
+/// that does not answer. Each one used to throw the player away first and put
+/// an offline one back when the handshake timed out, so a downloaded song
+/// played until the next try and stopped there, for good, until the listener
+/// skipped. Here the offline bundle stays installed, and answering commands,
+/// while the handshake runs; a try that fails leaves it exactly as it was, and
+/// only a session that is really there replaces it.
+///
+/// An offline bundle has no Connect device, so the two existing for the
+/// length of the handshake are not two devices in the account's list.
+fn reconnect_from_offline() -> EngineResult<()> {
+    let (handle, recipe, mixer, events_tx) = {
+        let guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        let engine = guard.as_ref().ok_or("engine not started")?;
+        (
+            engine.rt.handle().clone(),
+            engine.recipe.clone(),
+            engine.mixer.clone(),
+            engine.events_tx.clone(),
+        )
+    };
+
+    let bundle = match build_bundle(&handle, &recipe, &mixer, &events_tx) {
+        Ok(bundle) => bundle,
+        Err(e) => {
+            log::warn!("{e}; staying offline, the player left playing");
+            return if e == PREMIUM_REQUIRED { Err(e) } else { Ok(()) };
+        }
+    };
+
+    let old = {
+        let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        let engine = guard.as_mut().ok_or("engine not started")?;
+        engine.bundle.replace(bundle)
+    };
+    OFFLINE.store(false, Ordering::SeqCst);
+    log::info!("reconnected");
+    if let Some(old) = old {
+        log::info!("discarding the offline player");
+        old.player.stop();
+        old.session.shutdown();
+        crate::sink::silence();
+    }
+    Ok(())
 }
 
 /// Forward player events to Kotlin. Runs for the life of the engine.

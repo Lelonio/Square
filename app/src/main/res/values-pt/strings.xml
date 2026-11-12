@@ -581,6 +581,7 @@
     <string name="theme_dark">Escuro</string>
     <string name="font_title">Fonte</string>
     <string name="font_system">Usar a fonte do telefone</string>
+    <string name="font_serif_artists">Nomes de artistas com serifa</string>
     <string name="youtube_quality_auto">Automática: alta no Wi-Fi, baixa nos dados móveis</string>
     <string name="youtube_quality_high">Alta (cerca de 128 kbps)</string>
     <string name="youtube_quality_low">Baixa, economiza dados (cerca de 48 kbps)</string>

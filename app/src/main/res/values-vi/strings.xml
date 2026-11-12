@@ -640,6 +640,7 @@
     <string name="theme_dark">Tối</string>
     <string name="font_title">Phông chữ</string>
     <string name="font_system">Dùng phông của điện thoại</string>
+    <string name="font_serif_artists">Tên nghệ sĩ dùng phông có chân</string>
     <string name="youtube_quality_auto">Tự động: cao trên Wi-Fi, thấp trên dữ liệu di động</string>
     <string name="youtube_quality_high">Cao (khoảng 128 kbps)</string>
     <string name="youtube_quality_low">Thấp, tiết kiệm dữ liệu (khoảng 48 kbps)</string>

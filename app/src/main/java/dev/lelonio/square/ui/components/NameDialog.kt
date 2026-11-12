@@ -53,6 +53,11 @@ fun NameDialog(
             autoFocus = true,
             onSubmit = { if (it.isNotBlank()) onConfirm(it) },
             modifier = Modifier.padding(top = 16.dp),
+            // The sheet is drawn by the host, above the app and outside the
+            // page that provides the app's backdrop: the field reading that
+            // one closed the app as the sheet opened (saving an effect preset,
+            // naming an equalizer curve, renaming a playlist).
+            backdrop = LocalGlassSheetHost.current?.backdrop,
         )
         // Nothing to create or save while the field is empty, and a playlist
         // called nothing is not something either service will take anyway.

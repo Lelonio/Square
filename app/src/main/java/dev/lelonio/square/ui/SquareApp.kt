@@ -2684,6 +2684,11 @@ fun SquareApp(
                         if (searching || !barFolds) tabBarScroll.expand()
                     }
 
+                    // The bar and the mini player are fixed-height glass: at the
+                    // largest system font sizes their labels outgrew them and
+                    // were cut through the middle (#193, #197). Pages scale
+                    // with the setting; the bar stops a little past default.
+                    dev.lelonio.square.ui.theme.CappedFontScale {
                     FloatingTabBar(
                         // The page's own tab. The bar keeps this tab when it
                         // folds and finds it by matching this key.
@@ -3119,6 +3124,7 @@ fun SquareApp(
                                 },
                             )
                         }
+                    }
                     }
                     }
                 }

@@ -380,6 +380,8 @@ class DownloadQueue(
             extrasTried += uri
             if (YouTubeBackend.isSong(uri)) {
                 store.trackOf(uri)?.artworkUrl?.let { runCatching { DownloadExtras.keep(it, "art") } }
+                keepYouTubeLyrics(uri)
+                delay(TRACK_GAP_MS)
                 continue
             }
             // No sidecar is not a reason to skip: it carries the cover url the
@@ -424,7 +426,11 @@ class DownloadQueue(
             // The rest is Spotify's: its words, its tall pictures and its
             // Canvas are looked up by a Spotify track, and a YouTube Music song
             // would be asked about them on every run and never have them.
-            (!YouTubeBackend.isSong(trackUri) && needsSpotifyExtras(trackUri))
+            if (YouTubeBackend.isSong(trackUri)) {
+                !DownloadExtras.asked("lyrics", trackUri)
+            } else {
+                needsSpotifyExtras(trackUri)
+            }
 
     private fun needsSpotifyExtras(trackUri: String): Boolean =
         !DownloadExtras.asked("lyrics", trackUri) ||
@@ -510,6 +516,7 @@ class DownloadQueue(
         outcome.onSuccess { record ->
             store.onCompleted(trackUri, record)
             store.trackOf(trackUri)?.artworkUrl?.let { runCatching { DownloadExtras.keep(it, "art") } }
+            scope.launch { extrasSemaphore.withPermit { keepYouTubeLyrics(trackUri) } }
             return Outcome.DONE
         }
 
@@ -573,6 +580,40 @@ class DownloadQueue(
         }
         keepRemainingExtras(trackUri)
     }
+
+    /**
+     * The words of a YouTube Music song, kept with its download.
+     *
+     * Its cover was the only extra kept, and the words only when the song had
+     * been played online with them on screen: a song downloaded and then
+     * played offline had none, and "request again" did not ask either. Asked
+     * from the same lyrics sources the player uses; a song with none is noted,
+     * so it is not asked about on every run, and a failure to ask is not.
+     */
+    private suspend fun keepYouTubeLyrics(trackUri: String) {
+        if (DownloadExtras.asked("lyrics", trackUri)) return
+        val track = store.trackOf(trackUri) ?: return
+        val query = dev.lelonio.square.backend.lyrics.LyricsQuery(
+            trackUri,
+            track.name.orEmpty(),
+            track.artist.orEmpty(),
+            track.durationMs ?: 0L,
+        )
+        runCatching { dev.lelonio.square.backend.lyrics.LyricsLibrary.lyrics(query) }
+            .onSuccess { found ->
+                if (found == null) {
+                    DownloadExtras.note("lyrics", trackUri)
+                } else {
+                    DownloadExtras.rememberLyrics(
+                        trackUri,
+                        lyricsJson.encodeToString(dev.lelonio.square.data.Lyrics.serializer(), found),
+                    )
+                }
+            }
+            .onFailure { android.util.Log.i("SquareDownloads", "lyrics for $trackUri: $it") }
+    }
+
+    private val lyricsJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
     private suspend fun keepRemainingExtras(trackUri: String) {
         runCatching {

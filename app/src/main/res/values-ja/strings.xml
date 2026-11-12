@@ -637,6 +637,7 @@
     <string name="theme_dark">ダーク</string>
     <string name="font_title">フォント</string>
     <string name="font_system">端末のフォントを使用</string>
+    <string name="font_serif_artists">アーティスト名をセリフ体で表示</string>
     <string name="youtube_quality_auto">自動：Wi‑Fiでは高音質、モバイルデータ通信では低音質</string>
     <string name="youtube_quality_high">高音質（約128 kbps）</string>
     <string name="youtube_quality_low">低音質（データ使用量を節約、約48 kbps）</string>

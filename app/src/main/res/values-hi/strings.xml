@@ -596,6 +596,7 @@
     <string name="theme_dark">गहरी</string>
     <string name="font_title">फ़ॉन्ट</string>
     <string name="font_system">फ़ोन का फ़ॉन्ट इस्तेमाल करें</string>
+    <string name="font_serif_artists">कलाकारों के नाम सेरिफ़ में</string>
     <string name="youtube_quality_auto">अपने-आप: Wi-Fi पर ऊँची, मोबाइल डेटा पर कम</string>
     <string name="youtube_quality_high">ऊँची (लगभग 128 kbps)</string>
     <string name="youtube_quality_low">कम, डेटा बचाती है (लगभग 48 kbps)</string>

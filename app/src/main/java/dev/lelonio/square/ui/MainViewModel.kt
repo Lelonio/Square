@@ -1258,7 +1258,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             open = asSheet,
             trackUri = trackUri,
             trackTitle = trackTitle,
-            playlists = (_state.value as? UiState.Ready)?.playlists.orEmpty(),
+            playlists = spotifyTargets(),
             liked = trackUri != null && container.likedStore.isLiked(trackUri),
             error = when {
                 trackUri == null || !(trackUri.startsWith("spotify:track:") ||
@@ -1301,7 +1301,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             batch = uris,
             trackTitle = title,
             playlists = if (backend.id == BackendId.SPOTIFY) {
-                (_state.value as? UiState.Ready)?.playlists.orEmpty()
+                spotifyTargets()
             } else {
                 emptyList()
             },
@@ -1333,7 +1333,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         val id = playlist.uri.substringAfterLast(':')
                         // A hundred a request is the most Spotify takes.
                         uris.chunked(100).forEach { chunk ->
-                            container.api.addToPlaylist(id, AddTracksRequestDto(chunk))
+                            writeToPlaylist(playlist.uri, chunk, add = true) {
+                                container.api.addToPlaylist(id, AddTracksRequestDto(chunk))
+                            }
                         }
                     }
                     else -> uris.forEach { container.activeBackend.addToPlaylist(playlist.uri, it) }
@@ -1395,6 +1397,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     error = string(R.string.add_failed, playlist.name),
                 )
             }
+        }
+    }
+
+    /**
+     * The rows of the Spotify sheet: the account's playlists and Liked Songs.
+     *
+     * The library also lists Local files and Downloaded tracks, which are this
+     * phone's and not lists Spotify can be asked to write to; offered here, a
+     * tap on either went to a backend with no way to add and failed every time.
+     */
+    private fun spotifyTargets(): List<CatalogPlaylist> =
+        (_state.value as? UiState.Ready)?.playlists.orEmpty()
+            .filter { it.uri.startsWith("spotify:playlist:") || it.uri.endsWith(":collection") }
+
+    /**
+     * Adds [uris] to a playlist, or takes them out, by the Web API and else by
+     * the playlist service.
+     *
+     * The Web API is the one with a rate limit, and once Spotify has put the
+     * account in its penalty box it says wait for hours: every add and remove
+     * failed for that long, while the session's playlist service, which is how
+     * Spotify's own apps write, was there all along. A 403 is not retried that
+     * way: it is a missing permission, and the sheet says so.
+     */
+    private suspend fun writeToPlaylist(
+        playlistUri: String,
+        uris: List<String>,
+        add: Boolean,
+        web: suspend () -> Unit,
+    ) {
+        val failed = runCatching { web() }.exceptionOrNull() ?: return
+        if (describe(failed).contains("403")) throw failed
+        android.util.Log.w(TAG, "web api ${if (add) "add" else "remove"} failed (${describe(failed)}); writing through the playlist service")
+        try {
+            withContext(Dispatchers.IO) {
+                uris.forEach {
+                    if (add) NativeBridge.addToPlaylist(playlistUri, it)
+                    else NativeBridge.removeFromPlaylist(playlistUri, it)
+                }
+            }
+        } catch (e: Exception) {
+            e.addSuppressed(failed)
+            throw e
         }
     }
 
@@ -1477,7 +1522,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 current.copy(busy = playlist.uri, done = null, removed = null, error = null)
             viewModelScope.launch {
                 runCatching {
-                    container.api.removeFromPlaylist(id, RemoveTracksRequestDto(listOf(TrackUriDto(trackUri))))
+                    writeToPlaylist(playlist.uri, listOf(trackUri), add = false) {
+                        container.api.removeFromPlaylist(id, RemoveTracksRequestDto(listOf(TrackUriDto(trackUri))))
+                    }
                 }
                     .onSuccess {
                         val left = _addToPlaylist.value.containing - playlist.uri
@@ -1510,7 +1557,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             current.copy(busy = playlist.uri, done = null, removed = null, error = null)
         viewModelScope.launch {
             runCatching {
-                container.api.addToPlaylist(id, AddTracksRequestDto(listOf(trackUri)))
+                writeToPlaylist(playlist.uri, listOf(trackUri), add = true) {
+                    container.api.addToPlaylist(id, AddTracksRequestDto(listOf(trackUri)))
+                }
             }
                 .onSuccess {
                     _addToPlaylist.value = _addToPlaylist.value.copy(
@@ -3586,10 +3635,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         viewModelScope.launch {
             val syncResult = runCatching {
-                if (nowLiked) {
-                    container.api.saveToLibrary("spotify:track:$id", SpotifyApi.EMPTY_BODY)
-                } else {
-                    container.api.removeFromLibrary("spotify:track:$id")
+                val web = runCatching {
+                    if (nowLiked) {
+                        container.api.saveToLibrary("spotify:track:$id", SpotifyApi.EMPTY_BODY)
+                    } else {
+                        container.api.removeFromLibrary("spotify:track:$id")
+                    }
+                }.exceptionOrNull()
+                // The Web API rate-limited for hours left every heart failing;
+                // the web player's gateway keeps the same library.
+                if (web != null) {
+                    if (describe(web).contains("403")) throw web
+                    android.util.Log.w(TAG, "toggleLike web api failed (${describe(web)}); trying the gateway")
+                    if (!container.gateway.setInLibrary(listOf("spotify:track:$id"), keep = nowLiked)) throw web
                 }
             }.onSuccess {
                 android.util.Log.i(TAG, "toggleLike remote sync succeeded for $id (nowLiked=$nowLiked)")

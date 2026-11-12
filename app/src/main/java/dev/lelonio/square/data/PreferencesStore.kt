@@ -208,6 +208,19 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_PURE_BLACK, value).apply()
     }
 
+    private val _serifArtistNames = MutableStateFlow(prefs.getBoolean(KEY_SERIF_ARTIST_NAMES, true))
+
+    /**
+     * An artist page without a drawn logo sets the name in Instrument Serif.
+     * Off, it takes the app's own face: the serif does not suit every artist.
+     */
+    val serifArtistNames: StateFlow<Boolean> = _serifArtistNames.asStateFlow()
+
+    fun setSerifArtistNames(value: Boolean) {
+        _serifArtistNames.value = value
+        prefs.edit().putBoolean(KEY_SERIF_ARTIST_NAMES, value).apply()
+    }
+
     private val _lyricsFolder = MutableStateFlow(prefs.getString(KEY_LYRICS_FOLDER, null).orEmpty())
 
     /**
@@ -478,6 +491,7 @@ class PreferencesStore(context: Context) {
         const val KEY_YOUTUBE_QUALITY = "youtube_quality"
         const val KEY_LYRICS_STYLE = "lyrics_style"
         const val KEY_PURE_BLACK = "pure_black"
+        const val KEY_SERIF_ARTIST_NAMES = "serif_artist_names"
         const val KEY_LYRICS_FOLDER = "lyrics_folder"
         const val KEY_LYRICS_OFFSET_PREFIX = "lyrics_offset:"
         const val KEY_SPICY_LYRICS = "spicy_lyrics_key"

@@ -91,6 +91,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import dev.lelonio.square.ui.components.BlurTransformation
@@ -2139,6 +2140,13 @@ private fun ArtistHeader(
                         .heightIn(max = LOGO_HEIGHT),
                 )
             } else {
+                val appContext = LocalContext.current.applicationContext
+                val serif by remember(appContext) {
+                    (appContext as dev.lelonio.square.SquareApplication).preferences.serifArtistNames
+                }.collectAsStateWithLifecycle()
+                // Larger in the serif: the face is narrow and light, and at
+                // the sans's size it reads a step smaller.
+                val scale = if (serif) 1.18f else 1f
                 Text(
                     // As the artist spells it. Setting it in capitals was an
                     // imitation of the drawn names the catalogue supplies for
@@ -2149,12 +2157,15 @@ private fun ArtistHeader(
                     text = name,
                     style = MaterialTheme.typography.displaySmall.copy(
                         // A serif set for the page, as a magazine sets a name
-                        // across a portrait; see InstrumentSerif. Larger than
-                        // the sans was: the face is narrow and light, and at
-                        // the same size it reads a step smaller.
-                        fontFamily = dev.lelonio.square.ui.theme.InstrumentSerif,
-                        fontSize = nameSize(name) * 1.18f,
-                        lineHeight = nameSize(name) * 1.18f,
+                        // across a portrait; see InstrumentSerif. The app's own
+                        // face when the listener turned it off in Settings.
+                        fontFamily = if (serif) {
+                            dev.lelonio.square.ui.theme.InstrumentSerif
+                        } else {
+                            MaterialTheme.typography.displaySmall.fontFamily
+                        },
+                        fontSize = nameSize(name) * scale,
+                        lineHeight = nameSize(name) * scale,
                         // The photo behind it is somebody's face and cannot be
                         // relied on for contrast. A soft shadow costs nothing
                         // and keeps the name readable over a white shirt.
