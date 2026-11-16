@@ -721,5 +721,10 @@
     <string name="lyrics_folder_choose">音楽フォルダを選ぶ</string>
     <string name="lyrics_folder_forget">フォルダを解除</string>
     <string name="lyrics_folder_note">Square は曲の隣にある同じ名前の .lrc ファイル(song.mp3 と song.lrc など)を表示します。Android 13 以降は音楽のあるフォルダを指定する必要があります。曲のタグに書き込まれた歌詞は指定しなくても読み込まれます。</string>
+    <string name="stream_quality">ストリーミング音質</string>
+    <string name="stream_quality_lossless">ロスレス</string>
+    <string name="stream_quality_very_high">最高音質</string>
+    <string name="stream_quality_high">高音質</string>
+    <string name="stream_quality_normal">標準</string>
 </resources>
 

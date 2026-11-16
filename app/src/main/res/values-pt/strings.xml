@@ -665,4 +665,9 @@
     <string name="lyrics_folder_choose">Escolher a pasta de música</string>
     <string name="lyrics_folder_forget">Esquecer a pasta</string>
     <string name="lyrics_folder_note">O Square mostra um arquivo .lrc com o mesmo nome da música ao lado dela, como musica.mp3 e musica.lrc. A partir do Android 13 ele precisa saber em que pasta está sua música. Letras gravadas nas tags da música são lidas sem ela.</string>
+    <string name="stream_quality">Qualidade do streaming</string>
+    <string name="stream_quality_lossless">Sem perdas</string>
+    <string name="stream_quality_very_high">Muito alta</string>
+    <string name="stream_quality_high">Alta</string>
+    <string name="stream_quality_normal">Normal</string>
 </resources>

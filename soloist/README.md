@@ -1,0 +1,79 @@
+# Soloist on Android
+
+Spotify's Soloist (the official Linux arm64 player, from
+soloist-builds.spotifycdn.com) run inside the app as this phone's player, in
+place of librespot. librespot stays as the fallback and for downloads.
+
+Nothing here reimplements Spotify's DRM: the official binary runs as is, under
+its own glibc, and these pieces only adapt the process to Android.
+
+## Runtime layout
+
+`SoloistRuntime` installs `getExternalFilesDir()/soloist` into
+`filesDir/soloist` and runs `lib/ld-linux-aarch64.so.1 --library-path lib soloist`:
+
+    soloist                 the official binary
+    key                     the user's Soloist key (never committed)
+    ca.pem                  CA bundle (SSL_CERT_FILE)
+    r                       resolv.conf written from the active network's DNS
+    lib/ld-linux-aarch64.so.1, libc.so.6   glibc 2.41, patched (below)
+    lib/libm, libpthread, libdl, librt, libgcc_s, libatomic.so.1
+    lib/libpulse.so.0       pulse/pulse.c
+    lib/libsqaudit.so       seccomp/audit.c (LD_AUDIT)
+    lib/libsqguard.so       seccomp/guard.c (LD_PRELOAD)
+
+Environment: `GLIBC_TUNABLES=glibc.pthread.rseq=0`, `LD_AUDIT`, `LD_PRELOAD`,
+`SSL_CERT_FILE`, `HOME`, `TMPDIR`, and for the audio `SQUARE_PCM_FIFO`,
+`SQUARE_XFADE_MS`, `SQUARE_XFADE_MAX_MS`, `SQUARE_XFADE_FLAG`.
+
+targetSdk 28 is what lets the app execute files from its data directory.
+
+## glibc patches
+
+The app sandbox's seccomp filter kills the process (SIGSYS) on
+`set_robust_list` (99), `rseq` (293), `clone3` (435) and `accept` (202).
+
+- `svc #0` replaced by `movn x0, #37` (returns -ENOSYS, so glibc falls back) in
+  ld.so at 0x106f4 and in libc at 0xee2f0, 0x85f4c, 0xbfbc8.
+- `accept` made `accept4`: `mov x6, #0xca` to `#0xf2` in libc at 0xf0368.
+- The string `/etc/resolv.conf` in libc replaced by `/proc/self/cwd/r`.
+- rseq off through the tunable above.
+
+`audit.c` catches any other SIGSYS, logs `SQSECCOMP syscall=N` and returns
+-ENOSYS; `guard.c` keeps that handler from being replaced and SIGSYS from being
+blocked.
+
+## Audio
+
+Soloist dlopens libpulse. `pulse.c` is a libpulse with only what Soloist calls:
+a threaded mainloop, a context and playback streams. Each stream's PCM goes to
+Square over a FIFO as packets (`SQPC`, a type, three bytes of padding, a
+little-endian length, the payload):
+
+    H  format: u32 rate, u32 channels
+    A  interleaved s16 PCM
+    P  pause    R  resume    F  flush
+    N  the song after a dissolve is first heard
+
+`SoloistAudio` reads them into Square's own AudioOutput, so the equaliser,
+karaoke, reverb, speed and pitch apply. Crossfades are made here: Square writes
+the dissolve length to the `SQUARE_XFADE_FLAG` file before a skip, and the
+stream keeps what was ahead of the old song to fade under the new one.
+
+## Building
+
+With the NDK's clang (`B=$ANDROID_SDK/ndk/*/toolchains/llvm/prebuilt/*/bin`) and
+the patched `libc.so.6` to link against:
+
+    $B/clang --target=aarch64-linux-gnu -fPIC -shared -nostdlib -O2 \
+      -fvisibility=hidden -fno-stack-protector -fuse-ld=lld \
+      -Wl,-soname,libpulse.so.0 -Wl,--no-undefined \
+      -o libpulse.so.0 pulse/pulse.c lib/libc.so.6
+
+    $B/clang --target=aarch64-linux-gnu -fPIC -shared -nostdlib -O2 \
+      -fno-stack-protector -fuse-ld=lld -Wl,-soname,libsqaudit.so \
+      -o libsqaudit.so seccomp/audit.c
+
+    $B/clang --target=aarch64-linux-gnu -fPIC -shared -nostdlib -O2 \
+      -fvisibility=hidden -fno-stack-protector -fuse-ld=lld \
+      -Wl,-soname,libsqguard.so -o libsqguard.so seccomp/guard.c lib/libc.so.6

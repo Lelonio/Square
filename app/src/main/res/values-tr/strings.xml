@@ -678,4 +678,9 @@
     <string name="lyrics_folder_choose">Müzik klasörünü seç</string>
     <string name="lyrics_folder_forget">Klasörü unut</string>
     <string name="lyrics_folder_note">Square, şarkının yanındaki aynı adlı .lrc dosyasını gösterir; örneğin sarki.mp3 ve sarki.lrc. Android 13\'ten itibaren müziğinin bulunduğu klasörü bilmesi gerekir. Şarkının etiketlerine yazılmış sözler onsuz da okunur.</string>
+    <string name="stream_quality">Akış kalitesi</string>
+    <string name="stream_quality_lossless">Kayıpsız</string>
+    <string name="stream_quality_very_high">Çok yüksek</string>
+    <string name="stream_quality_high">Yüksek</string>
+    <string name="stream_quality_normal">Normal</string>
 </resources>

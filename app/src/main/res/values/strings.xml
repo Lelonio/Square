@@ -732,4 +732,9 @@
     <string name="lyrics_folder_choose">Choose your music folder</string>
     <string name="lyrics_folder_forget">Forget the folder</string>
     <string name="lyrics_folder_note">Square shows an .lrc file with the same name as the song beside it, like song.mp3 and song.lrc. From Android 13 it needs to be shown the folder your music is in. Lyrics written into the song’s tags are read without it.</string>
+    <string name="stream_quality">Stream quality</string>
+    <string name="stream_quality_lossless">Lossless</string>
+    <string name="stream_quality_very_high">Very high</string>
+    <string name="stream_quality_high">High</string>
+    <string name="stream_quality_normal">Normal</string>
 </resources>

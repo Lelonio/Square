@@ -29,6 +29,12 @@ object ReverbTuning {
         // decibels down, which is silence — and it is a master attenuation
         // sitting in front of everything else.
         effect.roomLevel = (MIN_ROOM_MB + level * (MAX_ROOM_MB - MIN_ROOM_MB)).toInt().toShort()
+        // The early reflections, which give the room its body. Left at the
+        // API's default they are -9000 mB, off: the room was a faint tail
+        // alone, and on the output mix it all but disappeared.
+        effect.reflectionsLevel =
+            (MIN_REFLECTIONS_MB + level * (MAX_REFLECTIONS_MB - MIN_REFLECTIONS_MB)).toInt().toShort()
+        effect.reflectionsDelay = 20
         // Keeps the tail from being all low end, which is what a room with its
         // highs rolled off sounds like: muddy rather than spacious.
         effect.roomHFLevel = (-400).toShort()
@@ -55,14 +61,18 @@ object ReverbTuning {
 
     /** Decay range, in milliseconds: a live room up to a large hall. */
     private const val MIN_DECAY_MS = 500f
-    private const val MAX_DECAY_MS = 4500f
+    private const val MAX_DECAY_MS = 6000f
 
     /**
      * Reverb level in millibels. The API allows down to -9000, which is
      * inaudible, so the useful part of the range starts much higher.
      */
-    private const val MIN_LEVEL_MB = -2600f
-    private const val MAX_LEVEL_MB = -200f
+    private const val MIN_LEVEL_MB = -1600f
+    private const val MAX_LEVEL_MB = 1000f
+
+    /** Early reflections, in millibels: from a hint of a room to a close wall. */
+    private const val MIN_REFLECTIONS_MB = -2000f
+    private const val MAX_REFLECTIONS_MB = -200f
 
     /**
      * Master room level, in millibels. 0 is unattenuated; the API default of

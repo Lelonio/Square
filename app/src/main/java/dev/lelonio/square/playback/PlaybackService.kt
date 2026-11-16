@@ -632,7 +632,13 @@ class PlaybackService : MediaLibraryService() {
         // it takes the same road: a new engine, with the queue put back where
         // it was.
         scope.launch {
-            crossfade.seconds.drop(1).collect { reconfigureEngine("crossfade") }
+            crossfade.seconds.drop(1).collect {
+                if (playerKind == PlayerKind.SOLOIST) {
+                    dev.lelonio.square.playback.soloist.SoloistEngine.reconfigure(this@PlaybackService)
+                } else {
+                    reconfigureEngine("crossfade")
+                }
+            }
         }
 
         // Playback handed to this phone from another client's device list.
@@ -662,7 +668,11 @@ class PlaybackService : MediaLibraryService() {
                 OfflineMode.active,
             ) { elsewhere, offline -> elsewhere.takeIf { !offline } }
                 .collect { elsewhere ->
-                    librespot?.showRemote(elsewhere?.let { describeRemote(it) })
+                    // Described whoever is in front: with Soloist the Spotify
+                    // player is parked, and the screen still needs the title,
+                    // the artist and the cover of what plays elsewhere.
+                    val described = elsewhere?.let { describeRemote(it) }
+                    librespot?.showRemote(described)
                 }
         }
 
@@ -691,7 +701,7 @@ class PlaybackService : MediaLibraryService() {
      * neither backend's player can open them. So what decides this is not only
      * the setting but what is being played; see [ensurePlayerFor].
      */
-    private enum class PlayerKind { SPOTIFY, YOUTUBE, LOCAL, VIDEO, SPOTIFY_WEB }
+    private enum class PlayerKind { SPOTIFY, YOUTUBE, LOCAL, VIDEO, SPOTIFY_WEB, SOLOIST }
 
     private var playerKind = PlayerKind.SPOTIFY
 
@@ -776,7 +786,7 @@ class PlaybackService : MediaLibraryService() {
             is dev.lelonio.square.backend.spotify.SpotifyVideoMode.Request.Skip -> {
                 dev.lelonio.square.backend.spotify.SpotifyVideoMode.setEnabled(false)
                 dev.lelonio.square.backend.spotify.SpotifyVideoMode.setManifest(null)
-                swapPlayer(kindFor(container.preferences.backend.value), restore = true)
+                swapPlayer(audioKind(), restore = true)
                 if (request.forward) player.seekToNext() else player.seekToPrevious()
                 player.play()
             }
@@ -784,7 +794,7 @@ class PlaybackService : MediaLibraryService() {
             is dev.lelonio.square.backend.spotify.SpotifyVideoMode.Request.Listen -> {
                 dev.lelonio.square.backend.spotify.SpotifyVideoMode.setEnabled(false)
                 dev.lelonio.square.backend.spotify.SpotifyVideoMode.setManifest(null)
-                swapPlayer(kindFor(container.preferences.backend.value), restore = true)
+                swapPlayer(audioKind(), restore = true)
                 player.seekTo(request.positionMs)
                 player.play()
             }
@@ -837,7 +847,11 @@ class PlaybackService : MediaLibraryService() {
             kindFor(container.preferences.backend.value).let { kind ->
                 // An account Spotify refuses its keys goes on playing the web
                 // player's way, once the engine is up to lend it a token.
-                if (kind == PlayerKind.SPOTIFY && webPlaybackNeeded()) {
+                // Spotify's own player, Soloist, when the listener chose it:
+                // the engine stays up behind it for the catalogue and Connect.
+                if (kind == PlayerKind.SPOTIFY && soloistWanted()) {
+                    PlayerKind.SOLOIST
+                } else if (kind == PlayerKind.SPOTIFY && webPlaybackNeeded()) {
                     if (dev.lelonio.square.playback.websdk.WebSdkRecovery.isConfigured(this)) {
                         PlayerKind.SPOTIFY_WEB
                     } else {
@@ -868,6 +882,21 @@ class PlaybackService : MediaLibraryService() {
     private fun buildPlayer(
         backendId: dev.lelonio.square.backend.BackendId,
     ): androidx.media3.common.Player = buildPlayer(kindFor(backendId))
+
+    /**
+     * The player the music goes back to after a video: Soloist when it is the
+     * listener's Spotify player, not the Spotify engine parked behind it, whose
+     * queue is the one from before Soloist played and whose output carries
+     * none of the effects.
+     */
+    private fun audioKind(): PlayerKind {
+        val kind = kindFor(container.preferences.backend.value)
+        return if (kind == PlayerKind.SPOTIFY && soloistWanted()) PlayerKind.SOLOIST else kind
+    }
+
+    private fun soloistWanted(): Boolean =
+        container.preferences.backend.value == dev.lelonio.square.backend.BackendId.SPOTIFY &&
+            dev.lelonio.square.playback.soloist.SoloistEngine.isEnabled(this)
 
     private fun webPlaybackNeeded(): Boolean =
         container.preferences.backend.value == dev.lelonio.square.backend.BackendId.SPOTIFY &&
@@ -984,6 +1013,11 @@ class PlaybackService : MediaLibraryService() {
             playerKind = kind
             dev.lelonio.square.playback.websdk.WebSdkPlayer(this, playbackHost.looper)
         }
+        PlayerKind.SOLOIST -> {
+            librespot = null
+            playerKind = kind
+            dev.lelonio.square.playback.soloist.SoloistPlayer(this, playbackHost.looper, ::soloistContext)
+        }
     }
 
     private fun buildBackendPlayer(
@@ -1078,12 +1112,26 @@ class PlaybackService : MediaLibraryService() {
         // something else for a while, and the engine has to be there when the
         // song comes back — it is also what the whole catalogue is read
         // through while the video plays.
-        val parking = librespot != null &&
-            (kind == PlayerKind.LOCAL || kind == PlayerKind.VIDEO || kind == PlayerKind.SPOTIFY_WEB)
-        if (parking) {
+        // Also from a player that already has the Spotify one parked behind it
+        // (Soloist, the web player): only the front one changes, and the
+        // engine stays up.
+        val frontOnly = (librespot != null || parkedSpotify != null) &&
+            (kind == PlayerKind.LOCAL || kind == PlayerKind.VIDEO ||
+                kind == PlayerKind.SPOTIFY_WEB || kind == PlayerKind.SOLOIST)
+        if (frontOnly) {
             runCatching { player.playWhenReady = false }
-            parkedSpotify = librespot
-            librespot = null
+            if (librespot != null) {
+                parkedSpotify = librespot
+                librespot = null
+            } else {
+                runCatching {
+                    player.stop()
+                    releasing = true
+                player.clearMediaItems()
+                }
+                runCatching { player.release() }
+            releasing = false
+            }
             playerKind = kind
             player = buildPlayer(kind)
             player.addListener(buttonsListener)
@@ -1104,9 +1152,11 @@ class PlaybackService : MediaLibraryService() {
         if (parked != null && kind == PlayerKind.SPOTIFY) {
             runCatching {
                 player.stop()
+                releasing = true
                 player.clearMediaItems()
             }
             runCatching { player.release() }
+            releasing = false
             parkedSpotify = null
             librespot = parked
             playerKind = kind
@@ -1134,9 +1184,11 @@ class PlaybackService : MediaLibraryService() {
         // around it.
         runCatching {
             player.stop()
-            player.clearMediaItems()
+            releasing = true
+                player.clearMediaItems()
         }
         runCatching { player.release() }
+            releasing = false
         // Video belongs to the source that was playing it.
         dev.lelonio.square.backend.youtube.YouTubeVideoMode.reset()
 
@@ -1610,6 +1662,11 @@ class PlaybackService : MediaLibraryService() {
             // Up with no session: try again for as long as there is a network.
             if (offline) SessionKeeper.sessionMissing()
             if (restoreQueue) restoreQueue()
+            // With Soloist chosen, the queue belongs in front of it: the engine
+            // is up behind it for the catalogue and for Connect.
+            if (soloistWanted() && playerKind == PlayerKind.SPOTIFY) {
+                swapPlayer(PlayerKind.SOLOIST, restore = true)
+            }
             observeForSaving()
         }
     }
@@ -1851,12 +1908,29 @@ class PlaybackService : MediaLibraryService() {
             .record(uri, player.currentPosition, player.duration.coerceAtLeast(0))
     }
 
+    /**
+     * Set while a player being swapped out is emptied and released: emptying
+     * it is an event like any other, and saving on it cleared the queue just
+     * saved for the next player to restore (the music came back from a video
+     * with the queue gone).
+     */
+    private var releasing = false
+
     private fun savePlayback() {
+        if (releasing) return
         // A backend with no PlayQueue behind it — the YouTube one — is saved off
         // the Media3 timeline instead. That loses the pre-shuffle order, which
         // only librespot's queue knows, so a shuffled queue comes back in the
         // order it was actually playing rather than the order it was built in.
-        val queue = queue ?: return saveTimeline()
+        // Soloist and the web player keep their own queue in front of the
+        // parked Spotify one, whose queue is what played before them: saving
+        // that brought the app back on a song from before Soloist took over.
+        // A video in front of Soloist: what was saved as it came on is Soloist's
+        // queue, the one to go back to; the parked engine's would overwrite it
+        // with the queue from before Soloist played.
+        if (playerKind == PlayerKind.VIDEO && soloistWanted()) return
+        val queue = queue.takeIf { playerKind != PlayerKind.SOLOIST && playerKind != PlayerKind.SPOTIFY_WEB }
+            ?: return saveTimeline()
         if (queue.items.isEmpty()) {
             playbackStore.clear()
             return
@@ -2030,6 +2104,49 @@ class PlaybackService : MediaLibraryService() {
         explicit = track.explicit,
         recommended = track.smartRecommended,
     )
+
+    /**
+     * The songs of the context Soloist is playing, as queue items, for when it
+     * plays something Square did not give it: the account's own playback,
+     * started in another app or picked up by Soloist as it started.
+     */
+    private suspend fun soloistContext(contextUri: String?, trackUri: String): List<androidx.media3.common.MediaItem>? {
+        val source = contextUri?.takeIf { it.startsWith("spotify:") && !it.startsWith("spotify:internal") }
+        val tracks = withContext(Dispatchers.IO) {
+            runCatching { container.activeBackend.tracksOf(source ?: trackUri) }
+                .onFailure { android.util.Log.w(TAG, "Soloist's context unreadable: $it") }
+                .getOrNull()
+        } ?: return null
+        return tracks.map { track ->
+            androidx.media3.common.MediaItem.Builder()
+                .setMediaId(track.uri)
+                .setUri(track.uri)
+                .setMediaMetadata(
+                    androidx.media3.common.MediaMetadata.Builder()
+                        .setTitle(track.name)
+                        .setArtist(track.artist)
+                        .setAlbumTitle(track.album)
+                        .setDurationMs(track.durationMs.takeIf { it > 0 })
+                        .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse))
+                        .setExtras(
+                            android.os.Bundle().apply {
+                                source?.let { putString(dev.lelonio.square.ui.EXTRA_CONTEXT_URI, it) }
+                                putBoolean(dev.lelonio.square.ui.EXTRA_CONTEXT_ORDERED, source != null)
+                                track.artistUri?.let { putString(dev.lelonio.square.ui.EXTRA_ARTIST_URI, it) }
+                                track.albumUri?.let { putString(dev.lelonio.square.ui.EXTRA_ALBUM_URI, it) }
+                                if (track.explicit) putBoolean(dev.lelonio.square.ui.EXTRA_EXPLICIT, true)
+                                val credited = track.artists.filter { it.uri != null }
+                                if (credited.isNotEmpty()) {
+                                    putStringArrayList(dev.lelonio.square.ui.EXTRA_ARTIST_NAMES, ArrayList(credited.map { it.name }))
+                                    putStringArrayList(dev.lelonio.square.ui.EXTRA_ARTIST_URIS, ArrayList(credited.map { it.uri!! }))
+                                }
+                            },
+                        )
+                        .build(),
+                )
+                .build()
+        }
+    }
 
     /** The two parallel lists put back together; see EXTRA_ARTIST_NAMES. */
     private fun creditedArtists(

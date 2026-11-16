@@ -665,4 +665,9 @@
     <string name="lyrics_folder_choose">Musikordner wählen</string>
     <string name="lyrics_folder_forget">Ordner vergessen</string>
     <string name="lyrics_folder_note">Square zeigt eine .lrc-Datei mit demselben Namen wie der Song daneben an, etwa song.mp3 und song.lrc. Ab Android 13 muss es den Ordner deiner Musik kennen. In den Tags des Songs gespeicherte Songtexte werden auch ohne ihn gelesen.</string>
+    <string name="stream_quality">Streamqualität</string>
+    <string name="stream_quality_lossless">Verlustfrei</string>
+    <string name="stream_quality_very_high">Sehr hoch</string>
+    <string name="stream_quality_high">Hoch</string>
+    <string name="stream_quality_normal">Normal</string>
 </resources>

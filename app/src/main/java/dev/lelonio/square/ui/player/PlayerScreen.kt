@@ -1,5 +1,6 @@
 package dev.lelonio.square.ui.player
 
+import dev.lelonio.square.ui.components.GlassChoiceMenu
 import dev.lelonio.square.ui.components.copyFrame
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
@@ -128,6 +129,8 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.regular.DeviceRotate
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.Bold
+import com.adamglin.phosphoricons.bold.Waveform
 import com.adamglin.phosphoricons.fill.TextAa
 import com.adamglin.phosphoricons.regular.TextAa
 import com.adamglin.phosphoricons.fill.Heart
@@ -570,6 +573,9 @@ fun PlayerScreen(
     // blurred again; behind this much glass the motion is only a shimmer, and
     // it was costing the player half its frames.
     val coverMoving = coverMotionUrl != null && canvas == null
+    var qualityOpen by remember { mutableStateOf(false) }
+    var qualityAnchor by remember { mutableStateOf(androidx.compose.ui.unit.IntRect.Zero) }
+    val qualityTrigger = dev.lelonio.square.ui.components.rememberGlassMenuTrigger()
     val upperBackdrop = when {
         panel != PlayerPanel.NONE -> groundBackdrop
         coverMoving -> groundBackdrop
@@ -1672,6 +1678,33 @@ fun PlayerScreen(
                                 }
                             }
                         }
+                        // What Soloist streams the song as, and the button that
+                        // picks it. In the video button's place, the row being
+                        // centred, and beside it when the song has a video too.
+                        val streamLabel by dev.lelonio.square.playback.StreamQuality.label
+                            .collectAsStateWithLifecycle()
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = streamLabel != null && !panelOpen && !sideways,
+                            enter = fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.9f),
+                            exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.92f),
+                        ) {
+                            // The library's sort button: the menu grows out of
+                            // it in the same liquid glass.
+                            dev.lelonio.square.ui.components.GlassPullDownButton(
+                                icon = PhosphorIcons.Bold.Waveform,
+                                label = streamLabel.orEmpty(),
+                                semanticLabel = stringResource(R.string.stream_quality) + ": " + streamLabel.orEmpty(),
+                                onOpen = { qualityOpen = true },
+                                onAnchor = { qualityAnchor = it },
+                                backdrop = upperBackdrop,
+                                trigger = qualityTrigger,
+                                buttonSize = 40.dp,
+                                // The video button's type and icon beside it.
+                                labelStyle = MaterialTheme.typography.labelLarge,
+                                iconSize = 18.dp,
+                                ink = LocalContentColor.current,
+                            )
+                        }
                         }
                         }
 
@@ -1895,6 +1928,35 @@ fun PlayerScreen(
             }
         }
 
+        // The stream quality, picked from the button by the title.
+        val qualityContext = androidx.compose.ui.platform.LocalContext.current
+        val currentQuality = dev.lelonio.square.playback.soloist.SoloistEngine.quality(qualityContext)
+        GlassChoiceMenu(
+            visible = qualityOpen,
+            anchor = qualityAnchor,
+            backdrop = upperBackdrop,
+            onDismiss = { qualityOpen = false },
+            trigger = qualityTrigger,
+            width = 240.dp,
+        ) {
+            listOf(
+                5 to R.string.stream_quality_lossless,
+                4 to R.string.stream_quality_very_high,
+                3 to R.string.stream_quality_high,
+                2 to R.string.stream_quality_normal,
+            ).forEach { (level, name) ->
+                dev.lelonio.square.ui.components.GlassMenuItem(
+                    stringResource(name),
+                    selected = level == currentQuality,
+                    onClick = {
+                        qualityOpen = false
+                        if (level != currentQuality) {
+                            dev.lelonio.square.playback.soloist.SoloistEngine.setQuality(qualityContext, level)
+                        }
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -3317,3 +3379,5 @@ private fun speedLabel(speed: Float): String {
     val format = java.text.DecimalFormat("0.##")
     return format.format(speed.toDouble()) + "×"
 }
+
+

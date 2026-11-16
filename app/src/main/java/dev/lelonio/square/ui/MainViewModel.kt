@@ -1065,6 +1065,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             "taking playback back: ${remote.uri} from ${remote.realContext} at ${remote.positionMs}",
         )
 
+        // With Soloist as this phone's player, the account's playback is
+        // transferred to it: context, song and time travel with the transfer.
+        val soloistId = soloistDevice()
+        if (soloistId != null) {
+            switchTo(soloistId, remote.positionMs)
+            return@launch
+        }
+
         // The music first, the list afterwards.
         //
         // This used to resolve the whole context before a note was played,
@@ -1119,20 +1127,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun switchTo(deviceId: String, positionMs: Long) {
+    /** Soloist's Connect device, when Soloist is this phone's player. */
+    private fun soloistDevice(): String? =
+        dev.lelonio.square.playback.soloist.SoloistEngine.deviceId
+            ?.takeIf { dev.lelonio.square.playback.soloist.SoloistEngine.isEnabled(getApplication()) }
+
+    private suspend fun switchTo(chosen: String, positionMs: Long) {
         val devices = dev.lelonio.square.data.RemoteConnect.devices.value
-        android.util.Log.i(TAG, "device chosen: $deviceId, ${devices.size} known")
+        android.util.Log.i(TAG, "device chosen: $chosen, ${devices.size} known")
+        // With Soloist as this phone's player, this phone *is* a Connect device
+        // like the others: the playback is transferred to it the same way, and
+        // the Spotify engine standing behind it has nothing of its own to say.
+        val soloistId = soloistDevice()
+        val deviceId = if (soloistId != null && dev.lelonio.square.data.RemoteConnect.isThisPhone(chosen)) soloistId else chosen
         // Asked of the engine rather than looked up in the list: the list is
         // filled by cluster updates and is empty until the first one arrives,
         // and a handover chosen in that window took the wrong road entirely.
-        if (dev.lelonio.square.data.RemoteConnect.isThisPhone(deviceId)) {
+        if (soloistId == null && dev.lelonio.square.data.RemoteConnect.isThisPhone(deviceId)) {
             takeBackPlayback().join()
             return
         }
         // The queue is republished as the playlist it came from first, so
         // whatever carries the handover has something resolvable to carry; see
-        // NativeBridge.publishContext.
-        if (!dev.lelonio.square.data.RemoteConnect.elsewhereActive.value) {
+        // NativeBridge.publishContext. Not Soloist's: it publishes its own,
+        // and the engine's queue is the one from before Soloist played.
+        if (soloistId == null && !dev.lelonio.square.data.RemoteConnect.elsewhereActive.value) {
             val republished = withContext(Dispatchers.IO) {
                 runCatching { NativeBridge.publishContext(positionMs.toInt()) }
                     .onFailure { android.util.Log.w(TAG, "context not republished: $it") }
@@ -1154,6 +1173,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) {
                 dev.lelonio.square.data.RemoteConnect.transferTo(deviceId)
             }
+            return
+        }
+
+        // Square's own list on Soloist (a playlist in an order of this app's)
+        // is a context only this phone knows: Spotify answered a transfer of
+        // it with a 500. Its songs are started on the device instead, from the
+        // one playing and where it is.
+        val solo = dev.lelonio.square.playback.soloist.SoloistEngine.state.value
+        if (soloistId != null && deviceId != soloistId && solo.song != null &&
+            solo.contextUri?.startsWith("spotify:internal:") == true
+        ) {
+            val uris = (listOf(solo.song.uri) + solo.upcoming.map { it.song.uri })
+                .filter { it.startsWith("spotify:track:") || it.startsWith("spotify:episode:") }
+                .take(MOVE_LIST_MAX)
+            val at = solo.anchor?.let { if (solo.playing) it.now() else it.positionMs } ?: positionMs
+            android.util.Log.i(TAG, "moving Square's list to $deviceId: ${uris.size} songs at $at ms")
+            runCatching { container.api.playUris(deviceId, dev.lelonio.square.data.PlayUrisRequestDto(uris, positionMs = at)) }
+                .onSuccess {
+                    delay(TRANSFER_SETTLE_MS)
+                    refreshDevices()
+                }
+                .onFailure {
+                    android.util.Log.e(TAG, "list move failed: ${chain(it)}", it)
+                    _devices.value = _devices.value.copy(error = describe(it))
+                }
             return
         }
 
@@ -7084,5 +7128,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Spotify acknowledges a transfer before it has taken effect. */
         const val TRANSFER_SETTLE_MS = 700L
+        /** Songs a list moved to another device takes along. */
+        const val MOVE_LIST_MAX = 500
     }
 }

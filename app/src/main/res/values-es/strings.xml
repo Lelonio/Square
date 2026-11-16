@@ -671,4 +671,9 @@
     <string name="lyrics_folder_choose">Elegir la carpeta de música</string>
     <string name="lyrics_folder_forget">Olvidar la carpeta</string>
     <string name="lyrics_folder_note">Square muestra un archivo .lrc con el mismo nombre que la canción a su lado, como cancion.mp3 y cancion.lrc. Desde Android 13 necesita saber en qué carpeta está tu música. Las letras guardadas en las etiquetas de la canción se leen sin ella.</string>
+    <string name="stream_quality">Calidad de transmisión</string>
+    <string name="stream_quality_lossless">Sin pérdida</string>
+    <string name="stream_quality_very_high">Muy alta</string>
+    <string name="stream_quality_high">Alta</string>
+    <string name="stream_quality_normal">Normal</string>
 </resources>

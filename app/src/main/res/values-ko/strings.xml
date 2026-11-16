@@ -689,4 +689,9 @@
     <string name="lyrics_folder_choose">음악 폴더 선택</string>
     <string name="lyrics_folder_forget">폴더 해제</string>
     <string name="lyrics_folder_note">Square는 노래 옆에 있는 같은 이름의 .lrc 파일(song.mp3와 song.lrc 등)을 표시합니다. Android 13부터는 음악이 있는 폴더를 지정해야 합니다. 노래 태그에 기록된 가사는 지정하지 않아도 읽습니다.</string>
+    <string name="stream_quality">스트리밍 음질</string>
+    <string name="stream_quality_lossless">무손실</string>
+    <string name="stream_quality_very_high">매우 높음</string>
+    <string name="stream_quality_high">높음</string>
+    <string name="stream_quality_normal">보통</string>
 </resources>

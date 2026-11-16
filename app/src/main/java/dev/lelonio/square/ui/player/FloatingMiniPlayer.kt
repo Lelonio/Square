@@ -12,6 +12,8 @@
 
 package dev.lelonio.square.ui.player
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.border
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -228,7 +230,26 @@ fun FloatingMiniPlayer(
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                // Lossless, said where the song is named: the player's
+                // quality button, small.
+                val stream by dev.lelonio.square.playback.StreamQuality.label
+                    .collectAsStateWithLifecycle()
+                if (stream == "FLAC" && remoteLabel == null) {
+                    Text(
+                        "FLAC",
+                        fontSize = 9.sp,
+                        lineHeight = 9.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = contentColor.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        modifier = Modifier
+                            .padding(start = 6.dp)
+                            .border(1.dp, contentColor.copy(alpha = 0.45f), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                    )
+                }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // The DJ choosing, and talking; see DjMark.

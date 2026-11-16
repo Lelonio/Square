@@ -725,4 +725,9 @@
     <string name="lyrics_folder_choose">Chọn thư mục nhạc</string>
     <string name="lyrics_folder_forget">Quên thư mục</string>
     <string name="lyrics_folder_note">Square hiển thị tệp .lrc cùng tên với bài hát nằm cạnh nó, như baihat.mp3 và baihat.lrc. Từ Android 13, ứng dụng cần biết thư mục chứa nhạc của bạn. Lời được ghi trong thẻ của bài hát vẫn được đọc mà không cần.</string>
+    <string name="stream_quality">Chất lượng phát trực tuyến</string>
+    <string name="stream_quality_lossless">Lossless</string>
+    <string name="stream_quality_very_high">Rất cao</string>
+    <string name="stream_quality_high">Cao</string>
+    <string name="stream_quality_normal">Bình thường</string>
 </resources>

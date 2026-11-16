@@ -49,7 +49,8 @@ android {
         applicationId = "dev.lelonio.square"
         // cpal's Android host is AAudio, which the ndk crate gates at API 26.
         minSdk = 26
-        targetSdk = 35
+        // soloist-android spike: 28 lets the app execute what it downloads.
+        targetSdk = 28
         versionCode = 70
         versionName = "2.10.4"
         buildConfigField("boolean", "VERBOSE_LOG", "false")
