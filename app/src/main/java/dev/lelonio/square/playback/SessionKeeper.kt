@@ -45,6 +45,16 @@ object SessionKeeper {
 
     class Engine(val running: () -> Boolean, val start: () -> Unit)
 
+    /**
+     * Told when a reconnection of this keeper's brought the session back.
+     *
+     * A song still playing went on through the handshake on the old player
+     * (engine.rs, reconnect_beside) and has to carry on on the new one; the
+     * player is the one that knows which song and where.
+     */
+    @Volatile
+    var onRebuilt: (() -> Unit)? = null
+
     fun attach(scope: CoroutineScope, wanted: () -> Boolean) {
         this.scope = scope
         this.wanted = wanted
@@ -104,6 +114,7 @@ object SessionKeeper {
                 if (live()) {
                     android.util.Log.i(TAG, "session back")
                     OfflineMode.setNoSession(false)
+                    onRebuilt?.invoke()
                     return@launch
                 }
                 // Still nothing: offline for what it is worth, and try again.

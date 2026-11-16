@@ -511,7 +511,10 @@ class LibrespotPlayer(
 
     /** Whether the next track is this side's to start rather than the engine's. */
     private fun ownsAdvance(): Boolean =
-        outsideSpirc || runCatching { NativeBridge.isOffline }.getOrDefault(false)
+        outsideSpirc || runCatching { NativeBridge.isOffline }.getOrDefault(false) ||
+            // A device that has gone advances nothing: the song that ended
+            // as the network dropped waited for the stall watch to move on.
+            runCatching { NativeBridge.spircLost }.getOrDefault(false)
 
     /** Set when the engine stopped its player; a play then has to load again. */
     private var engineStopped = false
@@ -545,7 +548,9 @@ class LibrespotPlayer(
                 withDevice {
                     if (deviceGone) return@withDevice
                     engineQueueStale = true
-                    pushQueue(startPlaying = wantPlay || playWhenReady, positionMs = positionMs.toInt())
+                    // Where the song has got to now: it may have played on
+                    // through the handshake (engine.rs, reconnect_beside).
+                    pushQueue(startPlaying = wantPlay || playWhenReady, positionMs = currentPosition.toInt())
                 }
             }
             handler.postDelayed(this, 5_000L)
@@ -584,17 +589,38 @@ class LibrespotPlayer(
                 .distinctUntilChanged()
                 .collect { offline ->
                     if (offline) return@collect
-                    handler.post {
-                        if (released || queue.items.isEmpty()) return@post
-                        withDevice {
-                            val shouldPlay = playWhenReady || wantPlay
-                            if (shouldPlay) playbackState = Player.STATE_BUFFERING
-                            engineQueueStale = true
-                            pushQueue(startPlaying = shouldPlay, positionMs = positionMs.toInt())
-                            invalidateState()
-                        }
-                    }
+                    handler.post { handBackAfterReconnect() }
                 }
+        }
+        // And after a quick drop that never went offline: the keeper rebuilt
+        // the session beside the song still playing, and the song carries on
+        // on the new player from where it got to.
+        dev.lelonio.square.playback.SessionKeeper.onRebuilt = {
+            handler.post { handBackAfterReconnect() }
+        }
+    }
+
+    /** When the queue was last handed back after a reconnection; see [handBackAfterReconnect]. */
+    private var handedBackAt = 0L
+
+    /**
+     * Gives the engine this queue again, at the song and the point it is on.
+     *
+     * Reached two ways for one reconnection, offline ending and the keeper's
+     * own word, so the second within a moment is the same one and is let go:
+     * loading the song twice was a stutter at the very moment it came back.
+     */
+    private fun handBackAfterReconnect() {
+        if (released || queue.items.isEmpty()) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - handedBackAt < 3_000L) return
+        handedBackAt = now
+        withDevice {
+            val shouldPlay = playWhenReady || wantPlay
+            if (shouldPlay) playbackState = Player.STATE_BUFFERING
+            engineQueueStale = true
+            pushQueue(startPlaying = shouldPlay, positionMs = currentPosition.toInt())
+            invalidateState()
         }
     }
 
@@ -1504,6 +1530,9 @@ class LibrespotPlayer(
         }
         watch.cancel()
         handler.removeCallbacks(sessionWatch)
+        if (dev.lelonio.square.playback.SessionKeeper.onRebuilt != null) {
+            dev.lelonio.square.playback.SessionKeeper.onRebuilt = null
+        }
         handler.removeCallbacks(settleSkip)
         focus.release()
         engine("shutdown") { NativeBridge.shutdown() }

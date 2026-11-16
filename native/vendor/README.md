@@ -298,6 +298,19 @@ music under the DJ talking. Every other track of a DJ queue crossfades as usual.
 
 Nothing changes while `set_narrating` is off, which is the default.
 
+#### A streamed track's key, for playing it again from the cache offline
+
+`PlayerConfig::heard` is told, for every streamed track whose key came back,
+the path of its file in the audio cache, the key, the format, the file's size
+and the metadata a download carries. The cache keeps the encrypted file and
+nothing else, so without the key a song heard a minute ago would not play with
+no connection. The engine writes these next to the downloads
+(`downloads::remember_heard`) and the download lookup falls back on them when
+the cached file is still there at its full size; such a track then loads
+through the download path. Unlike the session's own memory of keys (see
+librespot-core, patch 5) these are written to disk, as a download's key
+already is.
+
 ### Maintenance
 
 The markers are `LOCAL PATCH` in `src/player.rs` and `src/config.rs`.

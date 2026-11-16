@@ -58,6 +58,15 @@ pub type DownloadLookup = Arc<dyn Fn(&SpotifyId) -> Option<DownloadedTrack> + Se
 /// a label on a player that goes on using the network.
 pub type DownloadsOnly = Arc<dyn Fn() -> bool + Send + Sync>;
 
+/// LOCAL PATCH: told what a streamed track needs to be played again from the
+/// audio cache with no connection: the cached file's path, its key, and the
+/// metadata a download would carry, plus the file's size in bytes.
+///
+/// The cache keeps the encrypted file and nothing else; the key comes from
+/// Spotify each time. Kept here, a song already heard plays offline the way a
+/// download does.
+pub type HeardSink = Arc<dyn Fn(&SpotifyId, DownloadedTrack, u64) + Send + Sync>;
+
 #[derive(Clone, Copy, Debug, Hash, PartialOrd, Ord, PartialEq, Eq, Default)]
 pub enum Bitrate {
     Bitrate96,
@@ -194,6 +203,9 @@ pub struct PlayerConfig {
     /// LOCAL PATCH: asked before falling back to the network; see [`DownloadsOnly`].
     pub downloads_only: Option<DownloadsOnly>,
 
+    /// LOCAL PATCH: told about each streamed track's key; see [`HeardSink`].
+    pub heard: Option<HeardSink>,
+
     /// LOCAL PATCH: whether trailing silence near the end of a track triggers early crossfade.
     pub trim_silence: bool,
 
@@ -235,6 +247,7 @@ impl Default for PlayerConfig {
             crossfade_duration_ms: 0,
             download_lookup: None,
             downloads_only: None,
+            heard: None,
             trim_silence: true,
             hold_end: false,
             skip_fade_ms: 0,

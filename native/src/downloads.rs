@@ -287,12 +287,82 @@ fn write_sidecar(path: &Path, value: &Value) -> Result<(), String> {
 /// Deliberately reads from disk on every call. See `DownloadLookup` in
 /// `librespot-playback`'s `config.rs` for why a cached map would be worse.
 fn lookup_track(track_id: &SpotifyId) -> Option<DownloadedTrack> {
+    lookup_download(track_id).or_else(|| lookup_heard(track_id))
+}
+
+fn lookup_download(track_id: &SpotifyId) -> Option<DownloadedTrack> {
     let root = root()?;
     let id = track_id.to_base16().ok()?;
     let meta = meta_path(&root, &id)?;
     let path = audio_path(&root, &id)?;
 
     let value = read_sidecar(&meta)?;
+    track_from_sidecar(&value, path)
+}
+
+// ------------------------------------------------------- heard, and cached
+
+/// Where the record of a streamed track's key is kept; see [`remember_heard`].
+fn heard_path(root: &Path, id: &str) -> Option<PathBuf> {
+    shard(root, "heard", id, ".json")
+}
+
+/// Keeps what playing a streamed track again from the audio cache needs.
+///
+/// librespot's cache holds the file exactly as a download does, still
+/// encrypted, and nothing else: the key is asked of Spotify on every play, so
+/// with no connection a song heard a minute ago would not play. Kept with the
+/// metadata a download carries, it plays from the cache through the same
+/// path as a download. Only the cache's own file: when the cache lets it go,
+/// this record answers nothing (see [`lookup_heard`]).
+fn remember_heard(track_id: &SpotifyId, track: DownloadedTrack, bytes: u64) {
+    let Some(root) = root() else { return };
+    let Ok(id) = track_id.to_base16() else { return };
+    let Some(path) = heard_path(&root, &id) else { return };
+    let Some(key) = track.key else { return };
+    let value = json!({
+        "cachePath": track.path.to_string_lossy(),
+        "bytes": bytes,
+        "key": key.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+        "format": format_name(track.format),
+        "name": track.name,
+        "durationMs": track.duration_ms,
+        "isExplicit": track.is_explicit,
+        "album": track.album,
+        "albumArtists": track.album_artists,
+        "number": track.number,
+        "discNumber": track.disc_number,
+    });
+    if read_sidecar(&path).as_ref() == Some(&value) {
+        return;
+    }
+    if let Err(e) = write_sidecar(&path, &value) {
+        log::warn!("could not keep the key of a song heard: {e}");
+    }
+}
+
+/// A streamed track whose whole file is still in the audio cache.
+///
+/// The size is checked: the cache only writes a file once it has all of it,
+/// but a write cut off by the app closing leaves a short one behind.
+fn lookup_heard(track_id: &SpotifyId) -> Option<DownloadedTrack> {
+    let root = root()?;
+    let id = track_id.to_base16().ok()?;
+    let value = read_sidecar(&heard_path(&root, &id)?)?;
+    let path = PathBuf::from(value.get("cachePath")?.as_str()?);
+    let bytes = value.get("bytes")?.as_u64()?;
+    if fs::metadata(&path).ok()?.len() != bytes {
+        return None;
+    }
+    track_from_sidecar(&value, path)
+}
+
+/// The sink handed to `PlayerConfig`; see [`remember_heard`].
+pub fn heard_sink() -> librespot_playback::config::HeardSink {
+    Arc::new(remember_heard)
+}
+
+fn track_from_sidecar(value: &Value, path: PathBuf) -> Option<DownloadedTrack> {
     let format = format_from_name(value.get("format")?.as_str()?)?;
 
     let key = value
@@ -346,17 +416,17 @@ fn lookup_track(track_id: &SpotifyId) -> Option<DownloadedTrack> {
 /// counting: a library of five thousand songs and one are the same answer.
 pub fn any() -> bool {
     let Some(root) = root() else { return false };
-    let Ok(shards) = fs::read_dir(root.join("meta")) else {
-        return false;
-    };
-    for shard in shards.flatten() {
-        if let Ok(entries) = fs::read_dir(shard.path()) {
-            if entries.flatten().next().is_some() {
-                return true;
-            }
-        }
-    }
-    false
+    // Songs heard and kept in the cache count too: offline they play as well.
+    ["meta", "heard"].iter().any(|kind| {
+        let Ok(shards) = fs::read_dir(root.join(kind)) else {
+            return false;
+        };
+        shards.flatten().any(|shard| {
+            fs::read_dir(shard.path())
+                .map(|mut entries| entries.next().is_some())
+                .unwrap_or(false)
+        })
+    })
 }
 
 /// The lookup handed to `PlayerConfig` when the engine is built.

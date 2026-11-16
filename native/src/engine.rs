@@ -226,6 +226,9 @@ struct Bundle {
     /// of a command. The player is still there, and a downloaded track still
     /// plays through it — which is the whole of what offline means here.
     spirc: Option<Spirc>,
+    /// The number its sink and forwarder carry; made live when it is installed
+    /// by [`reconnect_beside`], at once by everything else.
+    generation: u64,
 }
 
 impl Bundle {
@@ -423,6 +426,9 @@ pub fn start(
         // than handed over as a list, since downloads come and go while the
         // player is running; see downloads::lookup.
         download_lookup: Some(crate::downloads::lookup()),
+        // What a streamed song needs to be played again from the cache with
+        // no connection; see downloads::remember_heard.
+        heard: Some(crate::downloads::heard_sink()),
         // And whether anything else may be played at all. Offline — by the
         // listener's own switch, or because the engine has no session — a track
         // with no file fails to load rather than being fetched.
@@ -620,7 +626,7 @@ fn build_bundle(
     // Spirc task ends a little later, and it ends the same way a lost one does;
     // without a number to check, that tidy ending would land on the bundle that
     // replaced it and mark a device that is perfectly alive as gone.
-    let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let generation = issue_generation();
 
     // Cloned before the async block takes ownership of the Arc as a `dyn Mixer`.
     let mixer_for_spirc: Arc<dyn Mixer> = mixer.clone();
@@ -811,13 +817,17 @@ fn build_bundle(
     spawn_event_forwarder(rt, player.clone(), events_tx.clone(), generation);
 
     // A fresh bundle has a live Connect device again, whatever the last one
-    // ended up as.
-    SPIRC_LOST.store(false, Ordering::SeqCst);
+    // ended up as. Built beside a playing one, not until it takes over: the
+    // installed bundle's device is the one still lost until then.
+    if !DEFER_LIVE.load(Ordering::SeqCst) {
+        SPIRC_LOST.store(false, Ordering::SeqCst);
+    }
 
     Ok(Bundle {
         session,
         player,
         spirc: Some(spirc),
+        generation,
     })
 }
 
@@ -928,7 +938,7 @@ fn build_offline_bundle(
     )
     .map_err(|e| format!("cache failed: {e}"))?;
 
-    let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let generation = issue_generation();
 
     // Inside the runtime, not beside it. `Session::new` registers tasks of its
     // own the moment it is built, and off a runtime thread that is not an error
@@ -956,6 +966,7 @@ fn build_offline_bundle(
         session,
         player,
         spirc: None,
+        generation,
     })
 }
 
@@ -965,6 +976,22 @@ static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 /// The current bundle's number, for anything holding an older one.
 pub(crate) fn live_generation() -> u64 {
     GENERATION.load(Ordering::SeqCst)
+}
+
+/// The last number handed to a bundle, live or not yet.
+static ISSUED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Set while [`reconnect_beside`] builds: the new bundle's number is not made
+/// live until it is installed, so the player still playing keeps its output.
+static DEFER_LIVE: AtomicBool = AtomicBool::new(false);
+
+/// A number for a bundle being built, live at once unless [`DEFER_LIVE`].
+fn issue_generation() -> u64 {
+    let generation = ISSUED.fetch_add(1, Ordering::SeqCst) + 1;
+    if !DEFER_LIVE.load(Ordering::SeqCst) {
+        GENERATION.store(generation, Ordering::SeqCst);
+    }
+    generation
 }
 
 /// Feeds one player's events to the engine-wide pump, and preloads ahead of it.
@@ -985,8 +1012,14 @@ fn spawn_event_forwarder(
         let mut preloaded: Option<String> = None;
 
         while let Some(event) = events.recv().await {
-            if GENERATION.load(Ordering::SeqCst) != generation {
+            let live = GENERATION.load(Ordering::SeqCst);
+            if live > generation {
                 break;
+            }
+            // Built beside a playing bundle and not installed yet: nothing it
+            // says is about what the listener hears.
+            if live < generation {
+                continue;
             }
 
             match &event {
@@ -1228,6 +1261,11 @@ pub fn reconnect() -> EngineResult<()> {
         RECONNECTING.store(false, Ordering::SeqCst);
         return result;
     }
+    if crate::sink::sounding() {
+        let result = reconnect_beside();
+        RECONNECTING.store(false, Ordering::SeqCst);
+        return result;
+    }
     let taken = (|| -> EngineResult<_> {
         let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
         let engine = guard.as_mut().ok_or("engine not started")?;
@@ -1298,6 +1336,69 @@ pub fn reconnect() -> EngineResult<()> {
     installed
 }
 
+/// [`reconnect`] while the player is still putting music out: the new session
+/// is built beside it, and the music goes on until the new one takes over.
+///
+/// The session dies with the network; the track playing often does not need
+/// it: a download, a song whole in the cache, the part of a stream already
+/// here. Throwing the player away first, as a reconnection otherwise does,
+/// stopped that music the moment the network came back and left silence for
+/// the length of a handshake. Here the old player plays through the
+/// handshake, muted only when the new bundle is installed; the app then
+/// starts the same song on the new player where it had got to.
+///
+/// The old device is already gone (that is why this runs), so the two
+/// bundles are not two devices in the account's list. A handshake that fails
+/// leaves the old player playing, and the next try comes from the keeper.
+fn reconnect_beside() -> EngineResult<()> {
+    let (handle, recipe, mixer, events_tx) = {
+        let guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        let engine = guard.as_ref().ok_or("engine not started")?;
+        (
+            engine.rt.handle().clone(),
+            engine.recipe.clone(),
+            engine.mixer.clone(),
+            engine.events_tx.clone(),
+        )
+    };
+
+    log::info!("reconnecting beside the music still playing");
+    DEFER_LIVE.store(true, Ordering::SeqCst);
+    let built = build_bundle(&handle, &recipe, &mixer, &events_tx);
+    DEFER_LIVE.store(false, Ordering::SeqCst);
+    let bundle = match built {
+        Ok(bundle) => bundle,
+        Err(e) => {
+            log::warn!("{e}; the old player left playing");
+            return Err(e);
+        }
+    };
+
+    let generation = bundle.generation;
+    let old = {
+        let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        let engine = guard.as_mut().ok_or("engine not started")?;
+        let old = engine.bundle.replace(bundle);
+        GENERATION.store(generation, Ordering::SeqCst);
+        SPIRC_LOST.store(false, Ordering::SeqCst);
+        old
+    };
+    OFFLINE.store(false, Ordering::SeqCst);
+    log::info!("reconnected");
+    if let Some(old) = old {
+        log::info!("discarding the old session");
+        crate::remote::clear();
+        if let Some(spirc) = old.spirc.as_ref() {
+            let _ = spirc.disconnect(true);
+            let _ = spirc.shutdown();
+        }
+        old.player.stop();
+        old.session.shutdown();
+        crate::sink::silence();
+    }
+    Ok(())
+}
+
 /// [`reconnect`] from an offline engine: the new session is built beside the
 /// offline player rather than in place of it.
 ///
@@ -1324,7 +1425,15 @@ fn reconnect_from_offline() -> EngineResult<()> {
         )
     };
 
-    let bundle = match build_bundle(&handle, &recipe, &mixer, &events_tx) {
+    // Its number made live only once it is installed, as beside a playing
+    // bundle: a try that fails must leave the offline player's output and
+    // events its own. Taken at the start of the build, a failed try muted the
+    // offline player and dropped everything it said, so a song loaded from
+    // the phone sat on "loading" and never played.
+    DEFER_LIVE.store(true, Ordering::SeqCst);
+    let built = build_bundle(&handle, &recipe, &mixer, &events_tx);
+    DEFER_LIVE.store(false, Ordering::SeqCst);
+    let bundle = match built {
         Ok(bundle) => bundle,
         Err(e) => {
             log::warn!("{e}; staying offline, the player left playing");
@@ -1332,10 +1441,14 @@ fn reconnect_from_offline() -> EngineResult<()> {
         }
     };
 
+    let generation = bundle.generation;
     let old = {
         let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
         let engine = guard.as_mut().ok_or("engine not started")?;
-        engine.bundle.replace(bundle)
+        let old = engine.bundle.replace(bundle);
+        GENERATION.store(generation, Ordering::SeqCst);
+        SPIRC_LOST.store(false, Ordering::SeqCst);
+        old
     };
     OFFLINE.store(false, Ordering::SeqCst);
     log::info!("reconnected");
@@ -2515,7 +2628,7 @@ pub fn shutdown() {
     if let Some(engine) = taken {
         // Nothing may report against a bundle from here on, and the pump is
         // about to go with the sender.
-        GENERATION.fetch_add(1, Ordering::SeqCst);
+        GENERATION.store(ISSUED.fetch_add(1, Ordering::SeqCst) + 1, Ordering::SeqCst);
         if let Some(bundle) = engine.bundle {
             // Told to the account before the socket goes: a device that
             // vanishes without disconnecting stays in the user's list until it

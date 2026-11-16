@@ -22,7 +22,7 @@ use crate::decoder::PassthroughDecoder;
 use crate::{
     audio::{AudioDecrypt, AudioFetchParams, AudioFile, StreamLoaderController},
     audio_backend::Sink,
-    config::{Bitrate, NormalisationMethod, NormalisationType, PlayerConfig},
+    config::{Bitrate, DownloadedTrack, NormalisationMethod, NormalisationType, PlayerConfig},
     convert::Converter,
     core::{Error, Session, SpotifyId, SpotifyUri, util::SeqGenerator},
     decoder::{AudioDecoder, AudioPacket, AudioPacketPosition, SymphoniaDecoder},
@@ -1839,6 +1839,40 @@ impl PlayerTrackLoader {
                     None
                 }
             };
+
+            // LOCAL PATCH: what playing this again from the cache, offline,
+            // will need; see `HeardSink`.
+            if let (Some(sink), Some(key), Some(path)) = (
+                self.config.heard.as_ref(),
+                key.as_ref(),
+                self.session.cache().and_then(|cache| cache.file_path(file_id)),
+            ) {
+                if let UniqueFields::Track {
+                    album,
+                    album_artists,
+                    number,
+                    disc_number,
+                    ..
+                } = &audio_item.unique_fields
+                {
+                    sink(
+                        &track_id,
+                        DownloadedTrack {
+                            path,
+                            key: Some(key.0),
+                            format,
+                            name: audio_item.name.clone(),
+                            duration_ms: audio_item.duration_ms,
+                            is_explicit: audio_item.is_explicit,
+                            album: album.clone(),
+                            album_artists: album_artists.clone(),
+                            number: *number,
+                            disc_number: *disc_number,
+                        },
+                        stream_loader_controller.len() as u64,
+                    );
+                }
+            }
 
             let after_key = began.elapsed();
             let mut decrypted_file = AudioDecrypt::new(key, encrypted_file);

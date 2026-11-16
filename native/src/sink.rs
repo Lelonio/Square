@@ -63,6 +63,30 @@ fn output() -> SinkResult<GlobalRef> {
         .ok_or_else(|| SinkError::NotConnected("no audio output attached".into()))
 }
 
+/// When the live player last handed audio to the output, in ms since the epoch.
+static LAST_SOUND_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+fn note_sound() {
+    LAST_SOUND_MS.store(now_ms(), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether the player is still putting music out, whatever the session is doing.
+///
+/// A session can die under a track that needs nothing more from it: a
+/// download, a song already whole in the cache, the part of a stream already
+/// fetched. While the sound keeps coming there is no reason to stop it to
+/// build a new session, and that is what a dropped network used to do.
+pub fn sounding() -> bool {
+    now_ms().saturating_sub(LAST_SOUND_MS.load(std::sync::atomic::Ordering::Relaxed)) < 1_500
+}
+
 pub struct AndroidSink {
     /// Scratch buffer for interleaved PCM, reused across packets.
     pcm: Vec<u8>,
@@ -173,6 +197,7 @@ impl Sink for AndroidSink {
         if self.pcm.is_empty() {
             return Ok(());
         }
+        note_sound();
 
         let output = output()?;
         let vm = JAVA_VM

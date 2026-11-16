@@ -611,6 +611,15 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSpi
     engine::spirc_lost() as jboolean
 }
 
+/// Whether the player is still putting audio out; see sink::sounding.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeIsSounding(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    crate::sink::sounding() as jboolean
+}
+
 /// Rebuilds the player with a new bitrate and crossfade.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetQuality(
