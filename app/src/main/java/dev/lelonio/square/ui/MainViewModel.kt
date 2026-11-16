@@ -1349,7 +1349,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 .onFailure {
                     android.util.Log.e(TAG, "adding a whole list failed: ${chain(it)}", it)
-                    val forbidden = describe(it).contains("403")
+                    val forbidden = webApiForbidden(it)
                     if (forbidden) _webApi.value = _webApi.value.copy(expired = true)
                     _addToPlaylist.value = _addToPlaylist.value.copy(
                         busy = null,
@@ -1442,6 +1442,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             throw e
         }
     }
+
+    /**
+     * Whether a failed playlist write was the Web API refusing the token.
+     *
+     * The playlist service answers 403 too, for a list that is not the
+     * account's to change, and that was read as a token missing a permission:
+     * the app put up "Session expired, sign in again" over a playlist that was
+     * simply someone else's, and the sheet said to reconnect the account.
+     */
+    private fun webApiForbidden(error: Throwable): Boolean =
+        describe(error).contains("403") &&
+            error.message?.contains("playlist change refused") != true
 
     fun closeAddToPlaylist() {
         _addToPlaylist.value = _addToPlaylist.value.copy(open = false)
@@ -1581,7 +1593,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 .onFailure {
                     android.util.Log.e(TAG, "add to playlist failed: ${chain(it)}", it)
-                    val forbidden = describe(it).contains("403")
+                    val forbidden = webApiForbidden(it)
                     if (forbidden) _webApi.value = _webApi.value.copy(expired = true)
                     _addToPlaylist.value = _addToPlaylist.value.copy(
                         busy = null,
@@ -2695,9 +2707,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun offlineLibrary(): UiState.Ready? {
         container.downloads.load()
         val owners = container.downloads.owners.value
+        // A list kept without a label of its own (Liked Songs kept from the
+        // settings, a playlist kept as it changed) was left out offline, a
+        // downloaded playlist missing from the very library meant to show it.
+        // Its name and picture come from the library last read instead.
+        val known = readLibrarySnapshot()?.playlists.orEmpty().associateBy { it.uri }
         val labelled = owners.keys.mapNotNull { uri ->
             container.downloads.labelOf(uri)?.let {
                 CatalogPlaylist(uri = uri, name = it.name, artworkUrl = it.artworkUrl)
+            } ?: known[uri]?.let {
+                CatalogPlaylist(uri = uri, name = it.name, artworkUrl = it.artworkUrl)
+            } ?: if (uri == DownloadStore.LIKED) {
+                CatalogPlaylist(uri = uri, name = string(R.string.liked_songs))
+            } else {
+                null
             }
         }
         // Everything on the phone, not only the songs downloaded on their own.

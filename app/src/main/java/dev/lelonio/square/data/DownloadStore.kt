@@ -230,6 +230,19 @@ class DownloadStore(context: Context) {
     fun isDownloaded(trackUri: String): Boolean = _files.value.containsKey(trackUri)
 
     /**
+     * Whether a song in a kept page is one this app can fetch at all.
+     *
+     * A local file is not: a `spotify:local:` entry is only a description of a
+     * file on whichever computer added it, and a file on this phone is already
+     * here. Both stay in the page, which is how it reads offline, but neither
+     * is ever waited for. They were: each failed, was tried again a few
+     * times, and a playlist with a local song in it kept saying it was
+     * downloading.
+     */
+    fun isFetchable(trackUri: String): Boolean =
+        !LocalLibrary.isSpotifyLocal(trackUri) && !LocalLibrary.isLocal(trackUri)
+
+    /**
      * How a single row should draw itself.
      *
      * [DownloadState.None] for anything the listener has not asked for, which
@@ -243,7 +256,7 @@ class DownloadStore(context: Context) {
             DownloadState.Running(_progress.value.getValue(trackUri))
         _failures.value.containsKey(trackUri) ->
             DownloadState.Failed(_failures.value.getValue(trackUri).reason)
-        isWanted(trackUri) -> DownloadState.Queued
+        isWanted(trackUri) && isFetchable(trackUri) -> DownloadState.Queued
         else -> DownloadState.None
     }
 
@@ -259,7 +272,7 @@ class DownloadStore(context: Context) {
      * the truth about something the app cannot fix.
      */
     fun ownerState(ownerUri: String): OwnerState {
-        val wanted = _owners.value[ownerUri] ?: return OwnerState.None
+        val wanted = _owners.value[ownerUri]?.filter(::isFetchable) ?: return OwnerState.None
         if (wanted.isEmpty()) return OwnerState.None
 
         val files = _files.value
@@ -302,7 +315,7 @@ class DownloadStore(context: Context) {
         val ordered = LinkedHashSet<String>()
         for (tracks in _owners.value.values) {
             for (uri in tracks) {
-                if (files.containsKey(uri)) continue
+                if (files.containsKey(uri) || !isFetchable(uri)) continue
                 val failure = failures[uri]
                 if (failure != null && failure.attempts >= MAX_ATTEMPTS) continue
                 if (failure != null && failure.readyAt() > now) continue
@@ -321,7 +334,7 @@ class DownloadStore(context: Context) {
      */
     fun retryAt(): Long? {
         val files = _files.value
-        val claimed = _owners.value.values.flatten().toSet()
+        val claimed = _owners.value.values.flatten().filter(::isFetchable).toSet()
         return _failures.value
             .filterKeys { it in claimed && !files.containsKey(it) }
             .values
@@ -331,7 +344,7 @@ class DownloadStore(context: Context) {
 
     /** Tracks that will not be tried again unless the listener asks. */
     fun givenUp(): List<String> {
-        val claimed = _owners.value.values.flatten().toSet()
+        val claimed = _owners.value.values.flatten().filter(::isFetchable).toSet()
         val files = _files.value
         return _failures.value
             .filter { (uri, failure) ->
