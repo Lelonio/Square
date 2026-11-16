@@ -92,6 +92,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -2662,10 +2663,17 @@ fun SquareApp(
                                 .coerceAtMost(0.11f),
                         )
                     } else {
-                        Color.Black.copy(
-                            alpha = (glassConfig.puckOpacity.coerceIn(0f, 1f) * 1.3f)
-                                .coerceAtMost(0.5f),
-                        )
+                        // Sunk, and lifted a touch. Black alone is nothing over
+                        // a black page: the lit tab vanished there (#212). A
+                        // faint white laid over the black wash is one colour,
+                        // still darker than the glass over anything with light
+                        // in it, and a grey slot over a page with none.
+                        val slider = glassConfig.puckOpacity.coerceIn(0f, 1f)
+                        val sink = (slider * 1.3f).coerceAtMost(0.5f)
+                        val lift = 0.07f * (slider * 2.5f).coerceAtMost(1f)
+                        val alpha = 1f - (1f - sink) * (1f - lift)
+                        val grey = if (alpha > 0f) lift / alpha else 0f
+                        Color(grey, grey, grey, alpha)
                     }
 
                     // Searching opens the bar and keeps it open.
@@ -4430,14 +4438,21 @@ private fun UpdatePrompt(
     val scope = rememberCoroutineScope()
     val state by updater.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) {
-        val now = System.currentTimeMillis()
-        if (now - prefs.lastUpdateCheck() < UPDATE_CHECK_INTERVAL_MS) return@LaunchedEffect
-        // Recorded before the call rather than after it: a phone with no
-        // network would otherwise ask again at every launch, which is the one
-        // shape of this that would be a nuisance.
-        prefs.setLastUpdateCheck(now)
-        runCatching { updater.check() }
+    // Each time the app comes to the front, not only when it is launched. A
+    // music app is rarely launched: it stays in the background between
+    // listens, so a check made only at launch could wait days for the next
+    // one and the release went by unannounced.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            val now = System.currentTimeMillis()
+            if (now - prefs.lastUpdateCheck() < UPDATE_CHECK_INTERVAL_MS) return@repeatOnLifecycle
+            // Recorded before the call rather than after it: a phone with no
+            // network would otherwise ask again at every launch, which is the
+            // one shape of this that would be a nuisance.
+            prefs.setLastUpdateCheck(now)
+            runCatching { updater.check() }
+        }
     }
 
     // Held while the download runs: the state moves on from Available the

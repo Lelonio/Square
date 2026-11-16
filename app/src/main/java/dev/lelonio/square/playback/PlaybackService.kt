@@ -148,6 +148,7 @@ class PlaybackService : MediaLibraryService() {
             reason: Int,
         ) {
             redrawButtons()
+            releaseRepeatOne(mediaItem, reason)
             // A sleep timer set to the end of the track, at the moment the
             // track ends. Not faded: the next one has already started, and
             // fading it in to fade it out would play a second of a song
@@ -167,6 +168,30 @@ class PlaybackService : MediaLibraryService() {
             if (playbackState == androidx.media3.common.Player.STATE_READY) {
                 maybeTriggerAutoplay(player.currentMediaItem)
             }
+        }
+    }
+
+    /** The song playing at the last change of song; see [releaseRepeatOne]. */
+    private var lastMediaId: String? = null
+
+    /**
+     * "Repeat this song" lets go once the listener picks another song.
+     *
+     * It held on through a skip, a tap on another song or a whole new album,
+     * so whatever came next played on a loop too (#209). A skip or a new
+     * choice now turns it into "repeat all", as Spotify's own app does; the
+     * song repeating by itself is not a change of song and keeps it. Nor is
+     * the first song after a launch, which restores a repeat left on.
+     */
+    private fun releaseRepeatOne(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+        val previous = lastMediaId
+        val current = mediaItem?.mediaId
+        lastMediaId = current
+        val chosen = reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
+            reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED
+        if (!chosen || previous == null || current == null || previous == current) return
+        if (player.repeatMode == androidx.media3.common.Player.REPEAT_MODE_ONE) {
+            player.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
         }
     }
 
