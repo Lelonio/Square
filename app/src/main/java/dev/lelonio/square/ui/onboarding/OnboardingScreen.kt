@@ -1,5 +1,10 @@
 package dev.lelonio.square.ui.onboarding
 
+import dev.lelonio.square.ui.glass.pressable
+import com.adamglin.phosphoricons.regular.CheckCircle
+import com.adamglin.phosphoricons.regular.Circle
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.size
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -137,6 +142,7 @@ fun OnboardingScreen(
                     )
                     2 -> Dashboard(redirectUri = webApi.redirectUri)
                     3 -> ClientId(webApi, onClientIdChange, onConnectWebApi)
+                    4 -> Engine()
                     else -> Done()
                 }
                 Spacer(Modifier.height(28.dp))
@@ -145,7 +151,7 @@ fun OnboardingScreen(
     }
 }
 
-private const val STEP_COUNT = 5
+private const val STEP_COUNT = 6
 
 /** The steps that are work, as the header counts them: the first and last are not. */
 private const val WORK_STEPS = 3
@@ -314,6 +320,175 @@ private fun ClientId(
         Note(stringResource(R.string.onboarding_paste_error))
     }
 }
+
+/**
+ * Which player plays the music: librespot, ready as it is, or Spotify's own
+ * Soloist, which asks for a key, a download and one sign-in. Optional, and
+ * the default needs nothing; the same steps are in the settings for later.
+ */
+@Composable
+private fun Engine() {
+    val uriHandler = LocalUriHandler.current
+    val clipboard = LocalClipboardManager.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val soloist = dev.lelonio.square.ui.settings.rememberSoloistSetup()
+    var draft by remember(soloist.savedKey) { mutableStateOf(soloist.savedKey) }
+
+    StepHeader(stringResource(R.string.engine), stringResource(R.string.onboarding_optional))
+    ProseText(stringResource(R.string.onboarding_engine_intro))
+
+    Column(
+        Modifier.padding(top = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        EngineCard(
+            title = stringResource(R.string.engine_librespot),
+            detail = stringResource(R.string.onboarding_engine_librespot),
+            selected = !soloist.chosen,
+            onClick = { soloist.choose(false) },
+        )
+        EngineCard(
+            title = stringResource(R.string.engine_soloist),
+            detail = stringResource(R.string.onboarding_engine_soloist),
+            selected = soloist.chosen,
+            onClick = { soloist.choose(true) },
+        )
+    }
+    if (!soloist.chosen) {
+        Note(stringResource(R.string.onboarding_engine_later))
+        return
+    }
+
+    // The three steps, one card, as the dashboard's checklist is.
+    Column(
+        Modifier
+            .padding(top = 12.dp)
+            .fillMaxWidth()
+            .setupCard()
+            .padding(vertical = 4.dp),
+    ) {
+        ListStep(1, stringResource(R.string.soloist_key_note)) {
+            Column {
+                CardButton(
+                    title = stringResource(R.string.soloist_get_key),
+                    detail = dev.lelonio.square.ui.settings.SOLOIST_KEY_PAGE.removePrefix("https://"),
+                    icon = PhosphorIcons.Regular.ArrowUpRight,
+                    onClick = { openOrCopy(uriHandler, clipboard, context, dev.lelonio.square.ui.settings.SOLOIST_KEY_PAGE) },
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    label = { Text(stringResource(R.string.soloist_key)) },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = guideFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                )
+                if (draft.trim() != soloist.savedKey && draft.isNotBlank()) {
+                    SecondaryButton(
+                        stringResource(R.string.save),
+                        onClick = { soloist.saveKey(draft) },
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                } else if (soloist.savedKey.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    DoneRow(stringResource(R.string.onboarding_engine_key_saved))
+                }
+            }
+        }
+        ListDivider()
+        ListStep(2, dev.lelonio.square.ui.settings.soloistDownloadStatus(soloist)) {
+            Column {
+                dev.lelonio.square.ui.settings.SoloistDownloadBar(
+                    soloist.download,
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                )
+                when {
+                    soloist.download is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Running -> Unit
+                    soloist.installed -> {
+                        Spacer(Modifier.height(10.dp))
+                        DoneRow(stringResource(R.string.soloist_downloaded))
+                    }
+                    else -> SecondaryButton(
+                        stringResource(R.string.soloist_download),
+                        onClick = soloist.fetch,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
+            }
+        }
+        ListDivider()
+        ListStep(3, dev.lelonio.square.ui.settings.soloistAccountStatus(soloist)) {
+            if (soloist.signedIn) {
+                Column {
+                    Spacer(Modifier.height(10.dp))
+                    DoneRow(stringResource(R.string.onboarding_engine_ready))
+                }
+            } else {
+                soloist.error?.let {
+                    Text(
+                        stringResource(R.string.soloist_error, it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One of the two engines, as a card that is picked by tapping it. */
+@Composable
+private fun EngineCard(title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .pressable(onClick, pressedScale = 0.98f)
+            .fillMaxWidth()
+            .setupCard()
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = Ink,
+            )
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodyMedium,
+                color = InkDim,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        }
+        androidx.compose.material3.Icon(
+            if (selected) PhosphorIcons.Regular.CheckCircle else PhosphorIcons.Regular.Circle,
+            contentDescription = null,
+            tint = if (selected) Ink else InkDim,
+            modifier = Modifier
+                .padding(start = 12.dp)
+                .size(24.dp),
+        )
+    }
+}
+
+@Composable
+private fun guideFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Ink,
+    unfocusedTextColor = Ink,
+    focusedBorderColor = Ink,
+    unfocusedBorderColor = Ink.copy(alpha = 0.22f),
+    focusedLabelColor = Ink,
+    unfocusedLabelColor = InkDim,
+    cursorColor = Ink,
+)
 
 @Composable
 private fun Done() {

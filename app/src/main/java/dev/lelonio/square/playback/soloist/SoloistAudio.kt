@@ -100,6 +100,7 @@ object SoloistAudio {
         var direct = ByteBuffer.allocateDirect(1 shl 16)
         var rate = 44100
         var channels = 2
+        var float = false
         var audioBytes = 0L
         synchronized(gate) { stopped = true }
         while (true) {
@@ -113,7 +114,9 @@ object SoloistAudio {
                     val b = ByteBuffer.wrap(format).order(ByteOrder.LITTLE_ENDIAN)
                     rate = b.int
                     channels = b.int
-                    Log.i(TAG, "stream: $rate Hz, $channels ch")
+                    // 2 is float, Soloist's own; 1 (or a header without it) 16-bit.
+                    float = length >= 12 && b.int == 2
+                    Log.i(TAG, "stream: $rate Hz, $channels ch, ${if (float) "float" else "16-bit"}")
                 }
                 'A' -> {
                     if (length > bytes.size) {
@@ -124,10 +127,11 @@ object SoloistAudio {
                     direct.clear()
                     direct.put(bytes, 0, length)
                     direct.flip()
-                    output.write(direct, length, rate, channels)
+                    if (float) output.writeFloat(direct, length, rate, channels) else output.write(direct, length, rate, channels)
                     audioBytes += length
-                    if (audioBytes / (rate * channels * 2L * 10) != (audioBytes - length) / (rate * channels * 2L * 10)) {
-                        Log.i(TAG, "${audioBytes / (rate * channels * 2L)} s of audio played")
+                    val perSecond = rate * channels * (if (float) 4L else 2L)
+                    if (audioBytes / (perSecond * 10) != (audioBytes - length) / (perSecond * 10)) {
+                        Log.i(TAG, "${audioBytes / perSecond} s of audio played")
                     }
                 }
                 // Only a real pause stops the output and only a resume after

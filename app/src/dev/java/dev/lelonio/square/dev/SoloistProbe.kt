@@ -25,6 +25,18 @@ class SoloistProbe : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         when (intent.getStringExtra("do") ?: "run") {
+            // As a new install has it: no runtime and no binary, the key and
+            // Soloist's own data (its sign-in) kept unless asked.
+            "reset" -> {
+                dev.lelonio.square.playback.soloist.SoloistEngine.stop()
+                val home = dev.lelonio.square.playback.soloist.SoloistRuntime.home(context)
+                listOf("lib", "soloist", "ca.pem", "runtime.version").forEach { java.io.File(home, it).deleteRecursively() }
+                if (intent.getBooleanExtra("all", false)) home.deleteRecursively()
+                context.getSharedPreferences("soloist", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                dev.lelonio.square.playback.soloist.SoloistEngine.setEnabled(context, false)
+                android.util.Log.i("SoloistProbe", "reset: ${home.list()?.joinToString()}")
+                return
+            }
             "stop" -> {
                 running?.destroy()
                 running = null

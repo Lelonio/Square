@@ -22,6 +22,7 @@ class AudioOutput {
     private var track: AudioTrack? = null
     private var configuredSampleRate = 0
     private var configuredChannels = 0
+    private var configuredEncoding = AudioFormat.ENCODING_PCM_16BIT
 
     private var reverb: EnvironmentalReverb? = null
 
@@ -504,6 +505,8 @@ class AudioOutput {
         // unwanted, and holding the decoder here would only delay the load that
         // closed the gate in the first place.
         if (discarding) return
+        // 16-bit through the effects: not what a DAC opened bit-perfect is for.
+        HiFi.release()
 
         val output = synchronized(this) { ensureTrack(sampleRate, channels) } ?: return
         if (voice) leaveVoice()
@@ -552,6 +555,93 @@ class AudioOutput {
 
         equalizer.apply(data, sizeInBytes, channels, sampleRate)
         writeAll(output, data, sizeInBytes)
+    }
+
+    /** Nothing the listener set changes the sound: no curve, no karaoke, no stretch, no room. */
+    private fun effectsNeutral(): Boolean =
+        AudioEffects.karaoke.value == 0f && speed == 1f && pitch == 1f &&
+            !equalizer.isActive && reverbAmount == 0f
+
+    /**
+     * Interleaved little-endian 32-bit float, as Soloist decodes lossless
+     * FLAC (up to 24-bit).
+     *
+     * With every effect neutral it goes out as it is: a float track, or, with
+     * a USB DAC that takes it, the format the DAC is opened in bit-perfect
+     * ([HiFi]), so Android neither mixes nor resamples it. With any effect on,
+     * the sound is reworked anyway and goes through the same 16-bit chain as
+     * everything else.
+     */
+    fun writeFloat(data: ByteBuffer, sizeInBytes: Int, sampleRate: Int, channels: Int) {
+        if (discarding) return
+        val samples = sizeInBytes / 4
+        // A view of its own: the caller's buffer keeps the byte order it had.
+        val floats = data.duplicate().order(java.nio.ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+
+        val neutral = effectsNeutral()
+        if (neutral != wasNeutral) {
+            wasNeutral = neutral
+            android.util.Log.i(
+                TAG,
+                if (neutral) "lossless path: as decoded" else "lossless path off: equaliser ${equalizer.isActive}, " +
+                    "karaoke ${AudioEffects.karaoke.value}, speed $speed, pitch $pitch, reverb $reverbAmount",
+            )
+        }
+        if (!neutral) {
+            HiFi.release()
+            val out = scratch(samples * 2)
+            for (i in 0 until samples) {
+                out.putShort((floats.get(i) * 32767f).coerceIn(-32768f, 32767f).toInt().toShort())
+            }
+            out.flip()
+            write(out, samples * 2, sampleRate, channels)
+            return
+        }
+
+        val encoding = HiFi.encodingFor(sampleRate, channels)
+        val output = synchronized(this) { ensureTrack(sampleRate, channels, encoding) } ?: return
+        if (voice) leaveVoice()
+        when (encoding) {
+            AudioFormat.ENCODING_PCM_FLOAT -> writeAll(output, data, sizeInBytes)
+            AudioFormat.ENCODING_PCM_32BIT -> {
+                val out = scratch(samples * 4)
+                for (i in 0 until samples) {
+                    out.putInt((floats.get(i).toDouble() * 2147483647.0).coerceIn(-2147483648.0, 2147483647.0).toInt())
+                }
+                out.flip()
+                writeAll(output, out, samples * 4)
+            }
+            AudioFormat.ENCODING_PCM_24BIT_PACKED -> {
+                val out = scratch(samples * 3)
+                for (i in 0 until samples) {
+                    val v = (floats.get(i) * 8388607f).coerceIn(-8388608f, 8388607f).toInt()
+                    out.put(v.toByte()).put((v shr 8).toByte()).put((v shr 16).toByte())
+                }
+                out.flip()
+                writeAll(output, out, samples * 3)
+            }
+            else -> {
+                val out = scratch(samples * 2)
+                for (i in 0 until samples) {
+                    out.putShort((floats.get(i) * 32767f).coerceIn(-32768f, 32767f).toInt().toShort())
+                }
+                out.flip()
+                writeAll(output, out, samples * 2)
+            }
+        }
+    }
+
+    private var wasNeutral: Boolean? = null
+
+    private var scratchBuffer: ByteBuffer? = null
+
+    private fun scratch(bytes: Int): ByteBuffer {
+        val current = scratchBuffer
+        val buffer = if (current != null && current.capacity() >= bytes) current else {
+            ByteBuffer.allocateDirect(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN).also { scratchBuffer = it }
+        }
+        buffer.clear()
+        return buffer
     }
 
     /**
@@ -691,11 +781,16 @@ class AudioOutput {
     }
 
     /** Rebuilds the track when the stream format changes, otherwise reuses it. */
-    private fun ensureTrack(sampleRate: Int, channels: Int): AudioTrack? {
+    private fun ensureTrack(
+        sampleRate: Int,
+        channels: Int,
+        encoding: Int = AudioFormat.ENCODING_PCM_16BIT,
+    ): AudioTrack? {
         val existing = track
         if (existing != null &&
             configuredSampleRate == sampleRate &&
-            configuredChannels == channels
+            configuredChannels == channels &&
+            configuredEncoding == encoding
         ) {
             return existing
         }
@@ -717,7 +812,7 @@ class AudioOutput {
         val minBuffer = AudioTrack.getMinBufferSize(
             sampleRate,
             channelMask,
-            AudioFormat.ENCODING_PCM_16BIT,
+            encoding,
         )
         if (minBuffer <= 0) {
             android.util.Log.e(TAG, "unsupported output format: $sampleRate Hz, $channels ch")
@@ -730,7 +825,12 @@ class AudioOutput {
         // and decoding competes with the UI and the network on a phone. Sizing for at least
         // 500 ms ensures that UI garbage collection (GC) or Compose frame animation bursts
         // will never cause audible dropouts or buffer starvation.
-        val bytesPerMs = sampleRate * channels * 2 / 1000
+        val bytesPerSample = when (encoding) {
+            AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_32BIT -> 4
+            AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
+            else -> 2
+        }
+        val bytesPerMs = sampleRate * channels * bytesPerSample / 1000
         val minBuffer500ms = bytesPerMs * 500
         val bufferSize = maxOf(minBuffer * BUFFER_MULTIPLIER, minBuffer500ms)
 
@@ -743,7 +843,7 @@ class AudioOutput {
             )
             .setAudioFormat(
                 AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setEncoding(encoding)
                     .setSampleRate(sampleRate)
                     .setChannelMask(channelMask)
                     .build(),
@@ -761,7 +861,7 @@ class AudioOutput {
 
         android.util.Log.i(
             TAG,
-            "AudioTrack ready: $sampleRate Hz, $channels ch, buffer ${bufferSize}B " +
+            "AudioTrack ready: $sampleRate Hz, $channels ch, encoding $encoding, buffer ${bufferSize}B " +
                 "(min ${minBuffer}B)",
         )
 
@@ -778,6 +878,7 @@ class AudioOutput {
         track = created
         configuredSampleRate = sampleRate
         configuredChannels = channels
+        configuredEncoding = encoding
         // A new track knows nothing of the rate the old one was given.
         platformSpeed = 1f
         platformPitch = 1f

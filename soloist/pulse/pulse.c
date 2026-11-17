@@ -96,8 +96,9 @@ static void sleep_us(uint64_t us) {
 /* One FIFO for the life of the process, shared by every stream Soloist opens:
  * Square reads it from start to end. Each packet is "SQPC", a type, three
  * bytes of padding and a little-endian length, then the payload:
- *   'H' format: u32 rate, u32 channels   (a stream begins)
- *   'A' audio:  interleaved signed 16-bit PCM
+ *   'H' format: u32 rate, u32 channels, u32 encoding (a stream begins)
+ *   'A' audio:  interleaved PCM in that encoding: 1 signed 16-bit,
+ *               2 32-bit float (Soloist's own, lossless FLAC kept whole)
  *   'P' pause   'R' resume   'F' flush   (no payload)
  *   'N' the new song is heard: the first of it after a song was kept to
  *       dissolve, so the player can show it then and not at the skip */
@@ -601,7 +602,13 @@ static void apply_volume(pa_stream *s, unsigned char *p, size_t n) {
     }
 }
 
-/* To interleaved signed 16-bit, which is what Square's output takes. */
+/* What goes to Square: float for Soloist's float and 32-bit streams, 16-bit
+ * for 16-bit ones. */
+static uint32_t wire_encoding(pa_stream *s) {
+    return s->spec.format == PA_SAMPLE_S16LE ? 1 : 2;
+}
+
+/* To interleaved signed 16-bit, for a stream in another format. */
 static size_t to_s16(pa_stream *s, const unsigned char *in, size_t n, short *out) {
     size_t count;
     switch (s->spec.format) {
@@ -699,9 +706,19 @@ static void *drain_main(void *arg) {
         if (n) {
             apply_volume(s, buf, n);
             if (s->to_square) {
-                size_t m = to_s16(s, buf, n, pcm16);
                 if (heard_new) send('N', NULL, 0);
-                send('A', pcm16, (uint32_t)m);
+                if (s->spec.format == PA_SAMPLE_FLOAT32LE) {
+                    /* As Soloist made it: a 24-bit FLAC loses nothing in float. */
+                    send('A', buf, (uint32_t)n);
+                } else if (s->spec.format == PA_SAMPLE_S32LE) {
+                    const int *x = (const int *)buf;
+                    float *f = (float *)pcm16;
+                    for (size_t i = 0; i < n / 4; i++) f[i] = (float)x[i] / 2147483648.0f;
+                    send('A', pcm16, (uint32_t)n);
+                } else {
+                    size_t m = to_s16(s, buf, n, pcm16);
+                    send('A', pcm16, (uint32_t)m);
+                }
             } else if (s->fd >= 0) {
                 size_t off = 0;
                 while (off < n) {
@@ -746,7 +763,7 @@ EXPORT int pa_stream_connect_playback(pa_stream *s, const char *dev, const void 
     if (fifo() >= 0) {
         s->to_square = 1;
         s->clocked = 0;
-        uint32_t h[2] = { s->spec.rate, s->spec.channels };
+        uint32_t h[3] = { s->spec.rate, s->spec.channels, wire_encoding(s) };
         send('H', h, sizeof h);
         if (!s->corked) send('R', NULL, 0);
     } else if (fd && *fd) {

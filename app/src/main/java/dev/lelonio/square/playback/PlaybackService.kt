@@ -1,5 +1,6 @@
 package dev.lelonio.square.playback
 
+import kotlinx.coroutines.flow.filterNotNull
 import android.content.Intent
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaLibraryService
@@ -441,6 +442,32 @@ class PlaybackService : MediaLibraryService() {
             container.likedStore.likedTracks.collect {
                 redrawButtons()
             }
+        }
+
+        // Soloist chosen and not yet signed in: up in the background, so the
+        // Spotify app on the network can find "Square" and sign it in. It
+        // becomes the player the moment it is.
+        val soloistEngine = dev.lelonio.square.playback.soloist.SoloistEngine
+        if (soloistEngine.isWanted(this) && soloistEngine.canStart(this) && !soloistEngine.isEnabled(this)) {
+            soloistEngine.start(this)
+        }
+
+        // Soloist chosen or let go of in the settings: the player in front
+        // follows, with the queue carried over. Let go of, Soloist stops and
+        // librespot plays again.
+        scope.launch {
+            dev.lelonio.square.playback.soloist.SoloistEngine.enabled(this@PlaybackService)
+                .filterNotNull()
+                .drop(1)
+                .collect { on ->
+                    if (container.preferences.backend.value != dev.lelonio.square.backend.BackendId.SPOTIFY) return@collect
+                    if (on && playerKind == PlayerKind.SPOTIFY) {
+                        swapPlayer(PlayerKind.SOLOIST, restore = true)
+                    } else if (!on && playerKind == PlayerKind.SOLOIST) {
+                        swapPlayer(PlayerKind.SPOTIFY, restore = true)
+                        dev.lelonio.square.playback.soloist.SoloistEngine.stop()
+                    }
+                }
         }
 
         // Only an explicit account-level refusal offers SDK recovery.

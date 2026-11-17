@@ -438,6 +438,10 @@ fun SettingsScreen(
             BackendSection()
         }
 
+        if (shown == SettingsPage.Playback && showSpotify && "sound" in openGroups) groupItem("engine", Group.SOUND) {
+            EngineSection()
+        }
+
         if (shown == SettingsPage.Account) item("youtube-account") {
             YouTubeAccountSection(
                 onSignIn = onYouTubeSignIn,
@@ -1402,6 +1406,115 @@ private fun BackendSection() {
                 ),
                 selected = backend == chosen,
             ) { store.setBackend(backend) }
+        }
+    }
+}
+
+/**
+ * Which player plays Spotify: librespot, or Spotify's own Soloist.
+ *
+ * librespot needs nothing and is what downloads go through. Soloist needs
+ * three things a listener does once, shown here as steps: their own key from
+ * Spotify's developer dashboard, the binary from Spotify's CDN, and a sign-in
+ * from the Spotify app, which sees "Square" on the network. Signed in, Soloist
+ * becomes the engine.
+ */
+@Composable
+private fun EngineSection() {
+    val uriHandler = LocalUriHandler.current
+    val soloist = rememberSoloistSetup()
+    var draft by remember(soloist.savedKey) { mutableStateOf(soloist.savedKey) }
+    val download = soloist.download
+
+    Section(stringResource(R.string.engine)) {
+        ChoiceRow(stringResource(R.string.engine_librespot), selected = !soloist.chosen) { soloist.choose(false) }
+        RowDivider()
+        ChoiceRow(stringResource(R.string.engine_soloist), selected = soloist.chosen) { soloist.choose(true) }
+        RowDivider()
+        Text(
+            stringResource(R.string.engine_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+        )
+        if (!soloist.chosen) return@Section
+
+        // 1. The key.
+        RowDivider()
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+            Text(stringResource(R.string.soloist_step_key), style = MaterialTheme.typography.labelLarge)
+            Text(
+                stringResource(R.string.soloist_key_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDim,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            androidx.compose.material3.OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                label = { Text(stringResource(R.string.soloist_key)) },
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+            )
+        }
+        RowDivider()
+        if (draft.trim() != soloist.savedKey && draft.isNotBlank()) {
+            ActionRow(stringResource(R.string.save), destructive = false, icon = PhosphorIcons.Regular.Check) {
+                soloist.saveKey(draft)
+            }
+            RowDivider()
+        }
+        ActionRow(stringResource(R.string.soloist_get_key), destructive = false, icon = PhosphorIcons.Regular.ArrowUpRight) {
+            runCatching { uriHandler.openUri(SOLOIST_KEY_PAGE) }
+        }
+
+        // 2. Soloist itself.
+        RowDivider()
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+            Text(stringResource(R.string.soloist_step_download), style = MaterialTheme.typography.labelLarge)
+            Text(
+                soloistDownloadStatus(soloist),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (download is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Failed) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    InkDim
+                },
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            SoloistDownloadBar(download, Modifier.fillMaxWidth().padding(top = 10.dp))
+        }
+        if (download !is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Running) {
+            RowDivider()
+            ActionRow(
+                stringResource(if (soloist.installed) R.string.soloist_check_update else R.string.soloist_download),
+                destructive = false,
+                onClick = soloist.fetch,
+            )
+        }
+
+        // 3. The sign-in, from the Spotify app.
+        RowDivider()
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+            Text(stringResource(R.string.soloist_step_account), style = MaterialTheme.typography.labelLarge)
+            Text(
+                soloistAccountStatus(soloist),
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDim,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            soloist.error?.takeIf { !soloist.signedIn }?.let {
+                Text(
+                    stringResource(R.string.soloist_error, it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
         }
     }
 }

@@ -11,21 +11,30 @@ import java.io.File
  * links), adjusted for Android's app sandbox, with two libraries of ours:
  * libsqaudit (a SIGSYS net for any system call the sandbox still refuses) and
  * libsqguard (keeps that net in place), and libpulse.so.0, which hands the
- * audio to Square. For now it is staged in the app's external files dir
- * (`soloist/`) and copied into the app's own data dir, where it may run.
+ * audio to Square. It ships in the APK's assets and is copied into the app's
+ * own data dir, where it may run; Soloist itself is Spotify's and is
+ * downloaded from Spotify (see SoloistDownload). The CA bundle is Android's own.
+ *
+ * Anything staged in the app's external files dir (`soloist/`) is copied over
+ * it, for trying a build by hand.
  */
 object SoloistRuntime {
 
     private fun staged(context: Context) = File(context.getExternalFilesDir(null), "soloist")
-    private fun home(context: Context) = File(context.filesDir, "soloist")
+    fun home(context: Context) = File(context.filesDir, "soloist")
+
+    /** Soloist's own binary, where it runs from. */
+    fun binary(context: Context) = File(home(context), "soloist")
 
     fun isInstalled(context: Context): Boolean =
-        File(home(context), "soloist").exists() || File(staged(context), "soloist").exists()
+        binary(context).exists() || File(staged(context), "soloist").exists()
 
-    /** Copies what is staged and newer into the data dir; returns that dir. */
+    /** Copies the runtime out of the APK when it changed, then what is staged and newer; returns the dir. */
     fun install(context: Context): File {
-        val src = staged(context)
         val dst = home(context)
+        installAssets(context, dst)
+        writeCertificates(dst)
+        val src = staged(context)
         if (src.isDirectory) {
             src.walkTopDown().filter { it.isFile }.forEach { file ->
                 val out = File(dst, file.relativeTo(src).path)
@@ -42,8 +51,54 @@ object SoloistRuntime {
         return dst
     }
 
+    /** Once per APK: the runtime as this build ships it. */
+    private fun installAssets(context: Context, dst: File) {
+        val built = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime.toString()
+        }.getOrDefault("0")
+        val marker = File(dst, "runtime.version")
+        if (marker.exists() && marker.readText() == built && File(dst, "lib/libc.so.6").exists()) return
+        val lib = File(dst, "lib").apply { mkdirs() }
+        context.assets.list("soloist/lib").orEmpty().forEach { name ->
+            val out = File(lib, name)
+            val tmp = File(lib, "$name.tmp")
+            context.assets.open("soloist/lib/$name").use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            tmp.setReadable(true, true)
+            tmp.setExecutable(true, true)
+            tmp.renameTo(out)
+        }
+        marker.writeText(built)
+    }
+
+    /**
+     * The phone's trusted roots, as the one bundle Soloist reads: Android's
+     * store is a directory of PEM files, kept up to date by the system.
+     */
+    private fun writeCertificates(dst: File) {
+        val out = File(dst, "ca.pem")
+        val dirs = listOf(File("/apex/com.android.conscrypt/cacerts"), File("/system/etc/security/cacerts"))
+        val source = dirs.firstOrNull { it.isDirectory && !it.list().isNullOrEmpty() } ?: return
+        val newest = source.listFiles().orEmpty().maxOfOrNull { it.lastModified() } ?: 0
+        if (out.exists() && out.length() > 0 && out.lastModified() >= newest) return
+        val pem = StringBuilder()
+        source.listFiles().orEmpty().sortedBy { it.name }.forEach { file ->
+            val text = runCatching { file.readText() }.getOrNull() ?: return@forEach
+            val begin = text.indexOf("-----BEGIN CERTIFICATE-----")
+            val end = text.indexOf("-----END CERTIFICATE-----")
+            if (begin >= 0 && end > begin) pem.append(text, begin, end + 25).append('\n')
+        }
+        if (pem.isNotEmpty()) out.writeText(pem.toString())
+    }
+
     fun key(context: Context): String =
         File(home(context), "key").takeIf { it.exists() }?.readText()?.trim().orEmpty()
+
+    /** The listener's Soloist key, from Spotify's developer dashboard; kept only in the app's data. */
+    fun setKey(context: Context, key: String) {
+        val file = File(home(context).apply { mkdirs() }, "key")
+        if (key.isBlank()) file.delete() else file.writeText(key.trim())
+        SoloistEngine.refresh(context)
+    }
 
     /** The loader line every run starts with. */
     fun command(dir: File): List<String> {

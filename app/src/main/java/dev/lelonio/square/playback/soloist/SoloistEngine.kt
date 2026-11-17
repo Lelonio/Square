@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -109,13 +110,70 @@ object SoloistEngine {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences("soloist", Context.MODE_PRIVATE)
 
-    /** Whether the listener chose Soloist as the Spotify engine. */
-    fun isEnabled(context: Context): Boolean =
-        prefs(context).getBoolean("enabled", false) && SoloistRuntime.isInstalled(context)
+    /**
+     * Whether Soloist plays: chosen by the listener, and with all it needs (a
+     * key, the binary, an account it signed in to). Chosen and not yet signed
+     * in, librespot plays and Soloist waits on the network for the sign-in.
+     */
+    fun isEnabled(context: Context): Boolean = isWanted(context) && isReady(context)
+
+    /** The listener's choice, kept from the moment it is made, the setup half done or not. */
+    fun isWanted(context: Context): Boolean = prefs(context).getBoolean("enabled", false)
+
+    /** A key and the binary: all Soloist needs to start. */
+    fun canStart(context: Context): Boolean =
+        SoloistRuntime.isInstalled(context) && SoloistRuntime.key(context).isNotEmpty()
+
+    /** Able to start, and signed in once: Soloist keeps its credentials. */
+    fun isReady(context: Context): Boolean = canStart(context) && signedInAccount(context) != null
+
+    /** The account Soloist last signed in to, remembered across its restarts. */
+    fun signedInAccount(context: Context): String? = prefs(context).getString("account", null)
+
+    private val _enabled = MutableStateFlow<Boolean?>(null)
+    private val _wanted = MutableStateFlow<Boolean?>(null)
+
+    /** [isEnabled] as it changes, for the playback service to swap players on. */
+    fun enabled(context: Context): StateFlow<Boolean?> {
+        if (_enabled.value == null) refresh(context)
+        return _enabled.asStateFlow()
+    }
+
+    /** [isWanted] as it changes, for the setup to show. */
+    fun wanted(context: Context): StateFlow<Boolean?> {
+        if (_wanted.value == null) refresh(context)
+        return _wanted.asStateFlow()
+    }
 
     fun setEnabled(context: Context, enabled: Boolean) {
+        val playing = _enabled.value == true
         prefs(context).edit().putBoolean("enabled", enabled).apply()
+        refresh(context)
+        // Let go of while it was only waiting for its sign-in: nothing plays
+        // through it, so it simply stops. (Playing, the service stops it once
+        // librespot has taken the queue back.)
+        if (!enabled && !playing) stop()
     }
+
+    /** Re-reads what Soloist has, after a key, a download or a sign-in. */
+    fun refresh(context: Context) {
+        _wanted.value = isWanted(context)
+        _enabled.value = isEnabled(context)
+    }
+
+    /** What the setup shows: the account Soloist is in, its build's days left, what went wrong. */
+    data class Setup(
+        val account: String? = null,
+        val expiresInDays: Int? = null,
+        val error: String? = null,
+    )
+
+    private val _setup = MutableStateFlow(Setup())
+
+    /** The account remembered from an earlier run, until Soloist says it again. */
+    fun rememberedSetup(context: Context): Setup =
+        _setup.value.let { if (it.account == null) it.copy(account = signedInAccount(context)) else it }
+    val setup: StateFlow<Setup> = _setup.asStateFlow()
 
     /**
      * The stream quality, as Soloist's prefs number it: 5 is lossless, 4 very
@@ -128,6 +186,7 @@ object SoloistEngine {
     @Synchronized
     fun start(context: Context) {
         app = context.applicationContext
+        dev.lelonio.square.playback.HiFi.init(app)
         if (process?.isAlive == true) return
         thread(name = "soloist-launch") { runCatching { launch() }.onFailure { Log.e(TAG, "start failed", it) } }
     }
@@ -144,6 +203,7 @@ object SoloistEngine {
         process = null
         _state.value = State()
         StreamQuality.clear()
+        if (::app.isInitialized) ZeroConf.withdraw(app)
     }
 
     /**
@@ -176,6 +236,15 @@ object SoloistEngine {
 
     private fun launch() {
         val dir = SoloistRuntime.install(app)
+        if (!SoloistRuntime.binary(app).exists()) {
+            Log.w(TAG, "Soloist not downloaded")
+            return
+        }
+        // A newer build, when Spotify has one: Soloist builds stop working
+        // about ninety days after release. Taken at the next start.
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            SoloistDownload.fetch(app)
+        }
         SoloistRuntime.writeResolver(app, dir)
         val crossfadeMs = dev.lelonio.square.data.CrossfadeStore(app).durationMs()
         SoloistRuntime.writeQuality(dir, quality(app))
@@ -230,7 +299,12 @@ object SoloistEngine {
         val code = runCatching { started.waitFor() }.getOrNull()
         Log.i(TAG, "exited $code")
         // What it said last, when it did not mean to stop.
-        if (code != 0 && process === started) recent.forEach { Log.w(TAG, "| $it") }
+        if (code != 0 && process === started) {
+            recent.forEach { Log.w(TAG, "| $it") }
+            val said = recent.lastOrNull { " E [" in it || "rror" in it } ?: recent.lastOrNull()
+            _setup.update { it.copy(error = said?.substringAfter("] ")?.trim()) }
+        }
+        ZeroConf.withdraw(app)
         if (process === started) {
             process = null
             _state.value = State()
@@ -238,19 +312,36 @@ object SoloistEngine {
         }
     }
 
+    private val zeroconfLine = Regex("""ZeroConf service on port (\d+) path (\S+)""")
+    private val expiresLine = Regex("""client expires in (-?\d+) days""")
+    private val accountLine = Regex("""logged in as (\S+)""")
     private val deviceLine = Regex("""device_id=([0-9a-f-]{8,})""")
     private val socketLine = Regex("""websocket server listening on 127\.0\.0\.1:(\d+)""")
     private val codecLine = Regex("""\bcodec: (\w+)""")
     private val bitrateLine = Regex("""FileStreamer file average bitrate: (\d+)""")
 
     /** What Soloist says about itself that its WebSocket does not. */
-    private fun readLog(line: String) {
+    private val colour = Regex("\u001B\\[[0-9;]*m")
+
+    private fun readLog(raw: String) {
+        // Soloist colours its warnings: the codes are not part of what it says.
+        val line = raw.replace(colour, "")
         if (line.startsWith("SQ") || " E [" in line || " W [" in line) Log.i(TAG, line)
         deviceLine.find(line)?.let {
             deviceId = it.groupValues[1]
             dev.lelonio.square.data.RemoteConnect.registerSdkDevice(it.groupValues[1])
         }
         socketLine.find(line)?.let { connect(it.groupValues[1].toInt()) }
+        // Soloist's own mDNS finds no IPv4 address in the app sandbox: the
+        // device is announced for it, so the Spotify app sees it to sign in.
+        zeroconfLine.find(line)?.let { ZeroConf.announce(app, it.groupValues[1].toInt(), it.groupValues[2]) }
+        expiresLine.find(line)?.let { m -> _setup.update { it.copy(expiresInDays = m.groupValues[1].toInt()) } }
+        accountLine.find(line)?.let { m ->
+            _setup.update { it.copy(account = m.groupValues[1], error = null) }
+            // Signed in: with Soloist chosen, it is the engine from here on.
+            prefs(app).edit().putString("account", m.groupValues[1]).apply()
+            refresh(app)
+        }
         // The bitrate is logged as the file opens, before the codec.
         bitrateLine.find(line)?.let {
             val value = it.groupValues[1].toInt()
