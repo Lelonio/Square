@@ -620,6 +620,15 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeIsS
     crate::sink::sounding() as jboolean
 }
 
+/// The bitrate, in kbit/s, of the song playing now; 0 before the first.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlayingKbps(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    librespot_playback::player::PLAYING_KBPS.load(std::sync::atomic::Ordering::Relaxed) as jint
+}
+
 /// Rebuilds the player with a new bitrate and crossfade.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetQuality(

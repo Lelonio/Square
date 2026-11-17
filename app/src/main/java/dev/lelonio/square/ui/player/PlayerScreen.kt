@@ -1928,9 +1928,11 @@ fun PlayerScreen(
             }
         }
 
-        // The stream quality, picked from the button by the title.
+        // The stream quality, picked from the button by the title: Soloist's
+        // levels while Soloist plays, librespot's while librespot does.
         val qualityContext = androidx.compose.ui.platform.LocalContext.current
-        val currentQuality = dev.lelonio.square.playback.soloist.SoloistEngine.quality(qualityContext)
+        val soloistInFront by dev.lelonio.square.playback.StreamQuality.soloistInFront
+            .collectAsStateWithLifecycle()
         GlassChoiceMenu(
             visible = qualityOpen,
             anchor = qualityAnchor,
@@ -1939,22 +1941,40 @@ fun PlayerScreen(
             trigger = qualityTrigger,
             width = 240.dp,
         ) {
-            listOf(
-                5 to R.string.stream_quality_lossless,
-                4 to R.string.stream_quality_very_high,
-                3 to R.string.stream_quality_high,
-                2 to R.string.stream_quality_normal,
-            ).forEach { (level, name) ->
-                dev.lelonio.square.ui.components.GlassMenuItem(
-                    stringResource(name),
-                    selected = level == currentQuality,
-                    onClick = {
-                        qualityOpen = false
-                        if (level != currentQuality) {
-                            dev.lelonio.square.playback.soloist.SoloistEngine.setQuality(qualityContext, level)
-                        }
-                    },
-                )
+            if (soloistInFront) {
+                val currentQuality = dev.lelonio.square.playback.soloist.SoloistEngine.quality(qualityContext)
+                listOf(
+                    5 to R.string.stream_quality_lossless,
+                    4 to R.string.stream_quality_very_high,
+                    3 to R.string.stream_quality_high,
+                    2 to R.string.stream_quality_normal,
+                ).forEach { (level, name) ->
+                    dev.lelonio.square.ui.components.GlassMenuItem(
+                        stringResource(name),
+                        selected = level == currentQuality,
+                        onClick = {
+                            qualityOpen = false
+                            if (level != currentQuality) {
+                                dev.lelonio.square.playback.soloist.SoloistEngine.setQuality(qualityContext, level)
+                            }
+                        },
+                    )
+                }
+            } else {
+                val store = remember(qualityContext) {
+                    (qualityContext.applicationContext as dev.lelonio.square.SquareApplication).quality
+                }
+                val chosen by store.quality.collectAsStateWithLifecycle()
+                dev.lelonio.square.data.Quality.entries.forEach { quality ->
+                    dev.lelonio.square.ui.components.GlassMenuItem(
+                        stringResource(quality.label),
+                        selected = quality == chosen,
+                        onClick = {
+                            qualityOpen = false
+                            if (quality != chosen) store.set(quality)
+                        },
+                    )
+                }
             }
         }
     }

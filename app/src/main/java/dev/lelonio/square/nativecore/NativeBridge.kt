@@ -171,6 +171,9 @@ object NativeBridge {
     /** Whether the player is still putting audio out, session or not. */
     val isSounding: Boolean get() = nativeIsSounding()
 
+    /** The bitrate, in kbit/s, of the song librespot plays now; 0 before the first. */
+    val playingKbps: Int get() = runCatching { nativePlayingKbps() }.getOrDefault(0)
+
     /**
      * Rebuilds the player with a new bitrate and crossfade.
      *
@@ -555,6 +558,7 @@ object NativeBridge {
     private external fun nativeIsConnected(): Boolean
     private external fun nativeSpircLost(): Boolean
     private external fun nativeIsSounding(): Boolean
+    private external fun nativePlayingKbps(): Int
     private external fun nativeSetQuality(bitrateKbps: Int, crossfadeMs: Int)
 
     private external fun nativeSetBitrate(bitrateKbps: Int)

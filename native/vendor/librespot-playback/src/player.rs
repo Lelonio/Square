@@ -201,6 +201,11 @@ const LOAD_HANDLES_POISON_MSG: &str = "load handles mutex should not be poisoned
 
 pub type PlayerResult = Result<(), Error>;
 
+/// LOCAL PATCH: the average bitrate, in kbit/s, of the song playing now
+/// (the format chosen for a stream, the file's own for a download), so the app
+/// can say what is actually heard. 0 before the first song.
+pub static PLAYING_KBPS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 pub struct Player {
     commands: Option<mpsc::UnboundedSender<PlayerCommand>>,
     thread_handle: Option<thread::JoinHandle<()>>,
@@ -3305,6 +3310,12 @@ impl PlayerInternal {
         loaded_track: PlayerLoadedTrackData,
         start_playback: bool,
     ) {
+        // LOCAL PATCH: the bitrate of the song now playing, for the app to
+        // show; see [`PLAYING_KBPS`].
+        PLAYING_KBPS.store(
+            (loaded_track.bytes_per_second as u64 * 8 / 1000) as u32,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         let audio_item = Box::new(loaded_track.audio_item.clone());
 
         self.send_event(PlayerEvent::TrackChanged { audio_item });
