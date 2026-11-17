@@ -480,8 +480,12 @@ class SoloistPlayer(
 
     override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> {
         val waiting = local ?: return editSoloistQueue { next, current ->
-            // Only what is still to come: what played and what plays are Soloist's.
-            val from = (fromIndex - current - 1).coerceAtLeast(0)
+            // Only what is still to come: what played and what plays are
+            // Soloist's. A removal reaching them is the player being emptied
+            // as it is let go (a handover to librespot), not an edit, and sent
+            // on it emptied Soloist's queue and left its device refusing plays.
+            if (fromIndex <= current) return@editSoloistQueue null
+            val from = fromIndex - current - 1
             val to = (toIndex - current - 1).coerceAtMost(next.size)
             if (from >= to) null else next.filterIndexed { i, _ -> i !in from until to }
         }

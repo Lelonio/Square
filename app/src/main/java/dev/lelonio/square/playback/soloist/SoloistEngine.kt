@@ -729,6 +729,12 @@ object SoloistEngine {
             Log.w(TAG, "play did not reach Soloist (try ${attempt + 1}): ${sent.exceptionOrNull()?.message}")
             Thread.sleep(750L * (attempt + 1))
         }
+        // Refused throughout: its Connect device is no longer what the account
+        // knows (a broken queue, a lost registration). A new run registers it
+        // again, and the player sends its queue once it is back; see [restarted].
+        Log.w(TAG, "Soloist refused every play: starting it again")
+        restarting = true
+        restart(app)
         return false
     }
 }
