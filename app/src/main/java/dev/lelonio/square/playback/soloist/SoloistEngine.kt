@@ -257,7 +257,7 @@ object SoloistEngine {
             return
         }
         val builder = ProcessBuilder(
-            SoloistRuntime.command(dir) + listOf(
+            SoloistRuntime.command(app, dir) + listOf(
                 "-n", "Square",
                 "-D", File(dir, "data").path,
                 "-C", File(dir, "cache").path,

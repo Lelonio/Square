@@ -11,9 +11,12 @@ import java.io.File
  * links), adjusted for Android's app sandbox, with two libraries of ours:
  * libsqaudit (a SIGSYS net for any system call the sandbox still refuses) and
  * libsqguard (keeps that net in place), and libpulse.so.0, which hands the
- * audio to Square. It ships in the APK's assets and is copied into the app's
- * own data dir, where it may run; Soloist itself is Spotify's and is
- * downloaded from Spotify (see SoloistDownload). The CA bundle is Android's own.
+ * audio to Square. It ships in the APK as native libraries (`libsq*.so`),
+ * which the installer puts in the native library dir: the only place an app
+ * targeting API 29+ may run code from. `lib/` in the data dir holds links
+ * under the names glibc looks for. Soloist itself is Spotify's, downloaded
+ * from Spotify (see SoloistDownload), and run from a memfd by libsqlaunch,
+ * since the data dir is not executable. The CA bundle is Android's own.
  *
  * Anything staged in the app's external files dir (`soloist/`) is copied over
  * it, for trying a build by hand.
@@ -29,14 +32,15 @@ object SoloistRuntime {
     fun isInstalled(context: Context): Boolean =
         binary(context).exists() || File(staged(context), "soloist").exists()
 
-    /** Copies the runtime out of the APK when it changed, then what is staged and newer; returns the dir. */
+    /** Links the runtime when the APK changed, then copies what is staged and newer; returns the dir. */
     fun install(context: Context): File {
         val dst = home(context)
-        installAssets(context, dst)
+        linkLibraries(context, dst)
         writeCertificates(dst)
         val src = staged(context)
         if (src.isDirectory) {
-            src.walkTopDown().filter { it.isFile }.forEach { file ->
+            // Not lib/: the runtime runs from the APK's native library dir.
+            src.walkTopDown().filter { it.isFile && !it.relativeTo(src).path.startsWith("lib") }.forEach { file ->
                 val out = File(dst, file.relativeTo(src).path)
                 if (!out.exists() || out.length() != file.length() || out.lastModified() < file.lastModified()) {
                     out.parentFile?.mkdirs()
@@ -51,23 +55,38 @@ object SoloistRuntime {
         return dst
     }
 
-    /** Once per APK: the runtime as this build ships it. */
-    private fun installAssets(context: Context, dst: File) {
-        val built = runCatching {
-            context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime.toString()
-        }.getOrDefault("0")
+    private fun native(context: Context) = File(context.applicationInfo.nativeLibraryDir)
+
+    /** glibc's names for the libraries the APK installs under its own. */
+    private val LINKS = linkedMapOf(
+        "ld-linux-aarch64.so.1" to "libsqld.so",
+        "libc.so.6" to "libsqc.so",
+        "libm.so.6" to "libsqm.so",
+        "libpthread.so.0" to "libsqpthread.so",
+        "libdl.so.2" to "libsqdl.so",
+        "librt.so.1" to "libsqrt.so",
+        "libgcc_s.so.1" to "libsqgcc.so",
+        "libatomic.so.1" to "libsqatomic.so",
+        "libpulse.so.0" to "libsqpulse.so",
+    )
+
+    /**
+     * `lib/` as glibc's loader looks for it: links to the native library dir,
+     * which moves with every install of the APK, so they are made again when
+     * it has. Mapping a library through a link maps the file it points to.
+     */
+    private fun linkLibraries(context: Context, dst: File) {
+        val native = native(context)
         val marker = File(dst, "runtime.version")
-        if (marker.exists() && marker.readText() == built && File(dst, "lib/libc.so.6").exists()) return
-        val lib = File(dst, "lib").apply { mkdirs() }
-        context.assets.list("soloist/lib").orEmpty().forEach { name ->
-            val out = File(lib, name)
-            val tmp = File(lib, "$name.tmp")
-            context.assets.open("soloist/lib/$name").use { input -> tmp.outputStream().use { input.copyTo(it) } }
-            tmp.setReadable(true, true)
-            tmp.setExecutable(true, true)
-            tmp.renameTo(out)
+        val lib = File(dst, "lib")
+        if (marker.exists() && marker.readText() == native.path && File(lib, "libc.so.6").exists()) return
+        lib.deleteRecursively()
+        lib.mkdirs()
+        LINKS.forEach { (name, installed) ->
+            runCatching { android.system.Os.symlink(File(native, installed).path, File(lib, name).path) }
+                .onFailure { android.util.Log.w("SoloistRuntime", "no link for $name: $it") }
         }
-        marker.writeText(built)
+        marker.writeText(native.path)
     }
 
     /**
@@ -100,21 +119,28 @@ object SoloistRuntime {
         SoloistEngine.refresh(context)
     }
 
-    /** The loader line every run starts with. */
-    fun command(dir: File): List<String> {
-        val lib = File(dir, "lib")
+    /**
+     * The line every run starts with: the launcher, which puts Soloist in a
+     * memfd, then glibc's loader on it.
+     */
+    fun command(context: Context, dir: File): List<String> {
+        val native = native(context)
         return listOf(
-            File(lib, "ld-linux-aarch64.so.1").path,
-            "--library-path", lib.path,
+            File(native, "libsqlaunch.so").path,
             File(dir, "soloist").path,
+            File(native, "libsqld.so").path,
+            "--library-path", File(dir, "lib").path,
+            "@BIN",
         )
     }
 
     fun environment(context: Context, dir: File, env: MutableMap<String, String>) {
-        val lib = File(dir, "lib")
+        val native = native(context)
         env["GLIBC_TUNABLES"] = "glibc.pthread.rseq=0"
-        env["LD_AUDIT"] = File(lib, "libsqaudit.so").path
-        env["LD_PRELOAD"] = File(lib, "libsqguard.so").path
+        // Renamed for the launcher, which runs under Android's linker and
+        // hands them to glibc's under their own names; see launch.c.
+        env["SQ_LD_AUDIT"] = File(native, "libsqaudit.so").path
+        env["SQ_LD_PRELOAD"] = File(native, "libsqguard.so").path
         env["SSL_CERT_FILE"] = File(dir, "ca.pem").path
         env["HOME"] = dir.path
         env["TMPDIR"] = context.cacheDir.path

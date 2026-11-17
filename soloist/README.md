@@ -9,24 +9,41 @@ its own glibc, and these pieces only adapt the process to Android.
 
 ## Runtime layout
 
-`SoloistRuntime` installs `getExternalFilesDir()/soloist` into
-`filesDir/soloist` and runs `lib/ld-linux-aarch64.so.1 --library-path lib soloist`:
+The app targets API 35, so nothing in its data directory may be executed or
+mapped as code. The runtime therefore ships as native libraries, extracted at
+install into the native library dir (`useLegacyPackaging`), from
+`app/src/soloist/jniLibs/arm64-v8a`:
 
-    soloist                 the official binary
-    key                     the user's Soloist key (never committed)
-    ca.pem                  CA bundle (SSL_CERT_FILE)
-    r                       resolv.conf written from the active network's DNS
-    lib/ld-linux-aarch64.so.1, libc.so.6   glibc 2.41, patched (below)
-    lib/libm, libpthread, libdl, librt, libgcc_s, libatomic.so.1
-    lib/libpulse.so.0       pulse/pulse.c
-    lib/libsqaudit.so       seccomp/audit.c (LD_AUDIT)
-    lib/libsqguard.so       seccomp/guard.c (LD_PRELOAD)
+    libsqlaunch.so    launch/launch.c, an Android executable
+    libsqld.so        glibc 2.41's ld-linux-aarch64.so.1, patched (below)
+    libsqc.so         libc.so.6, patched
+    libsqm, libsqpthread, libsqdl, libsqrt, libsqgcc, libsqatomic
+    libsqpulse.so     pulse/pulse.c (libpulse.so.0)
+    libsqaudit.so     seccomp/audit.c (LD_AUDIT)
+    libsqguard.so     seccomp/guard.c (LD_PRELOAD)
 
-Environment: `GLIBC_TUNABLES=glibc.pthread.rseq=0`, `LD_AUDIT`, `LD_PRELOAD`,
-`SSL_CERT_FILE`, `HOME`, `TMPDIR`, and for the audio `SQUARE_PCM_FIFO`,
-`SQUARE_XFADE_MS`, `SQUARE_XFADE_MAX_MS`, `SQUARE_XFADE_FLAG`.
+`SoloistRuntime` keeps in `filesDir/soloist`:
 
-targetSdk 28 is what lets the app execute files from its data directory.
+    soloist   the official binary, downloaded from Spotify's CDN
+    key       the user's Soloist key (never committed)
+    lib/      links under glibc's names (libc.so.6, ...) to the libraries above
+    ca.pem    Android's trusted roots, as one bundle
+    r         resolv.conf written from the active network's DNS
+    data/, cache/
+
+and runs
+
+    libsqlaunch.so soloist libsqld.so --library-path lib @BIN <soloist args>
+
+The launcher copies the binary into a memfd (mappable as code, as ART's JIT
+cache is) and execs the loader on `/proc/self/fd/N` in the same process.
+glibc's `LD_PRELOAD` and `LD_AUDIT` are passed as `SQ_LD_PRELOAD` and
+`SQ_LD_AUDIT`, which the launcher renames just before the exec, so Android's
+own linker, which starts the launcher, does not act on them.
+
+Environment: `GLIBC_TUNABLES=glibc.pthread.rseq=0`, `SSL_CERT_FILE`, `HOME`,
+`TMPDIR`, and for the audio `SQUARE_PCM_FIFO`, `SQUARE_XFADE_MS`,
+`SQUARE_XFADE_MAX_MS`, `SQUARE_XFADE_FLAG`.
 
 ## glibc patches
 
@@ -50,8 +67,8 @@ a threaded mainloop, a context and playback streams. Each stream's PCM goes to
 Square over a FIFO as packets (`SQPC`, a type, three bytes of padding, a
 little-endian length, the payload):
 
-    H  format: u32 rate, u32 channels
-    A  interleaved s16 PCM
+    H  format: u32 rate, u32 channels, u32 encoding (1 s16, 2 float)
+    A  interleaved PCM in that encoding
     P  pause    R  resume    F  flush
     N  the song after a dissolve is first heard
 
@@ -62,7 +79,11 @@ stream keeps what was ahead of the old song to fade under the new one.
 
 ## Building
 
-With the NDK's clang (`B=$ANDROID_SDK/ndk/*/toolchains/llvm/prebuilt/*/bin`) and
+The launcher, with the NDK's clang for Android:
+
+    $B/clang --target=aarch64-linux-android26 -O2 -o libsqlaunch.so launch/launch.c
+
+The rest with the NDK's clang (`B=$ANDROID_SDK/ndk/*/toolchains/llvm/prebuilt/*/bin`) and
 the patched `libc.so.6` to link against:
 
     $B/clang --target=aarch64-linux-gnu -fPIC -shared -nostdlib -O2 \
