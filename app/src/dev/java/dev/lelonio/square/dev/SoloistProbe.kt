@@ -37,6 +37,14 @@ class SoloistProbe : BroadcastReceiver() {
                 android.util.Log.i("SoloistProbe", "reset: ${home.list()?.joinToString()}")
                 return
             }
+            // As if Soloist had fallen over: killed, not asked to stop.
+            "crash" -> {
+                val engine = dev.lelonio.square.playback.soloist.SoloistEngine
+                val field = engine.javaClass.getDeclaredField("process").apply { isAccessible = true }
+                (field.get(engine) as? Process)?.destroyForcibly()
+                android.util.Log.i("SoloistProbe", "crashed Soloist")
+                return
+            }
             "stop" -> {
                 running?.destroy()
                 running = null

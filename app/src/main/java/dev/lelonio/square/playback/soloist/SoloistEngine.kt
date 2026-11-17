@@ -115,7 +115,38 @@ object SoloistEngine {
      * key, the binary, an account it signed in to). Chosen and not yet signed
      * in, librespot plays and Soloist waits on the network for the sign-in.
      */
-    fun isEnabled(context: Context): Boolean = isWanted(context) && isReady(context)
+    fun isEnabled(context: Context): Boolean = isWanted(context) && isReady(context) && _failed.value == null
+
+    /**
+     * Why Soloist was given up on for now, librespot playing meanwhile: it
+     * would not stay up, or its build ran out. Cleared by anything that may
+     * have mended it (a key, a new build, the choice made again, a new run of
+     * the app).
+     */
+    private val _failed = MutableStateFlow<String?>(null)
+    val failed: StateFlow<String?> = _failed.asStateFlow()
+
+    /** Exits in a row, each soon after it started. */
+    @Volatile
+    private var crashes = 0
+
+    private fun giveUp(reason: String?) {
+        Log.w(TAG, "giving up on Soloist for now: $reason")
+        _failed.value = reason ?: "Soloist stopped"
+        refresh(app)
+        // A build past its date is the likeliest cause, and the cure.
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            SoloistDownload.fetch(app, force = true)
+        }
+    }
+
+    /** Something changed that may let Soloist run again. */
+    fun retry(context: Context) {
+        crashes = 0
+        if (_failed.value == null) return
+        _failed.value = null
+        refresh(context)
+    }
 
     /** The listener's choice, kept from the moment it is made, the setup half done or not. */
     fun isWanted(context: Context): Boolean = prefs(context).getBoolean("enabled", false)
@@ -146,6 +177,7 @@ object SoloistEngine {
     }
 
     fun setEnabled(context: Context, enabled: Boolean) {
+        if (enabled) retry(context)
         val playing = _enabled.value == true
         prefs(context).edit().putBoolean("enabled", enabled).apply()
         refresh(context)
@@ -285,6 +317,7 @@ object SoloistEngine {
         builder.environment()["SQUARE_XFADE_FLAG"] = skipFlag(app).path
 
         val started = builder.start()
+        val startedAt = System.currentTimeMillis()
         process = started
         _state.update { it.copy(running = true) }
         Log.i(TAG, "started")
@@ -299,16 +332,33 @@ object SoloistEngine {
         val code = runCatching { started.waitFor() }.getOrNull()
         Log.i(TAG, "exited $code")
         // What it said last, when it did not mean to stop.
-        if (code != 0 && process === started) {
+        val unasked = process === started
+        var said: String? = null
+        if (code != 0 && unasked) {
             recent.forEach { Log.w(TAG, "| $it") }
-            val said = recent.lastOrNull { " E [" in it || "rror" in it } ?: recent.lastOrNull()
-            _setup.update { it.copy(error = said?.substringAfter("] ")?.trim()) }
+            said = (recent.lastOrNull { " E [" in it || "rror" in it } ?: recent.lastOrNull())
+                ?.replace(colour, "")?.substringAfter("] ")?.trim()
+            _setup.update { it.copy(error = said) }
         }
         ZeroConf.withdraw(app)
-        if (process === started) {
+        if (unasked) {
             process = null
             _state.value = State()
             StreamQuality.clear()
+        }
+        // Not asked to stop: up again, once, unless it keeps falling over
+        // soon after starting or its build has run out; then librespot plays
+        // until something changes.
+        if (unasked && isWanted(app)) {
+            val soon = System.currentTimeMillis() - startedAt < 30_000
+            crashes = if (soon) crashes + 1 else 1
+            val expired = (_setup.value.expiresInDays ?: 1) <= 0
+            if (expired || crashes >= 2) {
+                giveUp(said)
+            } else {
+                Thread.sleep(2000)
+                start(app)
+            }
         }
     }
 
@@ -336,6 +386,9 @@ object SoloistEngine {
         // device is announced for it, so the Spotify app sees it to sign in.
         zeroconfLine.find(line)?.let { ZeroConf.announce(app, it.groupValues[1].toInt(), it.groupValues[2]) }
         expiresLine.find(line)?.let { m -> _setup.update { it.copy(expiresInDays = m.groupValues[1].toInt()) } }
+        expiresLine.find(line)?.let { m ->
+            if (m.groupValues[1].toInt() <= 0) Log.w(TAG, "this Soloist build has expired")
+        }
         accountLine.find(line)?.let { m ->
             _setup.update { it.copy(account = m.groupValues[1], error = null) }
             // Signed in: with Soloist chosen, it is the engine from here on.

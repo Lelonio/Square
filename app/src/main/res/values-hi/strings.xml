@@ -713,4 +713,6 @@
     <string name="onboarding_engine_key_saved">कुंजी सहेजी गई</string>
     <string name="onboarding_engine_ready">Soloist तैयार है और आपका संगीत चलाएगा।</string>
     <string name="onboarding_optional">वैकल्पिक</string>
+    <string name="soloist_failed">Soloist चालू नहीं रह पा रहा, इसलिए librespot चल रहा है। Soloist का संदेश: %1$s</string>
+    <string name="soloist_retry">Soloist फिर से आज़माएं</string>
 </resources>

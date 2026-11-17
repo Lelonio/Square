@@ -1440,6 +1440,19 @@ private fun EngineSection() {
         )
         if (!soloist.chosen) return@Section
 
+        // Given up on for now: said, with the way back.
+        soloist.failed?.let { reason ->
+            RowDivider()
+            Text(
+                stringResource(R.string.soloist_failed, reason),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            )
+            RowDivider()
+            ActionRow(stringResource(R.string.soloist_retry), destructive = false) { soloist.choose(true) }
+        }
+
         // 1. The key.
         RowDivider()
         Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {

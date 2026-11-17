@@ -698,4 +698,6 @@
     <string name="onboarding_engine_key_saved">Schlüssel gespeichert</string>
     <string name="onboarding_engine_ready">Soloist ist bereit und spielt deine Musik.</string>
     <string name="onboarding_optional">Optional</string>
+    <string name="soloist_failed">Soloist läuft nicht stabil, daher spielt librespot. Soloist meldete: %1$s</string>
+    <string name="soloist_retry">Soloist erneut versuchen</string>
 </resources>

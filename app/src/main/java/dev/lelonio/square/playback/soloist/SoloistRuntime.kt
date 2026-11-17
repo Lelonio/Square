@@ -119,6 +119,7 @@ object SoloistRuntime {
     fun setKey(context: Context, key: String) {
         val file = File(home(context).apply { mkdirs() }, "key")
         if (key.isBlank()) file.delete() else file.writeText(key.trim())
+        SoloistEngine.retry(context)
         SoloistEngine.refresh(context)
     }
 

@@ -32,6 +32,8 @@ internal class SoloistSetupUi(
     val signedIn: Boolean,
     val account: String?,
     val error: String?,
+    /** Given up on for now, librespot playing: why. */
+    val failed: String?,
     val choose: (soloist: Boolean) -> Unit,
     val saveKey: (String) -> Unit,
     val fetch: () -> Unit,
@@ -45,6 +47,7 @@ internal fun rememberSoloistSetup(): SoloistSetupUi {
     val setup by SoloistEngine.setup.collectAsStateWithLifecycle()
     val running by SoloistEngine.state.collectAsStateWithLifecycle()
     val download by SoloistDownload.progress.collectAsStateWithLifecycle()
+    val failed by SoloistEngine.failed.collectAsStateWithLifecycle()
     var savedKey by remember { mutableStateOf(SoloistRuntime.key(context)) }
     var installed by remember { mutableStateOf(SoloistRuntime.binary(context).exists()) }
     val chosen = wanted == true
@@ -68,6 +71,7 @@ internal fun rememberSoloistSetup(): SoloistSetupUi {
         signedIn = running.loggedIn || account != null,
         account = account,
         error = setup.error,
+        failed = failed,
         // Kept at once: Soloist becomes the engine by itself when it has a
         // key, the binary and an account, wherever the listener is by then.
         choose = { soloist -> SoloistEngine.setEnabled(context, soloist) },

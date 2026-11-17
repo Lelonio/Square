@@ -704,4 +704,6 @@
     <string name="onboarding_engine_key_saved">Clave guardada</string>
     <string name="onboarding_engine_ready">Soloist está listo y reproducirá tu música.</string>
     <string name="onboarding_optional">Opcional</string>
+    <string name="soloist_failed">Soloist no consigue seguir funcionando, así que suena librespot. Soloist dijo: %1$s</string>
+    <string name="soloist_retry">Probar Soloist otra vez</string>
 </resources>

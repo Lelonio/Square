@@ -758,4 +758,6 @@
     <string name="onboarding_engine_key_saved">Đã lưu khóa</string>
     <string name="onboarding_engine_ready">Soloist đã sẵn sàng và sẽ phát nhạc của bạn.</string>
     <string name="onboarding_optional">Tùy chọn</string>
+    <string name="soloist_failed">Soloist không chạy ổn định nên librespot đang phát. Soloist báo: %1$s</string>
+    <string name="soloist_retry">Thử lại Soloist</string>
 </resources>

@@ -711,4 +711,6 @@
     <string name="onboarding_engine_key_saved">Anahtar kaydedildi</string>
     <string name="onboarding_engine_ready">Soloist hazır, müziğini çalacak.</string>
     <string name="onboarding_optional">İsteğe bağlı</string>
+    <string name="soloist_failed">Soloist çalışır durumda kalamıyor, bu yüzden librespot çalıyor. Soloist şunu dedi: %1$s</string>
+    <string name="soloist_retry">Soloist\'i yeniden dene</string>
 </resources>

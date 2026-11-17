@@ -754,5 +754,7 @@
     <string name="onboarding_engine_key_saved">キーを保存しました</string>
     <string name="onboarding_engine_ready">Soloistの準備ができました。音楽を再生します。</string>
     <string name="onboarding_optional">任意</string>
+    <string name="soloist_failed">Soloistが動作し続けられないため、librespotで再生しています。Soloistのメッセージ: %1$s</string>
+    <string name="soloist_retry">Soloistをもう一度試す</string>
 </resources>
 

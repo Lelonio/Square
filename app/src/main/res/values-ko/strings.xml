@@ -722,4 +722,6 @@
     <string name="onboarding_engine_key_saved">키 저장됨</string>
     <string name="onboarding_engine_ready">Soloist가 준비되어 음악을 재생합니다.</string>
     <string name="onboarding_optional">선택 사항</string>
+    <string name="soloist_failed">Soloist가 계속 실행되지 않아 librespot으로 재생 중입니다. Soloist 메시지: %1$s</string>
+    <string name="soloist_retry">Soloist 다시 시도</string>
 </resources>

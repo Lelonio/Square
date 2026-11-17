@@ -737,4 +737,6 @@
     <string name="onboarding_engine_key_saved">Chiave salvata</string>
     <string name="onboarding_engine_ready">Soloist è pronto e suonerà la tua musica.</string>
     <string name="onboarding_optional">Facoltativo</string>
+    <string name="soloist_failed">Soloist non riesce a restare acceso, quindi suona librespot. Soloist ha detto: %1$s</string>
+    <string name="soloist_retry">Riprova Soloist</string>
 </resources>

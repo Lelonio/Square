@@ -90,6 +90,7 @@ object SoloistDownload {
                 if (!tmp.renameTo(binary)) error("could not put the binary in place")
                 prefs.edit().putString("last_modified", response.header("Last-Modified")).apply()
                 Log.i(TAG, "Soloist downloaded (${binary.length()} bytes)")
+                SoloistEngine.retry(context)
                 SoloistEngine.refresh(context)
             }
             _progress.value = Progress.Done
