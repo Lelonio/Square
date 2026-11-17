@@ -2714,6 +2714,10 @@ private val LICENCES = listOf(
     "yt-dlp ejs" to "Unlicense",
     "meriyah" to "ISC",
     "astring" to "MIT",
+    // Soloist's runtime: Debian's glibc 2.41-12+deb13u5, patched as
+    // soloist/README.md in the source repository describes.
+    "GNU C Library (modified, for Soloist)" to "LGPL-2.1-or-later",
+    "libgcc_s, libatomic (for Soloist)" to "GPL-3.0 with GCC Runtime Library Exception",
 )
 
 private const val GITHUB_USER = "Lelonio"

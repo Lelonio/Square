@@ -98,3 +98,18 @@ the patched `libc.so.6` to link against:
     $B/clang --target=aarch64-linux-gnu -fPIC -shared -nostdlib -O2 \
       -fvisibility=hidden -fno-stack-protector -fuse-ld=lld \
       -Wl,-soname,libsqguard.so -o libsqguard.so seccomp/guard.c lib/libc.so.6
+
+## Licences
+
+- `libsqld.so`, `libsqc.so`, `libsqm.so`, `libsqpthread.so`, `libsqdl.so`,
+  `libsqrt.so`: the GNU C Library from Debian's `glibc 2.41-12+deb13u5`
+  (arm64), under the LGPL-2.1-or-later. Its source is Debian's source package
+  of that version (`apt-get source glibc=2.41-12+deb13u5`, or
+  snapshot.debian.org); the only changes are the byte patches listed under
+  "glibc patches" above, applied to the built ld.so and libc.so.6.
+- `libsqgcc.so`, `libsqatomic.so`: libgcc_s and libatomic from the same Debian
+  release, under the GPL-3.0 with the GCC Runtime Library Exception.
+- `pulse.c`, `audit.c`, `guard.c`, `launch.c`: Square's own.
+- Soloist itself is Spotify's: never redistributed here, downloaded from
+  Spotify's CDN on the user's device, and used with the user's own key under
+  Spotify's terms for Soloist.
