@@ -285,6 +285,8 @@ class PlaybackService : MediaLibraryService() {
             (mediaItem ?: player.currentMediaItem)?.let { if (maybeContinueDj(it)) return }
         }
         if (!container.preferences.autoplayInfinite.value) return
+        // A queue being handed between engines is not one running out.
+        if (handingOver || System.currentTimeMillis() - handedOverAt < HANDOVER_SETTLE_MS) return
         if (player.repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF) return
 
         val current = (if (video) null else mediaItem) ?: player.currentMediaItem ?: return
@@ -988,8 +990,13 @@ class PlaybackService : MediaLibraryService() {
         val playing = player.playWhenReady
         // The queue as it is on screen, at the song just reached: what was
         // saved may still be the other engine's view of a moment ago.
-        val items = (0 until player.mediaItemCount).map(player::getMediaItemAt)
-        val index = items.indexOfFirst { it.mediaId == uri }
+        // Soloist's whole list where it has one: its timeline is only the
+        // window Soloist reports, and just after a change of song barely that,
+        // which left librespot near the end of a queue and autoplay adding a
+        // radio of what had just played.
+        val whole = (player as? dev.lelonio.square.playback.soloist.SoloistPlayer)?.handOverList(uri)
+        val items = whole?.first ?: (0 until player.mediaItemCount).map(player::getMediaItemAt)
+        val index = whole?.second ?: items.indexOfFirst { it.mediaId == uri }
             .takeIf { it >= 0 } ?: player.currentMediaItemIndex
         if (items.isEmpty()) return
         handingOver = true

@@ -450,8 +450,31 @@ class SoloistPlayer(
         return done()
     }
 
+    /**
+     * The whole list this player was last given, with what was queued and
+     * edited since: Soloist reports only a window of it, and right after a
+     * change of song not even that, so a handover to librespot goes from this.
+     */
+    private var fullList: List<MediaItem> = emptyList()
+
+    /** The list to hand to another player at [uri], and where in it [uri] is. */
+    fun handOverList(uri: String): Pair<List<MediaItem>, Int>? {
+        val list = fullList
+        val at = list.indexOfFirst { it.mediaId == uri }
+        return if (at >= 0) list to at else null
+    }
+
+    /** [fullList] with [edit] made to what follows the song Soloist plays. */
+    private fun editFullList(edit: (after: List<MediaItem>) -> List<MediaItem>) {
+        val list = fullList
+        val at = state.uri?.let { uri -> list.indexOfFirst { it.mediaId == uri } } ?: -1
+        if (at < 0) return
+        fullList = list.take(at + 1) + edit(list.drop(at + 1))
+    }
+
     override fun handleSetMediaItems(mediaItems: List<MediaItem>, startIndex: Int, startPositionMs: Long): ListenableFuture<*> {
         remember(mediaItems)
+        fullList = mediaItems
         local = mediaItems
         localIndex = startIndex.takeIf { it != C.INDEX_UNSET }?.coerceIn(0, maxOf(0, mediaItems.lastIndex)) ?: 0
         localPosition = startPositionMs.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0) ?: 0
@@ -470,7 +493,8 @@ class SoloistPlayer(
             local = waiting.take(at) + mediaItems + waiting.drop(at)
         } else {
             // Soloist's own queue, which is Spotify's: it shows up in the
-            // queue it publishes, where Spotify puts it.
+            // queue it publishes, where Spotify puts it: right after the song.
+            editFullList { after -> mediaItems + after }
             mediaItems.map { it.mediaId }.filter { it.startsWith("spotify:track:") || it.startsWith("spotify:episode:") }
                 .forEach(SoloistEngine::addToQueue)
         }
@@ -540,6 +564,13 @@ class SoloistPlayer(
         unfreeze()
         val now = state
         val edited = edit(now.upcoming, now.previous.size) ?: return done()
+        val kept = edited.map { it.song.uri }
+        editFullList { after ->
+            // In the edited order where Soloist's window reaches, the rest as it was.
+            val window = after.take(now.upcoming.size)
+            val byUri = window.groupBy { it.mediaId }.mapValues { it.value.toMutableList() }
+            kept.mapNotNull { uri -> byUri[uri]?.removeFirstOrNull() } + after.drop(now.upcoming.size)
+        }
         SoloistEngine.expectQueue(edited)
         state = SoloistEngine.state.value
         invalidateState()
