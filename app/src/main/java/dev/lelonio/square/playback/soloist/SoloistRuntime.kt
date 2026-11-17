@@ -57,6 +57,9 @@ object SoloistRuntime {
 
     private fun native(context: Context) = File(context.applicationInfo.nativeLibraryDir)
 
+    /** Soloist is built for arm64 only: elsewhere the APK carries no runtime and it is not offered. */
+    fun isSupported(context: Context): Boolean = File(native(context), "libsqlaunch.so").exists()
+
     /** glibc's names for the libraries the APK installs under its own. */
     private val LINKS = linkedMapOf(
         "ld-linux-aarch64.so.1" to "libsqld.so",

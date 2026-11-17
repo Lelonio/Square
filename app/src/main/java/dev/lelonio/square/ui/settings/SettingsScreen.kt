@@ -438,7 +438,8 @@ fun SettingsScreen(
             BackendSection()
         }
 
-        if (shown == SettingsPage.Playback && showSpotify && "sound" in openGroups) groupItem("engine", Group.SOUND) {
+        if (shown == SettingsPage.Playback && showSpotify && "sound" in openGroups &&
+            dev.lelonio.square.playback.soloist.SoloistRuntime.isSupported(context)) groupItem("engine", Group.SOUND) {
             EngineSection()
         }
 

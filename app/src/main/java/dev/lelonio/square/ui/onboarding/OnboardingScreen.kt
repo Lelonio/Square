@@ -91,7 +91,11 @@ fun OnboardingScreen(
 ) {
     var step by remember { mutableIntStateOf(0) }
     val loggedIn = state is MainViewModel.UiState.Ready
-    val last = STEP_COUNT - 1
+    // The engine page only where Soloist runs (arm64).
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val engine = remember { dev.lelonio.square.playback.soloist.SoloistRuntime.isSupported(context) }
+    val stepCount = if (engine) STEP_COUNT else STEP_COUNT - 1
+    val last = stepCount - 1
 
     SetupScaffold(
         top = {
@@ -105,7 +109,7 @@ fun OnboardingScreen(
             )
         },
         bottom = {
-            StepDots(STEP_COUNT, step)
+            StepDots(stepCount, step)
             Spacer(Modifier.weight(1f))
             PrimaryButton(
                 stringResource(if (step == last) R.string.onboarding_start else R.string.next_step),
@@ -142,7 +146,7 @@ fun OnboardingScreen(
                     )
                     2 -> Dashboard(redirectUri = webApi.redirectUri)
                     3 -> ClientId(webApi, onClientIdChange, onConnectWebApi)
-                    4 -> Engine()
+                    4 -> if (engine) Engine() else Done()
                     else -> Done()
                 }
                 Spacer(Modifier.height(28.dp))
