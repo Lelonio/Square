@@ -646,6 +646,53 @@ object SoloistEngine {
         return play(context, uris[index], index, positionMs, paused)
     }
 
+    /**
+     * Soloist's queue in a new order, or with songs taken out: a Connect
+     * `set_queue` to its device, as the Spotify app sends when its queue is
+     * edited. [previous] oldest first, [next] next first. Blocking; call it
+     * off the main thread.
+     */
+    fun setQueue(previous: List<QueueEntry>, next: List<QueueEntry>): Boolean {
+        val device = deviceId ?: return false
+        val revision = runCatching {
+            JSONObject(dev.lelonio.square.nativecore.NativeBridge.remoteState())
+                .takeIf { it.optString("activeDevice") == device }
+                ?.optString("queueRevision")
+        }.getOrNull().orEmpty()
+        fun tracks(entries: List<QueueEntry>) = JSONArray().apply {
+            entries.forEach { entry ->
+                put(
+                    JSONObject()
+                        .put("uri", entry.song.uri)
+                        .put("uid", entry.uid)
+                        .put("provider", entry.source)
+                        .put(
+                            "metadata",
+                            JSONObject().apply { if (entry.source == "queue") put("is_queued", "true") },
+                        ),
+                )
+            }
+        }
+        val body = JSONObject().put(
+            "command",
+            JSONObject()
+                .put("endpoint", "set_queue")
+                .put("next_tracks", tracks(next))
+                .put("prev_tracks", tracks(previous))
+                .put("queue_revision", revision)
+                .put("logging_params", JSONObject()),
+        )
+        Log.i(TAG, "queue set: ${previous.size} before, ${next.size} next (revision ${revision.take(8)})")
+        return runCatching { dev.lelonio.square.nativecore.NativeBridge.remoteCommand(device, body.toString()) }
+            .onFailure { Log.w(TAG, "queue not set: ${it.message}") }
+            .isSuccess
+    }
+
+    /** Shows a queue edited here until Soloist reports it, which it does a moment later. */
+    fun expectQueue(next: List<QueueEntry>) {
+        _state.update { it.copy(upcoming = next) }
+    }
+
     /** The list Square plays when it is not a context of Spotify's. */
     const val LIST_CONTEXT = "spotify:internal:square"
 

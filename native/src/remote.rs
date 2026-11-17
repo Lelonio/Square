@@ -223,7 +223,7 @@ pub fn state_json() -> String {
             "{{\"activeDevice\":{},\"deviceName\":{},\"uri\":{},\"title\":{},",
             "\"artist\":{},\"album\":{},\"coverUri\":{},\"contextUri\":{},\"positionMs\":{},",
             "\"durationMs\":{},\"playing\":{},\"shuffle\":{},\"repeatContext\":{},",
-            "\"repeatTrack\":{},\"next\":{}}}"
+            "\"repeatTrack\":{},\"next\":{},\"queueRevision\":{}}}"
         ),
         escape(&cluster.active_device_id),
         escape(device.map(|device| device.name.as_str()).unwrap_or("")),
@@ -240,6 +240,9 @@ pub fn state_json() -> String {
         player.options.repeating_context,
         player.options.repeating_track,
         next,
+        // What a `set_queue` sent to the active device must name: the queue
+        // it changes, as that device last published it.
+        escape(&player.queue_revision),
     )
 }
 

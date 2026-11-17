@@ -479,7 +479,12 @@ class SoloistPlayer(
     }
 
     override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> {
-        val waiting = local ?: return done()
+        val waiting = local ?: return editSoloistQueue { next, current ->
+            // Only what is still to come: what played and what plays are Soloist's.
+            val from = (fromIndex - current - 1).coerceAtLeast(0)
+            val to = (toIndex - current - 1).coerceAtMost(next.size)
+            if (from >= to) null else next.filterIndexed { i, _ -> i !in from until to }
+        }
         if (sentUri != null) return done()
         val kept = waiting.filterIndexed { i, _ -> i !in fromIndex until toIndex }
         if (localIndex in fromIndex until toIndex) localPosition = 0
@@ -494,7 +499,20 @@ class SoloistPlayer(
     }
 
     override fun handleMoveMediaItems(fromIndex: Int, toIndex: Int, newIndex: Int): ListenableFuture<*> {
-        val waiting = local?.toMutableList() ?: return done()
+        val waiting = local?.toMutableList() ?: return editSoloistQueue { next, current ->
+            val from = fromIndex - current - 1
+            val to = toIndex - current - 1
+            val at = newIndex - current - 1
+            if (from < 0 || to > next.size || at < 0 || from >= to) {
+                null
+            } else {
+                val edited = next.toMutableList()
+                val moved = edited.subList(from, to).toList()
+                edited.subList(from, to).clear()
+                edited.addAll(at.coerceAtMost(edited.size), moved)
+                edited
+            }
+        }
         if (sentUri != null) return done()
         val currentItem = waiting.getOrNull(localIndex)
         val moved = waiting.subList(fromIndex, toIndex).toList()
@@ -503,6 +521,26 @@ class SoloistPlayer(
         local = waiting
         localIndex = waiting.indexOf(currentItem).coerceAtLeast(0)
         invalidateState()
+        return done()
+    }
+
+    /**
+     * An edit of Soloist's own queue, made in the songs still to come: [edit]
+     * gets them and the playing song's index in the list shown, and returns
+     * them changed, or null when there is nothing it may change. Shown at
+     * once; Soloist is told with a Connect `set_queue`.
+     */
+    private fun editSoloistQueue(
+        edit: (next: List<SoloistEngine.QueueEntry>, current: Int) -> List<SoloistEngine.QueueEntry>?,
+    ): ListenableFuture<*> {
+        unfreeze()
+        val now = state
+        val edited = edit(now.upcoming, now.previous.size) ?: return done()
+        SoloistEngine.expectQueue(edited)
+        state = SoloistEngine.state.value
+        invalidateState()
+        val previous = now.previous.reversed()
+        scope.launch(Dispatchers.IO) { SoloistEngine.setQueue(previous, edited) }
         return done()
     }
 

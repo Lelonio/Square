@@ -37,6 +37,20 @@ class SoloistProbe : BroadcastReceiver() {
                 android.util.Log.i("SoloistProbe", "reset: ${home.list()?.joinToString()}")
                 return
             }
+            // Swaps the next two songs in Soloist's queue, and drops the third.
+            "queue" -> {
+                val engine = dev.lelonio.square.playback.soloist.SoloistEngine
+                val now = engine.state.value
+                val next = now.upcoming.toMutableList()
+                if (next.size >= 3) {
+                    val first = next.removeAt(0)
+                    next.add(1, first)
+                    next.removeAt(2)
+                }
+                android.util.Log.i("SoloistProbe", "queue was ${now.upcoming.take(3).map { it.song.uri }}, now ${next.take(2).map { it.song.uri }}")
+                kotlin.concurrent.thread { engine.setQueue(now.previous.reversed(), next) }
+                return
+            }
             // As if Soloist had fallen over: killed, not asked to stop.
             "crash" -> {
                 val engine = dev.lelonio.square.playback.soloist.SoloistEngine
