@@ -629,6 +629,16 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePla
     librespot_playback::player::PLAYING_KBPS.load(std::sync::atomic::Ordering::Relaxed) as jint
 }
 
+/// Keeps this device out of the account's device lists (Soloist plays here).
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetConnectHidden(
+    _env: JNIEnv,
+    _class: JClass,
+    hidden: jni::sys::jboolean,
+) {
+    librespot_connect::HIDE_DEVICE.store(hidden != 0, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Rebuilds the player with a new bitrate and crossfade.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetQuality(

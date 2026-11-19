@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class PreferencesStore(context: Context) {
 
+    private val appContext: Context = context.applicationContext
+
     private val prefs = context.applicationContext
         .getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
 
@@ -370,6 +372,7 @@ class PreferencesStore(context: Context) {
         runCatching {
             dev.lelonio.square.nativecore.NativeBridge.setSkipFade(skipFadeMs())
         }
+        runCatching { dev.lelonio.square.playback.soloist.SoloistEngine.writeDissolves(appContext) }
     }
 
     /** What the engine and the other source are told, in milliseconds. */

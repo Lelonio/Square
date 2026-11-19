@@ -1189,15 +1189,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .take(MOVE_LIST_MAX)
             val at = solo.anchor?.let { if (solo.playing) it.now() else it.positionMs } ?: positionMs
             android.util.Log.i(TAG, "moving Square's list to $deviceId: ${uris.size} songs at $at ms")
-            runCatching { container.api.playUris(deviceId, dev.lelonio.square.data.PlayUrisRequestDto(uris, positionMs = at)) }
-                .onSuccess {
-                    delay(TRANSFER_SETTLE_MS)
-                    refreshDevices()
+            val web = runCatching { container.api.playUris(deviceId, dev.lelonio.square.data.PlayUrisRequestDto(uris, positionMs = at)) }
+                .onFailure { android.util.Log.w(TAG, "list move by the Web API failed: ${chain(it)}") }
+            val moved = web.isSuccess ||
+                // A phone's Spotify app is not started by the Web API
+                // ("Restriction violated", and a 429 from the second token
+                // tried after it): the same play Soloist is sent, over Connect.
+                withContext(Dispatchers.IO) {
+                    val source = dev.lelonio.square.playback.soloist.SoloistEngine.listSource
+                    // Named after the playlist the songs came from: Square's
+                    // own name for its list is refused (400) by a device that
+                    // is not this phone. The songs and their order go along.
+                    (source != null && dev.lelonio.square.playback.soloist.SoloistEngine.playListOn(deviceId, uris, 0, at, source)) ||
+                        dev.lelonio.square.playback.soloist.SoloistEngine.playListOn(deviceId, uris, 0, at, uris.first())
                 }
-                .onFailure {
-                    android.util.Log.e(TAG, "list move failed: ${chain(it)}", it)
-                    _devices.value = _devices.value.copy(error = describe(it))
-                }
+            if (moved) {
+                delay(TRANSFER_SETTLE_MS)
+                refreshDevices()
+            } else {
+                android.util.Log.e(TAG, "list move failed")
+                _devices.value = _devices.value.copy(error = describe(web.exceptionOrNull() ?: IllegalStateException()))
+            }
             return
         }
 

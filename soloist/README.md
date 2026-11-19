@@ -43,7 +43,7 @@ own linker, which starts the launcher, does not act on them.
 
 Environment: `GLIBC_TUNABLES=glibc.pthread.rseq=0`, `SSL_CERT_FILE`, `HOME`,
 `TMPDIR`, and for the audio `SQUARE_PCM_FIFO`, `SQUARE_XFADE_MS`,
-`SQUARE_XFADE_MAX_MS`, `SQUARE_XFADE_FLAG`.
+`SQUARE_XFADE_MAX_MS`, `SQUARE_XFADE_FLAG`, `SQUARE_XFADE_CONF`.
 
 ## glibc patches
 
@@ -71,11 +71,28 @@ little-endian length, the payload):
     A  interleaved PCM in that encoding
     P  pause    R  resume    F  flush
     N  the song after a dissolve is first heard
+    L  u32 ms of music given by Soloist and not yet heard, five times a second
 
 `SoloistAudio` reads them into Square's own AudioOutput, so the equaliser,
 karaoke, reverb, speed and pitch apply. Crossfades are made here: Square writes
 the dissolve length to the `SQUARE_XFADE_FLAG` file before a skip, and the
 stream keeps what was ahead of the old song to fade under the new one.
+`SQUARE_XFADE_CONF` names a file (`<ms kept ahead> <dissolve ms>`) read again
+each second, so a change of the crossfade or skip fade needs no new run of
+Soloist; the environment's values stand until it exists.
+
+Soloist announces a song when it decodes it, as far ahead of the music as the
+stream keeps (`L`): the player shows it once that much has been heard, and its
+position runs from the music written to the output, not from the clock.
+
+Soloist makes its own crossfade when the account's playback settings on
+Spotify's side say so (`getAudioTransition: crossfade` in its log); nothing
+here turns it off, and Square then makes none of its own over it.
+
+Teardown: jobs still queued for a stream or a context are taken out when it is
+let go of, and mainloops and contexts are not freed (a stream let go of after
+them still reaches them); freed memory read there crashed Soloist (SIGSEGV)
+whenever playback moved to another device.
 
 ## Building
 

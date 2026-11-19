@@ -253,6 +253,8 @@ struct pa_context {
 };
 
 #define RING_MS 1500
+/* The longest dissolve the app's settings offer, and a little over. */
+#define XFADE_CAP_MS 12000
 
 struct pa_stream {
     pa_context *ctx;
@@ -280,6 +282,7 @@ struct pa_stream {
     int held;
     uint64_t held_since;
     int64_t written, played;
+    uint64_t ahead_told;
     pa_timing_info timing;
     /* drain */
     pthread_t drain;
@@ -302,6 +305,29 @@ static void post(pa_threaded_mainloop *m, void (*fn)(void *, void *, void *), vo
     job **tail = &m->jobs;
     while (*tail) tail = &(*tail)->next;
     *tail = j;
+    pthread_mutex_unlock(&m->lock);
+}
+
+static void ctx_sink_input_info(void *a, void *b, void *c);
+
+/* Takes out what is still to run for an object about to go: a job left for a
+ * stream or a context Soloist has let go of ran on freed memory, and Soloist
+ * died of it (SIGSEGV) moments after closing its audio driver, which is every
+ * time playback moved to another device. */
+static void purge(pa_threaded_mainloop *m, void *a) {
+    if (!m) return;
+    pthread_mutex_lock(&m->lock);
+    job **at = &m->jobs;
+    while (*at) {
+        job *j = *at;
+        if (j->a == a) {
+            *at = j->next;
+            if (j->fn == ctx_sink_input_info) free(j->b);
+            free(j);
+        } else {
+            at = &j->next;
+        }
+    }
     pthread_mutex_unlock(&m->lock);
 }
 
@@ -359,10 +385,17 @@ EXPORT void pa_threaded_mainloop_stop(pa_threaded_mainloop *m) {
 
 EXPORT void pa_threaded_mainloop_free(pa_threaded_mainloop *m) {
     pa_threaded_mainloop_stop(m);
-    while (m->jobs) { job *j = m->jobs; m->jobs = j->next; free(j); }
-    pthread_cond_destroy(&m->cond);
-    pthread_mutex_destroy(&m->lock);
-    free(m);
+    pthread_mutex_lock(&m->lock);
+    while (m->jobs) {
+        job *j = m->jobs;
+        m->jobs = j->next;
+        if (j->fn == ctx_sink_input_info) free(j->b);
+        free(j);
+    }
+    pthread_mutex_unlock(&m->lock);
+    /* Not freed: a context or a stream let go of after their mainloop still
+     * reaches it (to take their jobs out), and a few hundred bytes per audio
+     * driver Soloist builds are nothing beside a crash. */
 }
 
 EXPORT void pa_threaded_mainloop_lock(pa_threaded_mainloop *m) { pthread_mutex_lock(&m->lock); }
@@ -420,7 +453,13 @@ EXPORT void pa_context_disconnect(pa_context *c) {
 
 EXPORT int pa_context_get_state(const pa_context *c) { return c->state; }
 EXPORT int pa_context_errno(const pa_context *c) { (void)c; return 0; }
-EXPORT void pa_context_unref(pa_context *c) { free(c); }
+/* Its jobs taken out, but the memory kept: a stream unreferenced after its
+ * context still reads it. */
+EXPORT void pa_context_unref(pa_context *c) {
+    if (!c) return;
+    purge(c->loop, c);
+    c->state_cb = NULL;
+}
 
 EXPORT void pa_context_set_subscribe_callback(pa_context *c, pa_context_subscribe_cb_t cb, void *ud) {
     (void)c; (void)cb; (void)ud;
@@ -549,6 +588,58 @@ static void stream_success(void *a, void *b, void *c) {
     if (cb) cb(a, 1, c);
 }
 
+/* The dissolves Square asks for, from SQUARE_XFADE_CONF ("<most ahead ms>
+ * <dissolve ms>"), read again at most once a second: changed in the app's
+ * settings, they apply to the next song without Soloist being started again,
+ * which stopped the music. The environment's values until the file says. */
+static long g_conf_most = -1, g_conf_dissolve = -1;
+static uint64_t g_conf_read;
+
+static void read_conf(void) {
+    uint64_t t = now_us();
+    if (g_conf_read && t - g_conf_read < 1000000) return;
+    g_conf_read = t;
+    const char *p = getenv("SQUARE_XFADE_CONF");
+    if (!p || !*p) return;
+    int fd = open(p, 0);
+    if (fd < 0) return;
+    char b[64];
+    ssize_t n = read(fd, b, sizeof b - 1);
+    close(fd);
+    if (n <= 0) return;
+    b[n] = 0;
+    char *end = NULL;
+    long most = strtol(b, &end, 10);
+    long dissolve = end ? strtol(end, NULL, 10) : -1;
+    if (most >= 0) g_conf_most = most;
+    if (dissolve >= 0) g_conf_dissolve = dissolve;
+}
+
+static long conf_most(void) {
+    read_conf();
+    if (g_conf_most >= 0) return g_conf_most;
+    const char *most = getenv("SQUARE_XFADE_MAX_MS");
+    return most ? strtol(most, NULL, 10) : 0;
+}
+
+static long conf_dissolve(void) {
+    read_conf();
+    if (g_conf_dissolve >= 0) return g_conf_dissolve;
+    const char *ms = getenv("SQUARE_XFADE_MS");
+    return ms ? strtol(ms, NULL, 10) : 0;
+}
+
+/* Kept ahead of what is heard: the longest dissolve asked for, half a second
+ * over, and never less than the ring's own. */
+static size_t target_bytes(const pa_stream *s) {
+    long ahead = conf_most();
+    if (ahead > XFADE_CAP_MS) ahead = XFADE_CAP_MS;
+    ahead += 500;
+    if (ahead < RING_MS) ahead = RING_MS;
+    size_t want = pa_usec_to_bytes((uint64_t)ahead * 1000ul, &s->spec);
+    return want < s->cap ? want : s->cap;
+}
+
 EXPORT pa_stream *pa_stream_new_with_proplist(pa_context *c, const char *name, const pa_sample_spec *ss,
                                               const pa_channel_map *map, pa_proplist *p) {
     (void)name; (void)map; (void)p;
@@ -559,11 +650,9 @@ EXPORT pa_stream *pa_stream_new_with_proplist(pa_context *c, const char *name, c
     pa_cvolume_set(&s->volume, ss->channels, PA_VOLUME_NORM);
     /* Room ahead for the longest dissolve Square may ask for: the rest of a
      * song ending under a crossfade is what is kept in here. */
-    const char *most = getenv("SQUARE_XFADE_MAX_MS");
-    long ahead = most ? strtol(most, NULL, 10) + 500 : 0;
-    if (ahead < RING_MS) ahead = RING_MS;
-    s->cap = pa_usec_to_bytes((uint64_t)ahead * 1000ul, ss);
-    s->target = s->cap;
+    /* Room for the longest the settings allow, offered as far as they ask. */
+    s->cap = pa_usec_to_bytes((uint64_t)(XFADE_CAP_MS + 500) * 1000ul, ss);
+    s->target = target_bytes(s);
     s->ring = malloc(s->cap);
     s->fd = -1;
     c->stream = s;
@@ -707,6 +796,15 @@ static void *drain_main(void *arg) {
             apply_volume(s, buf, n);
             if (s->to_square) {
                 if (heard_new) send('N', NULL, 0);
+                /* How much music Soloist has given that is not heard yet, five
+                 * times a second: how far ahead of the music its word on the
+                 * song is (a song it announces is heard that much later). */
+                uint64_t t = now_us();
+                if (t - s->ahead_told > 200000) {
+                    s->ahead_told = t;
+                    uint32_t ms = (uint32_t)((uint64_t)s->used * 1000u / ((uint64_t)s->spec.rate * s->frame));
+                    send('L', &ms, sizeof ms);
+                }
                 if (s->spec.format == PA_SAMPLE_FLOAT32LE) {
                     /* As Soloist made it: a 24-bit FLAC loses nothing in float. */
                     send('A', buf, (uint32_t)n);
@@ -809,12 +907,24 @@ EXPORT int pa_stream_disconnect(pa_stream *s) {
 }
 
 EXPORT void pa_stream_unref(pa_stream *s) {
+    if (!s) return;
+    pa_threaded_mainloop *m = s->ctx ? s->ctx->loop : NULL;
+    /* Let go of without a disconnect: the drain thread still reads it. */
+    if (s->draining && m) {
+        s->draining = 0;
+        /* The drain takes the lock for each chunk: let go of it, if held. */
+        int held = pthread_mutex_unlock(&m->lock) == 0;
+        pthread_join(s->drain, NULL);
+        if (held) pthread_mutex_lock(&m->lock);
+    }
+    purge(m, s);
     if (s->ctx && s->ctx->stream == s) s->ctx->stream = NULL;
     free(s->ring);
     free(s);
 }
 
 EXPORT size_t pa_stream_writable_size(const pa_stream *s) {
+    ((pa_stream *)s)->target = target_bytes(s);
     size_t room = s->used >= s->target ? 0 : s->target - s->used;
     return room - room % s->frame;
 }
@@ -893,9 +1003,8 @@ static long flag_ms(void) {
 }
 
 static size_t xfade_bytes(pa_stream *s) {
-    const char *ms = getenv("SQUARE_XFADE_MS");
     long v = flag_ms();
-    if (v <= 0) v = ms ? strtol(ms, NULL, 10) : 0;
+    if (v <= 0) v = conf_dissolve();
     if (v <= 0 || s->spec.format != PA_SAMPLE_FLOAT32LE) return 0;
     return pa_usec_to_bytes((uint64_t)v * 1000ul, &s->spec);
 }

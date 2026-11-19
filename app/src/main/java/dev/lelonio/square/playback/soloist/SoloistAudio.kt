@@ -34,6 +34,33 @@ object SoloistAudio {
      */
     val newSongHeard = kotlinx.coroutines.flow.MutableStateFlow(0)
 
+    /**
+     * Bumped when music reaches the output after a stop: the moment a player
+     * handing over to Soloist can let its own song go without a silence.
+     */
+    val sounding = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    /** Microseconds of Soloist's music written to the output, ever: a clock that runs as the music does. */
+    private val playedUs = java.util.concurrent.atomic.AtomicLong(0)
+
+    /**
+     * How much music has gone out, in milliseconds of the song: it moves at
+     * the tempo the output plays it at (whatever the listener set, as the
+     * stretcher makes it) and stops when the music does.
+     */
+    fun playedMs(): Double = playedUs.get() / 1000.0
+
+    /**
+     * How much music Soloist has handed libpulse that is not heard yet, as
+     * libpulse tells it five times a second: Soloist's word on the song runs
+     * this far ahead of the music.
+     */
+    @Volatile
+    var aheadMs: Int = 0
+        private set
+    @Volatile
+    private var awaitingSound = true
+
     /** Soloist's output, for the player to start and stop with the music. */
     val output = dev.lelonio.square.playback.AudioOutput()
 
@@ -128,8 +155,13 @@ object SoloistAudio {
                     direct.put(bytes, 0, length)
                     direct.flip()
                     if (float) output.writeFloat(direct, length, rate, channels) else output.write(direct, length, rate, channels)
+                    if (awaitingSound) {
+                        awaitingSound = false
+                        sounding.value++
+                    }
                     audioBytes += length
                     val perSecond = rate * channels * (if (float) 4L else 2L)
+                    playedUs.addAndGet(length * 1_000_000L / perSecond)
                     if (audioBytes / (perSecond * 10) != (audioBytes - length) / (perSecond * 10)) {
                         Log.i(TAG, "${audioBytes / perSecond} s of audio played")
                     }
@@ -139,9 +171,13 @@ object SoloistAudio {
                 // song resumes too, and starting a running output faded it to
                 // nothing in the middle of the dissolve.
                 'R' -> { Log.i(TAG, "resume"); resumeNow() }
-                'P' -> { Log.i(TAG, "pause"); pauseNow() }
+                'P' -> { Log.i(TAG, "pause"); pauseNow(); awaitingSound = true }
                 'F' -> Log.i(TAG, "flush")
                 'N' -> newSongHeard.value++
+                'L' -> {
+                    val told = ByteArray(length).also { input.readFully(it) }
+                    if (length >= 4) aheadMs = ByteBuffer.wrap(told).order(ByteOrder.LITTLE_ENDIAN).int
+                }
                 else -> input.skipBytes(length)
             }
         }

@@ -42,8 +42,26 @@ object SoloistEngine {
 
     /** The position Soloist reported, and the moment it was true. */
     data class Anchor(val positionMs: Long, val atMs: Long, val speed: Double) {
-        fun now(): Long =
-            positionMs + ((System.currentTimeMillis() - atMs).coerceAtLeast(0) * speed).toLong()
+        /**
+         * The music gone out when this was taken (later, for a song still
+         * behind the one heard); not part of what makes two the same.
+         */
+        var audioAtMs: Double = SoloistAudio.playedMs()
+
+        /**
+         * Where the song is now: as far on from [positionMs] as the music that
+         * has gone out since. Not the clock times a speed: the tempo the
+         * listener sets is done on the way out of Soloist, and the music moves
+         * at what the stretcher makes of it, which is close to the slider and
+         * not quite it. Reckoned by the clock, the lyrics drifted from the
+         * song between two reports of Soloist's, more the longer it played.
+         * Paused (or waiting for data) the music stops, and so does this.
+         */
+        fun now(): Long {
+            if (speed == 0.0) return positionMs
+            val gone = SoloistAudio.playedMs() - audioAtMs
+            return positionMs + gone.coerceAtLeast(0.0).toLong()
+        }
     }
 
     /** A song as Soloist describes it, with what the player shows of it. */
@@ -215,12 +233,25 @@ object SoloistEngine {
 
     // ------------------------------------------------------------- lifecycle
 
+    /** Between a start and its process being there: a second start meanwhile ran a second Soloist. */
+    @Volatile
+    private var launching = false
+
     @Synchronized
     fun start(context: Context) {
         app = context.applicationContext
         dev.lelonio.square.playback.HiFi.init(app)
-        if (process?.isAlive == true) return
-        thread(name = "soloist-launch") { runCatching { launch() }.onFailure { Log.e(TAG, "start failed", it) } }
+        if (process?.isAlive == true || launching) return
+        launching = true
+        thread(name = "soloist-launch") {
+            try {
+                launch()
+            } catch (t: Throwable) {
+                Log.e(TAG, "start failed", t)
+            } finally {
+                launching = false
+            }
+        }
     }
 
     @Synchronized
@@ -231,8 +262,13 @@ object SoloistEngine {
             running.destroy()
             runCatching { running.waitFor(3, TimeUnit.SECONDS) }
             if (running.isAlive) running.destroyForcibly()
+            runCatching { running.waitFor(2, TimeUnit.SECONDS) }
         }
         process = null
+        // And any other: one the app lost track of holds Soloist's data
+        // directory, and every new run stops at once on "another session is
+        // running" until the app itself is killed.
+        killStrays()
         _state.value = State()
         StreamQuality.clear()
         if (::app.isInitialized) ZeroConf.withdraw(app)
@@ -260,13 +296,58 @@ object SoloistEngine {
         restart(context)
     }
 
+    private fun dissolvesFile(context: Context) = File(SoloistRuntime.home(context), "xfade")
+
+    /**
+     * How far libpulse keeps the music ahead, and the dissolve into a song
+     * Square starts itself: written where libpulse reads them each second, so
+     * a change of the crossfade or of the skip fade needs no new run of
+     * Soloist (which stopped the music, and was taken for a crash).
+     */
+    fun writeDissolves(context: Context) {
+        val crossfade = dev.lelonio.square.data.CrossfadeStore(context).durationMs()
+        val skipFade = (context.applicationContext as? dev.lelonio.square.SquareApplication)?.preferences?.skipFadeMs() ?: 0
+        val dissolve = if (skipFade > 0) skipFade else crossfade.coerceAtMost(1500)
+        runCatching { dissolvesFile(context).writeText("${aheadMs(context) - 500} $dissolve\n") }
+    }
+
+    /** What libpulse keeps ahead of what is heard, as it works it out from [writeDissolves]. */
+    fun aheadMs(context: Context): Long {
+        val crossfade = dev.lelonio.square.data.CrossfadeStore(context).durationMs()
+        val skipFade = (context.applicationContext as? dev.lelonio.square.SquareApplication)?.preferences?.skipFadeMs() ?: 0
+        return maxOf(skipFade, crossfade).coerceAtMost(12_000).toLong().coerceAtLeast(1_000) + 500
+    }
+
     fun setQuality(context: Context, level: Int) {
         prefs(context).edit().putInt("quality", level).apply()
         restarting = true
         restart(context)
     }
 
+    /**
+     * Kills every Soloist of this app's that is still alive, found by its
+     * command line: the app's own processes are the only ones it can see.
+     */
+    private fun killStrays() {
+        val data = "/soloist/data"
+        val found = File("/proc").listFiles { f -> f.name.all(Char::isDigit) }.orEmpty().mapNotNull { dir ->
+            val pid = dir.name.toIntOrNull() ?: return@mapNotNull null
+            if (pid == android.os.Process.myPid()) return@mapNotNull null
+            val cmdline = runCatching { File(dir, "cmdline").readBytes() }.getOrNull() ?: return@mapNotNull null
+            val args = String(cmdline).split('\u0000')
+            pid.takeIf { args.firstOrNull()?.endsWith("libsqld.so") == true && args.any { data in it } }
+        }
+        if (found.isEmpty()) return
+        found.forEach {
+            Log.w(TAG, "killing a Soloist left running (pid $it)")
+            android.os.Process.sendSignal(it, android.os.Process.SIGNAL_KILL)
+        }
+        val until = System.currentTimeMillis() + 3000
+        while (System.currentTimeMillis() < until && found.any { File("/proc/$it").exists() }) Thread.sleep(50)
+    }
+
     private fun launch() {
+        killStrays()
         val dir = SoloistRuntime.install(app)
         if (!SoloistRuntime.binary(app).exists()) {
             Log.w(TAG, "Soloist not downloaded")
@@ -315,10 +396,14 @@ object SoloistEngine {
         // itself, and libpulse keeps this much of the old song ahead for it.
         builder.environment()["SQUARE_XFADE_MAX_MS"] = maxOf(skipFade, crossfadeMs).coerceAtMost(12_000).toString()
         builder.environment()["SQUARE_XFADE_FLAG"] = skipFlag(app).path
+        // The same two, read again while Soloist runs: see writeDissolves.
+        writeDissolves(app)
+        builder.environment()["SQUARE_XFADE_CONF"] = dissolvesFile(app).path
 
         val started = builder.start()
         val startedAt = System.currentTimeMillis()
         process = started
+        launching = false
         _state.update { it.copy(running = true) }
         Log.i(TAG, "started")
         val recent = ArrayDeque<String>()
@@ -373,10 +458,43 @@ object SoloistEngine {
     /** What Soloist says about itself that its WebSocket does not. */
     private val colour = Regex("\u001B\\[[0-9;]*m")
 
+    /** Whether Soloist makes its own crossfade between songs; see readLog. */
+    @Volatile
+    var ownCrossfade = false
+        private set
+
+    /** When Soloist was last started again for a sign-in the network failed. */
+    @Volatile
+    private var offlineRestartAt = 0L
+
+    /**
+     * Soloist started while the phone kept the app off the network (asleep,
+     * just installed) never signs in afterwards: its resolver stays without an
+     * answer ("CURL error: 6") and it does not try again by itself. Started
+     * again a little later, with the network's servers read anew.
+     */
+    private fun afterFailedSignIn() {
+        if (_state.value.loggedIn) return
+        val now = System.currentTimeMillis()
+        if (now - offlineRestartAt < 60_000) return
+        offlineRestartAt = now
+        Log.w(TAG, "sign-in failed on the network: starting Soloist again shortly")
+        thread(name = "soloist-retry") {
+            Thread.sleep(10_000)
+            if (!_state.value.loggedIn && process?.isAlive == true && isWanted(app)) restart(app)
+        }
+    }
+
     private fun readLog(raw: String) {
         // Soloist colours its warnings: the codes are not part of what it says.
         val line = raw.replace(colour, "")
-        if (line.startsWith("SQ") || " E [" in line || " W [" in line) Log.i(TAG, line)
+        if ("CURL error: 6" in line || "CURL error: 7" in line) afterFailedSignIn()
+        if (line.startsWith("SQ") || " E [" in line || " W [" in line || "getAudioTransition" in line) Log.i(TAG, line)
+        // Soloist's own crossfade, from the account's playback settings on
+        // Spotify's side, which nothing here can turn off: while it makes
+        // one, Square does not make a second over it.
+        if ("getAudioTransition: crossfade" in line) ownCrossfade = true
+        if ("getAudioTransition: gapless" in line) ownCrossfade = false
         deviceLine.find(line)?.let {
             deviceId = it.groupValues[1]
             dev.lelonio.square.data.RemoteConnect.registerSdkDevice(it.groupValues[1])
@@ -693,13 +811,40 @@ object SoloistEngine {
         _state.update { it.copy(upcoming = next) }
     }
 
+    /**
+     * Where the list Soloist plays came from (a playlist, an album), when it
+     * is Square's own list of it: what another device is told it plays, as it
+     * cannot open this app's.
+     */
+    @Volatile
+    var listSource: String? = null
+
     /** The list Square plays when it is not a context of Spotify's. */
     const val LIST_CONTEXT = "spotify:internal:square"
 
-    private fun play(context: JSONObject, trackUri: String, index: Int, positionMs: Long, paused: Boolean): Boolean {
-        val device = deviceId ?: return false
-        Log.i(TAG, "play $trackUri of ${context.optString("uri")} at $positionMs ms${if (paused) ", paused" else ""}")
-        val body = JSONObject().put(
+    /**
+     * Square's list started on another Connect device, as on Soloist: the
+     * songs as the context's pages. For a device the Web API will not start
+     * ("Restriction violated", a phone's Spotify app). Blocking.
+     */
+    fun playListOn(device: String, uris: List<String>, index: Int, positionMs: Long, source: String? = null): Boolean {
+        if (uris.isEmpty()) return false
+        val tracks = JSONArray().apply { uris.forEach { put(JSONObject().put("uri", it)) } }
+        val name = source ?: LIST_CONTEXT
+        val context = JSONObject()
+            .put("uri", name)
+            .put("url", "context://$name")
+            .put("metadata", JSONObject())
+            .put("pages", JSONArray().put(JSONObject().put("tracks", tracks)))
+        val at = index.coerceIn(uris.indices)
+        Log.i(TAG, "play on $device: ${uris.size} songs at ${uris[at]}, $positionMs ms")
+        return runCatching {
+            dev.lelonio.square.nativecore.NativeBridge.remoteCommand(device, playBody(context, uris[at], at, positionMs, false).toString())
+        }.onFailure { Log.w(TAG, "play on $device refused: ${it.message}") }.isSuccess
+    }
+
+    private fun playBody(context: JSONObject, trackUri: String, index: Int, positionMs: Long, paused: Boolean): JSONObject =
+        JSONObject().put(
             "command",
             JSONObject()
                 .put("endpoint", "play")
@@ -721,12 +866,24 @@ object SoloistEngine {
                         ),
                 ),
         )
+
+    private fun play(context: JSONObject, trackUri: String, index: Int, positionMs: Long, paused: Boolean): Boolean {
+        val device = deviceId ?: return false
+        Log.i(TAG, "play $trackUri of ${context.optString("uri")} at $positionMs ms${if (paused) ", paused" else ""}")
+        val body = playBody(context, trackUri, index, positionMs, paused)
         // Refused while Soloist's device is still being registered with the
         // account (a 502 right after it logs in): asked again for a while.
-        repeat(8) { attempt ->
+        // A device the account no longer knows (404, 410) is not a matter of
+        // waiting: three of those and Soloist is started again at once, rather
+        // than leaving the music stopped for the half minute of all eight.
+        var unknown = 0
+        for (attempt in 0 until 8) {
             val sent = runCatching { dev.lelonio.square.nativecore.NativeBridge.remoteCommand(device, body.toString()) }
             if (sent.isSuccess) return true
-            Log.w(TAG, "play did not reach Soloist (try ${attempt + 1}): ${sent.exceptionOrNull()?.message}")
+            val message = sent.exceptionOrNull()?.message.orEmpty()
+            Log.w(TAG, "play did not reach Soloist (try ${attempt + 1}): $message")
+            if ("404" in message || "410" in message) unknown++
+            if (unknown >= 3) break
             Thread.sleep(750L * (attempt + 1))
         }
         // Refused throughout: its Connect device is no longer what the account

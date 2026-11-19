@@ -1,5 +1,6 @@
 package dev.lelonio.square.playback
 
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import android.content.Intent
 import androidx.media3.common.util.UnstableApi
@@ -165,6 +166,7 @@ class PlaybackService : MediaLibraryService() {
             maybeTriggerAutoplay(mediaItem)
             followEngineFor(mediaItem)
             noteLibrespotQuality()
+            planEngineChange()
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -172,6 +174,61 @@ class PlaybackService : MediaLibraryService() {
                 maybeTriggerAutoplay(player.currentMediaItem)
                 noteLibrespotQuality()
             }
+            planEngineChange()
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) = planEngineChange()
+
+        override fun onPositionDiscontinuity(
+            oldPosition: androidx.media3.common.Player.PositionInfo,
+            newPosition: androidx.media3.common.Player.PositionInfo,
+            reason: Int,
+        ) = planEngineChange()
+
+        override fun onPlaybackParametersChanged(playbackParameters: androidx.media3.common.PlaybackParameters) =
+            planEngineChange()
+    }
+
+    private var engineChange: kotlinx.coroutines.Job? = null
+
+    /**
+     * A song ending into one that plays on the other engine: the queue is
+     * handed over a moment before the end, so the next song starts as this one
+     * finishes. Left to the end, the engine playing went on into the next song
+     * itself (streaming a download, or the reverse), and the handover after it
+     * started that song again.
+     */
+    private fun planEngineChange() {
+        engineChange?.cancel()
+        engineChange = null
+        if (playerKind != PlayerKind.SPOTIFY && playerKind != PlayerKind.SOLOIST) return
+        if (!player.isPlaying || handingOver || restoringQueue || !engineStarted || !soloistWanted()) return
+        if (dev.lelonio.square.playback.OfflineMode.active.value) return
+        if ((player as? dev.lelonio.square.playback.soloist.SoloistPlayer)?.showsOwnQueue == false) return
+        val current = player.currentMediaItem?.mediaId ?: return
+        val nextIndex = player.nextMediaItemIndex.takeIf { it != androidx.media3.common.C.INDEX_UNSET } ?: return
+        val next = player.getMediaItemAt(nextIndex).mediaId
+        if (next == current || (!next.startsWith("spotify:track:") && !next.startsWith("spotify:episode:"))) return
+        val target = if (downloadedHere(next)) PlayerKind.SPOTIFY else PlayerKind.SOLOIST
+        if (target == playerKind) return
+        val duration = player.duration.takeIf { it != androidx.media3.common.C.TIME_UNSET && it > 0 } ?: return
+        val cross = dev.lelonio.square.data.CrossfadeStore(this).durationMs().toLong()
+        // Ahead of the engine's own crossfade, which would start the next song
+        // where it is; and for Soloist, the second it takes to start a stream.
+        val lead = cross + if (target == PlayerKind.SOLOIST) SOLOIST_START_LEAD_MS else LIBRESPOT_START_LEAD_MS
+        val speed = player.playbackParameters.speed.coerceAtLeast(0.1f)
+        val wait = ((duration - player.currentPosition - lead) / speed).toLong()
+        if (wait < -lead) return
+        engineChange = scope.launch {
+            kotlinx.coroutines.delay(wait.coerceAtLeast(0))
+            if (player.currentMediaItem?.mediaId != current || !player.isPlaying || handingOver) return@launch
+            val at = player.nextMediaItemIndex.takeIf { it != androidx.media3.common.C.INDEX_UNSET } ?: return@launch
+            if (player.getMediaItemAt(at).mediaId != next) return@launch
+            val whole = (player as? dev.lelonio.square.playback.soloist.SoloistPlayer)?.handOverList(next)
+            val items = whole?.first ?: (0 until player.mediaItemCount).map(player::getMediaItemAt)
+            val index = whole?.second ?: at
+            android.util.Log.i(TAG, "${player.duration - player.currentPosition} ms left: ${target.name.lowercase()} takes the next song")
+            handOver(target, items, index, 0L, playing = true)
         }
     }
 
@@ -476,6 +533,7 @@ class PlaybackService : MediaLibraryService() {
                 .filterNotNull()
                 .drop(1)
                 .collect { on ->
+                    NativeBridge.setConnectHidden(on)
                     if (container.preferences.backend.value != dev.lelonio.square.backend.BackendId.SPOTIFY) return@collect
                     if (on && playerKind == PlayerKind.SPOTIFY) {
                         swapPlayer(PlayerKind.SOLOIST, restore = true)
@@ -601,6 +659,9 @@ class PlaybackService : MediaLibraryService() {
         // Already read by the application object, and harmless twice: `load`
         // returns at once once the file is open.
         AudioEffects.load(this)
+        // One device for this phone in every Spotify client's list: Soloist's,
+        // when it is the player; the engine behind it is not offered too.
+        NativeBridge.setConnectHidden(dev.lelonio.square.playback.soloist.SoloistEngine.isEnabled(this))
 
         // What was paused, back on screen before anything is authenticated.
         //
@@ -651,6 +712,16 @@ class PlaybackService : MediaLibraryService() {
                 val exo = player as? androidx.media3.exoplayer.ExoPlayer
                     ?: player.takeIf { playerKind == PlayerKind.LOCAL }
                 exo?.playbackParameters = androidx.media3.common.PlaybackParameters(speed, pitch)
+                // The Spotify player parked behind Soloist (or another front
+                // player) kept the tempo it had when it was set aside, and
+                // shows and plays it again when it comes back; set here, it
+                // comes back with what the listener chose meanwhile.
+                (librespot ?: parkedSpotify)?.let { spotify ->
+                    audioOutput.setSpeedAndPitch(speed, pitch)
+                    if (spotify.playbackParameters.speed != speed || spotify.playbackParameters.pitch != pitch) {
+                        spotify.restorePlaybackParameters(speed, pitch)
+                    }
+                }
             }
         }
 
@@ -676,11 +747,11 @@ class PlaybackService : MediaLibraryService() {
         // it was.
         scope.launch {
             crossfade.seconds.drop(1).collect {
-                if (playerKind == PlayerKind.SOLOIST) {
-                    dev.lelonio.square.playback.soloist.SoloistEngine.reconfigure(this@PlaybackService)
-                } else {
-                    reconfigureEngine("crossfade")
-                }
+                // Soloist's libpulse reads it while it runs: no new run, which
+                // stopped the music and, two settings in a row, looked like a
+                // crash. librespot behind it takes it with its next rebuild.
+                dev.lelonio.square.playback.soloist.SoloistEngine.writeDissolves(this@PlaybackService)
+                if (playerKind != PlayerKind.SOLOIST) reconfigureEngine("crossfade")
             }
         }
 
@@ -930,6 +1001,9 @@ class PlaybackService : MediaLibraryService() {
         // Nothing to put back: the queue that caused this swap is about to be
         // set on the new player by the session itself.
         swapPlayer(wanted, restore = false)
+        // The player brought in shows its own last song until the queue
+        // arrives: no reason to hand anything over meanwhile.
+        handedOverAt = System.currentTimeMillis()
     }
 
     private fun buildPlayer(
@@ -982,6 +1056,10 @@ class PlaybackService : MediaLibraryService() {
         if (dev.lelonio.square.playback.OfflineMode.active.value) return
         val uri = item?.mediaId ?: return
         if (!uri.startsWith("spotify:track:") && !uri.startsWith("spotify:episode:")) return
+        // Soloist's player just built shows the account's song, which may be
+        // librespot's own: handed back on it, a song tapped for Soloist went
+        // to librespot with the old queue.
+        if ((player as? dev.lelonio.square.playback.soloist.SoloistPlayer)?.showsOwnQueue == false) return
         val wanted = when {
             playerKind == PlayerKind.SPOTIFY && !downloadedHere(uri) -> PlayerKind.SOLOIST
             playerKind == PlayerKind.SOLOIST && downloadedHere(uri) -> PlayerKind.SPOTIFY
@@ -999,19 +1077,68 @@ class PlaybackService : MediaLibraryService() {
         val index = whole?.second ?: items.indexOfFirst { it.mediaId == uri }
             .takeIf { it >= 0 } ?: player.currentMediaItemIndex
         if (items.isEmpty()) return
+        // Where the song already is: the engine left reached it first (Soloist
+        // moving on by itself), and starting it again from the top was heard
+        // as the song beginning twice. Only early in a song: just after a
+        // change the position can still be the last song's, near its end.
+        val position = player.currentPosition.takeIf {
+            player.currentMediaItem?.mediaId == uri && it in 0..15_000
+        } ?: 0L
+        handOver(wanted, items, index, position, playing)
+    }
+
+    /** The queue moved to the [wanted] player, playing on at [index]. */
+    private fun handOver(
+        wanted: PlayerKind,
+        items: List<androidx.media3.common.MediaItem>,
+        index: Int,
+        position: Long,
+        playing: Boolean,
+    ) {
+        if (handingOver) return
         handingOver = true
-        android.util.Log.i(TAG, "handing the queue to ${wanted.name.lowercase()} at $uri")
+        android.util.Log.i(TAG, "handing the queue to ${wanted.name.lowercase()} at ${items.getOrNull(index)?.mediaId}, ${position} ms")
+        // librespot's song goes on until Soloist's is heard: Soloist takes a
+        // second or so to start a stream, and stopped first, that second was
+        // silence. Its own song then fades out under the new one.
+        val overlap = playing && wanted == PlayerKind.SOLOIST && playerKind == PlayerKind.SPOTIFY
+        val heard = dev.lelonio.square.playback.soloist.SoloistAudio.sounding.value
         scope.launch {
             try {
-                swapPlayer(wanted, restore = false)
-                player.setMediaItems(items, index, 0L)
+                swapPlayer(wanted, restore = false, keepSounding = overlap)
+                player.setMediaItems(items, index, position)
                 player.prepare()
                 if (playing) player.play()
             } finally {
                 handedOverAt = System.currentTimeMillis()
                 handingOver = false
             }
+            if (overlap) letGoOfParked(heard)
         }
+    }
+
+    /**
+     * Fades out and pauses the Spotify player left playing behind Soloist,
+     * once Soloist is heard (or after a while, should it never be).
+     */
+    private suspend fun letGoOfParked(heardBefore: Int) {
+        kotlinx.coroutines.withTimeoutOrNull(HANDOVER_OVERLAP_MAX_MS) {
+            dev.lelonio.square.playback.soloist.SoloistAudio.sounding.first { it != heardBefore }
+        }
+        val parked = parkedSpotify ?: return
+        if (playerKind != PlayerKind.SOLOIST || !parked.playWhenReady) return
+        audioOutput.fadeOutThen(HANDOVER_FADE_MS) {
+            scope.launch { if (parkedSpotify === parked) runCatching { parked.playWhenReady = false } }
+        }
+    }
+
+    /**
+     * A song chosen on Soloist's player that plays from a download: handed to
+     * librespot before Soloist has streamed any of it. See SoloistPlayer.
+     */
+    private fun playElsewhere(items: List<androidx.media3.common.MediaItem>, index: Int, position: Long, playing: Boolean) {
+        if (playerKind != PlayerKind.SOLOIST || items.isEmpty()) return
+        handOver(PlayerKind.SPOTIFY, items, index.coerceIn(items.indices), position, playing)
     }
 
     @Volatile
@@ -1146,7 +1273,13 @@ class PlaybackService : MediaLibraryService() {
         PlayerKind.SOLOIST -> {
             librespot = null
             playerKind = kind
-            dev.lelonio.square.playback.soloist.SoloistPlayer(this, playbackHost.looper, ::soloistContext)
+            dev.lelonio.square.playback.soloist.SoloistPlayer(
+                this,
+                playbackHost.looper,
+                ::soloistContext,
+                playsElsewhere = { uri -> !dev.lelonio.square.playback.OfflineMode.active.value && downloadedHere(uri) },
+                elsewhere = ::playElsewhere,
+            )
         }
     }
 
@@ -1160,6 +1293,16 @@ class PlaybackService : MediaLibraryService() {
             // Another client pointing this device at a track of its own; see
             // LibrespotPlayer.onUnknownTrack.
             built.onUnknownTrack = { uri -> scope.launch { adoptPlayingTrack(uri) } }
+            built.playsElsewhere = { uri ->
+                (uri.startsWith("spotify:track:") || uri.startsWith("spotify:episode:")) &&
+                    !restoringQueue && !handingOver && engineStarted && soloistWanted() &&
+                    !dev.lelonio.square.playback.OfflineMode.active.value && !downloadedHere(uri)
+            }
+            built.elsewhere = { items, index, position, playing ->
+                if (playerKind == PlayerKind.SPOTIFY && items.isNotEmpty()) {
+                    handOver(PlayerKind.SOLOIST, items, index.coerceIn(items.indices), position, playing)
+                }
+            }
 
             // Applied straight to the output rather than waiting for the UI: the
             // service can be running with no activity attached at all.
@@ -1202,7 +1345,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /** The swap itself; see [switchBackend] and [ensurePlayerFor]. */
-    private suspend fun swapPlayer(kind: PlayerKind, restore: Boolean = true) {
+    private suspend fun swapPlayer(kind: PlayerKind, restore: Boolean = true, keepSounding: Boolean = false) {
         // Only a player with something in it has anything to save, and saving
         // an empty one does not write nothing: it clears the store. At startup
         // the player being swapped away from is the one just built, empty, so
@@ -1249,7 +1392,9 @@ class PlaybackService : MediaLibraryService() {
             (kind == PlayerKind.LOCAL || kind == PlayerKind.VIDEO ||
                 kind == PlayerKind.SPOTIFY_WEB || kind == PlayerKind.SOLOIST)
         if (frontOnly) {
-            runCatching { player.playWhenReady = false }
+            // Kept playing through a handover to Soloist, until Soloist is
+            // heard: see [handOver].
+            if (!(keepSounding && librespot != null)) runCatching { player.playWhenReady = false }
             if (librespot != null) {
                 parkedSpotify = librespot
                 librespot = null
@@ -2400,6 +2545,18 @@ class PlaybackService : MediaLibraryService() {
     companion object {
         /** How long after a handover a change of song is the new player settling, not the music. */
         private const val HANDOVER_SETTLE_MS = 4_000L
+
+        /** How long before a song's end Soloist is asked for the next one: about what it takes to start. */
+        private const val SOLOIST_START_LEAD_MS = 1_200L
+
+        /** The same for librespot, which starts a download at once. */
+        private const val LIBRESPOT_START_LEAD_MS = 300L
+
+        /** How long librespot may play on behind Soloist waiting to hear it. */
+        private const val HANDOVER_OVERLAP_MAX_MS = 6_000L
+
+        /** librespot's song going out under Soloist's coming in. */
+        private const val HANDOVER_FADE_MS = 400L
         private const val TAG = "PlaybackService"
 
         /** How long the music takes to go quiet at the end of a sleep timer. */

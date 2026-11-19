@@ -78,6 +78,10 @@ class AudioOutput {
     @Volatile
     private var playing = false
 
+    /** Paused by the player while the sink stays open; see [setPlaybackActive]. */
+    @Volatile
+    private var held = false
+
     /**
      * Drops incoming PCM instead of writing it.
      *
@@ -194,7 +198,12 @@ class AudioOutput {
         val output = track
         val amount = reverbAmount
 
-        if (output == null || amount <= 0f) {
+        // Only while this output is the one making sound. The room lives on the
+        // phone's output mix and is shared by every handle to it (Soloist's
+        // output and the Spotify engine's open the same one): built here for a
+        // new track, a slider moved or a duck while paused, it stayed enabled
+        // after the music stopped and every other app played into it.
+        if (output == null || amount <= 0f || !playing || held || voice) {
             output?.runCatching {
                 setAuxEffectSendLevel(0f)
                 attachAuxEffect(0)
@@ -252,6 +261,7 @@ class AudioOutput {
         // loaded paused, say — would otherwise silence the next play outright.
         discarding = false
         playing = true
+        held = false
         val output = synchronized(this) {
             track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
         } ?: return
@@ -324,6 +334,7 @@ class AudioOutput {
      */
     fun setPlaybackActive(active: Boolean) {
         val output = synchronized(this) {
+            held = !active
             if (active) applyReverb() else suspendReverb()
             track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
         } ?: return
@@ -500,11 +511,21 @@ class AudioOutput {
      * @param sizeInBytes bytes to consume from [data]
      */
     @Suppress("unused")
+    /** Microseconds of music taken in, ever (16-bit and float alike): see [takenMs]. */
+    private val takenUs = java.util.concurrent.atomic.AtomicLong(0)
+
+    /**
+     * How much of the song has been handed to this output, in milliseconds:
+     * a clock that runs at the tempo the music is really played at.
+     */
+    fun takenMs(): Double = takenUs.get() / 1000.0
+
     fun write(data: ByteBuffer, sizeInBytes: Int, sampleRate: Int, channels: Int) {
         // Returning rather than blocking: the sink is being told this audio is
         // unwanted, and holding the decoder here would only delay the load that
         // closed the gate in the first place.
         if (discarding) return
+        if (!floatIn) takenUs.addAndGet(sizeInBytes * 1_000_000L / (sampleRate.toLong() * channels * 2).coerceAtLeast(1))
         // 16-bit through the effects: not what a DAC opened bit-perfect is for.
         HiFi.release()
 
@@ -572,8 +593,13 @@ class AudioOutput {
      * the sound is reworked anyway and goes through the same 16-bit chain as
      * everything else.
      */
+    /** Set while [writeFloat] hands its samples on to [write], so they are counted once. */
+    @Volatile
+    private var floatIn = false
+
     fun writeFloat(data: ByteBuffer, sizeInBytes: Int, sampleRate: Int, channels: Int) {
         if (discarding) return
+        takenUs.addAndGet(sizeInBytes * 1_000_000L / (sampleRate.toLong() * channels * 4).coerceAtLeast(1))
         val samples = sizeInBytes / 4
         // A view of its own: the caller's buffer keeps the byte order it had.
         val floats = data.duplicate().order(java.nio.ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
@@ -594,7 +620,12 @@ class AudioOutput {
                 out.putShort((floats.get(i) * 32767f).coerceIn(-32768f, 32767f).toInt().toShort())
             }
             out.flip()
-            write(out, samples * 2, sampleRate, channels)
+            floatIn = true
+            try {
+                write(out, samples * 2, sampleRate, channels)
+            } finally {
+                floatIn = false
+            }
             return
         }
 

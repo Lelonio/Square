@@ -175,6 +175,15 @@ object NativeBridge {
     val playingKbps: Int get() = runCatching { nativePlayingKbps() }.getOrDefault(0)
 
     /**
+     * Keeps the engine's Connect device out of the account's device lists:
+     * with Soloist chosen, the phone is Soloist's device there, once. Takes
+     * effect with the next state the engine sends.
+     */
+    fun setConnectHidden(hidden: Boolean) {
+        runCatching { nativeSetConnectHidden(hidden) }
+    }
+
+    /**
      * Rebuilds the player with a new bitrate and crossfade.
      *
      * Both belong to a configuration the player owns for its whole life, so a
@@ -559,6 +568,7 @@ object NativeBridge {
     private external fun nativeSpircLost(): Boolean
     private external fun nativeIsSounding(): Boolean
     private external fun nativePlayingKbps(): Int
+    private external fun nativeSetConnectHidden(hidden: Boolean)
     private external fun nativeSetQuality(bitrateKbps: Int, crossfadeMs: Int)
 
     private external fun nativeSetBitrate(bitrateKbps: Int)
