@@ -1422,15 +1422,20 @@ private fun BackendSection() {
  */
 @Composable
 private fun EngineSection() {
-    val uriHandler = LocalUriHandler.current
     val soloist = rememberSoloistSetup()
-    var draft by remember(soloist.savedKey) { mutableStateOf(soloist.savedKey) }
-    val download = soloist.download
+    // Soloist's three steps, a screen each, over the settings: opened by
+    // choosing it while it is not set up yet, or from its row afterwards.
+    var guide by remember { mutableStateOf(false) }
+    if (guide) dev.lelonio.square.ui.onboarding.SoloistGuide(onClose = { guide = false })
+    val ready = soloist.savedKey.isNotEmpty() && soloist.installed && soloist.signedIn
 
     Section(stringResource(R.string.engine)) {
         ChoiceRow(stringResource(R.string.engine_librespot), selected = !soloist.chosen) { soloist.choose(false) }
         RowDivider()
-        ChoiceRow(stringResource(R.string.engine_soloist), selected = soloist.chosen) { soloist.choose(true) }
+        ChoiceRow(stringResource(R.string.engine_soloist), selected = soloist.chosen) {
+            soloist.choose(true)
+            if (!ready) guide = true
+        }
         RowDivider()
         Text(
             stringResource(R.string.engine_note),
@@ -1453,82 +1458,34 @@ private fun EngineSection() {
             ActionRow(stringResource(R.string.soloist_retry), destructive = false) { soloist.choose(true) }
         }
 
-        // 1. The key.
+        // Where it is, in a line, and the steps again from here.
         RowDivider()
-        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
-            Text(stringResource(R.string.soloist_step_key), style = MaterialTheme.typography.labelLarge)
-            Text(
-                stringResource(R.string.soloist_key_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = InkDim,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            androidx.compose.material3.OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                label = { Text(stringResource(R.string.soloist_key)) },
-                singleLine = true,
-                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-            )
-        }
-        RowDivider()
-        if (draft.trim() != soloist.savedKey && draft.isNotBlank()) {
-            ActionRow(stringResource(R.string.save), destructive = false, icon = PhosphorIcons.Regular.Check) {
-                soloist.saveKey(draft)
-            }
-            RowDivider()
-        }
-        ActionRow(stringResource(R.string.soloist_get_key), destructive = false, icon = PhosphorIcons.Regular.ArrowUpRight) {
-            runCatching { uriHandler.openUri(SOLOIST_KEY_PAGE) }
-        }
-
-        // 2. Soloist itself.
-        RowDivider()
-        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
-            Text(stringResource(R.string.soloist_step_download), style = MaterialTheme.typography.labelLarge)
+        Text(
+            when {
+                ready -> soloistAccountStatus(soloist)
+                soloist.savedKey.isEmpty() -> stringResource(R.string.soloist_key_note)
+                !soloist.installed -> soloistDownloadStatus(soloist)
+                else -> soloistAccountStatus(soloist)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+        )
+        if (ready) {
             Text(
                 soloistDownloadStatus(soloist),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (download is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Failed) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    InkDim
-                },
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            SoloistDownloadBar(download, Modifier.fillMaxWidth().padding(top = 10.dp))
-        }
-        if (download !is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Running) {
-            RowDivider()
-            ActionRow(
-                stringResource(if (soloist.installed) R.string.soloist_check_update else R.string.soloist_download),
-                destructive = false,
-                onClick = soloist.fetch,
-            )
-        }
-
-        // 3. The sign-in, from the Spotify app.
-        RowDivider()
-        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
-            Text(stringResource(R.string.soloist_step_account), style = MaterialTheme.typography.labelLarge)
-            Text(
-                soloistAccountStatus(soloist),
-                style = MaterialTheme.typography.bodySmall,
                 color = InkDim,
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 12.dp),
             )
-            soloist.error?.takeIf { !soloist.signedIn }?.let {
-                Text(
-                    stringResource(R.string.soloist_error, it),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
+        }
+        RowDivider()
+        ActionRow(stringResource(R.string.soloist_setup), destructive = false, icon = PhosphorIcons.Regular.ArrowUpRight) {
+            guide = true
+        }
+        if (soloist.installed && soloist.download !is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Running) {
+            RowDivider()
+            ActionRow(stringResource(R.string.soloist_check_update), destructive = false, onClick = soloist.fetch)
         }
     }
 }

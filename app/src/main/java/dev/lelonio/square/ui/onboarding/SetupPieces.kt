@@ -42,6 +42,11 @@ import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.Check
 import com.adamglin.phosphoricons.regular.Info
 import dev.lelonio.square.ui.glass.pressable
+import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
+import dev.lelonio.square.ui.glass.backdrop.effects.blur
+import dev.lelonio.square.ui.glass.backdrop.effects.lens
+import dev.lelonio.square.ui.glass.backdrop.effects.vibrancy
+import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
 import dev.lelonio.square.ui.theme.Ink
 import dev.lelonio.square.ui.theme.InkDim
 import dev.lelonio.square.ui.theme.lightPage
@@ -64,7 +69,23 @@ import dev.lelonio.square.ui.theme.pageGround
  * changing side.
  */
 
-/** The page every screen of the setup is laid on. */
+/**
+ * What the setup's glass refracts: the moving ground under every screen of
+ * it. Set by [SetupScaffold].
+ */
+internal val LocalSetupBackdrop = androidx.compose.runtime.compositionLocalOf<dev.lelonio.square.ui.glass.backdrop.Backdrop> {
+    dev.lelonio.square.ui.glass.backdrop.backdrops.emptyBackdrop()
+}
+
+/**
+ * The page every screen of the setup is laid on.
+ *
+ * A dark ground with slow light moving in it, and everything on it made of
+ * glass that bends and frosts that light, as the system's own first-run
+ * screens are: the ground is captured as a layer for the cards and buttons
+ * above it to sample. Always the dark side, in white ink: the light moving
+ * under the glass is what the page is, and on a white page it would not show.
+ */
 @Composable
 internal fun SetupScaffold(
     top: @Composable RowScope.() -> Unit,
@@ -73,6 +94,7 @@ internal fun SetupScaffold(
 ) {
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val backdrop = dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop()
 
     Box(
         Modifier
@@ -80,60 +102,154 @@ internal fun SetupScaffold(
             // Opaque: nothing behind the setup is meant to show or be reached
             // while it is up, and a home page the user has not configured yet
             // would be showing them the problem rather than the way through it.
-            .background(pageGround())
+            .background(SetupGround)
             .clickable(interactionSource = null, indication = null) {},
     ) {
-        Column(
+        SetupAurora(
             Modifier
                 .fillMaxSize()
-                .padding(top = statusBar, bottom = navBar),
+                .layerBackdrop(backdrop),
+        )
+        androidx.compose.runtime.CompositionLocalProvider(
+            LocalSetupBackdrop provides backdrop,
+            dev.lelonio.square.ui.theme.LocalInkOverride provides Color.White,
+            dev.lelonio.square.ui.theme.LocalLightTheme provides false,
         ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(TOP_BAR)
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                content = top,
-            )
             Column(
                 Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                content = content,
-            )
-            if (bottom != null) {
+                    .fillMaxSize()
+                    .padding(top = statusBar, bottom = navBar),
+            ) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = PAGE_MARGIN, vertical = 16.dp),
+                        .height(TOP_BAR)
+                        .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    content = bottom,
+                    content = top,
                 )
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    content = content,
+                )
+                if (bottom != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = PAGE_MARGIN, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = bottom,
+                    )
+                }
             }
         }
     }
 }
 
-/** A shade off the ground: white on the light side, a lift out of the dark. */
-@Composable
-private fun cardFill(): Color = if (lightPage()) Color.White else Ink.copy(alpha = 0.07f)
+private val SetupGround = Color(0xFF070A14)
 
+/**
+ * The light under the setup's glass: four soft colours drifting each on its
+ * own slow path over the dark, never quick enough to be watched, always
+ * moving enough for the glass above them to have something to bend.
+ */
 @Composable
-private fun cardEdge(): Color = Ink.copy(alpha = if (lightPage()) 0.07f else 0.09f)
+private fun SetupAurora(modifier: Modifier) {
+    val time = androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        var last = 0L
+        while (true) {
+            androidx.compose.runtime.withFrameNanos { now ->
+                if (last != 0L) time.floatValue += ((now - last) / 1e9f).coerceAtMost(0.05f)
+                last = now
+            }
+        }
+    }
+    androidx.compose.foundation.Canvas(modifier) {
+        val t = time.floatValue
+        val w = size.width
+        val h = size.height
+        AuroraBlobs.forEach { blob ->
+            val x = w * (blob.x + 0.18f * kotlin.math.sin(t * blob.speed + blob.phase))
+            val y = h * (blob.y + 0.12f * kotlin.math.cos(t * blob.speed * 0.8f + blob.phase * 1.3f))
+            val radius = maxOf(w, h) * blob.size
+            drawCircle(
+                brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                    0f to blob.color.copy(alpha = 0.62f),
+                    0.55f to blob.color.copy(alpha = 0.22f),
+                    1f to Color.Transparent,
+                    center = androidx.compose.ui.geometry.Offset(x, y),
+                    radius = radius,
+                ),
+                radius = radius,
+                center = androidx.compose.ui.geometry.Offset(x, y),
+            )
+        }
+        // Darker towards the foot, where the buttons are.
+        drawRect(
+            androidx.compose.ui.graphics.Brush.verticalGradient(
+                0f to Color.Transparent,
+                0.7f to SetupGround.copy(alpha = 0.25f),
+                1f to SetupGround.copy(alpha = 0.6f),
+            ),
+        )
+    }
+}
 
+private data class AuroraBlob(
+    val color: Color,
+    val x: Float,
+    val y: Float,
+    val size: Float,
+    val speed: Float,
+    val phase: Float,
+)
+
+private val AuroraBlobs = listOf(
+    AuroraBlob(Color(0xFF3F46E0), 0.15f, 0.18f, 0.55f, 0.11f, 0f),
+    AuroraBlob(Color(0xFF13B89F), 0.85f, 0.32f, 0.5f, 0.09f, 1.7f),
+    AuroraBlob(Color(0xFF9147D9), 0.3f, 0.72f, 0.55f, 0.07f, 3.1f),
+    AuroraBlob(Color(0xFF2A86E8), 0.8f, 0.88f, 0.45f, 0.1f, 4.6f),
+)
+
+/**
+ * A pane of the setup's glass: the moving light behind it frosted and bent at
+ * its edge, a film of white over it and a bright hairline round it.
+ */
 @Composable
-internal fun Modifier.setupCard(shape: Shape = CardShape): Modifier =
-    this
-        .clip(shape)
-        .background(cardFill())
-        .border(1.dp, cardEdge(), shape)
+internal fun Modifier.setupCard(shape: Shape = CardShape, fill: Float = 0.08f): Modifier {
+    val backdrop = LocalSetupBackdrop.current
+    return this
+        .drawBackdrop(
+            backdrop = backdrop,
+            shape = { shape },
+            effects = {
+                vibrancy()
+                blur(18f.dp.toPx())
+                lens(10f.dp.toPx(), 22f.dp.toPx())
+            },
+            onDrawSurface = { drawRect(Color.White.copy(alpha = fill)) },
+        )
+        .border(
+            1.dp,
+            androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(Color.White.copy(alpha = 0.32f), Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.14f)),
+            ),
+            shape,
+        )
+}
 
 /** Running text: a step down from the ink, and still meant to be read. */
 internal val Prose: Color
     @Composable get() = Ink.copy(alpha = 0.76f)
 
-/** The control that moves the setup on: the ink, with the ground for a label. */
+/**
+ * The control that moves the setup on: glass filled almost white, with a dark
+ * label, as the system's own prominent buttons are; dimmed while the step it
+ * closes is not done.
+ */
 @Composable
 internal fun PrimaryButton(
     text: String,
@@ -145,8 +261,7 @@ internal fun PrimaryButton(
         modifier
             .pressable({ if (enabled) onClick() }, pressedScale = if (enabled) 0.96f else 1f)
             .height(52.dp)
-            .clip(CircleShape)
-            .background(if (enabled) Ink else Ink.copy(alpha = 0.3f))
+            .setupCard(CircleShape, fill = if (enabled) 0.86f else 0.14f)
             .padding(horizontal = 26.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -154,7 +269,7 @@ internal fun PrimaryButton(
             text,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = pageGround(),
+            color = if (enabled) SetupGround else Color.White.copy(alpha = 0.45f),
             maxLines = 1,
         )
     }
@@ -325,7 +440,10 @@ internal fun Note(text: String) {
     }
 }
 
-/** A step already done, said with the ink turned over, as a lit chip is. */
+/** The green the system says "done" in. */
+private val DoneGreen = Color(0xFF30C85E)
+
+/** A step already done: a green tick and what is now done. */
 @Composable
 internal fun DoneRow(label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -333,13 +451,13 @@ internal fun DoneRow(label: String) {
             Modifier
                 .size(24.dp)
                 .clip(CircleShape)
-                .background(Ink),
+                .background(DoneGreen),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 PhosphorIcons.Regular.Check,
                 contentDescription = null,
-                tint = pageGround(),
+                tint = Color.White,
                 modifier = Modifier.size(14.dp),
             )
         }

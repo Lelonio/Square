@@ -700,4 +700,6 @@
     <string name="onboarding_optional">Opcional</string>
     <string name="soloist_failed">O Soloist não consegue continuar rodando, então o librespot está tocando. O Soloist disse: %1$s</string>
     <string name="soloist_retry">Tentar o Soloist de novo</string>
+    <string name="setup_done">Concluído</string>
+    <string name="soloist_setup">Configurar o Soloist</string>
 </resources>

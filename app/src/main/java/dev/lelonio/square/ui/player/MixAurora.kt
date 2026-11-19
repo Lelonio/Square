@@ -44,17 +44,24 @@ fun MixAurora(
     val lights = remember(given) { lightsOf(given) }
     val time = remember { mutableFloatStateOf(0f) }
     val level = remember { mutableFloatStateOf(0f) }
+    // The band's angle, added up a frame at a time: worked out as the time
+    // so far times a speed that follows the music, it jumped whenever the
+    // music got louder or quieter.
+    val turn = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
             withFrameNanos { now ->
-                val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceAtMost(0.1f)
+                val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceAtMost(0.05f)
                 last = now
                 time.floatValue += dt
-                // Up at once with a beat, down slowly after it.
+                // Eased towards the music, never stepped: rising over about a
+                // quarter of a second, settling over nearly one.
                 val heard = dev.lelonio.square.playback.AudioLevel.now()
                 val was = level.floatValue
-                level.floatValue = if (heard > was) was + (heard - was) * 0.5f else was + (heard - was) * (dt * 3f)
+                val pace = if (heard > was) 4f else 1.1f
+                level.floatValue = was + (heard - was) * (1f - kotlin.math.exp(-pace * dt))
+                turn.floatValue = (turn.floatValue + dt * (0.07f + level.floatValue * 0.05f) * 360f) % 360f
             }
         }
     }
@@ -64,7 +71,7 @@ fun MixAurora(
             // Its own layer, for the fade towards the middle; see drawAurora.
             .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen },
     ) {
-        drawAurora(lights, time.floatValue, level.floatValue)
+        drawAurora(lights, time.floatValue, turn.floatValue, level.floatValue)
     }
 }
 
@@ -114,14 +121,13 @@ private val Lights = listOf(
 
 private data class Light(val color: Color, val turns: Float, val distance: Float, val phase: Float)
 
-private fun DrawScope.drawAurora(lights: List<Light>, t: Float, level: Float) {
+private fun DrawScope.drawAurora(lights: List<Light>, t: Float, turn: Float, level: Float) {
     val r = size.minDimension / 2f
     val reach = maxOf(size.width, size.height) / 2f
     val strength = (0.5f + level * 0.45f).coerceAtMost(0.95f)
 
     // A band of light going round the glass: the three colours in a turning
-    // ring, quicker a little with the music.
-    val turn = (t * (0.08f + level * 0.04f) * 360f) % 360f
+    // ring, quicker a little with the music (see [turn]).
     val ring = lights.map { it.color.copy(alpha = strength) }
     rotate(turn) {
         drawRect(

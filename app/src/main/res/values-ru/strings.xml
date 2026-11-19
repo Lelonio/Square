@@ -729,4 +729,6 @@
     <string name="onboarding_optional">Необязательно</string>
     <string name="soloist_failed">Soloist не удаётся держать запущенным, поэтому играет librespot. Soloist сообщил: %1$s</string>
     <string name="soloist_retry">Попробовать Soloist снова</string>
+    <string name="setup_done">Готово</string>
+    <string name="soloist_setup">Настроить Soloist</string>
 </resources>

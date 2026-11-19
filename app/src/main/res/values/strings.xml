@@ -767,4 +767,6 @@
     <string name="onboarding_optional">Optional</string>
     <string name="soloist_failed">Soloist would not keep running, so librespot is playing. Soloist said: %1$s</string>
     <string name="soloist_retry">Try Soloist again</string>
+    <string name="setup_done">Done</string>
+    <string name="soloist_setup">Set up Soloist</string>
 </resources>

@@ -472,6 +472,9 @@ object SoloistEngine {
     var ownCrossfade = false
         private set
 
+    /** Every line Soloist writes to the log, not only the useful ones: for a probe. */
+    private const val VERBOSE_SOLOIST = false
+
     /** When Soloist was last started again for a sign-in the network failed. */
     @Volatile
     private var offlineRestartAt = 0L
@@ -498,10 +501,14 @@ object SoloistEngine {
         // Soloist colours its warnings: the codes are not part of what it says.
         val line = raw.replace(colour, "")
         if ("CURL error: 6" in line || "CURL error: 7" in line) afterFailedSignIn()
-        if (line.startsWith("SQ") || " E [" in line || " W [" in line || "getAudioTransition" in line || "utomix" in line || "ransition" in line || "uepoint" in line) Log.i(TAG, line)
+        if (VERBOSE_SOLOIST || line.startsWith("SQ") || " E [" in line || " W [" in line || "getAudioTransition" in line || "utomix" in line || "ransition" in line || "uepoint" in line ||
+            "arration" in line || "lexicon" in line || " dj" in line || "DJ" in line) Log.i(TAG, line)
         // Soloist's own crossfade, from the account's playback settings on
         // Spotify's side, which nothing here can turn off: while it makes
         // one, Square does not make a second over it.
+        // The DJ's voice or the music, as Soloist prepares each piece.
+        if ("GainCalculator" in line && "is_speech: true" in line) SoloistAudio.speechNext(true)
+        if ("GainCalculator" in line && "is_speech: false" in line) SoloistAudio.speechNext(false)
         if ("calculateAutoTransition" in line && line.trimEnd().endsWith("YES")) _automixing.value = true
         if ("getAudioTransition: crossfade" in line) ownCrossfade = true
         if ("getAudioTransition: gapless" in line) ownCrossfade = false
@@ -853,18 +860,44 @@ object SoloistEngine {
         }.onFailure { Log.w(TAG, "play on $device refused: ${it.message}") }.isSuccess
     }
 
-    private fun playBody(context: JSONObject, trackUri: String, index: Int, positionMs: Long, paused: Boolean): JSONObject =
+    /**
+     * Spotify's DJ, started as Spotify's own apps start it: the DJ's playlist
+     * resolved through its session service, from the "dj" feature. Soloist
+     * then fetches the songs, says the lines between them and carries on by
+     * itself, as nothing does for it when the DJ is sent as a list of songs.
+     */
+    fun playDj(paused: Boolean): Boolean {
+        val uri = dev.lelonio.square.data.Catalog.DJ_URI
+        val context = JSONObject()
+            .put("uri", uri)
+            .put("url", "hm://lexicon-session-provider/context-resolve/v2/session?contextUri=$uri")
+            .put("metadata", JSONObject())
+        return play(context, "", -1, 0, paused, feature = "dj")
+    }
+
+    private fun playBody(
+        context: JSONObject,
+        trackUri: String,
+        index: Int,
+        positionMs: Long,
+        paused: Boolean,
+        feature: String = "square",
+    ): JSONObject =
         JSONObject().put(
             "command",
             JSONObject()
                 .put("endpoint", "play")
                 .put("context", context)
-                .put("play_origin", JSONObject().put("feature_identifier", "square").put("feature_version", "1"))
+                .put("play_origin", JSONObject().put("feature_identifier", feature).put("feature_version", "1"))
                 .put(
                     "options",
                     JSONObject()
-                        // The index is into the pages sent along, so the two agree.
-                        .put("skip_to", JSONObject().put("track_index", index).put("track_uri", trackUri))
+                        // The index is into the pages sent along, so the two
+                        // agree; none for a context Soloist resolves itself.
+                        .put(
+                            "skip_to",
+                            if (index < 0) JSONObject() else JSONObject().put("track_index", index).put("track_uri", trackUri),
+                        )
                         .put("seek_to", positionMs)
                         .put("initially_paused", paused)
                         .put(
@@ -877,11 +910,18 @@ object SoloistEngine {
                 ),
         )
 
-    private fun play(context: JSONObject, trackUri: String, index: Int, positionMs: Long, paused: Boolean): Boolean {
+    private fun play(
+        context: JSONObject,
+        trackUri: String,
+        index: Int,
+        positionMs: Long,
+        paused: Boolean,
+        feature: String = "square",
+    ): Boolean {
         val device = deviceId ?: return false
         _automixing.value = false
         Log.i(TAG, "play $trackUri of ${context.optString("uri")} at $positionMs ms${if (paused) ", paused" else ""}")
-        val body = playBody(context, trackUri, index, positionMs, paused)
+        val body = playBody(context, trackUri, index, positionMs, paused, feature)
         // Refused while Soloist's device is still being registered with the
         // account (a 502 right after it logs in): asked again for a while.
         // A device the account no longer knows (404, 410) is not a matter of

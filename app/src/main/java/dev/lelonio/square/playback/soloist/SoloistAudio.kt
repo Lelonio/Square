@@ -58,6 +58,23 @@ object SoloistAudio {
     @Volatile
     var aheadMs: Int = 0
         private set
+
+    /**
+     * Where in the music the DJ's voice starts or stops, by [playedMs]: Soloist
+     * says so as it prepares each piece, as far ahead of the music as libpulse
+     * holds, and the switch is made when that point is written.
+     */
+    private val speechAt = java.util.ArrayDeque<Pair<Double, Boolean>>()
+
+    /** Whether what is being written is the DJ talking; see AudioOutput.writeVoice. */
+    @Volatile
+    private var speaking = false
+
+    /** Soloist began preparing speech ([speech]) or music: heard once what is ahead of it is. */
+    fun speechNext(speech: Boolean) {
+        val at = playedMs() + aheadMs
+        synchronized(speechAt) { speechAt.addLast(at to speech) }
+    }
     @Volatile
     private var awaitingSound = true
 
@@ -121,6 +138,20 @@ object SoloistAudio {
         }
     }
 
+    private var shortBuffer: ByteBuffer = ByteBuffer.allocateDirect(1 shl 15).order(ByteOrder.LITTLE_ENDIAN)
+
+    /** Float samples as 16-bit, for the voice's path, which takes nothing else. */
+    private fun toShorts(floats: ByteBuffer, length: Int): ByteBuffer {
+        val count = length / 4
+        if (shortBuffer.capacity() < count * 2) shortBuffer = ByteBuffer.allocateDirect(count * 2).order(ByteOrder.LITTLE_ENDIAN)
+        val out = shortBuffer
+        out.clear()
+        val f = floats.duplicate().order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+        for (i in 0 until count) out.putShort((f.get(i) * 32767f).coerceIn(-32768f, 32767f).toInt().toShort())
+        out.flip()
+        return out
+    }
+
     private fun pump(input: DataInputStream, output: dev.lelonio.square.playback.AudioOutput) {
         val head = ByteArray(12)
         var bytes = ByteArray(1 shl 16)
@@ -154,14 +185,29 @@ object SoloistAudio {
                     direct.clear()
                     direct.put(bytes, 0, length)
                     direct.flip()
-                    if (float) output.writeFloat(direct, length, rate, channels) else output.write(direct, length, rate, channels)
+                    val now = playedMs()
+                    synchronized(speechAt) {
+                        while (speechAt.isNotEmpty() && speechAt.peekFirst().first <= now) speaking = speechAt.pollFirst().second
+                    }
+                    when {
+                        // The DJ's voice as it was recorded: no tempo, pitch or
+                        // room on it, as on the Spotify engine.
+                        speaking -> {
+                            val shorts = if (float) toShorts(direct, length) else direct
+                            val bytes = if (float) length / 2 else length
+                            output.writeVoice(shorts, bytes, rate, channels)
+                            playedUs.addAndGet(bytes * 1_000_000L / (rate.toLong() * channels * 2))
+                        }
+                        float -> output.writeFloat(direct, length, rate, channels)
+                        else -> output.write(direct, length, rate, channels)
+                    }
                     if (awaitingSound) {
                         awaitingSound = false
                         sounding.value++
                     }
                     audioBytes += length
                     val perSecond = rate * channels * (if (float) 4L else 2L)
-                    playedUs.addAndGet(length * 1_000_000L / perSecond)
+                    if (!speaking) playedUs.addAndGet(length * 1_000_000L / perSecond)
                     if (audioBytes / (perSecond * 10) != (audioBytes - length) / (perSecond * 10)) {
                         Log.i(TAG, "${audioBytes / perSecond} s of audio played")
                     }
@@ -172,7 +218,11 @@ object SoloistAudio {
                 // nothing in the middle of the dissolve.
                 'R' -> { Log.i(TAG, "resume"); resumeNow() }
                 'P' -> { Log.i(TAG, "pause"); pauseNow(); awaitingSound = true }
-                'F' -> Log.i(TAG, "flush")
+                'F' -> {
+                    Log.i(TAG, "flush")
+                    // What was ahead is gone, and the points in it with it.
+                    synchronized(speechAt) { speechAt.clear() }
+                }
                 'N' -> newSongHeard.value++
                 'L' -> {
                     val told = ByteArray(length).also { input.readFully(it) }

@@ -760,4 +760,6 @@
     <string name="onboarding_optional">Tùy chọn</string>
     <string name="soloist_failed">Soloist không chạy ổn định nên librespot đang phát. Soloist báo: %1$s</string>
     <string name="soloist_retry">Thử lại Soloist</string>
+    <string name="setup_done">Xong</string>
+    <string name="soloist_setup">Thiết lập Soloist</string>
 </resources>

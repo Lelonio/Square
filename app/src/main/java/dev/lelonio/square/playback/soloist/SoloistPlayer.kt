@@ -473,16 +473,22 @@ class SoloistPlayer(
         // pressed, both asking) is the one already on its way.
         val now = System.currentTimeMillis()
         if (sentUri == current.mediaId && sentPosition == position && sentPaused == paused && now - sentAt < 2000) return
+        // Spotify's DJ is Soloist's to run whole: its session, its songs, its
+        // voice. Square's own DJ (the queue it feeds, the lines it has said)
+        // is librespot's.
+        val dj = contextUri == dev.lelonio.square.data.Catalog.DJ_URI
         sentUri = current.mediaId
         commandedAt = now
         SoloistEngine.listSource = contextUri
-        sentContext = if (asContext) contextUri else SoloistEngine.LIST_CONTEXT
+        sentContext = if (asContext || dj) contextUri else SoloistEngine.LIST_CONTEXT
         sentSerial = state.trackSerial
         sentAt = now
         sentPosition = position
         sentPaused = paused
         scope.launch(Dispatchers.IO) {
-            if (asContext) {
+            if (dj) {
+                SoloistEngine.playDj(paused)
+            } else if (asContext) {
                 // The whole context, as far as it goes, so the songs before
                 // the one picked are there too.
                 val from = (index - CONTEXT_PAGE / 2).coerceAtLeast(0)

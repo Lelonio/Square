@@ -14,7 +14,14 @@ plugins {
  * extra Rust build (~2 min from cold), so the default is deliberately just the
  * one. Add "x86_64" for the emulator and "armeabi-v7a" for pre-2015 hardware.
  */
-val nativeAbis = listOf("arm64-v8a", "armeabi-v7a")
+/**
+ * Every ABI a release ships, with a universal APK besides, only when asked:
+ * `-Psquare.allAbis=true`, which the release workflow passes. Anything else
+ * (a build here, CI's check) is arm64 alone, which is every phone this is run
+ * on, and the Rust engine and Bungee built once instead of twice.
+ */
+val allAbis = (findProperty("square.allAbis") as String?)?.toBoolean() == true
+val nativeAbis = if (allAbis) listOf("arm64-v8a", "armeabi-v7a") else listOf("arm64-v8a")
 
 /** NDK used for both AGP and the Cargo cross-build; keep the two in step. */
 val ndkVersionForCargo = "28.2.13676358"
@@ -73,7 +80,7 @@ android {
             isEnable = true
             reset()
             include(*nativeAbis.toTypedArray())
-            isUniversalApk = true
+            isUniversalApk = allAbis
         }
     }
 

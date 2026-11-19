@@ -36,7 +36,12 @@ and runs
     libsqlaunch.so soloist libsqld.so --library-path lib @BIN <soloist args>
 
 The launcher copies the binary into a memfd (mappable as code, as ART's JIT
-cache is) and execs the loader on `/proc/self/fd/N` in the same process.
+cache is), maps its segments from that descriptor and the loader's from its
+file, lays out a stack (arguments, environment, auxiliary vector) as the kernel
+would, and enters the loader, which finds the program already mapped; the
+library path goes in `LD_LIBRARY_PATH`. Android 17 refuses an app any open of
+a memory file by path, so the loader is no longer run on `/proc/self/fd/N`;
+that remains the fallback where the mapping itself is refused.
 glibc's `LD_PRELOAD` and `LD_AUDIT` are passed as `SQ_LD_PRELOAD` and
 `SQ_LD_AUDIT`, which the launcher renames just before the exec, so Android's
 own linker, which starts the launcher, does not act on them.

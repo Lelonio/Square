@@ -273,6 +273,7 @@ class PlaybackService : MediaLibraryService() {
         if (previous < 0 || kotlin.math.abs(index - previous) == 1) return
         val item = mediaItem ?: return
         if (!dev.lelonio.square.backend.spotify.SpotifyDj.isDj(contextOf(item))) return
+        if (playerKind == PlayerKind.SOLOIST) return
         NativeBridge.djJumped(item.mediaId)
     }
 
@@ -288,6 +289,8 @@ class PlaybackService : MediaLibraryService() {
     private fun maybeContinueDj(current: androidx.media3.common.MediaItem): Boolean {
         if (!dev.lelonio.square.backend.spotify.SpotifyDj.isDj(contextOf(current))) return false
         if (!dev.lelonio.square.backend.spotify.SpotifyDj.enabled) return true
+        // Soloist runs the DJ whole, and its queue takes nothing from here.
+        if (playerKind == PlayerKind.SOLOIST) return true
         val remaining = player.mediaItemCount - player.currentMediaItemIndex - 1
         if (remaining > 2 || djInFlight) return true
         djInFlight = true

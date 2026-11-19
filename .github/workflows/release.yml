@@ -61,7 +61,8 @@ jobs:
           } > keystore.properties
 
       - name: Build
-        run: ./gradlew :app:assembleRelease --stacktrace
+        # Every ABI and the universal APK: see allAbis in app/build.gradle.kts.
+        run: ./gradlew :app:assembleRelease -Psquare.allAbis=true --stacktrace
 
       # Without the right key an update does not install over the app people
       # already have, and the build would not say so: a missing keystore falls

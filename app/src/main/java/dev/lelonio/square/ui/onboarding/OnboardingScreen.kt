@@ -94,8 +94,20 @@ fun OnboardingScreen(
     // The engine page only where Soloist runs (arm64).
     val context = androidx.compose.ui.platform.LocalContext.current
     val engine = remember { dev.lelonio.square.playback.soloist.SoloistRuntime.isSupported(context) }
-    val stepCount = if (engine) STEP_COUNT else STEP_COUNT - 1
-    val last = stepCount - 1
+    val soloist = dev.lelonio.square.ui.settings.rememberSoloistSetup()
+    // Soloist chosen: its three steps follow the choice, one page each.
+    val pages = buildList {
+        add(Page.WELCOME); add(Page.LOG_IN); add(Page.DASHBOARD); add(Page.CLIENT_ID)
+        if (engine) {
+            add(Page.ENGINE)
+            if (soloist.chosen) { add(Page.SOLOIST_KEY); add(Page.SOLOIST_DOWNLOAD); add(Page.SOLOIST_SIGN_IN) }
+        }
+        add(Page.DONE)
+    }
+    val last = pages.lastIndex
+    val current = pages[step.coerceIn(0, last)]
+    // A Soloist step moves on once it is done; until then the way on waits.
+    val stepDone = soloistStepDone(current, soloist)
 
     SetupScaffold(
         top = {
@@ -109,10 +121,11 @@ fun OnboardingScreen(
             )
         },
         bottom = {
-            StepDots(stepCount, step)
+            StepDots(pages.size, step)
             Spacer(Modifier.weight(1f))
             PrimaryButton(
                 stringResource(if (step == last) R.string.onboarding_start else R.string.next_step),
+                enabled = stepDone,
                 onClick = { if (step == last) onFinish() else step++ },
             )
         },
@@ -130,24 +143,27 @@ fun OnboardingScreen(
             },
             label = "onboarding",
             modifier = Modifier.fillMaxSize(),
-        ) { current ->
+        ) { shown ->
             Column(
                 Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = PAGE_MARGIN),
             ) {
-                when (current) {
-                    0 -> Welcome(language, onLanguage)
-                    1 -> LogIn(
+                when (pages.getOrElse(shown) { Page.DONE }) {
+                    Page.WELCOME -> Welcome(language, onLanguage)
+                    Page.LOG_IN -> LogIn(
                         loggedIn = loggedIn,
                         connecting = state is MainViewModel.UiState.Loading,
                         onLogIn = onLogIn,
                     )
-                    2 -> Dashboard(redirectUri = webApi.redirectUri)
-                    3 -> ClientId(webApi, onClientIdChange, onConnectWebApi)
-                    4 -> if (engine) Engine() else Done()
-                    else -> Done()
+                    Page.DASHBOARD -> Dashboard(redirectUri = webApi.redirectUri)
+                    Page.CLIENT_ID -> ClientId(webApi, onClientIdChange, onConnectWebApi)
+                    Page.ENGINE -> Engine(soloist)
+                    Page.SOLOIST_KEY -> SoloistKeyStep(soloist)
+                    Page.SOLOIST_DOWNLOAD -> SoloistDownloadStep(soloist)
+                    Page.SOLOIST_SIGN_IN -> SoloistSignInStep(soloist, onDone = { if (step < last) step++ })
+                    Page.DONE -> Done()
                 }
                 Spacer(Modifier.height(28.dp))
             }
@@ -155,7 +171,16 @@ fun OnboardingScreen(
     }
 }
 
-private const val STEP_COUNT = 6
+/** The guide's pages, in order; the Soloist ones only when it is chosen. */
+internal enum class Page { WELCOME, LOG_IN, DASHBOARD, CLIENT_ID, ENGINE, SOLOIST_KEY, SOLOIST_DOWNLOAD, SOLOIST_SIGN_IN, DONE }
+
+/** Whether a Soloist step is done, so the way on opens; any other page always is. */
+internal fun soloistStepDone(page: Page, soloist: dev.lelonio.square.ui.settings.SoloistSetupUi): Boolean = when (page) {
+    Page.SOLOIST_KEY -> soloist.savedKey.isNotEmpty()
+    Page.SOLOIST_DOWNLOAD -> soloist.installed
+    Page.SOLOIST_SIGN_IN -> soloist.signedIn
+    else -> true
+}
 
 /** The steps that are work, as the header counts them: the first and last are not. */
 private const val WORK_STEPS = 3
@@ -178,7 +203,7 @@ private fun Welcome(language: String, onLanguage: (String) -> Unit) {
     // finish the tutorial first to find it would be the wrong way round.
     // Nothing glassy sits behind the onboarding pages, so the chips' glass
     // samples nothing and shows only its own film and rim.
-    LanguageChips(language, dev.lelonio.square.ui.glass.backdrop.backdrops.emptyBackdrop(), onLanguage)
+    LanguageChips(language, LocalSetupBackdrop.current, onLanguage)
 }
 
 @Composable
@@ -331,13 +356,7 @@ private fun ClientId(
  * the default needs nothing; the same steps are in the settings for later.
  */
 @Composable
-private fun Engine() {
-    val uriHandler = LocalUriHandler.current
-    val clipboard = LocalClipboardManager.current
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val soloist = dev.lelonio.square.ui.settings.rememberSoloistSetup()
-    var draft by remember(soloist.savedKey) { mutableStateOf(soloist.savedKey) }
-
+private fun Engine(soloist: dev.lelonio.square.ui.settings.SoloistSetupUi) {
     StepHeader(stringResource(R.string.engine), stringResource(R.string.onboarding_optional))
     ProseText(stringResource(R.string.onboarding_engine_intro))
 
@@ -358,93 +377,140 @@ private fun Engine() {
             onClick = { soloist.choose(true) },
         )
     }
-    if (!soloist.chosen) {
-        Note(stringResource(R.string.onboarding_engine_later))
-        return
-    }
+    if (!soloist.chosen) Note(stringResource(R.string.onboarding_engine_later))
+}
 
-    // The three steps, one card, as the dashboard's checklist is.
+/** Soloist's steps, one page each, in the guide and from the settings. */
+@Composable
+internal fun SoloistKeyStep(soloist: dev.lelonio.square.ui.settings.SoloistSetupUi) {
+    val uriHandler = LocalUriHandler.current
+    val clipboard = LocalClipboardManager.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var draft by remember(soloist.savedKey) { mutableStateOf(soloist.savedKey) }
+
+    StepHeader(stringResource(R.string.soloist_step_key), stringResource(R.string.onboarding_step_of, 1, 3))
+    ProseText(stringResource(R.string.soloist_key_note))
+    CardButton(
+        title = stringResource(R.string.soloist_get_key),
+        detail = dev.lelonio.square.ui.settings.SOLOIST_KEY_PAGE.removePrefix("https://"),
+        icon = PhosphorIcons.Regular.ArrowUpRight,
+        onClick = { openOrCopy(uriHandler, clipboard, context, dev.lelonio.square.ui.settings.SOLOIST_KEY_PAGE) },
+        modifier = Modifier.padding(top = 18.dp),
+    )
+    OutlinedTextField(
+        value = draft,
+        onValueChange = { draft = it },
+        label = { Text(stringResource(R.string.soloist_key)) },
+        singleLine = true,
+        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+        shape = RoundedCornerShape(20.dp),
+        colors = guideFieldColors(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp)
+            .setupCard(RoundedCornerShape(20.dp), fill = 0.05f),
+    )
+    if (draft.trim() != soloist.savedKey && draft.isNotBlank()) {
+        SecondaryButton(
+            stringResource(R.string.save),
+            onClick = { soloist.saveKey(draft) },
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    } else if (soloist.savedKey.isNotEmpty()) {
+        Spacer(Modifier.height(16.dp))
+        DoneRow(stringResource(R.string.onboarding_engine_key_saved))
+    }
+}
+
+@Composable
+internal fun SoloistDownloadStep(soloist: dev.lelonio.square.ui.settings.SoloistSetupUi) {
+    // Started on arriving here: the page is the download.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!soloist.installed && soloist.download !is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Running) {
+            soloist.fetch()
+        }
+    }
+    StepHeader(stringResource(R.string.soloist_step_download), stringResource(R.string.onboarding_step_of, 2, 3))
+    ProseText(stringResource(R.string.soloist_download_note))
     Column(
         Modifier
-            .padding(top = 12.dp)
+            .padding(top = 18.dp)
             .fillMaxWidth()
             .setupCard()
-            .padding(vertical = 4.dp),
+            .padding(18.dp),
     ) {
-        ListStep(1, stringResource(R.string.soloist_key_note)) {
-            Column {
-                CardButton(
-                    title = stringResource(R.string.soloist_get_key),
-                    detail = dev.lelonio.square.ui.settings.SOLOIST_KEY_PAGE.removePrefix("https://"),
-                    icon = PhosphorIcons.Regular.ArrowUpRight,
-                    onClick = { openOrCopy(uriHandler, clipboard, context, dev.lelonio.square.ui.settings.SOLOIST_KEY_PAGE) },
-                    modifier = Modifier.padding(top = 10.dp),
-                )
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    label = { Text(stringResource(R.string.soloist_key)) },
-                    singleLine = true,
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = guideFieldColors(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp),
-                )
-                if (draft.trim() != soloist.savedKey && draft.isNotBlank()) {
-                    SecondaryButton(
-                        stringResource(R.string.save),
-                        onClick = { soloist.saveKey(draft) },
-                        modifier = Modifier.padding(top = 10.dp),
-                    )
-                } else if (soloist.savedKey.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    DoneRow(stringResource(R.string.onboarding_engine_key_saved))
-                }
-            }
-        }
-        ListDivider()
-        ListStep(2, dev.lelonio.square.ui.settings.soloistDownloadStatus(soloist)) {
-            Column {
-                dev.lelonio.square.ui.settings.SoloistDownloadBar(
-                    soloist.download,
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp),
-                )
-                when {
-                    soloist.download is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Running -> Unit
-                    soloist.installed -> {
-                        Spacer(Modifier.height(10.dp))
-                        DoneRow(stringResource(R.string.soloist_downloaded))
-                    }
-                    else -> SecondaryButton(
-                        stringResource(R.string.soloist_download),
-                        onClick = soloist.fetch,
-                        modifier = Modifier.padding(top = 10.dp),
-                    )
-                }
-            }
-        }
-        ListDivider()
-        ListStep(3, dev.lelonio.square.ui.settings.soloistAccountStatus(soloist)) {
-            if (soloist.signedIn) {
-                Column {
-                    Spacer(Modifier.height(10.dp))
-                    DoneRow(stringResource(R.string.onboarding_engine_ready))
-                }
+        Text(
+            dev.lelonio.square.ui.settings.soloistDownloadStatus(soloist),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (soloist.download is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Failed) {
+                MaterialTheme.colorScheme.error
             } else {
-                soloist.error?.let {
-                    Text(
-                        stringResource(R.string.soloist_error, it),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
+                Prose
+            },
+        )
+        dev.lelonio.square.ui.settings.SoloistDownloadBar(
+            soloist.download,
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+        )
+        when {
+            soloist.download is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Running -> Unit
+            soloist.installed -> {
+                Spacer(Modifier.height(14.dp))
+                DoneRow(stringResource(R.string.soloist_downloaded))
             }
+            else -> SecondaryButton(
+                stringResource(R.string.soloist_download),
+                onClick = soloist.fetch,
+                modifier = Modifier.padding(top = 12.dp),
+            )
         }
+    }
+}
+
+@Composable
+internal fun SoloistSignInStep(soloist: dev.lelonio.square.ui.settings.SoloistSetupUi, onDone: () -> Unit) {
+    // Signed in from the Spotify app, wherever the listener is: on by itself.
+    androidx.compose.runtime.LaunchedEffect(soloist.signedIn) {
+        if (soloist.signedIn) {
+            kotlinx.coroutines.delay(900)
+            onDone()
+        }
+    }
+    StepHeader(stringResource(R.string.soloist_step_account), stringResource(R.string.onboarding_step_of, 3, 3))
+    ProseText(dev.lelonio.square.ui.settings.soloistAccountStatus(soloist))
+    Row(
+        Modifier
+            .padding(top = 18.dp)
+            .fillMaxWidth()
+            .setupCard()
+            .padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (soloist.signedIn) {
+            DoneRow(stringResource(R.string.onboarding_engine_ready))
+        } else {
+            androidx.compose.material3.CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                color = Ink,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                stringResource(R.string.engine_soloist),
+                style = MaterialTheme.typography.titleMedium,
+                color = Ink,
+                modifier = Modifier.padding(start = 14.dp),
+            )
+        }
+    }
+    soloist.error?.takeIf { !soloist.signedIn }?.let {
+        Text(
+            stringResource(R.string.soloist_error, it),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(top = 10.dp),
+        )
     }
 }
 
