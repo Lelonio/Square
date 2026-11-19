@@ -22,8 +22,6 @@ import androidx.compose.ui.semantics.stateDescription
 import com.adamglin.phosphoricons.regular.SlidersHorizontal
 import com.adamglin.phosphoricons.regular.Sparkle
 import com.adamglin.phosphoricons.regular.Waveform
-import dev.lelonio.square.ui.components.MIX_RING_ROOM
-import dev.lelonio.square.ui.components.mixRing
 import androidx.compose.foundation.layout.RowScope
 import dev.lelonio.square.ui.glass.liquidGlass
 import dev.lelonio.square.ui.player.GlassFilm
@@ -1773,7 +1771,7 @@ private fun DetailHeader(
                 // A mixed page plays as a mix, and its button says so: the
                 // page's glass instead of the solid slab, lit by the ring the
                 // official app turns round its own.
-                if (mixOn) MixPlayButton(onPlay = onPlay, backdrop = backdrop, ink = ink) else
+                if (mixOn) MixPlayButton(onPlay = onPlay, backdrop = backdrop, ink = ink, under = pageColor) else
                 Row(
                     Modifier
                         .softShadow(ContinuousCapsule, elevation = 20.dp, spot = 0.32f)
@@ -3361,31 +3359,41 @@ private val ROW_TEXT_INDENT = 90.dp
  * controls either side of it, with the mix's ring turning round its rim.
  */
 @Composable
-private fun MixPlayButton(onPlay: () -> Unit, backdrop: Backdrop, ink: Color) {
-    // Room for the ring and its glow, which are drawn outside the button:
-    // without it the row around the button cut them off at its edges.
-    Box(Modifier.padding(MIX_RING_ROOM).mixRing(true)) {
-        LiquidButton(
-            onClick = onPlay,
-            backdrop = backdrop,
-            // Inside the glass, as CircleAction's.
-            surfaceColor = Color.White.copy(alpha = 0.17f),
-            contentHeight = 50.dp,
-            contentPadding = 28.dp,
-        ) {
-            Icon(
-                PhosphorIcons.Fill.Play,
-                contentDescription = null,
-                tint = ink,
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                stringResource(R.string.play),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = ink,
-                modifier = Modifier.padding(start = 8.dp),
-            )
+private fun MixPlayButton(onPlay: () -> Unit, backdrop: Backdrop, ink: Color, under: Color) {
+    // The page's glass, with the Mix's light moving inside it in the page's
+    // own colours, as the player's play button has it; see MixAurora.
+    LiquidButton(
+        onClick = onPlay,
+        backdrop = backdrop,
+        // Inside the glass, as CircleAction's.
+        surfaceColor = Color.White.copy(alpha = 0.17f),
+        contentHeight = 50.dp,
+        contentPadding = 0.dp,
+    ) {
+        Box(Modifier.height(50.dp), contentAlignment = Alignment.Center) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                dev.lelonio.square.ui.player.LocalMixColors provides listOf(under),
+            ) {
+                dev.lelonio.square.ui.player.MixAurora(Modifier.matchParentSize(), shape = ContinuousCapsule)
+            }
+            Row(
+                Modifier.padding(horizontal = 28.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    PhosphorIcons.Fill.Play,
+                    contentDescription = null,
+                    tint = ink,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    stringResource(R.string.play),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ink,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         }
     }
 }

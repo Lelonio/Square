@@ -1092,7 +1092,11 @@ fun PlayerScreen(
             }
         }
 
-        CompositionLocalProvider(LocalContentColor provides GlassInk) {
+        CompositionLocalProvider(
+            LocalContentColor provides GlassInk,
+            // The Mix's light in the play button takes the colours under it.
+            LocalMixColors provides (auraColors.takeIf { it.isNotEmpty() } ?: listOfNotNull(coverAccent)),
+        ) {
             DismissibleScreen(onDismiss = onCollapse, modifier = Modifier.fillMaxSize()) {
                 Column(
                     Modifier
@@ -2682,7 +2686,7 @@ internal fun Controls(
             // Ringed while a playlist plays as a Spotify Mix, as the official
             // player's button is; see Mixes.playing.
             val mixPlaying by dev.lelonio.square.playback.Mixes.playing.collectAsStateWithLifecycle()
-            Box(Modifier.mixRing(mixPlaying)) {
+            Box {
             RoundGlassButton(backdrop = backdrop, size = 76.dp, onClick = onTogglePlay) {
                 // A ring around the icon while the track is still being fetched.
                 //
@@ -2694,6 +2698,8 @@ internal fun Controls(
                 // A Box, because the button lays its content out in a row and the
                 // ring belongs *around* the icon rather than beside it.
                 Box(contentAlignment = Alignment.Center) {
+                    // A Mix playing: light moving inside the glass, with the music.
+                    if (mixPlaying) MixAurora(Modifier.size(76.dp))
                     if (state.isBuffering) {
                         CircularProgressIndicator(
                             color = LocalContentColor.current.copy(alpha = 0.5f),

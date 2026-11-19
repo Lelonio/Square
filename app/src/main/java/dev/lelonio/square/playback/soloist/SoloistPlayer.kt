@@ -146,6 +146,9 @@ class SoloistPlayer(
         scope.launch { SoloistEngine.state.collect(::follow) }
         scope.launch { SoloistEngine.restarted.drop(1).collect { if (local != null) send() } }
         scope.launch {
+            SoloistEngine.automixing.collect { dev.lelonio.square.playback.Mixes.soloistMixing(it) }
+        }
+        scope.launch {
             SoloistAudio.newSongHeard.drop(1).collect {
                 // The new song begins under the old one now, not when Soloist
                 // said it began: its time runs from here.
@@ -259,6 +262,9 @@ class SoloistPlayer(
         }
         release(next, was)
         if (was.active != next.active) thread { runCatching { dev.lelonio.square.data.RemoteConnect.refresh() } }
+        // Soloist mixes a mixed playlist played as itself: the player wears
+        // the mix's look while it does (see Mixes.playing).
+        if (local == null) dev.lelonio.square.playback.Mixes.follow(next.contextUri?.takeIf { it.startsWith("spotify:playlist:") })
         if (local == null) wantPlay = heldPlay ?: next.playing
         describeUnknown()
         scheduleCrossfade()
@@ -283,10 +289,50 @@ class SoloistPlayer(
 
     private fun remember(items: List<MediaItem>) {
         items.forEach { if (!it.mediaMetadata.title.isNullOrEmpty()) known[it.mediaId] = it.mediaMetadata }
+        // The name of where they came from, for the player's title: kept by
+        // song and by context, since what Soloist reports carries neither.
+        items.forEach { item ->
+            val extras = item.mediaMetadata.extras ?: return@forEach
+            val label = extras.getString(dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL)?.takeIf { it.isNotEmpty() } ?: return@forEach
+            labels[item.mediaId] = label
+            extras.getString(EXTRA_CONTEXT_URI)?.let { labels[it] = label }
+        }
+    }
+
+    /**
+     * Where each song or context came from, by name. Rebuilt from Soloist's
+     * state, the queue lost it, and the player's title read "Now playing"
+     * instead of the playlist's name from the moment Soloist played it, and
+     * after every cold start, whose saved queue was the one without it.
+     */
+    private val labels = mutableMapOf<String, String>()
+
+    private fun labelFor(song: String, contextUri: String?): String? =
+        contextUri?.let { labels[it] } ?: labels[song]
+
+    /** Contexts whose name has been asked for. */
+    private val namesAsked = mutableSetOf<String>()
+
+    /**
+     * The name of a playlist Soloist plays that this app did not start (the
+     * account's playback taken up at launch, a play from another device):
+     * read once, for the player's title.
+     */
+    private fun nameUnknownContext() {
+        val context = state.contextUri?.takeIf { it.startsWith("spotify:playlist:") } ?: return
+        if (labels.containsKey(context) || !namesAsked.add(context)) return
+        scope.launch {
+            val name = withContext(Dispatchers.IO) {
+                runCatching { dev.lelonio.square.data.Catalog.playlistName(context) }.getOrNull()
+            }?.takeIf { it.isNotBlank() } ?: return@launch
+            labels[context] = name
+            invalidateState()
+        }
     }
 
     /** Reads the songs Soloist named without describing, once each. */
     private fun describeUnknown() {
+        nameUnknownContext()
         val missing = (listOfNotNull(state.song) + state.previous.map { it.song } + state.upcoming.take(MAX_UPCOMING).map { it.song })
             .filter { it.name.isEmpty() && it.uri !in known && it.uri !in asked && it.uri.startsWith("spotify:track:") }
             .map { it.uri }.distinct()
@@ -420,7 +466,7 @@ class SoloistPlayer(
         val asContext = contextUri != null && items.all {
             it.mediaMetadata.extras?.getString(EXTRA_CONTEXT_URI) == contextUri &&
                 it.mediaMetadata.extras?.getBoolean(EXTRA_CONTEXT_ORDERED) == true
-        }
+        } && !dev.lelonio.square.playback.Mixes.offHere(context, contextUri)
         val position = localPosition
         val paused = !wantPlay
         // The same play again a moment later (the queue set and then play
@@ -772,6 +818,7 @@ class SoloistPlayer(
     }
 
     override fun handleRelease(): ListenableFuture<*> {
+        dev.lelonio.square.playback.Mixes.soloistMixing(false)
         main.removeCallbacksAndMessages(null)
         scope.cancel()
         return done()
@@ -892,6 +939,7 @@ class SoloistPlayer(
                 val extras = Bundle(described.extras ?: Bundle()).apply {
                     if (fromContext) putString(EXTRA_CONTEXT_URI, contextUri) else remove(EXTRA_CONTEXT_URI)
                     putBoolean(EXTRA_CONTEXT_ORDERED, fromContext)
+                    labelFor(song.uri, contextUri)?.let { putString(dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL, it) }
                 }
                 return MediaItem.Builder().setMediaId(song.uri).setUri(song.uri)
                     .setMediaMetadata(described.buildUpon().setExtras(extras).build()).build()
@@ -911,6 +959,7 @@ class SoloistPlayer(
                         Bundle().apply {
                             if (fromContext) putString(EXTRA_CONTEXT_URI, contextUri)
                             putBoolean(EXTRA_CONTEXT_ORDERED, fromContext)
+                            labelFor(song.uri, contextUri)?.let { putString(dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL, it) }
                             song.artists.firstOrNull()?.second?.let { putString(EXTRA_ARTIST_URI, it) }
                             song.albumUri?.let { putString(EXTRA_ALBUM_URI, it) }
                             if (song.explicit) putBoolean(EXTRA_EXPLICIT, true)

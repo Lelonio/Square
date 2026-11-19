@@ -525,7 +525,10 @@ class AudioOutput {
         // unwanted, and holding the decoder here would only delay the load that
         // closed the gate in the first place.
         if (discarding) return
-        if (!floatIn) takenUs.addAndGet(sizeInBytes * 1_000_000L / (sampleRate.toLong() * channels * 2).coerceAtLeast(1))
+        if (!floatIn) {
+            takenUs.addAndGet(sizeInBytes * 1_000_000L / (sampleRate.toLong() * channels * 2).coerceAtLeast(1))
+            AudioLevel.ofShorts(data.duplicate().order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer(), sizeInBytes / 2)
+        }
         // 16-bit through the effects: not what a DAC opened bit-perfect is for.
         HiFi.release()
 
@@ -603,6 +606,7 @@ class AudioOutput {
         val samples = sizeInBytes / 4
         // A view of its own: the caller's buffer keeps the byte order it had.
         val floats = data.duplicate().order(java.nio.ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+        AudioLevel.ofFloats(floats, samples)
 
         val neutral = effectsNeutral()
         if (neutral != wasNeutral) {

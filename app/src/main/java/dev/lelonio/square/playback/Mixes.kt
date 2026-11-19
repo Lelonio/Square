@@ -161,10 +161,29 @@ object Mixes {
      */
     val playing: StateFlow<Boolean> = _playing.asStateFlow()
 
+    /**
+     * Whether a playlist mixed in Spotify's app was switched off here (see
+     * MainViewModel.toggleMix). Soloist mixes such a playlist itself as soon
+     * as it is played as that playlist, so it is played as Square's own list
+     * instead, which Soloist does not know to mix.
+     */
+    fun offHere(context: android.content.Context, uri: String): Boolean =
+        uri in context.applicationContext.getSharedPreferences("square_mix", android.content.Context.MODE_PRIVATE)
+            .getStringSet("off", emptySet()).orEmpty()
+
     /** Called by the player with the context it is playing; null when none. */
     fun follow(contextUri: String?) {
         context = contextUri
-        _playing.value = contextUri != null && playingMixes.containsKey(contextUri)
+        _playing.value = soloistMixing || (contextUri != null && playingMixes.containsKey(contextUri))
+    }
+
+    /** Whether Soloist is mixing what it plays, by its own word; see SoloistEngine.automixing. */
+    @Volatile private var soloistMixing = false
+
+    fun soloistMixing(on: Boolean) {
+        if (soloistMixing == on) return
+        soloistMixing = on
+        follow(context)
     }
 
     /** The context the player last said it was playing; see [follow]. */

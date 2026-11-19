@@ -51,6 +51,22 @@ class SoloistProbe : BroadcastReceiver() {
                 kotlin.concurrent.thread { engine.setQueue(now.previous.reversed(), next) }
                 return
             }
+            // What Soloist plays now, sent again the way Square sends a
+            // playlist (the context with its songs as pages), to compare with
+            // the context sent bare.
+            "replay" -> {
+                val engine = dev.lelonio.square.playback.soloist.SoloistEngine
+                val now = engine.state.value
+                val context = now.contextUri ?: return
+                val uris = listOfNotNull(now.song?.uri) + now.upcoming.map { it.song.uri }
+                android.util.Log.i("SoloistProbe", "replay $context with ${uris.size} songs as pages")
+                if (intent.getBooleanExtra("list", false)) {
+                    kotlin.concurrent.thread { engine.playList(uris, 0, 0, false, null) }
+                } else {
+                    kotlin.concurrent.thread { engine.playContext(context, uris, 0, 0, false) }
+                }
+                return
+            }
             // As if Soloist had fallen over: killed, not asked to stop.
             "crash" -> {
                 val engine = dev.lelonio.square.playback.soloist.SoloistEngine

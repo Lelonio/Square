@@ -458,6 +458,15 @@ object SoloistEngine {
     /** What Soloist says about itself that its WebSocket does not. */
     private val colour = Regex("\u001B\\[[0-9;]*m")
 
+    private val _automixing = MutableStateFlow(false)
+
+    /**
+     * Whether Soloist is playing a mixed playlist as Spotify mixes it (it
+     * says so as it works the transitions out): the player wears the mix's
+     * button meanwhile. Reset with each play sent.
+     */
+    val automixing: StateFlow<Boolean> = _automixing.asStateFlow()
+
     /** Whether Soloist makes its own crossfade between songs; see readLog. */
     @Volatile
     var ownCrossfade = false
@@ -489,10 +498,11 @@ object SoloistEngine {
         // Soloist colours its warnings: the codes are not part of what it says.
         val line = raw.replace(colour, "")
         if ("CURL error: 6" in line || "CURL error: 7" in line) afterFailedSignIn()
-        if (line.startsWith("SQ") || " E [" in line || " W [" in line || "getAudioTransition" in line) Log.i(TAG, line)
+        if (line.startsWith("SQ") || " E [" in line || " W [" in line || "getAudioTransition" in line || "utomix" in line || "ransition" in line || "uepoint" in line) Log.i(TAG, line)
         // Soloist's own crossfade, from the account's playback settings on
         // Spotify's side, which nothing here can turn off: while it makes
         // one, Square does not make a second over it.
+        if ("calculateAutoTransition" in line && line.trimEnd().endsWith("YES")) _automixing.value = true
         if ("getAudioTransition: crossfade" in line) ownCrossfade = true
         if ("getAudioTransition: gapless" in line) ownCrossfade = false
         deviceLine.find(line)?.let {
@@ -869,6 +879,7 @@ object SoloistEngine {
 
     private fun play(context: JSONObject, trackUri: String, index: Int, positionMs: Long, paused: Boolean): Boolean {
         val device = deviceId ?: return false
+        _automixing.value = false
         Log.i(TAG, "play $trackUri of ${context.optString("uri")} at $positionMs ms${if (paused) ", paused" else ""}")
         val body = playBody(context, trackUri, index, positionMs, paused)
         // Refused while Soloist's device is still being registered with the
