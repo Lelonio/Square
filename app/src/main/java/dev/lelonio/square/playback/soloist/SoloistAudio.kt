@@ -50,6 +50,54 @@ object SoloistAudio {
      */
     fun playedMs(): Double = playedUs.get() / 1000.0
 
+    /** How much music had gone out at a few moments of the last seconds, oldest first. */
+    private val historyAt = LongArray(HISTORY)
+    private val historyPlayed = DoubleArray(HISTORY)
+    private var historyNext = 0
+    private var historyCount = 0
+
+    private fun noteHistory() {
+        val now = System.currentTimeMillis()
+        synchronized(historyAt) {
+            val last = (historyNext - 1 + HISTORY) % HISTORY
+            if (historyCount > 0 && now - historyAt[last] < 40) return
+            historyAt[historyNext] = now
+            historyPlayed[historyNext] = playedMs()
+            historyNext = (historyNext + 1) % HISTORY
+            if (historyCount < HISTORY) historyCount++
+        }
+    }
+
+    /**
+     * How much music had gone out at [wallMs] (System.currentTimeMillis): what
+     * Soloist's word on the position, taken at that moment, is to be reckoned
+     * from. Reckoned from when the word arrived instead, a song whose state
+     * came late (a slow load) ran behind its music for as long as it was late.
+     */
+    fun playedAt(wallMs: Long): Double {
+        synchronized(historyAt) {
+            if (historyCount == 0) return playedMs()
+            var best = -1
+            for (k in 0 until historyCount) {
+                val i = (historyNext - 1 - k + HISTORY * 2) % HISTORY
+                if (historyAt[i] <= wallMs) {
+                    best = i
+                    break
+                }
+            }
+            if (best < 0) return historyPlayed[(historyNext - historyCount + HISTORY) % HISTORY]
+            // From the moment just before, on as far as the music went in the
+            // little time between, when there is a moment after it.
+            val after = (best + 1) % HISTORY
+            if (after != historyNext && historyAt[after] > historyAt[best]) {
+                val share = (wallMs - historyAt[best]).toDouble() / (historyAt[after] - historyAt[best])
+                return historyPlayed[best] + (historyPlayed[after] - historyPlayed[best]) * share.coerceIn(0.0, 1.0)
+            }
+            val since = System.currentTimeMillis() - historyAt[best]
+            return if (wallMs >= historyAt[best] && since < 100) playedMs() else historyPlayed[best]
+        }
+    }
+
     /**
      * How much music Soloist has handed libpulse that is not heard yet, as
      * libpulse tells it five times a second: Soloist's word on the song runs
@@ -138,6 +186,8 @@ object SoloistAudio {
         }
     }
 
+    private const val HISTORY = 256
+
     private var shortBuffer: ByteBuffer = ByteBuffer.allocateDirect(1 shl 15).order(ByteOrder.LITTLE_ENDIAN)
 
     /** Float samples as 16-bit, for the voice's path, which takes nothing else. */
@@ -208,6 +258,7 @@ object SoloistAudio {
                     audioBytes += length
                     val perSecond = rate * channels * (if (float) 4L else 2L)
                     if (!speaking) playedUs.addAndGet(length * 1_000_000L / perSecond)
+                    noteHistory()
                     if (audioBytes / (perSecond * 10) != (audioBytes - length) / (perSecond * 10)) {
                         Log.i(TAG, "${audioBytes / perSecond} s of audio played")
                     }

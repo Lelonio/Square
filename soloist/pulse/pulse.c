@@ -283,6 +283,8 @@ struct pa_stream {
     uint64_t held_since;
     int64_t written, played;
     uint64_t ahead_told;
+    /* When what is kept ahead started growing again; see target_bytes. */
+    uint64_t grow_since;
     pa_timing_info timing;
     /* drain */
     pthread_t drain;
@@ -635,6 +637,15 @@ static size_t target_bytes(const pa_stream *s) {
     long ahead = conf_most();
     if (ahead > XFADE_CAP_MS) ahead = XFADE_CAP_MS;
     ahead += 500;
+    /* From a new stream or a flush, it grows a second for each second since,
+     * from the ring's own: Soloist starts a song once it has filled what it
+     * is offered, and offered a long crossfade's worth at once it fetched and
+     * decoded that much before the first note, seconds on a slow network. By
+     * the end of the song there is all the crossfade needs. */
+    if (s->grow_since) {
+        long grown = RING_MS + (long)((now_us() - s->grow_since) / 1000u);
+        if (grown < ahead) ahead = grown;
+    }
     if (ahead < RING_MS) ahead = RING_MS;
     size_t want = pa_usec_to_bytes((uint64_t)ahead * 1000ul, &s->spec);
     return want < s->cap ? want : s->cap;
@@ -872,6 +883,7 @@ EXPORT int pa_stream_connect_playback(pa_stream *s, const char *dev, const void 
         s->clocked = 1;
     }
     s->draining = 1;
+    s->grow_since = now_us();
     pthread_create(&s->drain, NULL, drain_main, s);
     s->state = PA_STREAM_CREATING;
     if (s->state_cb) s->state_cb(s, s->state_ud);
@@ -1024,6 +1036,7 @@ static void keep_tail(pa_stream *s) {
 }
 
 EXPORT pa_operation *pa_stream_flush(pa_stream *s, pa_stream_success_cb_t cb, void *ud) {
+    s->grow_since = now_us();
     /* A flush while playing is a change of song (or a seek): what was ahead
      * of the old one is kept to dissolve into whatever comes next, rather
      * than dropped, which cut the music at the skip. */

@@ -46,7 +46,7 @@ object SoloistEngine {
          * The music gone out when this was taken (later, for a song still
          * behind the one heard); not part of what makes two the same.
          */
-        var audioAtMs: Double = SoloistAudio.playedMs()
+        var audioAtMs: Double = SoloistAudio.playedAt(atMs)
 
         /**
          * Where the song is now: as far on from [positionMs] as the music that
@@ -346,6 +346,17 @@ object SoloistEngine {
         while (System.currentTimeMillis() < until && found.any { File("/proc/$it").exists() }) Thread.sleep(50)
     }
 
+    /**
+     * How many megabytes Soloist may keep of what it plays. Lossless songs are
+     * 25 to 35 MB each, and the 300 that this was held only the last ten or
+     * so: a song heard a moment ago was fetched again. A tenth of the space
+     * the phone has free, between those 300 and 2 GB.
+     */
+    private fun cacheSizeMb(dir: File): Long {
+        val free = runCatching { android.os.StatFs(dir.path).availableBytes / (1024 * 1024) }.getOrDefault(0L)
+        return (free / 10).coerceIn(300L, 2048L)
+    }
+
     private fun launch() {
         killStrays()
         val dir = SoloistRuntime.install(app)
@@ -374,7 +385,7 @@ object SoloistEngine {
                 "-n", "Square",
                 "-D", File(dir, "data").path,
                 "-C", File(dir, "cache").path,
-                "-z", "300",
+                "-z", cacheSizeMb(dir).toString(),
                 "-i", "100",
                 "-w", "127.0.0.1:0",
                 "-v",

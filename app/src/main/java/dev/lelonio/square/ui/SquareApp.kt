@@ -3186,6 +3186,22 @@ fun SquareApp(
                                 motion = false,
                                 columns = clipColumns,
                             )
+                            // Darkened on pause with the Canvas above it: the
+                            // colour that carries the clip on down the screen
+                            // is the clip, and left bright under a dimmed clip
+                            // it read as a lit band below a dark picture.
+                            val pausedDim by androidx.compose.animation.core.animateFloatAsState(
+                                targetValue = if (canvas != null && !playback.isPlaying) 1f else 0f,
+                                animationSpec = androidx.compose.animation.core.tween(420),
+                                label = "fieldPausedDim",
+                            )
+                            if (pausedDim > 0f) {
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = pausedDim * 0.55f)),
+                                )
+                            }
                           }
                         },
                         expandedContent = {
