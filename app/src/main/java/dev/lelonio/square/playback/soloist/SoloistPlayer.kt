@@ -140,8 +140,15 @@ class SoloistPlayer(
     }
     private var parameters = PlaybackParameters(AudioEffects.speed.value, AudioEffects.pitch.value)
 
-    init {
-        check(looper == Looper.getMainLooper())
+    /**
+     * What the player starts with: the engine, and the flows it follows.
+     *
+     * Run from the init block at the foot of the class, after every property
+     * is set: the state flow is collected on the main thread at once, so
+     * [follow] ran inside the constructor, and a property declared below the
+     * old init block (the labels map) was still null in it.
+     */
+    private fun begin() {
         SoloistEngine.start(context)
         scope.launch { SoloistEngine.state.collect(::follow) }
         scope.launch { SoloistEngine.restarted.drop(1).collect { if (local != null) send() } }
@@ -1029,6 +1036,11 @@ class SoloistPlayer(
         localPosition = account.optLong("positionMs")
         sentUri = null
         invalidateState()
+    }
+
+    init {
+        check(looper == Looper.getMainLooper())
+        begin()
     }
 
     companion object {
