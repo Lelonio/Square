@@ -58,8 +58,8 @@ android {
         minSdk = 26
         // soloist-android spike: 28 lets the app execute what it downloads.
         targetSdk = 35
-        versionCode = 70
-        versionName = "2.10.4"
+        versionCode = 71
+        versionName = "2.11.0-beta1"
         buildConfigField("boolean", "VERBOSE_LOG", "false")
         buildConfigField("boolean", "GLASS_FLAGS", "false")
 
