@@ -2397,9 +2397,15 @@ private fun TopBar(
         if (connectAvailable) {
             val jam by dev.lelonio.square.data.Jam.session.collectAsStateWithLifecycle()
             GlassButton(backdrop, onClick = onOpenDevices) {
-                // Who is in the Jam, beside where it plays, as Spotify shows it.
-                jam?.let { JamAvatars(it.members, size = 22.dp, modifier = Modifier.padding(end = 6.dp)) }
-                Icon(
+                // In a Jam, who is in it, in place of the icon: two pictures
+                // overlapping fit the disc, centred, as Spotify's own pill has
+                // them.
+                val inJam = jam
+                if (inJam != null) {
+                    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                        JamAvatars(inJam.members, size = 22.dp, max = 2)
+                    }
+                } else Icon(
                     PhosphorIcons.Regular.Devices,
                     contentDescription = stringResource(R.string.devices),
                     // Lit for as long as the music is coming out of another

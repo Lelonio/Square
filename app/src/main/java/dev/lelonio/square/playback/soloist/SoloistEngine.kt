@@ -574,7 +574,6 @@ object SoloistEngine {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 queueAsked = 0
                 webSocket.send(JSONObject().put("type", "command").put("command", "get_queue").put("limit", 0).toString())
-                keepAsking(webSocket)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -622,31 +621,6 @@ object SoloistEngine {
      * off the music until something changed; asked, any such slip is gone
      * within a second.
      */
-    /** Set by [resync]: Soloist's next word on the position is taken whatever the tempo. */
-    @Volatile
-    private var trustNext = false
-
-    /**
-     * Asks Soloist where it is and takes the answer as it is: for the moment a
-     * new song is first heard, after a transition worked out here (a song
-     * ending into the next, an automix bringing it in at its own cue point).
-     * Its word there is right at any tempo, and anything the player made of
-     * the transition is put right within a moment.
-     */
-    fun resync() {
-        trustNext = true
-        socket?.send(JSONObject().put("type", "command").put("command", "get_state").toString())
-    }
-
-    private fun keepAsking(socket: WebSocket) {
-        thread(name = "soloist-ask", isDaemon = true) {
-            while (this.socket === socket) {
-                Thread.sleep(1_000)
-                if (_state.value.playing && this.socket === socket) socket.send(JSONObject().put("type", "command").put("command", "get_state").toString())
-            }
-        }
-    }
-
     private fun onEvent(event: JSONObject) {
         when (event.optString("type")) {
             "auth_state" -> {
@@ -667,17 +641,15 @@ object SoloistEngine {
                 signedIn(event)
                 val item = event.optJSONObject("item")
                 // Soloist's position runs on its own clock from its last
-                // reckoning (position_sync), not on the music: at a tempo set
-                // in Square it falls behind what is heard, a second for every
-                // ten at 1.1. Taken as an anchor only at the listener's own
-                // tempo, or for a song the player has no anchor for yet; at any
-                // other tempo the music's own clock from the last reckoning is
-                // the right one, and this one would set the lyrics back.
+                // reckoning, not on the music: at a tempo set in Square it
+                // falls behind what is heard, and after a song change it runs
+                // from when Soloist started the song, the old song's buffer
+                // before it is heard. Only its reckonings (position_sync) and a
+                // song's first word are anchors; between them the music's own
+                // clock is right, and this one only ever set the lyrics off.
                 val told = anchor(event.optJSONObject("position"))
                 val sameSong = item?.optString("uri") == _state.value.uri
-                val trusted = told != null && (trustNext || !sameSong || _state.value.anchor == null ||
-                    kotlin.math.abs(dev.lelonio.square.playback.AudioEffects.speed.value - 1f) < 0.01f)
-                if (told != null) trustNext = false
+                val trusted = told != null && (!sameSong || _state.value.anchor == null)
                 val options = event.optJSONObject("options")
                 _state.update {
                     it.copy(

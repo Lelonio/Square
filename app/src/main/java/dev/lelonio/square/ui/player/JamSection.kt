@@ -281,10 +281,16 @@ fun JamAvatars(members: List<Jam.Member>, size: androidx.compose.ui.unit.Dp, mod
                     .background(Color(0xFF4A90E2)),
                 contentAlignment = Alignment.Center,
             ) {
+                // Sized to the circle it sits in, not to a type style.
                 Text(
                     member.name.take(1).uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = androidx.compose.ui.unit.TextUnit(size.value * 0.5f, androidx.compose.ui.unit.TextUnitType.Sp),
+                    lineHeight = androidx.compose.ui.unit.TextUnit(size.value * 0.5f, androidx.compose.ui.unit.TextUnitType.Sp),
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                     color = Color.White,
+                    style = androidx.compose.ui.text.TextStyle(
+                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                    ),
                 )
                 if (member.imageUrl != null) {
                     AsyncImage(
