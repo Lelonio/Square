@@ -11,5 +11,11 @@
             android:name=".dev.SoloistProbe"
             android:exported="true"
             android:permission="android.permission.DUMP" />
+        <!-- The first screen of a new install, for a look at it; see dev/SetupPreview. -->
+        <activity
+            android:name=".dev.SetupPreview"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:theme="@style/Theme.Square" />
     </application>
 </manifest>

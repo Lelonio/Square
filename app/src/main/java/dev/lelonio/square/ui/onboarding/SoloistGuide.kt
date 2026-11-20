@@ -10,6 +10,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -54,39 +55,33 @@ fun SoloistGuide(onClose: () -> Unit) {
                 Spacer(Modifier.weight(1f))
                 QuietButton(stringResource(R.string.close), onClick = onClose)
             },
-            bottom = {
-                StepDots(pages.size, step)
-                Spacer(Modifier.weight(1f))
+            primary = {
                 PrimaryButton(
                     stringResource(if (step == last) R.string.setup_done else R.string.next_step),
                     enabled = done,
                     onClick = { if (step == last) onClose() else step++ },
                 )
             },
+            progress = step to pages.size,
         ) {
             AnimatedContent(
                 targetState = step,
                 transitionSpec = {
                     val forward = targetState > initialState
-                    val width = { w: Int -> if (forward) w / 5 else -w / 5 }
-                    (slideInHorizontally(tween(260), width) + fadeIn(tween(200)))
-                        .togetherWith(slideOutHorizontally(tween(200)) { w -> -width(w) } + fadeOut(tween(140)))
+                    val width = { w: Int -> if (forward) w / 6 else -w / 6 }
+                    (slideInHorizontally(tween(280), width) + fadeIn(tween(220, delayMillis = 60)))
+                        .togetherWith(slideOutHorizontally(tween(200)) { w -> -width(w) } + fadeOut(tween(120)))
+                        .using(androidx.compose.animation.SizeTransform(clip = false))
                 },
                 label = "soloistGuide",
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth(),
             ) { shown ->
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = PAGE_MARGIN),
-                ) {
+                Column(Modifier.fillMaxWidth()) {
                     when (pages[shown]) {
                         Page.SOLOIST_KEY -> SoloistKeyStep(soloist)
                         Page.SOLOIST_DOWNLOAD -> SoloistDownloadStep(soloist)
                         else -> SoloistSignInStep(soloist, onDone = onClose)
                     }
-                    Spacer(Modifier.height(28.dp))
                 }
             }
         }

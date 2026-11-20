@@ -1,119 +1,128 @@
 package dev.lelonio.square.ui.onboarding
 
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
-import com.adamglin.phosphoricons.Regular
-import com.adamglin.phosphoricons.regular.Check
-import com.adamglin.phosphoricons.regular.Info
-import dev.lelonio.square.ui.glass.pressable
-import dev.lelonio.square.ui.glass.backdrop.drawBackdrop
-import dev.lelonio.square.ui.glass.backdrop.effects.blur
-import dev.lelonio.square.ui.glass.backdrop.effects.lens
-import dev.lelonio.square.ui.glass.backdrop.effects.vibrancy
+import com.adamglin.phosphoricons.Bold
+import com.adamglin.phosphoricons.bold.Check
+import dev.lelonio.square.ui.glass.LiquidButton
+import dev.lelonio.square.ui.glass.backdrop.Backdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.emptyBackdrop
 import dev.lelonio.square.ui.glass.backdrop.backdrops.layerBackdrop
+import dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop
+import dev.lelonio.square.ui.glass.pressable
 import dev.lelonio.square.ui.theme.Ink
 import dev.lelonio.square.ui.theme.InkDim
-import dev.lelonio.square.ui.theme.lightPage
-import dev.lelonio.square.ui.theme.pageGround
+import dev.lelonio.square.ui.theme.LocalInkOverride
+import dev.lelonio.square.ui.theme.LocalLightTheme
 
 /*
- * What the setup is drawn with: the first question and the guide after it.
+ * What the setup is drawn with: the first question, the guide and Soloist's
+ * steps.
  *
- * In ink, on the page's own ground, and nothing else. These screens used to
- * sit on a fixed near-black while their writing followed the phone, so in the
- * light setting they were dark words on a dark page; and every mark on them
- * was the accent, which is the colour of whatever record happens to be
- * playing, so the same guide was salmon one day and green the next.
+ * The app's own material, the way its chrome is made. A dark ground with the
+ * app's mark large on it and one slow light, and over it a single sheet of
+ * the app's glass at the foot of the screen that every step is a page of:
+ * the sheet keeps its place and changes height from one step to the next,
+ * the way the player's panels open, rather than a new screen sliding in. The
+ * buttons are the app's liquid buttons; what is listed inside the sheet is
+ * grouped rows, as in the settings, not cards on cards.
  *
- * The app's neutral pages already say how a control looks without a colour
- * of its own, and this follows them. A card is a shade off the ground with a
- * hairline round it, white on the light side, as an unlit filter chip is. The
- * one control that moves the guide on is the ink itself, with the ground for
- * a label, as a lit chip is. Both hold in either theme without a value
- * changing side.
+ * Always the dark side, in white ink: the light under the glass is what gives
+ * it something to bend, and on a white page there would be none.
  */
 
-/**
- * What the setup's glass refracts: the moving ground under every screen of
- * it. Set by [SetupScaffold].
- */
-internal val LocalSetupBackdrop = androidx.compose.runtime.compositionLocalOf<dev.lelonio.square.ui.glass.backdrop.Backdrop> {
-    dev.lelonio.square.ui.glass.backdrop.backdrops.emptyBackdrop()
-}
+/** What the setup's glass refracts: the ground under the sheet. Set by [SetupScaffold]. */
+internal val LocalSetupBackdrop = compositionLocalOf<Backdrop> { emptyBackdrop() }
 
 /**
  * The page every screen of the setup is laid on.
  *
- * A dark ground with slow light moving in it, and everything on it made of
- * glass that bends and frosts that light, as the system's own first-run
- * screens are: the ground is captured as a layer for the cards and buttons
- * above it to sample. Always the dark side, in white ink: the light moving
- * under the glass is what the page is, and on a white page it would not show.
+ * [top] is the bar over the ground (back, skip). [content] is the step, inside
+ * the sheet, scrolling when it is taller than the room it has. [primary] is
+ * the way on, at the foot of the sheet, and [progress] (the step shown, of how
+ * many) the dots under it.
  */
 @Composable
 internal fun SetupScaffold(
     top: @Composable RowScope.() -> Unit,
-    bottom: (@Composable RowScope.() -> Unit)? = null,
+    primary: (@Composable () -> Unit)? = null,
+    progress: Pair<Int, Int>? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val backdrop = dev.lelonio.square.ui.glass.backdrop.backdrops.rememberLayerBackdrop()
+    val backdrop = rememberLayerBackdrop()
+    LightStatusIcons()
 
     Box(
         Modifier
             .fillMaxSize()
             // Opaque: nothing behind the setup is meant to show or be reached
-            // while it is up, and a home page the user has not configured yet
-            // would be showing them the problem rather than the way through it.
-            .background(SetupGround)
+            // while it is up.
+            .background(Ground)
             .clickable(interactionSource = null, indication = null) {},
     ) {
-        SetupAurora(
-            Modifier
-                .fillMaxSize()
-                .layerBackdrop(backdrop),
-        )
-        androidx.compose.runtime.CompositionLocalProvider(
+        SetupGround(Modifier.fillMaxSize().layerBackdrop(backdrop))
+        CompositionLocalProvider(
             LocalSetupBackdrop provides backdrop,
-            dev.lelonio.square.ui.theme.LocalInkOverride provides Color.White,
-            dev.lelonio.square.ui.theme.LocalLightTheme provides false,
+            LocalInkOverride provides Color.White,
+            LocalLightTheme provides false,
         ) {
             Column(
                 Modifier
@@ -128,127 +137,152 @@ internal fun SetupScaffold(
                     verticalAlignment = Alignment.CenterVertically,
                     content = top,
                 )
+                // The step, from the top: its name where the eye starts, what
+                // it asks for under it, scrolling when it is taller than the
+                // room the button leaves, its last line fading out rather
+                // than cut at a hard edge.
+                val scroll = rememberScrollState()
                 Column(
                     Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .fadingEdges(scroll)
+                        .verticalScroll(scroll)
+                        .padding(horizontal = PAGE_PAD)
+                        .padding(top = 12.dp, bottom = 24.dp),
                     content = content,
                 )
-                if (bottom != null) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = PAGE_MARGIN, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        content = bottom,
-                    )
+                Column(Modifier.padding(horizontal = PAGE_PAD).padding(bottom = 12.dp)) {
+                    if (primary != null) primary()
+                    if (progress != null) {
+                        Spacer(Modifier.height(18.dp))
+                        StepDots(progress.second, progress.first)
+                    }
                 }
             }
         }
     }
 }
 
-private val SetupGround = Color(0xFF070A14)
-
-/**
- * The light under the setup's glass: four soft colours drifting each on its
- * own slow path over the dark, never quick enough to be watched, always
- * moving enough for the glass above them to have something to bend.
- */
-@Composable
-private fun SetupAurora(modifier: Modifier) {
-    val time = androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        var last = 0L
-        while (true) {
-            androidx.compose.runtime.withFrameNanos { now ->
-                if (last != 0L) time.floatValue += ((now - last) / 1e9f).coerceAtMost(0.05f)
-                last = now
+/** Fades the content out at an edge it scrolls past. */
+private fun Modifier.fadingEdges(scroll: androidx.compose.foundation.ScrollState): Modifier =
+    this
+        .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            val edge = 28.dp.toPx()
+            if (scroll.value < scroll.maxValue) {
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to Color.Black,
+                        1f to Color.Transparent,
+                        startY = size.height - edge,
+                        endY = size.height,
+                    ),
+                    topLeft = Offset(0f, size.height - edge),
+                    size = androidx.compose.ui.geometry.Size(size.width, edge),
+                    blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                )
+            }
+            if (scroll.value > 0) {
+                drawRect(
+                    Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = 0f, endY = edge),
+                    size = androidx.compose.ui.geometry.Size(size.width, edge),
+                    blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                )
             }
         }
-    }
-    androidx.compose.foundation.Canvas(modifier) {
-        val t = time.floatValue
-        val w = size.width
-        val h = size.height
-        AuroraBlobs.forEach { blob ->
-            val x = w * (blob.x + 0.18f * kotlin.math.sin(t * blob.speed + blob.phase))
-            val y = h * (blob.y + 0.12f * kotlin.math.cos(t * blob.speed * 0.8f + blob.phase * 1.3f))
-            val radius = maxOf(w, h) * blob.size
-            drawCircle(
-                brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                    0f to blob.color.copy(alpha = 0.62f),
-                    0.55f to blob.color.copy(alpha = 0.22f),
-                    1f to Color.Transparent,
-                    center = androidx.compose.ui.geometry.Offset(x, y),
-                    radius = radius,
-                ),
-                radius = radius,
-                center = androidx.compose.ui.geometry.Offset(x, y),
-            )
-        }
-        // Darker towards the foot, where the buttons are.
-        drawRect(
-            androidx.compose.ui.graphics.Brush.verticalGradient(
-                0f to Color.Transparent,
-                0.7f to SetupGround.copy(alpha = 0.25f),
-                1f to SetupGround.copy(alpha = 0.6f),
-            ),
-        )
+
+/**
+ * White status bar icons while the setup is up: it is always dark, and the
+ * app's own theme may have asked for dark icons on a light page.
+ */
+@Composable
+private fun LightStatusIcons() {
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(view) {
+        val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+            ?: generateSequence(view.context) { (it as? android.content.ContextWrapper)?.baseContext }
+                .filterIsInstance<android.app.Activity>().firstOrNull()?.window
+        val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view) }
+        val was = controller?.isAppearanceLightStatusBars
+        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightNavigationBars = false
+        onDispose { if (was != null) controller.isAppearanceLightStatusBars = was }
     }
 }
 
-private data class AuroraBlob(
-    val color: Color,
-    val x: Float,
-    val y: Float,
-    val size: Float,
-    val speed: Float,
-    val phase: Float,
-)
-
-private val AuroraBlobs = listOf(
-    AuroraBlob(Color(0xFF3F46E0), 0.15f, 0.18f, 0.55f, 0.11f, 0f),
-    AuroraBlob(Color(0xFF13B89F), 0.85f, 0.32f, 0.5f, 0.09f, 1.7f),
-    AuroraBlob(Color(0xFF9147D9), 0.3f, 0.72f, 0.55f, 0.07f, 3.1f),
-    AuroraBlob(Color(0xFF2A86E8), 0.8f, 0.88f, 0.45f, 0.1f, 4.6f),
-)
+private val Ground = Color(0xFF07080D)
+private val Deep = Color(0xFF06301A)
+private val Glow = Color(0xFF39D97A)
 
 /**
- * A pane of the setup's glass: the moving light behind it frosted and bent at
- * its edge, a film of white over it and a bright hairline round it.
+ * The ground: black where the words are, deepening to the green of the app's
+ * mark at the foot, where the button is. Still: nothing on this page moves but what the
+ * person touches. The colour low down is what the glass button has to bend.
  */
 @Composable
-internal fun Modifier.setupCard(shape: Shape = CardShape, fill: Float = 0.08f): Modifier {
-    val backdrop = LocalSetupBackdrop.current
-    return this
-        .drawBackdrop(
-            backdrop = backdrop,
-            shape = { shape },
-            effects = {
-                vibrancy()
-                blur(18f.dp.toPx())
-                lens(10f.dp.toPx(), 22f.dp.toPx())
-            },
-            onDrawSurface = { drawRect(Color.White.copy(alpha = fill)) },
-        )
-        .border(
-            1.dp,
-            androidx.compose.ui.graphics.Brush.verticalGradient(
-                listOf(Color.White.copy(alpha = 0.32f), Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.14f)),
+private fun SetupGround(modifier: Modifier) {
+    androidx.compose.foundation.layout.Box(
+        modifier.background(
+            Brush.verticalGradient(
+                0f to Ground,
+                0.42f to Ground,
+                0.72f to Deep,
+                1f to Glow,
             ),
-            shape,
+        ),
+    )
+}
+
+/**
+ * A group of rows: a pane of faint glass with a hairline rim, the rows printed
+ * on it as in the settings.
+ */
+@Composable
+internal fun Modifier.setupCard(shape: Shape = GroupShape, fill: Float = 0.06f): Modifier =
+    this
+        .clip(shape)
+        .background(Color.White.copy(alpha = fill))
+        .border(0.75.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0.06f))), shape)
+
+/**
+ * The app's icon as the launcher shows it: the plate and the green wave, cut
+ * to a rounded square. Built from the two layers of the adaptive icon, drawn
+ * at the size that puts their visible middle (72 of 108) inside the shape.
+ */
+@Composable
+internal fun AppIcon(size: androidx.compose.ui.unit.Dp = 84.dp) {
+    Box(
+        Modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.27f))
+            .border(0.75.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(size * 0.27f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val layer = Modifier.requiredSize(size * 108f / 72f)
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(dev.lelonio.square.R.mipmap.ic_launcher_background),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = layer,
         )
+        androidx.compose.foundation.Image(
+            androidx.compose.ui.res.painterResource(dev.lelonio.square.R.mipmap.ic_launcher_foreground),
+            contentDescription = null,
+            modifier = layer,
+        )
+    }
 }
 
 /** Running text: a step down from the ink, and still meant to be read. */
 internal val Prose: Color
-    @Composable get() = Ink.copy(alpha = 0.76f)
+    @Composable get() = Ink.copy(alpha = 0.72f)
 
 /**
- * The control that moves the setup on: glass filled almost white, with a dark
- * label, as the system's own prominent buttons are; dimmed while the step it
- * closes is not done.
+ * The way on: the app's liquid button, filled near white with a dark label,
+ * the one prominent control on the sheet; dimmed while the step it closes is
+ * not done.
  */
 @Composable
 internal fun PrimaryButton(
@@ -257,29 +291,30 @@ internal fun PrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    Box(
-        modifier
-            .pressable({ if (enabled) onClick() }, pressedScale = if (enabled) 0.96f else 1f)
-            .height(52.dp)
-            .setupCard(CircleShape, fill = if (enabled) 0.86f else 0.14f)
-            .padding(horizontal = 26.dp),
-        contentAlignment = Alignment.Center,
+    LiquidButton(
+        onClick = onClick,
+        backdrop = LocalSetupBackdrop.current,
+        enabled = enabled,
+        surfaceColor = Color.White.copy(alpha = if (enabled) 0.16f else 0.06f),
+        contentHeight = 54.dp,
+        contentPadding = 20.dp,
+        modifier = modifier.fillMaxWidth(),
     ) {
         Text(
             text,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) SetupGround else Color.White.copy(alpha = 0.45f),
+            color = if (enabled) Color.White else Color.White.copy(alpha = 0.45f),
+            textAlign = TextAlign.Center,
             maxLines = 1,
+            modifier = Modifier.weight(1f),
         )
     }
 }
 
 /**
- * An action inside a step: logging in, linking the key.
- *
- * A card rather than a second filled button, so the page has one thing that
- * is plainly the way on and the rest reads as what to do on the way.
+ * An action inside a step (logging in, linking a key, saving): a row of its
+ * own, centred, in the group style; the one way on stays [PrimaryButton].
  */
 @Composable
 internal fun SecondaryButton(
@@ -290,18 +325,14 @@ internal fun SecondaryButton(
 ) {
     Box(
         modifier
-            .pressable({ if (!busy) onClick() }, pressedScale = 0.97f)
             .fillMaxWidth()
             .height(52.dp)
-            .setupCard(CircleShape),
+            .setupCard(RowShape)
+            .pressable({ if (!busy) onClick() }, pressedScale = 0.98f),
         contentAlignment = Alignment.Center,
     ) {
         if (busy) {
-            CircularProgressIndicator(
-                strokeWidth = 2.dp,
-                color = Ink,
-                modifier = Modifier.size(18.dp),
-            )
+            CircularProgressIndicator(strokeWidth = 2.dp, color = Ink, modifier = Modifier.size(18.dp))
         } else {
             Text(
                 text,
@@ -314,7 +345,7 @@ internal fun SecondaryButton(
     }
 }
 
-/** A card that goes somewhere: a title, a line about it, and where it points. */
+/** A row that goes somewhere: a title, a line about it, and where it points. */
 @Composable
 internal fun CardButton(
     title: String,
@@ -325,125 +356,109 @@ internal fun CardButton(
 ) {
     Row(
         modifier
-            .pressable(onClick, pressedScale = 0.98f)
             .fillMaxWidth()
-            .setupCard()
-            .padding(horizontal = 18.dp, vertical = 16.dp),
+            .setupCard(RowShape)
+            .pressable(onClick, pressedScale = 0.98f)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = Ink,
-            )
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Ink)
             if (detail != null) {
                 Text(
                     detail,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = InkDim,
-                    modifier = Modifier.padding(top = 3.dp),
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = InkDim,
-            modifier = Modifier
-                .padding(start = 12.dp)
-                .size(18.dp),
-        )
+        Icon(icon, contentDescription = null, tint = InkDim, modifier = Modifier.padding(start = 12.dp).size(18.dp))
     }
 }
 
-/** The way back, at the top: a small round card with the arrow in it. */
+/** The way back, over the ground: a round liquid button. */
 @Composable
 internal fun RoundButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .pressable(onClick, pressedScale = 0.92f)
-            .size(42.dp)
-            .setupCard(CircleShape),
-        contentAlignment = Alignment.Center,
+    LiquidButton(
+        onClick = onClick,
+        backdrop = LocalSetupBackdrop.current,
+        contentHeight = 44.dp,
+        contentPadding = 0.dp,
+        modifier = Modifier.size(44.dp),
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = Ink, modifier = Modifier.size(19.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = contentDescription, tint = Ink, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
-/** Words that can be tapped and are not the point: skipping, copying. */
+/** Words that can be tapped and are not the point (skipping, closing, copying). */
 @Composable
 internal fun QuietButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    LiquidButton(
+        onClick = onClick,
+        backdrop = LocalSetupBackdrop.current,
+        contentHeight = 40.dp,
+        contentPadding = 16.dp,
+        // A clear pane, not the ground's blue: inside a step it sits over
+        // other glass, and bending that came out a dark blot.
+        surfaceColor = Color.White.copy(alpha = 0.1f),
+        modifier = modifier,
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = Ink)
+    }
+}
+
+/**
+ * A step's head: its symbol in a disc, then its name large; [overline] is
+ * where it sits in a run of steps.
+ */
+@Composable
+internal fun StepHeader(title: String, overline: String? = null, icon: ImageVector? = null) {
+    if (overline != null) {
+        Text(
+            overline.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = InkDim,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+    }
     Text(
-        text,
-        style = MaterialTheme.typography.bodyMedium,
+        title,
+        style = MaterialTheme.typography.headlineMedium,
         fontWeight = FontWeight.SemiBold,
-        color = InkDim,
-        modifier = modifier
-            .clip(CircleShape)
-            .pressable(onClick, shape = CircleShape)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+        color = Ink,
     )
 }
 
-/** Where a step is in the guide, over what it asks. */
-@Composable
-internal fun StepHeader(title: String, overline: String? = null) {
-    Column(Modifier.padding(top = 18.dp)) {
-        if (overline != null) {
-            Text(
-                overline.uppercase(),
-                style = MaterialTheme.typography.labelLarge,
-                color = InkDim,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-        }
-        Text(title, style = MaterialTheme.typography.headlineLarge, color = Ink)
-    }
-}
-
+/** The step's one line. */
 @Composable
 internal fun ProseText(text: String) {
     Text(
         text,
-        style = MaterialTheme.typography.bodyLarge,
+        style = MaterialTheme.typography.bodyMedium,
         color = Prose,
-        modifier = Modifier.padding(top = 12.dp),
+        modifier = Modifier.padding(top = 8.dp),
     )
 }
 
-/**
- * Something that will cost the user time if skipped, rather than mere prose.
- *
- * Marked by the card and a small sign, not by a colour: the accent it used to
- * be tinted with was the record's, and said nothing about the warning.
- */
+/** What is worth knowing and not worth a paragraph: small, under the rest. */
 @Composable
 internal fun Note(text: String) {
-    Row(
-        Modifier
-            .padding(top = 16.dp)
-            .fillMaxWidth()
-            .setupCard(RoundedCornerShape(18.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-    ) {
-        Icon(
-            PhosphorIcons.Regular.Info,
-            contentDescription = null,
-            tint = InkDim,
-            modifier = Modifier
-                .padding(top = 1.dp, end = 12.dp)
-                .size(18.dp),
-        )
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = Ink)
-    }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = InkDim,
+        modifier = Modifier.padding(top = 14.dp),
+    )
 }
 
 /** The green the system says "done" in. */
 private val DoneGreen = Color(0xFF30C85E)
 
-/** A step already done: a green tick and what is now done. */
+/** A step done: a green tick and what is now done. */
 @Composable
 internal fun DoneRow(label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -454,12 +469,7 @@ internal fun DoneRow(label: String) {
                 .background(DoneGreen),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                PhosphorIcons.Regular.Check,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(14.dp),
-            )
+            Icon(PhosphorIcons.Bold.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
         }
         Text(
             label,
@@ -471,29 +481,28 @@ internal fun DoneRow(label: String) {
     }
 }
 
-/** How far through the guide: the current step drawn long, the rest as dots. */
+/** Where in the steps this is: a short line for the one shown, dots for the rest. */
 @Composable
 internal fun StepDots(count: Int, current: Int) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        repeat(count) { index ->
-            val here = index == current
-            val width by animateDpAsState(
-                targetValue = if (here) 18.dp else 6.dp,
-                animationSpec = tween(220),
-                label = "stepDot",
-            )
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(count) { i ->
+            val width by animateDpAsState(if (i == current) 18.dp else 6.dp, tween(260), label = "dot")
             Box(
                 Modifier
-                    .height(6.dp)
                     .width(width)
+                    .height(6.dp)
                     .clip(CircleShape)
-                    .background(if (here) Ink else Ink.copy(alpha = 0.2f)),
+                    .background(Color.White.copy(alpha = if (i == current) 0.9f else 0.25f)),
             )
         }
     }
 }
 
-/** A numbered line of a list inside a card, with room under it for more. */
+/** One numbered row of a checklist group. */
 @Composable
 internal fun ListStep(
     index: Int,
@@ -503,22 +512,17 @@ internal fun ListStep(
     Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Box(
             Modifier
-                .size(24.dp)
+                .size(22.dp)
                 .clip(CircleShape)
-                .border(1.dp, Ink.copy(alpha = 0.22f), CircleShape),
+                .background(Color.White.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                "$index",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = Ink,
-            )
+            Text("$index", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = Ink)
         }
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = 12.dp, top = 2.dp),
+                .padding(start = 12.dp, top = 1.dp),
         ) {
             Text(text, style = MaterialTheme.typography.bodyMedium, color = Prose)
             extra?.invoke()
@@ -526,18 +530,21 @@ internal fun ListStep(
     }
 }
 
-/** The line between two of those, starting where their text does. */
+/** The hairline between rows of a group, inset from its edge. */
 @Composable
 internal fun ListDivider() {
     Box(
         Modifier
-            .padding(start = 52.dp, end = 16.dp)
+            .padding(start = 50.dp)
             .fillMaxWidth()
-            .height(1.dp)
-            .background(Ink.copy(alpha = 0.07f)),
+            .height(0.5.dp)
+            .background(Color.White.copy(alpha = 0.1f)),
     )
 }
 
-internal val PAGE_MARGIN = 24.dp
+/** The sheet's own inner margin, for content laid out to its edges. */
+internal val PAGE_MARGIN = 0.dp // the page pads its steps itself
+private val PAGE_PAD = 24.dp
 private val TOP_BAR = 60.dp
-private val CardShape = RoundedCornerShape(20.dp)
+private val GroupShape = RoundedCornerShape(16.dp)
+private val RowShape = RoundedCornerShape(16.dp)

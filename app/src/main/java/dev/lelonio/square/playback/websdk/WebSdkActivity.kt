@@ -94,33 +94,30 @@ class WebSdkActivity : ComponentActivity() {
                 top = {
                     RoundButton(PhosphorIcons.Regular.ArrowLeft, stringResource(R.string.back)) { finish() }
                 },
-                bottom = {
-                    // The compatibility probe is a developer's question; someone
-                    // recovering playback only needs the one way on.
-                    if (!recovery && !connected) QuietButton(stringResource(R.string.web_sdk_check), onClick = {
-                        if (backend != null && !loading && !authorizing) start(probeOnly = true)
-                    })
-                    // One control: sign in first, then turn the player on.
-                    if (!signedIn) PrimaryButton(
-                        stringResource(R.string.web_sdk_login),
-                        onClick = { login(clientId) },
-                        enabled = backend != null && !authorizing && clientId.isNotBlank(),
-                        modifier = Modifier.weight(1f),
-                    ) else PrimaryButton(
-                        stringResource(if (recovery) R.string.web_sdk_enable else R.string.web_sdk_connect),
-                        onClick = { start(probeOnly = false) },
-                        enabled = clientId.trim() == backend?.account?.clientId &&
-                            !authorizing && !loading && !connected,
-                        modifier = Modifier.weight(1f),
-                    )
+                primary = {
+                    Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+                        // One control: sign in first, then turn the player on.
+                        if (!signedIn) PrimaryButton(
+                            stringResource(R.string.web_sdk_login),
+                            onClick = { login(clientId) },
+                            enabled = backend != null && !authorizing && clientId.isNotBlank(),
+                        ) else PrimaryButton(
+                            stringResource(if (recovery) R.string.web_sdk_enable else R.string.web_sdk_connect),
+                            onClick = { start(probeOnly = false) },
+                            enabled = clientId.trim() == backend?.account?.clientId &&
+                                !authorizing && !loading && !connected,
+                        )
+                        // The compatibility probe is a developer's question;
+                        // someone recovering playback only needs the way on.
+                        if (!recovery && !connected) QuietButton(
+                            stringResource(R.string.web_sdk_check),
+                            onClick = { if (backend != null && !loading && !authorizing) start(probeOnly = true) },
+                            modifier = Modifier.align(androidx.compose.ui.Alignment.CenterHorizontally),
+                        )
+                    }
                 },
             ) {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = PAGE_MARGIN),
-                ) {
+                Column(Modifier.fillMaxWidth()) {
                     StepHeader(stringResource(if (recovery) R.string.web_sdk_recovery_title else R.string.web_sdk_title))
                     ProseText(stringResource(if (recovery) R.string.web_sdk_recovery_explainer else R.string.web_sdk_explainer))
                     // Said before the switch is turned on, not discovered afterwards.

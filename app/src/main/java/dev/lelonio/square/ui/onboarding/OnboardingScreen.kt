@@ -44,9 +44,21 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.animateContentSize
+import com.adamglin.phosphoricons.regular.Check
+import com.adamglin.phosphoricons.regular.CaretRight
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowLeft
 import com.adamglin.phosphoricons.regular.ArrowUpRight
+import com.adamglin.phosphoricons.Fill
+import com.adamglin.phosphoricons.fill.SpotifyLogo
+import com.adamglin.phosphoricons.regular.Code
+import com.adamglin.phosphoricons.regular.Key
+import com.adamglin.phosphoricons.regular.Waveform
+import com.adamglin.phosphoricons.regular.DownloadSimple
+import com.adamglin.phosphoricons.regular.Devices
 import dev.lelonio.square.R
 import dev.lelonio.square.data.AppLanguages
 import dev.lelonio.square.ui.MainViewModel
@@ -120,36 +132,28 @@ fun OnboardingScreen(
                 onClick = onFinish,
             )
         },
-        bottom = {
-            StepDots(pages.size, step)
-            Spacer(Modifier.weight(1f))
+        primary = {
             PrimaryButton(
                 stringResource(if (step == last) R.string.onboarding_start else R.string.next_step),
                 enabled = stepDone,
                 onClick = { if (step == last) onFinish() else step++ },
             )
         },
+        progress = step to pages.size,
     ) {
         AnimatedContent(
             targetState = step,
             transitionSpec = {
                 val forward = targetState > initialState
-                val width = { w: Int -> if (forward) w / 5 else -w / 5 }
-                (slideInHorizontally(tween(260), width) + fadeIn(tween(200)))
-                    .togetherWith(
-                        slideOutHorizontally(tween(200)) { w -> -width(w) } +
-                            fadeOut(tween(140)),
-                    )
+                val width = { w: Int -> if (forward) w / 6 else -w / 6 }
+                (slideInHorizontally(tween(280), width) + fadeIn(tween(220, delayMillis = 60)))
+                    .togetherWith(slideOutHorizontally(tween(200)) { w -> -width(w) } + fadeOut(tween(120)))
+                    .using(androidx.compose.animation.SizeTransform(clip = false))
             },
             label = "onboarding",
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxWidth(),
         ) { shown ->
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = PAGE_MARGIN),
-            ) {
+            Column(Modifier.fillMaxWidth()) {
                 when (pages.getOrElse(shown) { Page.DONE }) {
                     Page.WELCOME -> Welcome(language, onLanguage)
                     Page.LOG_IN -> LogIn(
@@ -165,7 +169,6 @@ fun OnboardingScreen(
                     Page.SOLOIST_SIGN_IN -> SoloistSignInStep(soloist, onDone = { if (step < last) step++ })
                     Page.DONE -> Done()
                 }
-                Spacer(Modifier.height(28.dp))
             }
         }
     }
@@ -190,20 +193,14 @@ private fun stepOf(index: Int): String = stringResource(R.string.onboarding_step
 
 @Composable
 private fun Welcome(language: String, onLanguage: (String) -> Unit) {
-    Spacer(Modifier.height(20.dp))
-    AppGlyph(64.dp)
-    Spacer(Modifier.height(22.dp))
-    SquareWordmark(height = 28.dp)
+    AppIcon()
+    Spacer(Modifier.height(24.dp))
+    SquareWordmark(height = 26.dp)
     ProseText(stringResource(R.string.onboarding_welcome_1))
-    Note(stringResource(R.string.onboarding_welcome_2))
-    ProseText(stringResource(R.string.onboarding_welcome_3))
-
     // First screen, before a word of the setup: someone who cannot read this
-    // page is exactly the person who needs the picker, and asking them to
-    // finish the tutorial first to find it would be the wrong way round.
-    // Nothing glassy sits behind the onboarding pages, so the chips' glass
-    // samples nothing and shows only its own film and rim.
+    // page is exactly the person who needs the picker.
     LanguageChips(language, LocalSetupBackdrop.current, onLanguage)
+    Note(stringResource(R.string.onboarding_welcome_2))
 }
 
 @Composable
@@ -212,7 +209,7 @@ private fun LogIn(
     connecting: Boolean,
     onLogIn: () -> Unit,
 ) {
-    StepHeader(stringResource(R.string.onboarding_login_title), stepOf(1))
+    StepHeader(stringResource(R.string.onboarding_login_title), stepOf(1), PhosphorIcons.Fill.SpotifyLogo)
     ProseText(stringResource(R.string.onboarding_login_1))
     Note(stringResource(R.string.onboarding_login_2))
 
@@ -234,7 +231,7 @@ private fun Dashboard(redirectUri: String) {
     val clipboard = LocalClipboardManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    StepHeader(stringResource(R.string.onboarding_key_title), stepOf(2))
+    StepHeader(stringResource(R.string.onboarding_key_title), stepOf(2), PhosphorIcons.Regular.Code)
     ProseText(stringResource(R.string.onboarding_key_intro))
 
     CardButton(
@@ -301,7 +298,7 @@ private fun ClientId(
     onClientIdChange: (String) -> Unit,
     onConnectWebApi: () -> Unit,
 ) {
-    StepHeader(stringResource(R.string.onboarding_paste_title), stepOf(3))
+    StepHeader(stringResource(R.string.onboarding_paste_title), stepOf(3), PhosphorIcons.Regular.Key)
     if (webApi.connected) {
         ProseText(stringResource(R.string.onboarding_paste_done))
         Spacer(Modifier.height(18.dp))
@@ -357,7 +354,7 @@ private fun ClientId(
  */
 @Composable
 private fun Engine(soloist: dev.lelonio.square.ui.settings.SoloistSetupUi) {
-    StepHeader(stringResource(R.string.engine), stringResource(R.string.onboarding_optional))
+    StepHeader(stringResource(R.string.engine), stringResource(R.string.onboarding_optional), PhosphorIcons.Regular.Waveform)
     ProseText(stringResource(R.string.onboarding_engine_intro))
 
     Column(
@@ -388,7 +385,7 @@ internal fun SoloistKeyStep(soloist: dev.lelonio.square.ui.settings.SoloistSetup
     val context = androidx.compose.ui.platform.LocalContext.current
     var draft by remember(soloist.savedKey) { mutableStateOf(soloist.savedKey) }
 
-    StepHeader(stringResource(R.string.soloist_step_key), stringResource(R.string.onboarding_step_of, 1, 3))
+    StepHeader(stringResource(R.string.soloist_step_key), stringResource(R.string.onboarding_step_of, 1, 3), PhosphorIcons.Regular.Key)
     ProseText(stringResource(R.string.soloist_key_note))
     CardButton(
         title = stringResource(R.string.soloist_get_key),
@@ -407,8 +404,7 @@ internal fun SoloistKeyStep(soloist: dev.lelonio.square.ui.settings.SoloistSetup
         colors = guideFieldColors(),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 14.dp)
-            .setupCard(RoundedCornerShape(20.dp), fill = 0.05f),
+            .padding(top = 14.dp),
     )
     if (draft.trim() != soloist.savedKey && draft.isNotBlank()) {
         SecondaryButton(
@@ -430,7 +426,7 @@ internal fun SoloistDownloadStep(soloist: dev.lelonio.square.ui.settings.Soloist
             soloist.fetch()
         }
     }
-    StepHeader(stringResource(R.string.soloist_step_download), stringResource(R.string.onboarding_step_of, 2, 3))
+    StepHeader(stringResource(R.string.soloist_step_download), stringResource(R.string.onboarding_step_of, 2, 3), PhosphorIcons.Regular.DownloadSimple)
     ProseText(stringResource(R.string.soloist_download_note))
     Column(
         Modifier
@@ -478,7 +474,7 @@ internal fun SoloistSignInStep(soloist: dev.lelonio.square.ui.settings.SoloistSe
             onDone()
         }
     }
-    StepHeader(stringResource(R.string.soloist_step_account), stringResource(R.string.onboarding_step_of, 3, 3))
+    StepHeader(stringResource(R.string.soloist_step_account), stringResource(R.string.onboarding_step_of, 3, 3), PhosphorIcons.Regular.Devices)
     ProseText(dev.lelonio.square.ui.settings.soloistAccountStatus(soloist))
     Row(
         Modifier
@@ -562,11 +558,8 @@ private fun guideFieldColors() = OutlinedTextFieldDefaults.colors(
 
 @Composable
 private fun Done() {
-    Spacer(Modifier.height(20.dp))
-    AppGlyph(56.dp)
-    StepHeader(stringResource(R.string.onboarding_done_title))
+    StepHeader(stringResource(R.string.onboarding_done_title), icon = PhosphorIcons.Regular.CheckCircle)
     ProseText(stringResource(R.string.onboarding_done_1))
-    ProseText(stringResource(R.string.onboarding_done_2))
     Note(stringResource(R.string.onboarding_done_3))
 }
 
@@ -577,21 +570,47 @@ private fun Done() {
  * page that is mostly prose, and a seven-row list here would read as the first
  * task rather than as a choice already made for most people.
  */
+/**
+ * The language, as a settings group: every one the app speaks, the chosen one
+ * ticked, all in view. A row of chips scrolling off the side was a filter
+ * bar, not a question asked once.
+ */
 @Composable
 private fun LanguageChips(language: String, backdrop: dev.lelonio.square.ui.glass.backdrop.Backdrop, onLanguage: (String) -> Unit) {
-    Row(
+    val systemName = stringResource(R.string.system_language)
+    // A section header over the group, as in the settings.
+    Text(
+        stringResource(R.string.language).uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        color = InkDim,
+        modifier = Modifier.padding(top = 28.dp, start = 16.dp, bottom = 8.dp),
+    )
+    Column(
         Modifier
-            .padding(top = 24.dp)
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .fillMaxWidth()
+            .setupCard(),
     ) {
-        AppLanguages.forEach { (tag, name) ->
-            FilterChip(
-                backdrop = backdrop,
-                label = name.ifEmpty { stringResource(R.string.system_language) },
-                selected = tag == language,
-                onClick = { onLanguage(tag) },
-            )
+        AppLanguages.forEachIndexed { i, (tag, name) ->
+            if (i > 0) ListDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .pressable({ onLanguage(tag) }, pressedScale = 0.99f)
+                    .padding(horizontal = 16.dp, vertical = 17.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    name.ifEmpty { systemName },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
+                    color = Ink,
+                    modifier = Modifier.weight(1f),
+                )
+                if (tag == language) {
+                    Icon(PhosphorIcons.Regular.Check, contentDescription = null, tint = Ink, modifier = Modifier.size(18.dp))
+                }
+            }
         }
     }
 }

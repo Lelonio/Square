@@ -59,51 +59,34 @@ import dev.lelonio.square.ui.theme.InkDim
 @Composable
 fun BackendChoiceScreen(onChoose: (BackendId) -> Unit) {
     SetupScaffold(top = {}) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            // At least the height of the page, so the question and the answers
-            // sit at its two ends; taller only on a screen too short for both,
-            // which then scrolls.
-            val page = maxHeight
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .heightIn(min = page)
-                    .padding(horizontal = PAGE_MARGIN),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column {
-                    Spacer(Modifier.height(8.dp))
-                    AppGlyph(56.dp)
-                    Spacer(Modifier.height(20.dp))
-                    SquareWordmark(height = 24.dp)
-                    StepHeader(stringResource(R.string.backend_choice_title))
-                    ProseText(stringResource(R.string.backend_choice_subtitle))
-                }
-
-                // A card each rather than a radio row: there is no "confirm".
-                // Tapping one is the answer, so each says what picking it means,
-                // and what it asks for, before it is picked.
-                Column(
-                    Modifier.padding(top = 32.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    SourceCard(
-                        logo = PhosphorIcons.Fill.SpotifyLogo,
-                        title = stringResource(R.string.backend_spotify),
-                        description = stringResource(R.string.backend_choice_spotify_note),
-                        needs = stringResource(R.string.backend_choice_spotify_needs),
-                        onClick = { onChoose(BackendId.SPOTIFY) },
-                    )
-                    SourceCard(
-                        logo = PhosphorIcons.Fill.YoutubeLogo,
-                        title = stringResource(R.string.backend_youtube),
-                        description = stringResource(R.string.backend_choice_youtube_note),
-                        needs = stringResource(R.string.backend_choice_youtube_needs),
-                        onClick = { onChoose(BackendId.YOUTUBE_MUSIC) },
-                    )
-                }
-            }
+        AppIcon()
+        Spacer(Modifier.height(24.dp))
+        SquareWordmark(height = 26.dp)
+        Spacer(Modifier.height(28.dp))
+        StepHeader(stringResource(R.string.backend_choice_title))
+        ProseText(stringResource(R.string.backend_choice_subtitle))
+        // A row each rather than a radio and a "confirm": tapping one is the
+        // answer, so each says what picking it means before it is picked.
+        Column(
+            Modifier
+                .padding(top = 22.dp)
+                .setupCard(),
+        ) {
+            SourceCard(
+                logo = PhosphorIcons.Fill.SpotifyLogo,
+                title = stringResource(R.string.backend_spotify),
+                description = stringResource(R.string.backend_choice_spotify_note),
+                needs = stringResource(R.string.backend_choice_spotify_needs),
+                onClick = { onChoose(BackendId.SPOTIFY) },
+            )
+            ListDivider()
+            SourceCard(
+                logo = PhosphorIcons.Fill.YoutubeLogo,
+                title = stringResource(R.string.backend_youtube),
+                description = stringResource(R.string.backend_choice_youtube_note),
+                needs = stringResource(R.string.backend_choice_youtube_needs),
+                onClick = { onChoose(BackendId.YOUTUBE_MUSIC) },
+            )
         }
     }
 }
@@ -127,14 +110,13 @@ private fun SourceCard(
         Modifier
             .pressable(onClick, pressedScale = 0.98f)
             .fillMaxWidth()
-            .setupCard()
             .padding(16.dp),
     ) {
         Box(
             Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Ink.copy(alpha = 0.06f)),
+                .background(Ink.copy(alpha = 0.1f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(logo, contentDescription = null, tint = Ink, modifier = Modifier.size(26.dp))
