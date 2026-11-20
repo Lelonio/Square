@@ -179,6 +179,9 @@ object NativeBridge {
      * with Soloist chosen, the phone is Soloist's device there, once. Takes
      * effect with the next state the engine sends.
      */
+    /** Any spclient request as the engine's session, for a probe: the body, or an exception. Blocking. */
+    fun spclient(method: String, path: String, body: String = ""): String = nativeSpclient(method, path, body)
+
     fun setConnectHidden(hidden: Boolean) {
         runCatching { nativeSetConnectHidden(hidden) }
     }
@@ -569,6 +572,7 @@ object NativeBridge {
     private external fun nativeIsSounding(): Boolean
     private external fun nativePlayingKbps(): Int
     private external fun nativeSetConnectHidden(hidden: Boolean)
+    private external fun nativeSpclient(method: String, path: String, body: String): String
     private external fun nativeSetQuality(bitrateKbps: Int, crossfadeMs: Int)
 
     private external fun nativeSetBitrate(bitrateKbps: Int)

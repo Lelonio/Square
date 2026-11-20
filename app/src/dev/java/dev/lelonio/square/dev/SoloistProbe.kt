@@ -67,6 +67,20 @@ class SoloistProbe : BroadcastReceiver() {
                 }
                 return
             }
+            // Any spclient request as the engine's session, to learn how an
+            // endpoint answers: "@SOLOIST" in the path is Soloist's device id.
+            "spclient" -> {
+                val method = intent.getStringExtra("method") ?: "GET"
+                val soloist = dev.lelonio.square.playback.soloist.SoloistEngine.deviceId.orEmpty()
+                val path = (intent.getStringExtra("path") ?: "").replace("@SOLOIST", soloist)
+                val body = intent.getStringExtra("body").orEmpty()
+                thread(name = "probe-spclient") {
+                    val result = runCatching { dev.lelonio.square.nativecore.NativeBridge.spclient(method, path, body) }
+                    val text = result.getOrElse { "FAILED ${it.message}" }
+                    text.chunked(900).forEachIndexed { i, part -> Log.i(TAG, "spclient $method $path [$i] $part") }
+                }
+                return
+            }
             // As if Soloist had fallen over: killed, not asked to stop.
             "crash" -> {
                 val engine = dev.lelonio.square.playback.soloist.SoloistEngine

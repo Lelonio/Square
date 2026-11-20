@@ -172,11 +172,14 @@ class SoloistPlayer(
     /** The song Soloist moved on to by itself, and the music that has to go out before it is heard. */
     private var heldSong: String? = null
     private var heardAtAudio = 0.0
+    private var heldSince = 0L
 
     private val heardYet = object : Runnable {
         override fun run() {
             if (heldSong == null) return
-            if (SoloistAudio.playedMs() < heardAtAudio && frozen != null) {
+            // A flush after the hold began: a skip, heard at once.
+            val skippedSince = SoloistAudio.flushedAt > heldSince
+            if (!skippedSince && SoloistAudio.playedMs() < heardAtAudio && frozen != null) {
                 main.postDelayed(this, 40)
                 return
             }
@@ -204,9 +207,14 @@ class SoloistPlayer(
             main.removeCallbacks(heardYet)
             unfreeze()
         }
+        // Not after a flush: that was a skip, from wherever it came (a Jam's
+        // guest, the Spotify app, another device), and the new song is heard
+        // at once. Held as if the old song still had its buffer to play, the
+        // player showed the old song over the new one's music for seconds.
+        val skipped = android.os.SystemClock.elapsedRealtime() - SoloistAudio.flushedAt < 2_000
         val natural = local == null && frozen == null && was.playing && was.song != null &&
             next.song != null && next.uri != was.uri && next.trackSerial != was.trackSerial &&
-            System.currentTimeMillis() - commandedAt > 3_000
+            System.currentTimeMillis() - commandedAt > 3_000 && !skipped
         if (!natural) return
         val anchor = was.anchor ?: return
         if (was.durationMs <= 0) return
@@ -220,6 +228,7 @@ class SoloistPlayer(
         if (left !in 150..15_000) return
         android.util.Log.i("SoloistPlayer", "${next.uri} announced with $left ms still to play before it ($byLength ms of the last song by its length): held until heard")
         heldSong = next.uri
+        heldSince = android.os.SystemClock.elapsedRealtime()
         heardAtAudio = SoloistAudio.playedMs() + left
         next.anchor?.let { it.audioAtMs = maxOf(it.audioAtMs, heardAtAudio) }
         frozen = was

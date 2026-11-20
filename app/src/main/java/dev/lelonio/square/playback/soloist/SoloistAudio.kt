@@ -107,6 +107,11 @@ object SoloistAudio {
     var aheadMs: Int = 0
         private set
 
+    /** When libpulse last dropped what it held (a skip, a seek), elapsedRealtime. */
+    @Volatile
+    var flushedAt: Long = 0
+        private set
+
     /**
      * Where in the music the DJ's voice starts or stops, by [playedMs]: Soloist
      * says so as it prepares each piece, as far ahead of the music as libpulse
@@ -271,8 +276,11 @@ object SoloistAudio {
                 'P' -> { Log.i(TAG, "pause"); pauseNow(); awaitingSound = true }
                 'F' -> {
                     Log.i(TAG, "flush")
-                    // What was ahead is gone, and the points in it with it.
+                    // What was ahead is gone, and the points in it with it;
+                    // and nothing is ahead any more until libpulse says so.
                     synchronized(speechAt) { speechAt.clear() }
+                    aheadMs = 0
+                    flushedAt = android.os.SystemClock.elapsedRealtime()
                 }
                 'N' -> newSongHeard.value++
                 'L' -> {

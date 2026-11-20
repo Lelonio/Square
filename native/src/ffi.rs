@@ -913,6 +913,21 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRem
     guard_string(&mut env, "RemoteState", || Ok(crate::remote::state_json()))
 }
 
+/// Any spclient request as this session, for a probe; see remote::raw.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSpclient(
+    mut env: JNIEnv,
+    _class: JClass,
+    method: JString,
+    path: JString,
+    body: JString,
+) -> jstring {
+    let method = read_string(&mut env, &method);
+    let path = read_string(&mut env, &path);
+    let body = read_string(&mut env, &body);
+    guard_string(&mut env, "Spclient", || crate::remote::raw(&method?, &path?, body?))
+}
+
 /// Every Connect device the account can see, this one included.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRemoteDevices(
