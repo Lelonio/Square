@@ -1853,7 +1853,7 @@ class PlaybackService : MediaLibraryService() {
                     ""
                 }
             withContext(Dispatchers.IO) {
-                NativeBridge.start(
+                val begin = { NativeBridge.start(
                     // Must match the id the OAuth token was minted for.
                     // `Login5Manager::auth_token` always asks as a stored
                     // credential, and that path signs the request with the
@@ -1885,7 +1885,22 @@ class PlaybackService : MediaLibraryService() {
                     // Off is zero, which is upstream librespot's own behaviour.
                     crossfadeMs = crossfade.durationMs(),
                     listener = engine,
-                )
+                ) }
+                try {
+                    begin()
+                } catch (already: IllegalStateException) {
+                    // Left running by this service's previous instance in the
+                    // same process (the app closed and opened again while the
+                    // process lived on). That engine reports to a service that
+                    // is gone, and refusing to start a second left this one
+                    // with no engine it could use: no Soloist, and a restored
+                    // queue that librespot was then refused. Shut down and
+                    // started again, for this service.
+                    if (already.message?.contains("already started") != true) throw already
+                    android.util.Log.i(TAG, "engine left running by the last service: starting it again")
+                    runCatching { NativeBridge.shutdown() }
+                    begin()
+                }
             }
             // The engine starts on librespot's own defaults, which cut a track
             // off the moment another is asked for; see PlayerConfig.
