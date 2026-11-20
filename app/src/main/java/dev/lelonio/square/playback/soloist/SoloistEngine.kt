@@ -577,12 +577,33 @@ object SoloistEngine {
         })
     }
 
+    /**
+     * Soloist signed in, as its WebSocket says. Signed in from the Spotify app
+     * (the setup's last step), it says so there long before it writes "logged
+     * in as" to its log, which it does at its next start: waited for, Soloist
+     * became the engine only once the app was closed and opened again.
+     */
+    private fun signedIn(event: JSONObject) {
+        if (signedInAccount(app) != null) return
+        val name = listOf("username", "user", "canonical_username", "display_name")
+            .firstNotNullOfOrNull { key -> event.optString(key).takeIf(String::isNotEmpty) }
+            ?: _setup.value.account ?: "Spotify"
+        Log.i(TAG, "signed in")
+        _setup.update { it.copy(account = it.account ?: name, error = null) }
+        prefs(app).edit().putString("account", name).apply()
+        refresh(app)
+    }
+
     private fun onEvent(event: JSONObject) {
         when (event.optString("type")) {
-            "auth_state" -> _state.update {
-                it.copy(loggedIn = event.optBoolean("logged_in"), active = event.optBoolean("is_active"))
+            "auth_state" -> {
+                _state.update {
+                    it.copy(loggedIn = event.optBoolean("logged_in"), active = event.optBoolean("is_active"))
+                }
+                if (event.optBoolean("logged_in")) signedIn(event)
             }
             "playback_state" -> {
+                signedIn(event)
                 val item = event.optJSONObject("item")
                 val options = event.optJSONObject("options")
                 _state.update {
