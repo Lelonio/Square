@@ -717,4 +717,22 @@
     <string name="soloist_retry">Soloist फिर से आज़माएं</string>
     <string name="setup_done">हो गया</string>
     <string name="soloist_setup">Soloist सेट करें</string>
+    <string name="jam_title">Jam</string>
+    <string name="jam_start">Jam शुरू करें</string>
+    <string name="jam_start_note">Square पर साथ सुनें: जो भी जुड़ता है वह उसी कतार में जोड़ता है।</string>
+    <string name="jam_needs_soloist">Jam, Soloist को प्लेयर बनाने पर काम करते हैं।</string>
+    <string name="jam_join">जुड़ें</string>
+    <string name="jam_join_link">Jam लिंक</string>
+    <string name="jam_join_clipboard">कॉपी किए गए Jam में जुड़ें</string>
+    <string name="jam_share">लिंक शेयर करें</string>
+    <string name="jam_copy">लिंक कॉपी करें</string>
+    <string name="jam_end">Jam खत्म करें</string>
+    <string name="jam_leave">Jam छोड़ें</string>
+    <string name="jam_host">होस्ट</string>
+    <string name="jam_you">आप</string>
+    <string name="jam_on">%1$s पर Jam में</string>
+    <string name="jam_joined">आप Jam में जुड़ गए</string>
+    <string name="jam_join_failed">Jam में नहीं जुड़ सके</string>
+    <string name="jam_scan">Jam कोड स्कैन करें</string>
+    <string name="jam_of">%1$s का Jam</string>
 </resources>

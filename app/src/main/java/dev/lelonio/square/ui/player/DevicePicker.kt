@@ -228,6 +228,8 @@ fun DeviceList(
                         }
                     }
                 }
+                // Listening together, on the devices above.
+                JamSection()
             }
 }
 

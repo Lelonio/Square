@@ -98,6 +98,16 @@
               be chosen by hand, once, under "Open by default" — which the
               settings screen links to.
             -->
+            <!--
+              A Jam link shared to Square, from Spotify or a chat: "Share" →
+              Square joins it, with no setting changed for Square to open
+              Spotify's links. Anything else shared is ignored.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

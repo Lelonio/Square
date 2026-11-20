@@ -702,4 +702,22 @@
     <string name="soloist_retry">Réessayer Soloist</string>
     <string name="setup_done">Terminé</string>
     <string name="soloist_setup">Configurer Soloist</string>
+    <string name="jam_title">Jam</string>
+    <string name="jam_start">Lancer une Jam</string>
+    <string name="jam_start_note">Écoutez ensemble sur Square : chaque participant ajoute à la même file.</string>
+    <string name="jam_needs_soloist">Les Jam fonctionnent avec Soloist comme lecteur.</string>
+    <string name="jam_join">Rejoindre</string>
+    <string name="jam_join_link">Lien d\'une Jam</string>
+    <string name="jam_join_clipboard">Rejoindre la Jam copiée</string>
+    <string name="jam_share">Partager le lien</string>
+    <string name="jam_copy">Copier le lien</string>
+    <string name="jam_end">Terminer la Jam</string>
+    <string name="jam_leave">Quitter la Jam</string>
+    <string name="jam_host">Hôte</string>
+    <string name="jam_you">Vous</string>
+    <string name="jam_on">En Jam sur %1$s</string>
+    <string name="jam_joined">Vous avez rejoint la Jam</string>
+    <string name="jam_join_failed">Impossible de rejoindre la Jam</string>
+    <string name="jam_scan">Scanner le code d\'une Jam</string>
+    <string name="jam_of">Jam de %1$s</string>
 </resources>

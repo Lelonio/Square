@@ -726,4 +726,22 @@
     <string name="soloist_retry">Soloist 다시 시도</string>
     <string name="setup_done">완료</string>
     <string name="soloist_setup">Soloist 설정</string>
+    <string name="jam_title">Jam</string>
+    <string name="jam_start">Jam 시작</string>
+    <string name="jam_start_note">Square에서 함께 들어요: 참여한 사람이 같은 대기열에 곡을 추가해요.</string>
+    <string name="jam_needs_soloist">Jam은 Soloist를 플레이어로 쓸 때 작동해요.</string>
+    <string name="jam_join">참여</string>
+    <string name="jam_join_link">Jam 링크</string>
+    <string name="jam_join_clipboard">복사한 Jam에 참여</string>
+    <string name="jam_share">링크 공유</string>
+    <string name="jam_copy">링크 복사</string>
+    <string name="jam_end">Jam 종료</string>
+    <string name="jam_leave">Jam 나가기</string>
+    <string name="jam_host">호스트</string>
+    <string name="jam_you">나</string>
+    <string name="jam_on">%1$s에서 Jam 중</string>
+    <string name="jam_joined">Jam에 참여했어요</string>
+    <string name="jam_join_failed">Jam에 참여할 수 없어요</string>
+    <string name="jam_scan">Jam 코드 스캔</string>
+    <string name="jam_of">%1$s님의 Jam</string>
 </resources>

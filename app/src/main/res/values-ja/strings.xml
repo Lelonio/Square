@@ -758,5 +758,23 @@
     <string name="soloist_retry">Soloistをもう一度試す</string>
     <string name="setup_done">完了</string>
     <string name="soloist_setup">Soloist を設定</string>
+    <string name="jam_title">Jam</string>
+    <string name="jam_start">Jamを始める</string>
+    <string name="jam_start_note">Squareで一緒に聴こう：参加した人が同じキューに曲を追加できます。</string>
+    <string name="jam_needs_soloist">JamはプレーヤーがSoloistのときに使えます。</string>
+    <string name="jam_join">参加</string>
+    <string name="jam_join_link">Jamのリンク</string>
+    <string name="jam_join_clipboard">コピーしたJamに参加</string>
+    <string name="jam_share">リンクを共有</string>
+    <string name="jam_copy">リンクをコピー</string>
+    <string name="jam_end">Jamを終了</string>
+    <string name="jam_leave">Jamから退出</string>
+    <string name="jam_host">ホスト</string>
+    <string name="jam_you">あなた</string>
+    <string name="jam_on">%1$sでJam中</string>
+    <string name="jam_joined">Jamに参加しました</string>
+    <string name="jam_join_failed">Jamに参加できませんでした</string>
+    <string name="jam_scan">Jamのコードをスキャン</string>
+    <string name="jam_of">%1$sのJam</string>
 </resources>
 

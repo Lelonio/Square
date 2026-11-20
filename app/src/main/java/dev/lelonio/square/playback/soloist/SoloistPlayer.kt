@@ -155,6 +155,7 @@ class SoloistPlayer(
                 state.anchor?.takeIf { it.positionMs < 2_000 }?.audioAtMs = SoloistAudio.playedMs()
                 android.util.Log.i("SoloistPlayer", "new song heard in the dissolve (libpulse ahead ${SoloistAudio.aheadMs} ms)")
                 unfreeze()
+                SoloistEngine.resync()
             }
         }
         bindEffects()
@@ -186,6 +187,7 @@ class SoloistPlayer(
             android.util.Log.i("SoloistPlayer", "$heldSong heard now (libpulse ahead ${SoloistAudio.aheadMs} ms)")
             heldSong = null
             unfreeze()
+            SoloistEngine.resync()
         }
     }
 
@@ -198,7 +200,9 @@ class SoloistPlayer(
      */
     private fun holdUntilHeard(was: SoloistEngine.State, next: SoloistEngine.State) {
         if (heldSong != null && next.uri == heldSong) {
-            // Soloist's word on the song meanwhile: it starts where it is heard.
+            // Soloist's word on the song meanwhile: a song it starts from the
+            // top starts where it is heard. Anything else (an automix's cue
+            // point) is put right as it is heard; see SoloistEngine.resync.
             next.anchor?.takeIf { it.positionMs < 2_000 }?.let { it.audioAtMs = maxOf(it.audioAtMs, heardAtAudio) }
             return
         }

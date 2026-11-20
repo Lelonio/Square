@@ -769,4 +769,22 @@
     <string name="soloist_retry">Try Soloist again</string>
     <string name="setup_done">Done</string>
     <string name="soloist_setup">Set up Soloist</string>
+    <string name="jam_title">Jam</string>
+    <string name="jam_start">Start a Jam</string>
+    <string name="jam_start_note">Listen together on Square: everyone who joins adds to the same queue.</string>
+    <string name="jam_needs_soloist">Jams work with Soloist as the player.</string>
+    <string name="jam_join">Join</string>
+    <string name="jam_join_link">Jam link</string>
+    <string name="jam_join_clipboard">Join the Jam you copied</string>
+    <string name="jam_share">Share link</string>
+    <string name="jam_copy">Copy link</string>
+    <string name="jam_end">End the Jam</string>
+    <string name="jam_leave">Leave the Jam</string>
+    <string name="jam_host">Host</string>
+    <string name="jam_you">You</string>
+    <string name="jam_on">In a Jam on %1$s</string>
+    <string name="jam_joined">You joined the Jam</string>
+    <string name="jam_join_failed">Could not join the Jam</string>
+    <string name="jam_scan">Scan a Jam code</string>
+    <string name="jam_of">Jam of %1$s</string>
 </resources>

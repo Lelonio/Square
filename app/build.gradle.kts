@@ -212,6 +212,11 @@ dependencies {
     // The real org.json for the JVM tests: android.jar carries only stubs.
     testImplementation("org.json:json:20240303")
     implementation(libs.timber)
+    // The Jam's invite as a QR code; see JamSection.
+    implementation("com.google.zxing:core:3.5.3")
+    // Scanning someone's Jam code: Google's own scanner, which needs no camera
+    // permission here (it is Play services' screen).
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation(libs.androidx.core.ktx)
     // Installs baseline-prof.txt on first run, so the code the bar and the
     // player use is compiled before it is needed rather than while it runs.

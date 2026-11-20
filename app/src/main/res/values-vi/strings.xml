@@ -762,4 +762,22 @@
     <string name="soloist_retry">Thử lại Soloist</string>
     <string name="setup_done">Xong</string>
     <string name="soloist_setup">Thiết lập Soloist</string>
+    <string name="jam_title">Jam</string>
+    <string name="jam_start">Bắt đầu Jam</string>
+    <string name="jam_start_note">Cùng nghe trên Square: ai tham gia cũng thêm bài vào cùng hàng đợi.</string>
+    <string name="jam_needs_soloist">Jam hoạt động khi trình phát là Soloist.</string>
+    <string name="jam_join">Tham gia</string>
+    <string name="jam_join_link">Liên kết Jam</string>
+    <string name="jam_join_clipboard">Tham gia Jam đã sao chép</string>
+    <string name="jam_share">Chia sẻ liên kết</string>
+    <string name="jam_copy">Sao chép liên kết</string>
+    <string name="jam_end">Kết thúc Jam</string>
+    <string name="jam_leave">Rời Jam</string>
+    <string name="jam_host">Chủ phòng</string>
+    <string name="jam_you">Bạn</string>
+    <string name="jam_on">Đang Jam trên %1$s</string>
+    <string name="jam_joined">Bạn đã tham gia Jam</string>
+    <string name="jam_join_failed">Không thể tham gia Jam</string>
+    <string name="jam_scan">Quét mã Jam</string>
+    <string name="jam_of">Jam của %1$s</string>
 </resources>

@@ -260,6 +260,13 @@ fun FloatingMiniPlayer(
                             modifier = Modifier.padding(end = 5.dp),
                         )
                     }
+                    // In a Jam: whose it is and who is in it, in place of the
+                    // artist, as Spotify's own bar says it.
+                    val jam by dev.lelonio.square.data.Jam.session.collectAsStateWithLifecycle()
+                    val inJam = jam
+                    if (inJam != null && remoteLabel == null) {
+                        JamAvatars(inJam.members, size = 14.dp, modifier = Modifier.padding(end = 5.dp))
+                    }
                     if (remoteLabel != null) {
                         Icon(
                             PhosphorIcons.Fill.Devices,
@@ -271,7 +278,7 @@ fun FloatingMiniPlayer(
                         )
                     }
                     Text(
-                        text = remoteLabel ?: state.artist,
+                        text = remoteLabel ?: inJam?.let { jamTitle(it) } ?: state.artist,
                         style = androidx.compose.ui.text.lerp(
                             MaterialTheme.typography.bodySmall,
                             MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),

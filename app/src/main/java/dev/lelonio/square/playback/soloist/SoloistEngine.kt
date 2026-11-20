@@ -513,7 +513,7 @@ object SoloistEngine {
         val line = raw.replace(colour, "")
         if ("CURL error: 6" in line || "CURL error: 7" in line) afterFailedSignIn()
         if (VERBOSE_SOLOIST || line.startsWith("SQ") || " E [" in line || " W [" in line || "getAudioTransition" in line || "utomix" in line || "ransition" in line || "uepoint" in line ||
-            "arration" in line || "lexicon" in line || " dj" in line || "DJ" in line) Log.i(TAG, line)
+            "arration" in line || "lexicon" in line || " dj" in line || "DJ" in line || "Jam" in line) Log.i(TAG, line)
         // Soloist's own crossfade, from the account's playback settings on
         // Spotify's side, which nothing here can turn off: while it makes
         // one, Square does not make a second over it.
@@ -574,9 +574,14 @@ object SoloistEngine {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 queueAsked = 0
                 webSocket.send(JSONObject().put("type", "command").put("command", "get_queue").put("limit", 0).toString())
+                keepAsking(webSocket)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                // Each kind of message once, the first time it comes.
+                runCatching { JSONObject(text).optString("type") }.getOrNull()?.let { type ->
+                    if (unread.add(type)) Log.i(TAG, "Soloist sends $type: ${text.take(300)}")
+                }
                 runCatching { onEvent(JSONObject(text)) }
                     .onFailure { Log.w(TAG, "event not understood: $text", it) }
             }
@@ -605,6 +610,43 @@ object SoloistEngine {
         refresh(app)
     }
 
+    /** Types of message seen from Soloist that are not read, said once each. */
+    private val unread = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /**
+     * Asks Soloist where it is, every second while it plays: its word on the
+     * position is right, and the player is put back on it at each answer.
+     * What the player works out between two of Soloist's own reports (a song
+     * ending into the next, an automix that brings the next one in at its own
+     * cue point, a skip from a Jam's guest) could leave the time and the lyrics
+     * off the music until something changed; asked, any such slip is gone
+     * within a second.
+     */
+    /** Set by [resync]: Soloist's next word on the position is taken whatever the tempo. */
+    @Volatile
+    private var trustNext = false
+
+    /**
+     * Asks Soloist where it is and takes the answer as it is: for the moment a
+     * new song is first heard, after a transition worked out here (a song
+     * ending into the next, an automix bringing it in at its own cue point).
+     * Its word there is right at any tempo, and anything the player made of
+     * the transition is put right within a moment.
+     */
+    fun resync() {
+        trustNext = true
+        socket?.send(JSONObject().put("type", "command").put("command", "get_state").toString())
+    }
+
+    private fun keepAsking(socket: WebSocket) {
+        thread(name = "soloist-ask", isDaemon = true) {
+            while (this.socket === socket) {
+                Thread.sleep(1_000)
+                if (_state.value.playing && this.socket === socket) socket.send(JSONObject().put("type", "command").put("command", "get_state").toString())
+            }
+        }
+    }
+
     private fun onEvent(event: JSONObject) {
         when (event.optString("type")) {
             "auth_state" -> {
@@ -613,9 +655,29 @@ object SoloistEngine {
                 }
                 if (event.optBoolean("logged_in")) signedIn(event)
             }
-            "playback_state" -> {
+            // Soloist's own word on where the song is, sent when it re-reckons
+            // it (a seek, a song starting, a transition): the anchor every
+            // position on screen is worked out from.
+            "position_sync" -> {
+                anchor(event.optJSONObject("position"))?.let { at ->
+                    _state.update { it.copy(anchor = at) }
+                }
+            }
+            "playback_state", "state", "get_state" -> {
                 signedIn(event)
                 val item = event.optJSONObject("item")
+                // Soloist's position runs on its own clock from its last
+                // reckoning (position_sync), not on the music: at a tempo set
+                // in Square it falls behind what is heard, a second for every
+                // ten at 1.1. Taken as an anchor only at the listener's own
+                // tempo, or for a song the player has no anchor for yet; at any
+                // other tempo the music's own clock from the last reckoning is
+                // the right one, and this one would set the lyrics back.
+                val told = anchor(event.optJSONObject("position"))
+                val sameSong = item?.optString("uri") == _state.value.uri
+                val trusted = told != null && (trustNext || !sameSong || _state.value.anchor == null ||
+                    kotlin.math.abs(dev.lelonio.square.playback.AudioEffects.speed.value - 1f) < 0.01f)
+                if (told != null) trustNext = false
                 val options = event.optJSONObject("options")
                 _state.update {
                     it.copy(
@@ -625,7 +687,7 @@ object SoloistEngine {
                         song = item?.let(::song)?.takeIf { s -> s.uri.isNotEmpty() },
                         contextUri = event.optJSONObject("context")?.optString("uri")?.takeIf(String::isNotEmpty),
                         durationMs = duration(item),
-                        anchor = anchor(event.optJSONObject("position")) ?: it.anchor,
+                        anchor = if (trusted) told else it.anchor,
                         active = event.optBoolean("is_active", it.active),
                         shuffle = options?.optBoolean("shuffle", it.shuffle) ?: it.shuffle,
                         repeat = options?.optString("repeat", it.repeat) ?: it.repeat,

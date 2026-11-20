@@ -715,4 +715,22 @@
     <string name="soloist_retry">Soloist\'i yeniden dene</string>
     <string name="setup_done">Bitti</string>
     <string name="soloist_setup">Soloist\'i kur</string>
+    <string name="jam_title">Jam</string>
+    <string name="jam_start">Jam başlat</string>
+    <string name="jam_start_note">Square\'da birlikte dinleyin: katılan herkes aynı sıraya şarkı ekler.</string>
+    <string name="jam_needs_soloist">Jam\'ler oynatıcı olarak Soloist ile çalışır.</string>
+    <string name="jam_join">Katıl</string>
+    <string name="jam_join_link">Jam bağlantısı</string>
+    <string name="jam_join_clipboard">Kopyaladığın Jam\'e katıl</string>
+    <string name="jam_share">Bağlantıyı paylaş</string>
+    <string name="jam_copy">Bağlantıyı kopyala</string>
+    <string name="jam_end">Jam\'i bitir</string>
+    <string name="jam_leave">Jam\'den ayrıl</string>
+    <string name="jam_host">Ev sahibi</string>
+    <string name="jam_you">Sen</string>
+    <string name="jam_on">%1$s üzerinde Jam\'de</string>
+    <string name="jam_joined">Jam\'e katıldın</string>
+    <string name="jam_join_failed">Jam\'e katılınamadı</string>
+    <string name="jam_scan">Jam kodunu tara</string>
+    <string name="jam_of">%1$s Jam</string>
 </resources>

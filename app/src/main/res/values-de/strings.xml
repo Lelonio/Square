@@ -702,4 +702,22 @@
     <string name="soloist_retry">Soloist erneut versuchen</string>
     <string name="setup_done">Fertig</string>
     <string name="soloist_setup">Soloist einrichten</string>
+    <string name="jam_title">Jam</string>
+    <string name="jam_start">Jam starten</string>
+    <string name="jam_start_note">Hört zusammen auf Square: Alle, die beitreten, ergänzen dieselbe Warteschlange.</string>
+    <string name="jam_needs_soloist">Jams funktionieren mit Soloist als Player.</string>
+    <string name="jam_join">Beitreten</string>
+    <string name="jam_join_link">Jam-Link</string>
+    <string name="jam_join_clipboard">Dem kopierten Jam beitreten</string>
+    <string name="jam_share">Link teilen</string>
+    <string name="jam_copy">Link kopieren</string>
+    <string name="jam_end">Jam beenden</string>
+    <string name="jam_leave">Jam verlassen</string>
+    <string name="jam_host">Host</string>
+    <string name="jam_you">Du</string>
+    <string name="jam_on">Im Jam auf %1$s</string>
+    <string name="jam_joined">Du bist dem Jam beigetreten</string>
+    <string name="jam_join_failed">Beitritt zum Jam nicht möglich</string>
+    <string name="jam_scan">Jam-Code scannen</string>
+    <string name="jam_of">Jam von %1$s</string>
 </resources>

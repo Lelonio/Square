@@ -268,9 +268,31 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
+        // A Jam link shared to Square ("Share" → Square): the way in that needs
+        // no setting changed for Square to open Spotify's links.
+        if (intent.action == android.content.Intent.ACTION_SEND) {
+            dev.lelonio.square.data.Jam.tokenIn(intent.getStringExtra(android.content.Intent.EXTRA_TEXT))?.let(::joinJam)
+            return
+        }
         if (intent.action != android.content.Intent.ACTION_VIEW) return
         val uri = dev.lelonio.square.data.SpotifyLink.parse(intent.data) ?: return
+        dev.lelonio.square.data.Jam.tokenIn(uri)?.let {
+            joinJam(it)
+            return
+        }
         link = LinkRequest(uri, (link?.n ?: 0) + 1)
+    }
+
+    /** Into the Jam a link names, saying how it went. */
+    private fun joinJam(token: String) {
+        lifecycleScope.launch {
+            val joined = dev.lelonio.square.data.Jam.join(token)
+            android.widget.Toast.makeText(
+                this@MainActivity,
+                getString(if (joined) dev.lelonio.square.R.string.jam_joined else dev.lelonio.square.R.string.jam_join_failed),
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
     }
 
     private fun android.content.Intent.opensPlayer(): Boolean =

@@ -731,4 +731,22 @@
     <string name="soloist_retry">Попробовать Soloist снова</string>
     <string name="setup_done">Готово</string>
     <string name="soloist_setup">Настроить Soloist</string>
+    <string name="jam_title">Jam</string>
+    <string name="jam_start">Начать Jam</string>
+    <string name="jam_start_note">Слушайте вместе на Square: каждый участник добавляет в общую очередь.</string>
+    <string name="jam_needs_soloist">Jam работают, когда плеер — Soloist.</string>
+    <string name="jam_join">Присоединиться</string>
+    <string name="jam_join_link">Ссылка на Jam</string>
+    <string name="jam_join_clipboard">Присоединиться к скопированному Jam</string>
+    <string name="jam_share">Поделиться ссылкой</string>
+    <string name="jam_copy">Копировать ссылку</string>
+    <string name="jam_end">Завершить Jam</string>
+    <string name="jam_leave">Выйти из Jam</string>
+    <string name="jam_host">Хост</string>
+    <string name="jam_you">Вы</string>
+    <string name="jam_on">В Jam на %1$s</string>
+    <string name="jam_joined">Вы присоединились к Jam</string>
+    <string name="jam_join_failed">Не удалось присоединиться к Jam</string>
+    <string name="jam_scan">Сканировать код Jam</string>
+    <string name="jam_of">Jam: %1$s</string>
 </resources>

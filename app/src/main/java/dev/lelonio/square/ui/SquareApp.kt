@@ -876,6 +876,18 @@ fun SquareApp(
     // while there is one; see AmbientArtworkBackground.
     var clipColumns by remember { mutableStateOf<List<Color>>(emptyList()) }
 
+    // The account's Jam, read while the app is open with Soloist playing: the
+    // mini player and the player say when one is on, joined from any phone.
+    val jamContext = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        while (true) {
+            if (dev.lelonio.square.playback.soloist.SoloistEngine.isEnabled(jamContext)) {
+                dev.lelonio.square.data.Jam.refresh()
+            }
+            kotlinx.coroutines.delay(if (dev.lelonio.square.data.Jam.session.value != null) 5_000 else 20_000)
+        }
+    }
+
     // What the player's field is made of, worked out once.
     val ambientArt = nowPlayingArt?.heroUrl
         ?: nowPlayingArt?.coverUrl
