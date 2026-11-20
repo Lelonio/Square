@@ -801,8 +801,24 @@ fun PlayerScreen(
                 label = "coverFade",
             )
 
+            // The cover darkens on pause as a Canvas does, still or moving:
+            // the same statement, that the music has stopped, on whatever
+            // picture holds the top of the player.
+            val motionDim by animateFloatAsState(
+                targetValue = if (!state.isPlaying) 1f else 0f,
+                animationSpec = tween(420),
+                label = "coverPausedDim",
+            )
             if (coverFade > 0f) {
-                Box(Modifier.fillMaxSize().graphicsLayer { alpha = coverFade }) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = coverFade }
+                        .drawWithContent {
+                            drawContent()
+                            if (motionDim > 0f) drawRect(Color.Black, alpha = motionDim * PAUSED_DIM)
+                        },
+                ) {
                 // The cover, shown the way every other screen in the app shows
                 // a picture it is built around: filling the top, softening on
                 // the way down, ending on the colour taken from it. A track

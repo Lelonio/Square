@@ -6180,6 +6180,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 tintHex = found.bgColor,
                 inkHex = found.textHex,
                 heroAspect = found.heroAspect,
+                // The artist's own moving portrait, where Apple files one.
+                motionUrl = found.motionUrl,
                 notes = found.bio,
                 origin = found.origin,
                 heroPending = false,

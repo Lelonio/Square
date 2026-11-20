@@ -591,7 +591,14 @@ fun PlaylistScreen(
     // taller than it is wide, it lost a strip down either side — the words
     // and faces a playlist's cover has at its edges. Only a photograph made
     // for a header is laid over the whole of it.
-    val shownAspect = if (state.heroUrl != null) state.heroAspect else 1f
+    // A moving portrait takes the header the moving covers have, three by
+    // four, whatever the still's own shape: a square one ended halfway down
+    // the header on its own dark foot, a black line across the page.
+    val shownAspect = when {
+        state.motionUrl != null -> 3f / 4f
+        state.heroUrl != null -> state.heroAspect
+        else -> 1f
+    }
     val artHeight = shownAspect
         ?.let { (screenWidth / it).coerceIn(200.dp, heroHeight) }
         ?: heroHeight
