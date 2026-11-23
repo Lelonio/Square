@@ -774,16 +774,18 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
     // These caches describe the active YouTube channel, not the public
     // catalogue. A channel switch can keep the same backend instance alive.
-    private var cachedAccountPageId: String? = account.pageId.value
+    // pageId and dataSyncId identify the channel together; compare both.
+    private var cachedAccountContext: Pair<String?, String?> =
+        account.pageId.value to YouTube.dataSyncId
 
     @Synchronized
     private fun syncAccountScopedCaches() {
-        val pageId = account.pageId.value
-        if (pageId == cachedAccountPageId) return
+        val accountContext = account.pageId.value to YouTube.dataSyncId
+        if (accountContext == cachedAccountContext) return
         editable.clear()
         entries.clear()
         artists.clear()
-        cachedAccountPageId = pageId
+        cachedAccountContext = accountContext
     }
 
     @Synchronized
@@ -791,7 +793,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         editable.clear()
         entries.clear()
         artists.clear()
-        cachedAccountPageId = account.pageId.value
+        cachedAccountContext = account.pageId.value to YouTube.dataSyncId
     }
 
     /**
