@@ -28,7 +28,7 @@ use tokio::runtime::Runtime;
 
 pub(crate) static JAVA_VM: OnceCell<JavaVM> = OnceCell::new();
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
-static CONTEXT_INITIALIZED: AtomicBool = AtomicBool::new(false);
+static CONTEXT_INITIALIZED: OnceCell<()> = OnceCell::new();
 /// Set when a transport command had to go around Spirc; see [`transport`].
 ///
 /// The engine is still making sound at that point, but the Connect device is
@@ -323,27 +323,26 @@ pub fn runtime_handle() -> EngineResult<tokio::runtime::Handle> {
 /// process. The context never changes over that lifetime, so the second and
 /// later calls are simply no-ops.
 pub fn init_android_context(context: &JObject) -> EngineResult<()> {
-    if CONTEXT_INITIALIZED.swap(true, Ordering::SeqCst) {
-        return Ok(());
-    }
+    CONTEXT_INITIALIZED.get_or_try_init(|| {
+        let vm = JAVA_VM.get().ok_or("JNI_OnLoad did not run")?;
+        let env = vm.get_env().map_err(|e| e.to_string())?;
+        let global = env
+            .new_global_ref(context)
+            .map_err(|e| format!("failed to pin Context: {e}"))?;
 
-    let vm = JAVA_VM.get().ok_or("JNI_OnLoad did not run")?;
-    let env = vm.get_env().map_err(|e| e.to_string())?;
-    let global = env
-        .new_global_ref(context)
-        .map_err(|e| format!("failed to pin Context: {e}"))?;
-
-    // SAFETY: both pointers stay valid for the lifetime of the process — the VM
-    // is never destroyed on Android, and `global` is deliberately leaked so the
-    // Context reference is never collected while ndk_context holds it.
-    #[cfg(target_os = "android")]
-    unsafe {
-        ndk_context::initialize_android_context(
-            vm.get_java_vm_pointer() as *mut _,
-            global.as_raw() as *mut _,
-        );
-    }
-    std::mem::forget(global);
+        // SAFETY: both pointers stay valid for the lifetime of the process — the VM
+        // is never destroyed on Android, and `global` is deliberately leaked so the
+        // Context reference is never collected while ndk_context holds it.
+        #[cfg(target_os = "android")]
+        unsafe {
+            ndk_context::initialize_android_context(
+                vm.get_java_vm_pointer() as *mut _,
+                global.as_raw() as *mut _,
+            );
+        }
+        std::mem::forget(global);
+        Ok(())
+    })?;
     Ok(())
 }
 
