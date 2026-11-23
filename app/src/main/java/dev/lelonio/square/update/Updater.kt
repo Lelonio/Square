@@ -229,12 +229,14 @@ class Updater(context: Context) {
         target.delete()
         lastReported = -1
 
+        var total = update.bytes
+        var written = 0L
+
         val request = Request.Builder().url(update.url).build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code}")
             val body = response.body ?: error("empty body")
-            val total = body.contentLength().takeIf { it > 0 } ?: update.bytes
-            var written = 0L
+            total = body.contentLength().takeIf { it > 0 } ?: update.bytes
 
             body.byteStream().use { input ->
                 target.outputStream().use { output ->

@@ -18,24 +18,26 @@ class LibraryPaginationTest {
             continuation = "page-2",
         )
 
-        val result = first.collectAllItems { token ->
-            requests += token
-            when (token) {
-                "page-2" -> Result.success(
-                    LibraryContinuationPage(
-                        items = listOf(playlist("two"), playlist("three")),
-                        continuation = "page-3",
-                    ),
-                )
-                "page-3" -> Result.success(
-                    LibraryContinuationPage(
-                        items = listOf(playlist("four")),
-                        continuation = null,
-                    ),
-                )
-                else -> error("Unexpected continuation: $token")
-            }
-        }
+        val result = first.collectAllItems(
+            fetchContinuation = { token ->
+                requests += token
+                when (token) {
+                    "page-2" -> Result.success(
+                        LibraryContinuationPage(
+                            items = listOf(playlist("two"), playlist("three")),
+                            continuation = "page-3",
+                        ),
+                    )
+                    "page-3" -> Result.success(
+                        LibraryContinuationPage(
+                            items = listOf(playlist("four")),
+                            continuation = null,
+                        ),
+                    )
+                    else -> error("Unexpected continuation: $token")
+                }
+            },
+        )
 
         assertEquals(listOf("page-2", "page-3"), requests)
         assertEquals(listOf("one", "two", "three", "four"), result.map { it.id })
@@ -46,9 +48,11 @@ class LibraryPaginationTest {
         val result = LibraryPage(
             items = listOf(playlist("one")),
             continuation = "unavailable",
-        ).collectAllItems {
-            Result.failure(IllegalStateException("temporary network failure"))
-        }
+        ).collectAllItems(
+            fetchContinuation = {
+                Result.failure<LibraryContinuationPage>(IllegalStateException("temporary network failure"))
+            },
+        )
 
         assertEquals(listOf("one"), result.map { it.id })
     }
@@ -59,15 +63,17 @@ class LibraryPaginationTest {
         val result = LibraryPage(
             items = listOf(playlist("one")),
             continuation = "same-token",
-        ).collectAllItems { token ->
-            requests += token
-            Result.success(
-                LibraryContinuationPage(
-                    items = listOf(playlist("two")),
-                    continuation = "same-token",
-                ),
-            )
-        }
+        ).collectAllItems(
+            fetchContinuation = { token ->
+                requests += token
+                Result.success(
+                    LibraryContinuationPage(
+                        items = listOf(playlist("two")),
+                        continuation = "same-token",
+                    ),
+                )
+            },
+        )
 
         assertEquals(listOf("same-token"), requests)
         assertEquals(listOf("one", "two"), result.map { it.id })

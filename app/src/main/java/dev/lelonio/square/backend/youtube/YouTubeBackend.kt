@@ -185,7 +185,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
         YouTube.library(LIKED_PLAYLISTS_BROWSE_ID)
             .getOrThrow()
-            .collectAllItems { continuation -> YouTube.libraryContinuation(continuation) }
+            .collectAllItems(
+                fetchContinuation = { continuation -> YouTube.libraryContinuation(continuation) },
+            )
             .filterIsInstance<PlaylistItem>()
             .onEach {
                 if (it.isEditable || it.id == LIKED_MUSIC_ID) {
@@ -213,7 +215,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         runCatching {
             YouTube.library(SAVED_ALBUMS_BROWSE_ID)
                 .getOrThrow()
-                .collectAllItems { continuation -> YouTube.libraryContinuation(continuation) }
+                .collectAllItems(
+                    fetchContinuation = { continuation -> YouTube.libraryContinuation(continuation) },
+                )
                 .filterIsInstance<AlbumItem>()
                 .mapNotNull(::toCatalogPlaylist)
         }.getOrElse {
@@ -250,7 +254,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         runCatching {
             YouTube.library(FOLLOWED_ARTISTS_BROWSE_ID)
                 .getOrThrow()
-                .collectAllItems { continuation -> YouTube.libraryContinuation(continuation) }
+                .collectAllItems(
+                    fetchContinuation = { continuation -> YouTube.libraryContinuation(continuation) },
+                )
                 .filterIsInstance<ArtistItem>()
                 .map { artist ->
                     SearchItem(
@@ -938,7 +944,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         if (!account.isSignedIn) return@withContext emptyList()
         YouTube.library(LIKED_PLAYLISTS_BROWSE_ID)
             .getOrThrow()
-            .collectAllItems { continuation -> YouTube.libraryContinuation(continuation) }
+            .collectAllItems(
+                fetchContinuation = { continuation -> YouTube.libraryContinuation(continuation) },
+            )
             .filterIsInstance<PlaylistItem>()
             .filter { it.isEditable || it.id == LIKED_MUSIC_ID }
             // Keep canWriteTo() in sync with the exact targets offered here.
