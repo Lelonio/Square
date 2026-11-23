@@ -6,7 +6,7 @@ name: Build
 # secrets to pull requests from forks anyway.
 on:
   push:
-    branches: [master]
+    branches: [master, "work/**"]
   pull_request:
   workflow_dispatch:
 
@@ -25,6 +25,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup
+
+      - name: Unit tests
+        run: ./gradlew :app:testDevUnitTest --stacktrace
 
       - name: Build
         run: ./gradlew :app:assembleDev --stacktrace
