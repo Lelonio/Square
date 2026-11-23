@@ -80,18 +80,20 @@ fun GlassPullDownButton(
     semanticLabel: String? = null,
     ink: Color = GlassInk,
     buttonSize: Dp = 44.dp,
+    /** The label's type, where the button sits beside others that set theirs. */
+    labelStyle: androidx.compose.ui.text.TextStyle? = null,
+    iconSize: Dp = 20.dp,
 ) {
     val sizeModifier = if (label.isNullOrEmpty()) Modifier.size(buttonSize) else Modifier.height(buttonSize)
     val padding = if (label.isNullOrEmpty()) 0.dp else 16.dp
     @Composable
     fun RowScope.Items(modifier: Modifier) {
-        Icon(icon, contentDescription = null, tint = ink, modifier = modifier.size(20.dp))
+        Icon(icon, contentDescription = null, tint = ink, modifier = modifier.size(iconSize))
         if (!label.isNullOrEmpty()) {
             // Upstream's 8 px gap is the button's own row spacing here.
             Text(
                 label,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
+                style = labelStyle ?: androidx.compose.ui.text.TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium),
                 color = ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

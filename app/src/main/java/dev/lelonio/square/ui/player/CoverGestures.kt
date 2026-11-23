@@ -26,10 +26,9 @@ import kotlin.math.abs
 /**
  * Horizontal drag on the cover: left for the next track, right for the previous.
  *
- * Only this axis. Closing the screen used to live here too, which meant the
- * gesture worked on the cover alone and dragged the cover out from under the
- * rest of the screen — see [DismissibleScreen], which now owns the vertical axis
- * for the whole player.
+ * And down to close the player, which is applied here and nowhere else: the
+ * drag comes from [DismissibleScreen] as [LocalDismissDrag], so the cover only
+ * hosts it and never follows it down.
  *
  * The cover follows the finger and fades as it goes, so the gesture is
  * discoverable: a swipe that does nothing visible until it completes gives no
@@ -71,6 +70,9 @@ fun CoverGestures(
 
     Box(
         modifier
+            // Before the transform: the cover shrinks and slides as it is
+            // swiped, and the place that answers a downward drag should not.
+            .then(LocalDismissDrag.current)
             .graphicsLayer {
                 if (!followFinger) return@graphicsLayer
                 translationX = offsetX.value

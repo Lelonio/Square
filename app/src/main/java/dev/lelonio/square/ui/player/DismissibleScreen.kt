@@ -3,25 +3,27 @@ package dev.lelonio.square.ui.player
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 
 /**
- * Drag down anywhere on the screen to close it.
+ * Drag down on the cover to close the screen.
+ *
+ * Only on the cover. It used to be anywhere — the whole screen through the
+ * pointer input, and the lyrics and the queue once scrolled to their top — and
+ * a finger moving down over the controls, aiming for a button or the progress
+ * bar, closed the player instead. The screen provides the gesture as
+ * [LocalDismissDrag]; the cover (see [CoverGestures]) is what applies it.
  *
  * A gesture, not a transform: the screen does not follow the finger. It used to
  * — it slid, shrank and faded with the drag — but the player is already a sheet
@@ -30,15 +32,6 @@ import androidx.compose.ui.unit.dp
  * the whole screen around before anything committed. Once the drag passes the
  * threshold this hands over to that one animation, which is the only thing that
  * should be moving the player.
- *
- * Wired through [NestedScrollConnection] rather than a plain drag detector
- * because the content scrolls. A drag detector on the parent and a scrolling
- * child fight over the same vertical axis; nested scroll gives a defined order —
- * the list gets the drag first, and only what it cannot use reaches this. So a
- * downward drag scrolls the content until it hits the top, and from there the
- * same continuous movement used to close the screen; now only a drag that starts
- * at the top does, see onPostScroll. The pointer input below covers the
- * parts that do not scroll at all.
  */
 @Composable
 fun DismissibleScreen(
@@ -50,6 +43,7 @@ fun DismissibleScreen(
     val density = LocalDensity.current
 
     val threshold = with(density) { DISMISS_THRESHOLD.toPx() }
+    val dismiss by androidx.compose.runtime.rememberUpdatedState(onDismiss)
 
     // Plain vars in a remembered holder rather than state: nothing recomposes on
     // them, they only have to survive between drag events.
@@ -59,7 +53,6 @@ fun DismissibleScreen(
     fun reset() {
         travel.distance = 0f
         travel.fired = false
-        travel.scrolled = null
     }
 
     fun drag(amount: Float) {
@@ -71,62 +64,36 @@ fun DismissibleScreen(
         if (travel.distance >= threshold) {
             travel.fired = true
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            onDismiss()
+            dismiss()
         }
     }
 
-    val connection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < 0) travel.distance = 0f
-                return Offset.Zero
-            }
-
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                // Only what the content could not use: at the top of the scroll
-                // this is the whole drag, anywhere else it is nothing.
-                // Decided on the gesture's first movement: if that moved the
-                // content, the gesture is a scroll to the end, and reaching the
-                // top does not turn it into a close. Scrolling up the queue to
-                // what was already played closed the player as soon as the list
-                // ran out, in the same movement. Only a drag that starts with
-                // the content already at the top closes it.
-                if (travel.scrolled == null) travel.scrolled = consumed.y != 0f
-                if (available.y > 0 && !lock.value && travel.scrolled == false) {
-                    drag(available.y)
-                    return Offset(0f, available.y)
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                reset()
-                return Velocity.Zero
+    val dragToDismiss = remember {
+        Modifier.pointerInput(Unit) {
+            detectVerticalDragGestures(
+                onDragStart = { reset() },
+                onDragEnd = { reset() },
+                onDragCancel = { reset() },
+            ) { change, amount ->
+                change.consume()
+                drag(amount)
             }
         }
     }
 
-    Box(
-        modifier
-            .nestedScroll(connection)
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragStart = { reset() },
-                    onDragEnd = { reset() },
-                    onDragCancel = { reset() },
-                ) { change, amount ->
-                    change.consume()
-                    drag(amount)
-                }
-            },
-    ) {
-        CompositionLocalProvider(LocalDismissLock provides lock) { content() }
+    Box(modifier) {
+        CompositionLocalProvider(
+            LocalDismissLock provides lock,
+            LocalDismissDrag provides dragToDismiss,
+        ) { content() }
     }
 }
+
+/**
+ * The drag that closes the screen, for the one place it belongs: the cover.
+ * Nothing outside a [DismissibleScreen].
+ */
+val LocalDismissDrag = staticCompositionLocalOf<Modifier> { Modifier }
 
 /**
  * Set by whatever inside takes a downward drag for its own, such as a queue row
@@ -137,8 +104,6 @@ val LocalDismissLock = staticCompositionLocalOf<MutableState<Boolean>> { mutable
 private class Travel {
     var distance = 0f
     var fired = false
-    /** Whether this gesture began by scrolling the content; null before it moves. */
-    var scrolled: Boolean? = null
 }
 
 private val DISMISS_THRESHOLD = 110.dp

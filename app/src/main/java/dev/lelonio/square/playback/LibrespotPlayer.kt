@@ -90,6 +90,7 @@ class LibrespotPlayer(
     private fun pushQueue(startPlaying: Boolean, positionMs: Int = 0) {
         val uris = queue.items.map { it.uri }
         if (uris.isEmpty()) return
+        loadSentAt = android.os.SystemClock.elapsedRealtime()
         // From here until the engine is on this queue, what it says it is
         // playing is the past; see [ownQueuePending].
         ownQueuePending = true
@@ -138,6 +139,7 @@ class LibrespotPlayer(
             // so when that is gone the track simply never changes. Build a new
             // one first and load on the other side of it.
             withDevice {
+                loadSentAt = 0L
                 if (released) return@withDevice
                 // Read now, not when this was scheduled. The fade takes a
                 // moment, and a tap on a track while paused arrives as "load
@@ -280,6 +282,14 @@ class LibrespotPlayer(
      * the half that can resolve a context.
      */
     var onUnknownTrack: ((String) -> Unit)? = null
+
+    /**
+     * A song of the queue that plays on Soloist, not here (one not downloaded,
+     * with Soloist chosen). Set by the service, with [elsewhere], which hands
+     * the queue over at that song.
+     */
+    var playsElsewhere: ((uri: String) -> Boolean)? = null
+    var elsewhere: ((items: List<MediaItem>, index: Int, positionMs: Long, playing: Boolean) -> Unit)? = null
 
     /** The last one handed over, so a run of events asks for it once. */
     private var unknownAsked: String? = null
@@ -518,6 +528,17 @@ class LibrespotPlayer(
 
     /** Set when the engine stopped its player; a play then has to load again. */
     private var engineStopped = false
+
+    /** When a load went into [changing] and has not yet gone to the engine; 0 for none. */
+    private var loadSentAt = 0L
+
+    /**
+     * A load still on its way. Bounded: a fade cut short or a reconnect that
+     * drops it never clears it, and a play button waiting on it for good is
+     * a dead one.
+     */
+    private fun loadOnItsWay(): Boolean =
+        loadSentAt != 0L && android.os.SystemClock.elapsedRealtime() - loadSentAt < 2_000
 
     /** Set while a reconnection is in flight, so a burst of taps starts one. */
     private var reconnecting = false
@@ -981,7 +1002,12 @@ class LibrespotPlayer(
             // for a few seconds. A stopped player refuses "play" (it only logs
             // it), so the button spun forever; the track is loaded again where
             // it was paused instead.
-            if ((currentMediaItem == null || engineStopped || engineQueueStale) && queue.items.isNotEmpty()) {
+            if (loadOnItsWay()) {
+                // A queue just set, its load still behind the fade: it reads
+                // whether to play when it goes. Loaded again from here (the
+                // engine stopped under the old song, as a parked one is), the
+                // new song started, and started again from the top.
+            } else if ((currentMediaItem == null || engineStopped || engineQueueStale) && queue.items.isNotEmpty()) {
                 engineStopped = false
                 playbackState = Player.STATE_BUFFERING
                 invalidateState()
@@ -1057,7 +1083,23 @@ class LibrespotPlayer(
             return Futures.immediateVoidFuture()
         }
 
-        queue.items.getOrNull(mediaItemIndex) ?: return Futures.immediateVoidFuture()
+        val target = queue.items.getOrNull(mediaItemIndex) ?: return Futures.immediateVoidFuture()
+
+        // A song chosen in the queue that Soloist plays: the queue goes over
+        // to it before this engine streams any of it. Loaded here first, it
+        // played seconds from librespot before the handover caught up.
+        if (mediaItemIndex != queue.currentIndex && playsElsewhere?.invoke(target.uri) == true) {
+            val hand = elsewhere
+            if (hand != null) {
+                val items = (0 until mediaItemCount).map(::getMediaItemAt)
+                val playing = wantPlay || playWhenReady
+                // Still playing: the song goes on here until Soloist's is
+                // heard, and only then fades (see PlaybackService.handOver),
+                // so the change has no silence in it.
+                hand(items, mediaItemIndex, newPositionMs.coerceAtLeast(0), playing)
+                return Futures.immediateVoidFuture()
+            }
+        }
 
         if (mediaItemIndex == queue.currentIndex && !skipPending) {
             engine("seek") { NativeBridge.seek(newPositionMs) }
@@ -1071,6 +1113,20 @@ class LibrespotPlayer(
         return Futures.immediateVoidFuture()
     }
 
+    /**
+     * Whether the device playing is this app's own Soloist: a queue handed
+     * over between the two engines. Not taken over then: the transfer started
+     * Soloist's song here, and the load right behind it started the new song
+     * again from the top, heard as it beginning twice. The load alone makes
+     * this device the one playing.
+     */
+    private fun playingOnSoloist(): Boolean {
+        val soloist = dev.lelonio.square.playback.soloist.SoloistEngine.deviceId ?: return false
+        val active = runCatching { org.json.JSONObject(NativeBridge.remoteState()).optString("activeDevice") }
+            .getOrDefault("")
+        return active == soloist
+    }
+
     override fun handleSetMediaItems(
         mediaItems: List<MediaItem>,
         startIndex: Int,
@@ -1082,7 +1138,9 @@ class LibrespotPlayer(
         // other device alone; see engine.rs.
         // Offline there is no account to take it from: the track plays from
         // the phone, and asking Spotify first only holds it up.
-        if (!OfflineMode.active.value && runCatching { NativeBridge.playbackElsewhere }.getOrDefault(false)) {
+        if (!OfflineMode.active.value && runCatching { NativeBridge.playbackElsewhere }.getOrDefault(false) &&
+            !playingOnSoloist()
+        ) {
             android.util.Log.i("SquarePlayer", "taking playback back for this device")
             runCatching { NativeBridge.takeOver() }
                 .onFailure { android.util.Log.w("SquarePlayer", "could not take over", it) }

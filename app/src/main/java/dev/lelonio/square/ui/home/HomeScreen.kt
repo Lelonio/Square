@@ -279,6 +279,7 @@ fun HomeScreen(
                     .sortedByRecentlyOpened(playlistOrder)
             }
             val listState = rememberLazyListState()
+            HoldAtTopUntilTouched(listState)
 
             // How far the header has collapsed, 0 to 1.
             //
@@ -1370,6 +1371,7 @@ private fun YouTubeHome(
     }
 
     val listState = rememberLazyListState()
+    HoldAtTopUntilTouched(listState)
     // The same collapse the Spotify page has, read the same way; see the note
     // there. The header is a sibling of the list rather than its first item
     // precisely so it can shrink while the list scrolls under it.
@@ -1721,3 +1723,34 @@ private const val QUICK_PICK_MINIMUM = 8
 
 /** How deep that block goes before it starts a new column. */
 private const val QUICK_PICK_ROWS = 4
+
+/**
+ * Keeps a freshly opened home at its top until the listener moves it.
+ *
+ * At a cold start the page is drawn from what was kept, and the fresh shelves
+ * arrive a moment later, some of them above the ones already on screen. A lazy
+ * list keeps whichever item was first in view where it was, so the new ones
+ * went in above the fold and the home opened halfway down itself. Until a
+ * finger has touched the list, any such move is put back to the top.
+ *
+ * A page coming back already scrolled — the listener returning from a
+ * playlist — counts as touched from the start, so it is left where it was.
+ */
+@Composable
+private fun HoldAtTopUntilTouched(listState: androidx.compose.foundation.lazy.LazyListState) {
+    var touched by rememberSaveable {
+        mutableStateOf(listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0)
+    }
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect {
+            if (it is androidx.compose.foundation.interaction.DragInteraction.Start) touched = true
+        }
+    }
+    LaunchedEffect(listState) {
+        androidx.compose.runtime.snapshotFlow {
+            listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0
+        }.collect { moved ->
+            if (moved && !touched) listState.scrollToItem(0)
+        }
+    }
+}

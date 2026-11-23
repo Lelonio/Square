@@ -12,6 +12,8 @@
 
 package dev.lelonio.square.ui.player
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.border
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -228,7 +230,26 @@ fun FloatingMiniPlayer(
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                // Lossless, said where the song is named: the player's
+                // quality button, small.
+                val stream by dev.lelonio.square.playback.StreamQuality.label
+                    .collectAsStateWithLifecycle()
+                if (stream == "FLAC" && remoteLabel == null) {
+                    Text(
+                        "FLAC",
+                        fontSize = 9.sp,
+                        lineHeight = 9.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = contentColor.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        modifier = Modifier
+                            .padding(start = 6.dp)
+                            .border(1.dp, contentColor.copy(alpha = 0.45f), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                    )
+                }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // The DJ choosing, and talking; see DjMark.
@@ -238,6 +259,13 @@ fun FloatingMiniPlayer(
                             fontSize = 9.sp,
                             modifier = Modifier.padding(end = 5.dp),
                         )
+                    }
+                    // In a Jam: whose it is and who is in it, in place of the
+                    // artist, as Spotify's own bar says it.
+                    val jam by dev.lelonio.square.data.Jam.session.collectAsStateWithLifecycle()
+                    val inJam = jam
+                    if (inJam != null && remoteLabel == null) {
+                        JamAvatars(inJam.members, size = 14.dp, modifier = Modifier.padding(end = 5.dp))
                     }
                     if (remoteLabel != null) {
                         Icon(
@@ -250,7 +278,7 @@ fun FloatingMiniPlayer(
                         )
                     }
                     Text(
-                        text = remoteLabel ?: state.artist,
+                        text = remoteLabel ?: inJam?.let { jamTitle(it) } ?: state.artist,
                         style = androidx.compose.ui.text.lerp(
                             MaterialTheme.typography.bodySmall,
                             MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),

@@ -620,6 +620,25 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeIsS
     crate::sink::sounding() as jboolean
 }
 
+/// The bitrate, in kbit/s, of the song playing now; 0 before the first.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlayingKbps(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    librespot_playback::player::PLAYING_KBPS.load(std::sync::atomic::Ordering::Relaxed) as jint
+}
+
+/// Keeps this device out of the account's device lists (Soloist plays here).
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetConnectHidden(
+    _env: JNIEnv,
+    _class: JClass,
+    hidden: jni::sys::jboolean,
+) {
+    librespot_connect::HIDE_DEVICE.store(hidden != 0, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Rebuilds the player with a new bitrate and crossfade.
 #[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetQuality(
@@ -892,6 +911,21 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeRem
     _class: JClass,
 ) -> jstring {
     guard_string(&mut env, "RemoteState", || Ok(crate::remote::state_json()))
+}
+
+/// Any spclient request as this session, for a probe; see remote::raw.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSpclient(
+    mut env: JNIEnv,
+    _class: JClass,
+    method: JString,
+    path: JString,
+    body: JString,
+) -> jstring {
+    let method = read_string(&mut env, &method);
+    let path = read_string(&mut env, &path);
+    let body = read_string(&mut env, &body);
+    guard_string(&mut env, "Spclient", || crate::remote::raw(&method?, &path?, body?))
 }
 
 /// Every Connect device the account can see, this one included.

@@ -348,16 +348,50 @@ class Updater(context: Context) {
          * String comparison would put 1.10.0 before 1.9.0, which is exactly the
          * release where a self-updater stops offering updates and nobody
          * notices for a month.
+         *
+         * A pre-release comes before the release it leads to: 2.11.0-beta1 is
+         * older than 2.11.0, and beta2 is newer than beta1. Read as numbers
+         * alone, "0-beta1" was 0, so a beta and its release were the same
+         * version and nobody on the beta was offered the release.
          */
         fun isNewer(candidate: String, installed: String): Boolean {
-            val a = candidate.split('.').map { it.takeWhile(Char::isDigit).toIntOrNull() ?: 0 }
-            val b = installed.split('.').map { it.takeWhile(Char::isDigit).toIntOrNull() ?: 0 }
-            for (i in 0 until maxOf(a.size, b.size)) {
-                val left = a.getOrElse(i) { 0 }
-                val right = b.getOrElse(i) { 0 }
+            val (coreA, preA) = splitVersion(candidate)
+            val (coreB, preB) = splitVersion(installed)
+            for (i in 0 until maxOf(coreA.size, coreB.size)) {
+                val left = coreA.getOrElse(i) { 0 }
+                val right = coreB.getOrElse(i) { 0 }
                 if (left != right) return left > right
             }
-            return false
+            return when {
+                preA == null -> preB != null
+                preB == null -> false
+                else -> comparePre(preA, preB) > 0
+            }
+        }
+
+        /** "2.11.0-beta1" as [2, 11, 0] and "beta1"; a release has no second half. */
+        private fun splitVersion(version: String): Pair<List<Int>, String?> {
+            val clean = version.trim().removePrefix("v")
+            val dash = clean.indexOf('-')
+            val core = if (dash < 0) clean else clean.substring(0, dash)
+            val pre = if (dash < 0) null else clean.substring(dash + 1).ifBlank { null }
+            return core.split('.').map { it.takeWhile(Char::isDigit).toIntOrNull() ?: 0 } to pre
+        }
+
+        /** "beta2" after "beta1", "beta10" after "beta9", "rc1" after "beta3". */
+        private fun comparePre(a: String, b: String): Int {
+            val split = Regex("(\\d+)|(\\D+)")
+            val pa = split.findAll(a.lowercase()).map { it.value }.toList()
+            val pb = split.findAll(b.lowercase()).map { it.value }.toList()
+            for (i in 0 until maxOf(pa.size, pb.size)) {
+                val x = pa.getOrNull(i) ?: return -1
+                val y = pb.getOrNull(i) ?: return 1
+                val nx = x.toIntOrNull()
+                val ny = y.toIntOrNull()
+                val c = if (nx != null && ny != null) nx.compareTo(ny) else x.compareTo(y)
+                if (c != 0) return c
+            }
+            return 0
         }
     }
 }

@@ -158,7 +158,7 @@ impl ConnectState {
                 needs_full_player_state: true,
                 is_observable: true,
                 is_controllable: true,
-                hidden: false,
+                hidden: crate::HIDE_DEVICE.load(std::sync::atomic::Ordering::Relaxed),
 
                 supports_gzip_pushes: true,
                 // todo: enable after logout handling is implemented, see spirc logout_request
@@ -476,6 +476,16 @@ impl ConnectState {
         reason: PutStateReason,
     ) -> SpClientResult {
         let prev_reason = self.request.put_state_reason;
+        // LOCAL PATCH: see HIDE_DEVICE; kept, so send_state need not copy.
+        let hide = crate::HIDE_DEVICE.load(std::sync::atomic::Ordering::Relaxed);
+        self.request
+            .device
+            .mut_or_insert_default()
+            .device_info
+            .mut_or_insert_default()
+            .capabilities
+            .mut_or_insert_default()
+            .hidden = hide;
 
         self.request.put_state_reason = EnumOrUnknown::new(reason);
         let res = self.send_state(session).await;
@@ -498,6 +508,21 @@ impl ConnectState {
 
     /// Sends the connect state for the connect session to the remote server
     pub async fn send_state(&self, session: &Session) -> SpClientResult {
+        // LOCAL PATCH: see HIDE_DEVICE. Changed after this state was built,
+        // it goes out with the next state sent.
+        let hide = crate::HIDE_DEVICE.load(std::sync::atomic::Ordering::Relaxed);
+        if self.request.device.device_info.capabilities.hidden != hide {
+            let mut request = self.request.clone();
+            request
+                .device
+                .mut_or_insert_default()
+                .device_info
+                .mut_or_insert_default()
+                .capabilities
+                .mut_or_insert_default()
+                .hidden = hide;
+            return session.spclient().put_connect_state_request(&request).await;
+        }
         session
             .spclient()
             .put_connect_state_request(&self.request)

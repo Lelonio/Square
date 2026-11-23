@@ -135,6 +135,13 @@ object YouTube {
             innerTube.useLoginForBrowse = value
         }
 
+    /** Vendored: see [InnerTube.onBrowseLoginRefused]. */
+    var onBrowseLoginRefused: (() -> Unit)?
+        get() = innerTube.onBrowseLoginRefused
+        set(value) {
+            innerTube.onBrowseLoginRefused = value
+        }
+
     /**
      * Persistent HTTP cache directory for the underlying OkHttp client.
      *

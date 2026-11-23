@@ -127,7 +127,19 @@ object RemoteConnect {
         // this phone it starts playing at once, while the account goes on naming
         // the device it came from until that device lets go. Comparing ids meant
         // the app believed the account and not its own ears.
-        val elsewhere = NativeBridge.playbackElsewhere && active != sdkId
+        //
+        // With Soloist as this phone's player the engine is parked and always
+        // thinks the music is elsewhere: a moment in which the account named
+        // no device (a seek, a pause) then made the player a remote one, its
+        // bar the account's stale position and its buttons Web API requests.
+        // Soloist says itself whether it is the account's player.
+        val solo = soloist()
+        val elsewhere = if (solo != null) {
+            !dev.lelonio.square.playback.soloist.SoloistEngine.state.value.active &&
+                active.isNotEmpty() && active != solo && active != ownId
+        } else {
+            NativeBridge.playbackElsewhere && active != sdkId
+        }
         _elsewhere.value = elsewhere
         val remote = playback?.takeIf { elsewhere }
         if (playingAtOpen == null && remote != null && remote.uri.isNotEmpty()) {
@@ -237,8 +249,17 @@ object RemoteConnect {
         _devices.value = emptyList()
     }
 
+    /**
+     * Soloist's device, when Soloist is this phone's player: then it is "this
+     * phone" in the list, and the Spotify engine's own device, which only
+     * stands behind it for the catalogue, is not offered at all.
+     */
+    private fun soloist(): String? =
+        dev.lelonio.square.playback.soloist.SoloistEngine.deviceId?.takeIf { it == sdkId }
+
     private fun parseDevices(json: String): List<RemoteDevice> {
         val array = JSONArray(json)
+        val hidden = if (soloist() != null) ownId else null
         return (0 until array.length()).map { index ->
             val device = array.getJSONObject(index)
             val id = device.optString("id")
@@ -250,7 +271,7 @@ object RemoteConnect {
                 active = device.optBoolean("active"),
                 isThisPhone = id == ownId || id == sdkId,
             )
-        }
+        }.filter { it.id != hidden }
     }
 
     // --- Commands ---
@@ -264,7 +285,9 @@ object RemoteConnect {
         if (playingAtOpen == false && remote?.deviceId == deviceId && !remote.playing) {
             playingAtOpen = null
             val handler = resumeHereHandler
-            if (handler != null) handler(remote)
+            val soloistId = soloist()
+            if (soloistId != null) transferTo(soloistId)
+            else if (handler != null) handler(remote)
             else NativeBridge.resumeHere(remote.realContext.orEmpty(), remote.uri, remote.positionMs.toInt())
             return
         }
@@ -304,6 +327,14 @@ object RemoteConnect {
      * to give it away.
      */
     fun transferTo(deviceId: String) {
+        // This phone, with Soloist as its player: the playback goes to Soloist,
+        // carried there by the account the way any transfer is.
+        soloist()?.let { soloistId ->
+            if (deviceId == ownId || deviceId == soloistId) {
+                send(soloistId, """{"command":{"endpoint":"transfer","transfer_options":{"restore_paused":"restore"}}}""")
+                return
+            }
+        }
         if (deviceId == ownId) {
             // Coming back here is not a request to the server. A device cannot
             // address a command to itself: it goes out to the access point and

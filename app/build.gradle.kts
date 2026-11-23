@@ -14,7 +14,15 @@ plugins {
  * extra Rust build (~2 min from cold), so the default is deliberately just the
  * one. Add "x86_64" for the emulator and "armeabi-v7a" for pre-2015 hardware.
  */
-val nativeAbis = listOf("arm64-v8a", "armeabi-v7a")
+/**
+ * Every ABI a release ships, with a universal APK besides, only when asked:
+ * `-Psquare.allAbis=true`, which both GitHub workflows pass (release and the
+ * build on every push), so GitHub always makes all three APKs. A build here is
+ * arm64 alone, which is every phone this is run on, and the Rust engine and
+ * Bungee built once instead of twice.
+ */
+val allAbis = (findProperty("square.allAbis") as String?)?.toBoolean() == true
+val nativeAbis = if (allAbis) listOf("arm64-v8a", "armeabi-v7a") else listOf("arm64-v8a")
 
 /** NDK used for both AGP and the Cargo cross-build; keep the two in step. */
 val ndkVersionForCargo = "28.2.13676358"
@@ -49,9 +57,10 @@ android {
         applicationId = "dev.lelonio.square"
         // cpal's Android host is AAudio, which the ndk crate gates at API 26.
         minSdk = 26
+        // soloist-android spike: 28 lets the app execute what it downloads.
         targetSdk = 35
-        versionCode = 70
-        versionName = "2.10.4"
+        versionCode = 73
+        versionName = "2.11.1"
         buildConfigField("boolean", "VERBOSE_LOG", "false")
         buildConfigField("boolean", "GLASS_FLAGS", "false")
 
@@ -72,7 +81,7 @@ android {
             isEnable = true
             reset()
             include(*nativeAbis.toTypedArray())
-            isUniversalApk = true
+            isUniversalApk = allAbis
         }
     }
 
@@ -177,12 +186,21 @@ android {
         }
     }
 
-    sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
+    // Soloist's runtime (glibc's loader and libraries, our libpulse, the
+    // seccomp helpers and the memfd launcher), named lib*.so so the installer
+    // puts them in the native library dir: the one place an app targeting
+    // API 29+ may execute and map code from. See soloist/README.md.
+    sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs", "src/soloist/jniLibs")
 
     packaging {
         // The Rust cdylib is already stripped by the release profile; letting
         // Gradle re-strip it with the wrong tool breaks the arm64 build.
         jniLibs.keepDebugSymbols += "**/libsquarecore.so"
+        // Patched glibc and friends go in byte for byte.
+        jniLibs.keepDebugSymbols += "**/libsq*.so"
+        // Extracted to the native library dir at install, where Soloist's
+        // loader and libraries run from; left in the APK they could not.
+        jniLibs.useLegacyPackaging = true
         // The universal APK would otherwise carry the x86 builds some
         // dependencies ship, without the Rust core: installable on an x86
         // device, and closing at once there.
@@ -195,6 +213,11 @@ dependencies {
     // The real org.json for the JVM tests: android.jar carries only stubs.
     testImplementation("org.json:json:20240303")
     implementation(libs.timber)
+    // The Jam's invite as a QR code; see JamSection.
+    implementation("com.google.zxing:core:3.5.3")
+    // Scanning someone's Jam code: Google's own scanner, which needs no camera
+    // permission here (it is Play services' screen).
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation(libs.androidx.core.ktx)
     // Installs baseline-prof.txt on first run, so the code the bar and the
     // player use is compiled before it is needed rather than while it runs.

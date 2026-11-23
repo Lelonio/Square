@@ -32,12 +32,17 @@ jobs:
       - name: Unit tests
         run: ./gradlew :app:testDevUnitTest --stacktrace
 
+      # The same three APKs a release has: arm64, 32-bit and universal. A
+      # local build makes arm64 alone; see allAbis in app/build.gradle.kts.
       - name: Build
-        run: ./gradlew :app:assembleDev --stacktrace
+        run: ./gradlew :app:assembleDev -Psquare.allAbis=true --stacktrace
 
       - uses: actions/upload-artifact@v7
         with:
           name: square-dev-${{ github.sha }}
-          path: app/build/outputs/apk/dev/app-universal-dev.apk
+          path: |
+            app/build/outputs/apk/dev/app-arm64-v8a-dev.apk
+            app/build/outputs/apk/dev/app-armeabi-v7a-dev.apk
+            app/build/outputs/apk/dev/app-universal-dev.apk
           retention-days: 14
           if-no-files-found: error

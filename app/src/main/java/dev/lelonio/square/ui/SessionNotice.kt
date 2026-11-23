@@ -42,6 +42,8 @@ fun SessionExpiredNotice(
     onReconnect: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    title: Int = R.string.web_api_expired_title,
+    body: Int = R.string.web_api_expired_body,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -60,13 +62,13 @@ fun SessionExpiredNotice(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    stringResource(R.string.web_api_expired_title),
+                    stringResource(title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White,
                 )
                 Text(
-                    stringResource(R.string.web_api_expired_body),
+                    stringResource(body),
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.75f),
                 )

@@ -41,6 +41,9 @@ object AppleCatalog {
     private const val SITE = "https://beta.music.apple.com"
     private const val API = "https://amp-api.music.apple.com/v1/catalog"
 
+    /** Where a moving picture is looked for when the phone's own storefront has none. */
+    private const val FALLBACK_STOREFRONT = "us"
+
     private val client by lazy {
         OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -225,6 +228,15 @@ object AppleCatalog {
         val origin: String? = null,
         /** Their name, drawn. White on transparent, meant to sit over the photo. */
         val logoUrl: String?,
+        /**
+         * The artist's own moving portrait, square, played muted behind the
+         * page's header over [heroUrl] (an HLS stream). Filed by Apple for a
+         * few artists only, and only on the artist's own entry, not in a
+         * search; null for everyone else, who keep the still.
+         */
+        val motionUrl: String? = null,
+        /** The same, wide (16:9), for a screen wider than it is tall. */
+        val motionWideUrl: String? = null,
     )
 
     /**
@@ -237,7 +249,9 @@ object AppleCatalog {
      */
     suspend fun artist(name: String, storefront: String = storefront()): Artist? {
         if (name.isBlank()) return null
-        val key = "artist $storefront/${name.lowercase()}"
+        // "artist2": entries kept before the moving portraits were read have
+        // none, and would have kept a page still for a month.
+        val key = "artist2 $storefront/${name.lowercase()}"
         synchronized(cache) { if (cache.containsKey(key)) return cache[key] as Artist? }
 
         remembered(key)?.let { row ->
@@ -264,15 +278,23 @@ object AppleCatalog {
                     bgColor = null,
                     textHex = null,
                     inkPalette = emptyList(),
+                    // Nor a video streamed over mobile data.
+                    motionUrl = null,
+                    motionWideUrl = null,
                 )
             synchronized(cache) { cache[lite] = found }
             return found
         }
 
-        val found = ask(name) { lookUpArtist(name, storefront) }
+        val (found, failed) = withMotionFrom(
+            storefront,
+            lookUp = { front -> ask(name) { lookUpArtist(name, front) } },
+            motion = { it.motionUrl },
+            merge = { here, there -> here.copy(motionUrl = there.motionUrl, motionWideUrl = there.motionWideUrl) },
+        )
 
         found?.let { runCatching { remember(key, json.encodeToString(it)) } }
-        synchronized(cache) { cache[key] = found }
+        if (!failed) synchronized(cache) { cache[key] = found }
         return found
     }
 
@@ -313,10 +335,15 @@ object AppleCatalog {
 
         if (!mayAsk()) return null
 
-        val found = ask(name) { lookUpAlbum(name, artist, storefront) }
+        val (found, failed) = withMotionFrom(
+            storefront,
+            lookUp = { front -> ask(name) { lookUpAlbum(name, artist, front) } },
+            motion = { it.motionUrl },
+            merge = { here, there -> here.copy(motionUrl = there.motionUrl) },
+        )
 
         found?.let { runCatching { remember(key, json.encodeToString(it)) } }
-        synchronized(cache) { cache[key] = found }
+        if (!failed) synchronized(cache) { cache[key] = found }
         return found
     }
 
@@ -467,6 +494,15 @@ object AppleCatalog {
 
         val attributes = match.jsonObject["attributes"]?.jsonObject ?: return null
         val editorial = attributes["editorialArtwork"]?.jsonObject
+        // The moving portraits are on the artist's own entry only.
+        val videos = match.jsonObject["id"]?.jsonPrimitive?.content?.let { artistVideos(it, storefront) }
+        val squareVideo = videos?.let { v ->
+            listOf("motionArtistSquare1x1", "motionArtistFullscreen16x9", "motionArtistWide16x9")
+                .firstNotNullOfOrNull { v[it]?.jsonObject }
+        }
+        val wideVideo = videos?.let { v ->
+            listOf("motionArtistWide16x9", "motionArtistFullscreen16x9").firstNotNullOfOrNull { v[it]?.jsonObject }
+        }
 
         // The identity portrait rather than one of the wide banners: this is a
         // phone, the header is taller than it is wide, and cropping a 4:1 banner
@@ -496,7 +532,8 @@ object AppleCatalog {
             ?: editorial?.get("staticDetailTall")?.jsonObject
             ?: attributes["artwork"]?.jsonObject
             ?: editorial?.get("subscriptionHero")?.jsonObject
-        val hero = heroArt?.template()
+        // With no still portrait at all, the frame the moving one opens on.
+        val hero = heroArt?.template() ?: squareVideo?.get("previewFrame")?.jsonObject?.template()
 
         // The colour, though, comes off the identity picture where there is
         // one. The tall portrait carries the colour of its own padding — white,
@@ -508,8 +545,10 @@ object AppleCatalog {
         val logo = listOf("musicContentColorLogoTrimmed", "brandLogo", "logo")
             .firstNotNullOfOrNull { editorial?.get(it)?.jsonObject }
 
-        if (hero == null && logo == null) return null
+        if (hero == null && logo == null && squareVideo == null) return null
         return Artist(
+            motionUrl = squareVideo?.get("video")?.jsonPrimitive?.content,
+            motionWideUrl = wideVideo?.get("video")?.jsonPrimitive?.content,
             // At the picture's own proportions rather than forced into a
             // portrait shape.
             //
@@ -553,6 +592,19 @@ object AppleCatalog {
                 )
             },
         )
+    }
+
+    /**
+     * An artist's `editorialVideo`, read off their own entry: a search does not
+     * carry it. Null where there is none or the entry could not be read.
+     */
+    private suspend fun artistVideos(id: String, storefront: String): JsonObject? {
+        val bearer = token() ?: return null
+        val body = get("$API/$storefront/artists/$id?extend=editorialVideo", bearer) ?: return null
+        return runCatching {
+            json.parseToJsonElement(body).jsonObject["data"]?.jsonArray?.firstOrNull()
+                ?.jsonObject?.get("attributes")?.jsonObject?.get("editorialVideo")?.jsonObject
+        }.getOrNull()
     }
 
     private suspend fun lookUpAlbum(name: String, artist: String, storefront: String): Album? {
@@ -674,7 +726,7 @@ object AppleCatalog {
      * a portrait.
      */
     private fun kotlinx.serialization.json.JsonObject.motion(): kotlinx.serialization.json.JsonObject? =
-        listOf("motionDetailTall", "motionTallVideo3x4", "motionDetailSquare")
+        listOf("motionDetailTall", "motionTallVideo3x4", "motionDetailSquare", "motionSquareVideo1x1")
             .firstNotNullOfOrNull { get("editorialVideo")?.jsonObject?.get(it)?.jsonObject }
 
     /**
@@ -761,10 +813,9 @@ object AppleCatalog {
             return it
         }
 
-        // Several megabytes for a logo of a few tens of kilobytes is not what
-        // mobile data is spent on; the next lookup on Wi-Fi fetches it.
-        if (!unmetered()) return null
-
+        // On mobile data too: the bundle is a few megabytes once every few
+        // weeks, and held back for Wi-Fi a phone that is mostly out had no
+        // moving covers or artist pages at all.
         val page = get(SITE, null) ?: return null
         // The player's own bundle, whichever hash it carries today.
         val script = Regex("""/assets/[^"']*index[^"']*\.js""").find(page)?.value ?: return null
@@ -831,7 +882,13 @@ object AppleCatalog {
             .build()
 
         val started = android.os.SystemClock.elapsedRealtime()
-        client.newCall(request).execute().use { response ->
+        val call = try {
+            client.newCall(request).execute()
+        } catch (failure: java.io.IOException) {
+            failures.incrementAndGet()
+            throw failure
+        }
+        call.use { response ->
             android.util.Log.i(
                 TAG,
                 "timing: ${response.code} in ${android.os.SystemClock.elapsedRealtime() - started} ms " +
@@ -845,9 +902,49 @@ object AppleCatalog {
                 store?.edit()?.remove(KEY_TOKEN)?.remove(KEY_TOKEN_UNTIL)?.apply()
                 return@withContext null
             }
-            if (!response.isSuccessful) return@withContext null
+            if (!response.isSuccessful) {
+                // A refusal or a fault on their side is not an answer: see
+                // failures. A 404 is one.
+                if (response.code != 404) failures.incrementAndGet()
+                return@withContext null
+            }
             response.body?.string()
         }
+    }
+
+    /**
+     * Requests that failed rather than answered: the network, a timeout, a
+     * refusal, a fault on Apple's side. A lookup that saw one is not taken
+     * for "Apple has nothing": that is kept for the run, and a failure kept
+     * as one left a page without its picture until the app was restarted.
+     */
+    private val failures = java.util.concurrent.atomic.AtomicInteger()
+
+    /**
+     * [lookUp] in the phone's own storefront, and in the United States one as
+     * well when the first has no moving picture: Apple files the videos in
+     * some storefronts and not others. What the phone's storefront said (its
+     * language) is kept, with the other's video. Null, and [failed] true, when
+     * a request failed rather than answered.
+     */
+    private suspend fun <T> withMotionFrom(
+        storefront: String,
+        lookUp: suspend (String) -> T?,
+        motion: (T) -> String?,
+        merge: (T, T) -> T,
+    ): Pair<T?, Boolean> {
+        val before = failures.get()
+        val here = lookUp(storefront)
+        if ((here == null || motion(here) == null) && storefront != FALLBACK_STOREFRONT) {
+            val there = lookUp(FALLBACK_STOREFRONT)
+            val found = when {
+                there == null || motion(there) == null -> here
+                here == null -> there
+                else -> merge(here, there)
+            }
+            return found to (found == null && failures.get() != before)
+        }
+        return here to (here == null && failures.get() != before)
     }
 
     /** A filled JPEG address as the WebP the same address serves; see [size]. */

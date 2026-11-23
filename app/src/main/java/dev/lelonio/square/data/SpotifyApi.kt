@@ -226,6 +226,10 @@ interface SpotifyApi {
     @PUT("v1/me/player/play")
     suspend fun play(@Query("device_id") deviceId: String)
 
+    /** Starts a list of songs on a named device, at one of them and a time. */
+    @PUT("v1/me/player/play")
+    suspend fun playUris(@Query("device_id") deviceId: String, @Body request: PlayUrisRequestDto)
+
     /**
      * Appends tracks to a playlist. Needs `playlist-modify-private` for the
      * user's own private playlists and `playlist-modify-public` for their
@@ -599,6 +603,16 @@ data class DeviceDto(
     @SerialName("is_restricted") val isRestricted: Boolean = false,
     @SerialName("volume_percent") val volumePercent: Int? = null,
 )
+
+@Serializable
+data class PlayUrisRequestDto(
+    val uris: List<String>,
+    val offset: PlayOffsetDto = PlayOffsetDto(0),
+    @SerialName("position_ms") val positionMs: Long = 0,
+)
+
+@Serializable
+data class PlayOffsetDto(val position: Int)
 
 @Serializable
 data class TransferRequestDto(

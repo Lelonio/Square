@@ -1066,6 +1066,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             "taking playback back: ${remote.uri} from ${remote.realContext} at ${remote.positionMs}",
         )
 
+        // With Soloist as this phone's player, the account's playback is
+        // transferred to it: context, song and time travel with the transfer.
+        val soloistId = soloistDevice()
+        if (soloistId != null) {
+            switchTo(soloistId, remote.positionMs)
+            return@launch
+        }
+
         // The music first, the list afterwards.
         //
         // This used to resolve the whole context before a note was played,
@@ -1120,20 +1128,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun switchTo(deviceId: String, positionMs: Long) {
+    /** Soloist's Connect device, when Soloist is this phone's player. */
+    private fun soloistDevice(): String? =
+        dev.lelonio.square.playback.soloist.SoloistEngine.deviceId
+            ?.takeIf { dev.lelonio.square.playback.soloist.SoloistEngine.isEnabled(getApplication()) }
+
+    private suspend fun switchTo(chosen: String, positionMs: Long) {
         val devices = dev.lelonio.square.data.RemoteConnect.devices.value
-        android.util.Log.i(TAG, "device chosen: $deviceId, ${devices.size} known")
+        android.util.Log.i(TAG, "device chosen: $chosen, ${devices.size} known")
+        // With Soloist as this phone's player, this phone *is* a Connect device
+        // like the others: the playback is transferred to it the same way, and
+        // the Spotify engine standing behind it has nothing of its own to say.
+        val soloistId = soloistDevice()
+        val deviceId = if (soloistId != null && dev.lelonio.square.data.RemoteConnect.isThisPhone(chosen)) soloistId else chosen
         // Asked of the engine rather than looked up in the list: the list is
         // filled by cluster updates and is empty until the first one arrives,
         // and a handover chosen in that window took the wrong road entirely.
-        if (dev.lelonio.square.data.RemoteConnect.isThisPhone(deviceId)) {
+        if (soloistId == null && dev.lelonio.square.data.RemoteConnect.isThisPhone(deviceId)) {
             takeBackPlayback().join()
             return
         }
         // The queue is republished as the playlist it came from first, so
         // whatever carries the handover has something resolvable to carry; see
-        // NativeBridge.publishContext.
-        if (!dev.lelonio.square.data.RemoteConnect.elsewhereActive.value) {
+        // NativeBridge.publishContext. Not Soloist's: it publishes its own,
+        // and the engine's queue is the one from before Soloist played.
+        if (soloistId == null && !dev.lelonio.square.data.RemoteConnect.elsewhereActive.value) {
             val republished = withContext(Dispatchers.IO) {
                 runCatching { NativeBridge.publishContext(positionMs.toInt()) }
                     .onFailure { android.util.Log.w(TAG, "context not republished: $it") }
@@ -1154,6 +1173,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!container.webApi.isReady) {
             withContext(Dispatchers.IO) {
                 dev.lelonio.square.data.RemoteConnect.transferTo(deviceId)
+            }
+            return
+        }
+
+        // Square's own list on Soloist (a playlist in an order of this app's)
+        // is a context only this phone knows: Spotify answered a transfer of
+        // it with a 500. Its songs are started on the device instead, from the
+        // one playing and where it is.
+        val solo = dev.lelonio.square.playback.soloist.SoloistEngine.state.value
+        if (soloistId != null && deviceId != soloistId && solo.song != null &&
+            solo.contextUri?.startsWith("spotify:internal:") == true
+        ) {
+            val uris = (listOf(solo.song.uri) + solo.upcoming.map { it.song.uri })
+                .filter { it.startsWith("spotify:track:") || it.startsWith("spotify:episode:") }
+                .take(MOVE_LIST_MAX)
+            val at = solo.anchor?.let { if (solo.playing) it.now() else it.positionMs } ?: positionMs
+            android.util.Log.i(TAG, "moving Square's list to $deviceId: ${uris.size} songs at $at ms")
+            val web = runCatching { container.api.playUris(deviceId, dev.lelonio.square.data.PlayUrisRequestDto(uris, positionMs = at)) }
+                .onFailure { android.util.Log.w(TAG, "list move by the Web API failed: ${chain(it)}") }
+            val moved = web.isSuccess ||
+                // A phone's Spotify app is not started by the Web API
+                // ("Restriction violated", and a 429 from the second token
+                // tried after it): the same play Soloist is sent, over Connect.
+                withContext(Dispatchers.IO) {
+                    val source = dev.lelonio.square.playback.soloist.SoloistEngine.listSource
+                    // Named after the playlist the songs came from: Square's
+                    // own name for its list is refused (400) by a device that
+                    // is not this phone. The songs and their order go along.
+                    (source != null && dev.lelonio.square.playback.soloist.SoloistEngine.playListOn(deviceId, uris, 0, at, source)) ||
+                        dev.lelonio.square.playback.soloist.SoloistEngine.playListOn(deviceId, uris, 0, at, uris.first())
+                }
+            if (moved) {
+                delay(TRANSFER_SETTLE_MS)
+                refreshDevices()
+            } else {
+                android.util.Log.e(TAG, "list move failed")
+                _devices.value = _devices.value.copy(error = describe(web.exceptionOrNull() ?: IllegalStateException()))
             }
             return
         }
@@ -2066,7 +2122,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return@launch
         }
         _addFriend.value = AddFriend.WORKING
-        runCatching { container.api.followArtists(type = "user", ids = id) }
+        runCatching { setSpotifyFollowing("user", id, follow = true) }
             .onSuccess {
                 _addFriend.value = AddFriend.DONE
                 loadFriends()
@@ -6136,6 +6192,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 tintHex = found.bgColor,
                 inkHex = found.textHex,
                 heroAspect = found.heroAspect,
+                // The artist's own moving portrait, where Apple files one.
+                motionUrl = found.motionUrl,
                 notes = found.bio,
                 origin = found.origin,
                 heroPending = false,
@@ -6308,7 +6366,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching { withTimeoutOrNull(2000L) { container.api.artist(id) } }.getOrNull()
             }
             val followingDeferred = async {
-                runCatching { withTimeoutOrNull(2000L) { container.api.isFollowing(ids = id).firstOrNull() } }.getOrNull()
+                runCatching { withTimeoutOrNull(2000L) { spotifyFollows("artist", id) } }.getOrNull()
             }
 
             var tracks = tracksDeferred.await()
@@ -6650,7 +6708,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         runCatching {
-            if (was) container.api.unfollowArtists(ids = id) else container.api.followArtists(ids = id)
+            setSpotifyFollowing("artist", id, follow = !was)
         }
             .onSuccess {
                 resetFollowedReleases()
@@ -6661,12 +6719,46 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (_playlist.value.uri == uri) {
                     _playlist.value = _playlist.value.copy(following = was)
                 }
-                // Almost always the same cause: an application connected before
-                // this feature existed, whose token carries no permission to
-                // follow anybody. Saying so is more use than the error itself.
-                _webApi.value = _webApi.value.copy(expired = true)
+                // Only a refused token is a session to sign back into. A 429
+                // (Spotify rate-limiting the account) or a 403 used to say
+                // "session expired" too, and signing in again changed nothing.
+                if (it is HttpException && it.code() == 401) {
+                    _webApi.value = _webApi.value.copy(expired = true)
+                }
             }
     }
+
+    /**
+     * Follows or unfollows an artist or a user.
+     *
+     * Through the library: since February 2026 Spotify has removed
+     * `PUT`/`DELETE me/following` for applications in development mode, which
+     * is what every listener's own application is, and answers them 403.
+     * `me/library` takes the same thing as a URI. The old endpoint is still
+     * tried when the new one is refused, for a token it still works for; if
+     * that fails too, the library's own error is what is reported.
+     */
+    private suspend fun setSpotifyFollowing(kind: String, id: String, follow: Boolean) {
+        val uri = "spotify:$kind:$id"
+        try {
+            if (follow) container.api.saveToLibrary(uri) else container.api.removeFromLibrary(uri)
+        } catch (e: HttpException) {
+            if (e.code() !in listOf(400, 403, 404, 410)) throw e
+            android.util.Log.w(TAG, "library refused $kind follow (${e.code()}); trying me/following")
+            try {
+                if (follow) container.api.followArtists(type = kind, ids = id)
+                else container.api.unfollowArtists(type = kind, ids = id)
+            } catch (legacy: HttpException) {
+                throw e
+            }
+        }
+    }
+
+    /** Whether the account follows this artist or user; same two roads as [setSpotifyFollowing]. */
+    private suspend fun spotifyFollows(kind: String, id: String): Boolean? =
+        runCatching { container.api.libraryContains("spotify:$kind:$id").firstOrNull() }
+            .recoverCatching { container.api.isFollowing(type = kind, ids = id).firstOrNull() }
+            .getOrNull()
 
     private val _savedAlbums = MutableStateFlow<List<CatalogPlaylist>>(emptyList())
 
@@ -7096,5 +7188,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         /** Spotify acknowledges a transfer before it has taken effect. */
         const val TRANSFER_SETTLE_MS = 700L
+        /** Songs a list moved to another device takes along. */
+        const val MOVE_LIST_MAX = 500
     }
 }

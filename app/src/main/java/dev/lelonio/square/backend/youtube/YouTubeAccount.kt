@@ -52,6 +52,14 @@ class YouTubeAccount(context: Context) {
         // Before anything asks the module for a page: the cookie is what turns
         // its calls from "the anonymous catalogue" into "this account's".
         applyToInnerTube()
+        // A browse the account was refused on has already been answered
+        // anonymously; what is left is to say the session is gone, so the
+        // notice offers a new sign-in instead of the country's home page
+        // passing for this account's.
+        YouTube.onBrowseLoginRefused = {
+            android.util.Log.w(TAG, "youtube browse refused as the account; session marked expired")
+            _expired.value = true
+        }
     }
 
     /**
@@ -164,6 +172,9 @@ class YouTubeAccount(context: Context) {
             // when the app stopped straight after it.
             .commit()
         _accountName.value = name
+        // A new sign-in is a new session: whatever the old one was refused on
+        // says nothing about this one.
+        _expired.value = false
         applyToInnerTube()
     }
 

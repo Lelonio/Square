@@ -438,6 +438,11 @@ fun SettingsScreen(
             BackendSection()
         }
 
+        if (shown == SettingsPage.Playback && showSpotify && "sound" in openGroups &&
+            dev.lelonio.square.playback.soloist.SoloistRuntime.isSupported(context)) groupItem("engine", Group.SOUND) {
+            EngineSection()
+        }
+
         if (shown == SettingsPage.Account) item("youtube-account") {
             YouTubeAccountSection(
                 onSignIn = onYouTubeSignIn,
@@ -1402,6 +1407,85 @@ private fun BackendSection() {
                 ),
                 selected = backend == chosen,
             ) { store.setBackend(backend) }
+        }
+    }
+}
+
+/**
+ * Which player plays Spotify: librespot, or Spotify's own Soloist.
+ *
+ * librespot needs nothing and is what downloads go through. Soloist needs
+ * three things a listener does once, shown here as steps: their own key from
+ * Spotify's developer dashboard, the binary from Spotify's CDN, and a sign-in
+ * from the Spotify app, which sees "Square" on the network. Signed in, Soloist
+ * becomes the engine.
+ */
+@Composable
+private fun EngineSection() {
+    val soloist = rememberSoloistSetup()
+    // Soloist's three steps, a screen each, over the settings: opened by
+    // choosing it while it is not set up yet, or from its row afterwards.
+    var guide by remember { mutableStateOf(false) }
+    if (guide) dev.lelonio.square.ui.onboarding.SoloistGuide(onClose = { guide = false })
+    val ready = soloist.savedKey.isNotEmpty() && soloist.installed && soloist.signedIn
+
+    Section(stringResource(R.string.engine)) {
+        ChoiceRow(stringResource(R.string.engine_librespot), selected = !soloist.chosen) { soloist.choose(false) }
+        RowDivider()
+        ChoiceRow(stringResource(R.string.engine_soloist), selected = soloist.chosen) {
+            soloist.choose(true)
+            if (!ready) guide = true
+        }
+        RowDivider()
+        Text(
+            stringResource(R.string.engine_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+        )
+        if (!soloist.chosen) return@Section
+
+        // Given up on for now: said, with the way back.
+        soloist.failed?.let { reason ->
+            RowDivider()
+            Text(
+                stringResource(R.string.soloist_failed, reason),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            )
+            RowDivider()
+            ActionRow(stringResource(R.string.soloist_retry), destructive = false) { soloist.choose(true) }
+        }
+
+        // Where it is, in a line, and the steps again from here.
+        RowDivider()
+        Text(
+            when {
+                ready -> soloistAccountStatus(soloist)
+                soloist.savedKey.isEmpty() -> stringResource(R.string.soloist_key_note)
+                !soloist.installed -> soloistDownloadStatus(soloist)
+                else -> soloistAccountStatus(soloist)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+        )
+        if (ready) {
+            Text(
+                soloistDownloadStatus(soloist),
+                style = MaterialTheme.typography.bodySmall,
+                color = InkDim,
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 12.dp),
+            )
+        }
+        RowDivider()
+        ActionRow(stringResource(R.string.soloist_setup), destructive = false, icon = PhosphorIcons.Regular.ArrowUpRight) {
+            guide = true
+        }
+        if (soloist.installed && soloist.download !is dev.lelonio.square.playback.soloist.SoloistDownload.Progress.Running) {
+            RowDivider()
+            ActionRow(stringResource(R.string.soloist_check_update), destructive = false, onClick = soloist.fetch)
         }
     }
 }
@@ -2587,6 +2671,10 @@ private val LICENCES = listOf(
     "yt-dlp ejs" to "Unlicense",
     "meriyah" to "ISC",
     "astring" to "MIT",
+    // Soloist's runtime: Debian's glibc 2.41-12+deb13u5, patched as
+    // soloist/README.md in the source repository describes.
+    "GNU C Library (modified, for Soloist)" to "LGPL-2.1-or-later",
+    "libgcc_s, libatomic (for Soloist)" to "GPL-3.0 with GCC Runtime Library Exception",
 )
 
 private const val GITHUB_USER = "Lelonio"

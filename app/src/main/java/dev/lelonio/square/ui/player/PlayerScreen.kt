@@ -1,5 +1,6 @@
 package dev.lelonio.square.ui.player
 
+import dev.lelonio.square.ui.components.GlassChoiceMenu
 import dev.lelonio.square.ui.components.copyFrame
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
@@ -128,6 +129,8 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.regular.DeviceRotate
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.Bold
+import com.adamglin.phosphoricons.bold.Waveform
 import com.adamglin.phosphoricons.fill.TextAa
 import com.adamglin.phosphoricons.regular.TextAa
 import com.adamglin.phosphoricons.fill.Heart
@@ -570,6 +573,9 @@ fun PlayerScreen(
     // blurred again; behind this much glass the motion is only a shimmer, and
     // it was costing the player half its frames.
     val coverMoving = coverMotionUrl != null && canvas == null
+    var qualityOpen by remember { mutableStateOf(false) }
+    var qualityAnchor by remember { mutableStateOf(androidx.compose.ui.unit.IntRect.Zero) }
+    val qualityTrigger = dev.lelonio.square.ui.components.rememberGlassMenuTrigger()
     val upperBackdrop = when {
         panel != PlayerPanel.NONE -> groundBackdrop
         coverMoving -> groundBackdrop
@@ -795,8 +801,24 @@ fun PlayerScreen(
                 label = "coverFade",
             )
 
+            // The cover darkens on pause as a Canvas does, still or moving:
+            // the same statement, that the music has stopped, on whatever
+            // picture holds the top of the player.
+            val motionDim by animateFloatAsState(
+                targetValue = if (!state.isPlaying) 1f else 0f,
+                animationSpec = tween(420),
+                label = "coverPausedDim",
+            )
             if (coverFade > 0f) {
-                Box(Modifier.fillMaxSize().graphicsLayer { alpha = coverFade }) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = coverFade }
+                        .drawWithContent {
+                            drawContent()
+                            if (motionDim > 0f) drawRect(Color.Black, alpha = motionDim * PAUSED_DIM)
+                        },
+                ) {
                 // The cover, shown the way every other screen in the app shows
                 // a picture it is built around: filling the top, softening on
                 // the way down, ending on the colour taken from it. A track
@@ -1086,7 +1108,11 @@ fun PlayerScreen(
             }
         }
 
-        CompositionLocalProvider(LocalContentColor provides GlassInk) {
+        CompositionLocalProvider(
+            LocalContentColor provides GlassInk,
+            // The Mix's light in the play button takes the colours under it.
+            LocalMixColors provides (auraColors.takeIf { it.isNotEmpty() } ?: listOfNotNull(coverAccent)),
+        ) {
             DismissibleScreen(onDismiss = onCollapse, modifier = Modifier.fillMaxSize()) {
                 Column(
                     Modifier
@@ -1672,6 +1698,33 @@ fun PlayerScreen(
                                 }
                             }
                         }
+                        // What Soloist streams the song as, and the button that
+                        // picks it. In the video button's place, the row being
+                        // centred, and beside it when the song has a video too.
+                        val streamLabel by dev.lelonio.square.playback.StreamQuality.label
+                            .collectAsStateWithLifecycle()
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = streamLabel != null && !panelOpen && !sideways,
+                            enter = fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.9f),
+                            exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.92f),
+                        ) {
+                            // The library's sort button: the menu grows out of
+                            // it in the same liquid glass.
+                            dev.lelonio.square.ui.components.GlassPullDownButton(
+                                icon = PhosphorIcons.Bold.Waveform,
+                                label = streamLabel.orEmpty(),
+                                semanticLabel = stringResource(R.string.stream_quality) + ": " + streamLabel.orEmpty(),
+                                onOpen = { qualityOpen = true },
+                                onAnchor = { qualityAnchor = it },
+                                backdrop = upperBackdrop,
+                                trigger = qualityTrigger,
+                                buttonSize = 40.dp,
+                                // The video button's type and icon beside it.
+                                labelStyle = MaterialTheme.typography.labelLarge,
+                                iconSize = 18.dp,
+                                ink = LocalContentColor.current,
+                            )
+                        }
                         }
                         }
 
@@ -1895,6 +1948,55 @@ fun PlayerScreen(
             }
         }
 
+        // The stream quality, picked from the button by the title: Soloist's
+        // levels while Soloist plays, librespot's while librespot does.
+        val qualityContext = androidx.compose.ui.platform.LocalContext.current
+        val soloistInFront by dev.lelonio.square.playback.StreamQuality.soloistInFront
+            .collectAsStateWithLifecycle()
+        GlassChoiceMenu(
+            visible = qualityOpen,
+            anchor = qualityAnchor,
+            backdrop = upperBackdrop,
+            onDismiss = { qualityOpen = false },
+            trigger = qualityTrigger,
+            width = 240.dp,
+        ) {
+            if (soloistInFront) {
+                val currentQuality = dev.lelonio.square.playback.soloist.SoloistEngine.quality(qualityContext)
+                listOf(
+                    5 to R.string.stream_quality_lossless,
+                    4 to R.string.stream_quality_very_high,
+                    3 to R.string.stream_quality_high,
+                    2 to R.string.stream_quality_normal,
+                ).forEach { (level, name) ->
+                    dev.lelonio.square.ui.components.GlassMenuItem(
+                        stringResource(name),
+                        selected = level == currentQuality,
+                        onClick = {
+                            qualityOpen = false
+                            if (level != currentQuality) {
+                                dev.lelonio.square.playback.soloist.SoloistEngine.setQuality(qualityContext, level)
+                            }
+                        },
+                    )
+                }
+            } else {
+                val store = remember(qualityContext) {
+                    (qualityContext.applicationContext as dev.lelonio.square.SquareApplication).quality
+                }
+                val chosen by store.quality.collectAsStateWithLifecycle()
+                dev.lelonio.square.data.Quality.entries.forEach { quality ->
+                    dev.lelonio.square.ui.components.GlassMenuItem(
+                        stringResource(quality.label),
+                        selected = quality == chosen,
+                        onClick = {
+                            qualityOpen = false
+                            if (quality != chosen) store.set(quality)
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -2293,8 +2395,17 @@ private fun TopBar(
             }
         }
         if (connectAvailable) {
+            val jam by dev.lelonio.square.data.Jam.session.collectAsStateWithLifecycle()
             GlassButton(backdrop, onClick = onOpenDevices) {
-                Icon(
+                // In a Jam, who is in it, in place of the icon: two pictures
+                // overlapping fit the disc, centred, as Spotify's own pill has
+                // them.
+                val inJam = jam
+                if (inJam != null) {
+                    Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                        JamAvatars(inJam.members, size = 22.dp, max = 2)
+                    }
+                } else Icon(
                     PhosphorIcons.Regular.Devices,
                     contentDescription = stringResource(R.string.devices),
                     // Lit for as long as the music is coming out of another
@@ -2600,7 +2711,7 @@ internal fun Controls(
             // Ringed while a playlist plays as a Spotify Mix, as the official
             // player's button is; see Mixes.playing.
             val mixPlaying by dev.lelonio.square.playback.Mixes.playing.collectAsStateWithLifecycle()
-            Box(Modifier.mixRing(mixPlaying)) {
+            Box {
             RoundGlassButton(backdrop = backdrop, size = 76.dp, onClick = onTogglePlay) {
                 // A ring around the icon while the track is still being fetched.
                 //
@@ -2612,6 +2723,8 @@ internal fun Controls(
                 // A Box, because the button lays its content out in a row and the
                 // ring belongs *around* the icon rather than beside it.
                 Box(contentAlignment = Alignment.Center) {
+                    // A Mix playing: light moving inside the glass, with the music.
+                    if (mixPlaying) MixAurora(Modifier.size(76.dp))
                     if (state.isBuffering) {
                         CircularProgressIndicator(
                             color = LocalContentColor.current.copy(alpha = 0.5f),
@@ -3317,3 +3430,5 @@ private fun speedLabel(speed: Float): String {
     val format = java.text.DecimalFormat("0.##")
     return format.format(speed.toDouble()) + "×"
 }
+
+

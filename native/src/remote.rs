@@ -223,7 +223,7 @@ pub fn state_json() -> String {
             "{{\"activeDevice\":{},\"deviceName\":{},\"uri\":{},\"title\":{},",
             "\"artist\":{},\"album\":{},\"coverUri\":{},\"contextUri\":{},\"positionMs\":{},",
             "\"durationMs\":{},\"playing\":{},\"shuffle\":{},\"repeatContext\":{},",
-            "\"repeatTrack\":{},\"next\":{}}}"
+            "\"repeatTrack\":{},\"next\":{},\"queueRevision\":{}}}"
         ),
         escape(&cluster.active_device_id),
         escape(device.map(|device| device.name.as_str()).unwrap_or("")),
@@ -240,6 +240,9 @@ pub fn state_json() -> String {
         player.options.repeating_context,
         player.options.repeating_track,
         next,
+        // What a `set_queue` sent to the active device must name: the queue
+        // it changes, as that device last published it.
+        escape(&player.queue_revision),
     )
 }
 
@@ -299,6 +302,23 @@ pub fn command(device_id: &str, body: String) -> engine::EngineResult<()> {
         })
         .map(|_| ())
         .map_err(|e| format!("command failed: {e}"))
+}
+
+/// Any request to the account's spclient, as this session, for a probe: the
+/// status-less body as text, or what went wrong. Used to find out how Spotify's
+/// own endpoints (the Jam's social-connect among them) answer.
+pub fn raw(method: &str, path: &str, body: String) -> engine::EngineResult<String> {
+    let handle = engine::runtime_handle()?;
+    let session = engine::with_session(|session| session.clone())?;
+    let method = http::Method::from_bytes(method.as_bytes()).map_err(|e| format!("bad method: {e}"))?;
+    let path = path.to_string();
+    handle
+        .block_on(async move {
+            let body = if body.is_empty() { None } else { Some(body.into_bytes()) };
+            session.spclient().request(&method, &path, None, body.as_deref()).await
+        })
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .map_err(|e| format!("request failed: {e}"))
 }
 
 /// Sets another device's volume, which is a different endpoint from the rest.
