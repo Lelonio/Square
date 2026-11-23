@@ -209,6 +209,8 @@
     <string name="web_api_expired_title">세션이 만료되었습니다</string>
     <string name="web_api_expired_body">검색과 홈 화면을 다시 사용하려면 Spotify 애플리케이션에 다시 로그인하세요.</string>
     <string name="web_api_expired_action">다시 로그인</string>
+    <string name="youtube_expired_title">YouTube Music 세션 만료</string>
+    <string name="youtube_expired_body">YouTube Music이 더 이상 이 로그인을 허용하지 않습니다. 페이지는 그대로 열립니다. 내 홈과 보관함을 보려면 다시 로그인하세요.</string>
     <string name="later">나중에</string>
     <string name="needs_your_app">내 Spotify 애플리케이션이 필요합니다. 검색에서 설정하세요.</string>
     <string name="turn_on_search">검색 켜기</string>

@@ -227,6 +227,8 @@
     <string name="web_api_expired_title">Oturum sona erdi</string>
     <string name="web_api_expired_body">Arama ve ana sayfanın geri gelmesi için Spotify uygulamana yeniden giriş yap.</string>
     <string name="web_api_expired_action">Yeniden giriş yap</string>
+    <string name="youtube_expired_title">YouTube Music oturumu sona erdi</string>
+    <string name="youtube_expired_body">YouTube Music bu girişi artık kabul etmiyor. Sayfalar yine açılır; kendi ana sayfanız ve kitaplığınız için yeniden giriş yapın.</string>
     <string name="later">Sonra</string>
     <string name="needs_your_app">Kendi Spotify uygulaman gerekiyor: Ara bölümünden ayarla.</string>
 

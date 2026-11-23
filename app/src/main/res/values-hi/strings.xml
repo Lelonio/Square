@@ -227,6 +227,8 @@
     <string name="web_api_expired_title">सत्र समाप्त हो गया</string>
     <string name="web_api_expired_body">खोज और होम वापस पाने के लिए अपने Spotify ऐप्लिकेशन में फिर से साइन इन करें।</string>
     <string name="web_api_expired_action">फिर से साइन इन करें</string>
+    <string name="youtube_expired_title">YouTube Music सत्र समाप्त</string>
+    <string name="youtube_expired_body">YouTube Music अब इस साइन-इन को स्वीकार नहीं करता। पेज फिर भी खुलते हैं; अपने होम और लाइब्रेरी के लिए फिर से साइन इन करें।</string>
     <string name="later">बाद में</string>
     <string name="needs_your_app">आपका अपना Spotify ऐप्लिकेशन चाहिए: इसे खोज में सेट करें।</string>
 

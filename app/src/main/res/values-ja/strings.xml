@@ -228,6 +228,8 @@
     <string name="web_api_expired_title">セッションの有効期限が切れました</string>
     <string name="web_api_expired_body">検索とホーム画面を再び使うには、ご自身のSpotify開発者アプリでSpotifyアカウントを再認証してください。</string>
     <string name="web_api_expired_action">再ログイン</string>
+    <string name="youtube_expired_title">YouTube Music のセッションが切れました</string>
+    <string name="youtube_expired_body">YouTube Music はこのログインを受け付けなくなりました。ページはそのまま開けます。自分のホームとライブラリにはもう一度ログインしてください。</string>
     <string name="later">あとで</string>
     <string name="needs_your_app">ご自身のSpotify開発者アプリが必要です。検索から設定してください。</string>
 

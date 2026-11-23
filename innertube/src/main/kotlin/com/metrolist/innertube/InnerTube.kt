@@ -17,6 +17,7 @@ import io.ktor.client.plugins.compression.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.*
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
@@ -319,21 +320,60 @@ class InnerTube {
         }
     }
 
+    /**
+     * Vendored addition: told when a page asked as the account was refused
+     * (401/403) and had to be asked anonymously instead. The session is dead or
+     * no longer accepted, and the app should say so and offer a new sign-in.
+     */
+    var onBrowseLoginRefused: (() -> Unit)? = null
+
+    /**
+     * A page of the catalogue.
+     *
+     * Vendored change: when the account was only added because
+     * [useLoginForBrowse] is on, and the account is refused, the same page is
+     * asked again without it. Home, artists, albums and playlists are public;
+     * a dead session used to take every one of them down with a 401 ("missing
+     * required authentication credential") where the anonymous page was there
+     * all along. Browsing stays anonymous from then on, until a sign-in turns
+     * it back on. A page that needs the account ([setLogin]) still fails, since
+     * an anonymous answer to it would be someone else's library.
+     */
     suspend fun browse(
         client: YouTubeClient,
         browseId: String? = null,
         params: String? = null,
         continuation: String? = null,
         setLogin: Boolean = false,
+    ): HttpResponse {
+        val signed = setLogin || useLoginForBrowse
+        return try {
+            browseOnce(client, browseId, params, continuation, signed)
+        } catch (e: ClientRequestException) {
+            val refused = e.response.status.value == 401 || e.response.status.value == 403
+            if (!refused || setLogin || !signed) throw e
+            Timber.w("browse refused as the account (${e.response.status.value}); asking anonymously")
+            useLoginForBrowse = false
+            onBrowseLoginRefused?.invoke()
+            browseOnce(client, browseId, params, continuation, signed = false)
+        }
+    }
+
+    private suspend fun browseOnce(
+        client: YouTubeClient,
+        browseId: String?,
+        params: String?,
+        continuation: String?,
+        signed: Boolean,
     ) = withRetry {
         httpClient.post("browse") {
-            ytClient(client, setLogin = setLogin || useLoginForBrowse)
+            ytClient(client, setLogin = signed)
             setBody(
                 BrowseBody(
                     context = client.toContext(
                         locale,
                         visitorData,
-                        if (setLogin || useLoginForBrowse) dataSyncId else null
+                        if (signed) dataSyncId else null
                     ),
                     browseId = browseId,
                     params = params,

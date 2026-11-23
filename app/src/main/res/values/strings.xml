@@ -233,6 +233,8 @@
     <string name="web_api_expired_title">Session expired</string>
     <string name="web_api_expired_body">Sign in to your Spotify application again to bring search and the home page back.</string>
     <string name="web_api_expired_action">Sign in again</string>
+    <string name="youtube_expired_title">YouTube Music session expired</string>
+    <string name="youtube_expired_body">YouTube Music no longer accepts this sign-in. Pages still open without it; sign in again for your own home and library.</string>
     <string name="later">Later</string>
     <string name="needs_your_app">You need your own Spotify application: set it up in Search.</string>
 

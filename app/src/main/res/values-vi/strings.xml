@@ -231,6 +231,8 @@
     <string name="web_api_expired_title">Phiên đã hết hạn</string>
     <string name="web_api_expired_body">Đăng nhập lại vào ứng dụng Spotify của bạn để có lại tìm kiếm và trang chủ.</string>
     <string name="web_api_expired_action">Đăng nhập lại</string>
+    <string name="youtube_expired_title">Phiên YouTube Music đã hết hạn</string>
+    <string name="youtube_expired_body">YouTube Music không còn chấp nhận lần đăng nhập này. Các trang vẫn mở được; hãy đăng nhập lại để có trang chủ và thư viện của bạn.</string>
     <string name="later">Để sau</string>
     <string name="needs_your_app">Bạn cần ứng dụng Spotify của riêng mình: hãy thiết lập trong phần Tìm kiếm.</string>
 

@@ -980,6 +980,13 @@ fun SquareApp(
     val youtubeAccountName by remember(context) {
         (context.applicationContext as dev.lelonio.square.SquareApplication).youtubeAccount.accountName
     }.collectAsStateWithLifecycle()
+    // A YouTube Music sign-in Google stopped accepting. Pages carry on
+    // anonymously, so without this the only sign was a home page that was no
+    // longer the account's.
+    val youtubeExpired by remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).youtubeAccount.expired
+    }.collectAsStateWithLifecycle()
+    var youtubeExpiryDismissed by remember { mutableStateOf(false) }
     // What is kept on the phone. Read here rather than inside the pages that
     // draw it, because the same answer is wanted by the playlist button, the
     // track rows and the track menu, and one collection is one recomposition.
@@ -2367,6 +2374,18 @@ fun SquareApp(
                     backdrop = pageBackdrop,
                     onReconnect = viewModel::connectWebApi,
                     onDismiss = viewModel::dismissWebApiExpiry,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = statusBar + 8.dp),
+                )
+                SessionExpiredNotice(
+                    visible = youtubeExpired && !youtubeExpiryDismissed && !showYouTubeLogin &&
+                        !(webApi.expired && !webApi.connecting),
+                    backdrop = pageBackdrop,
+                    onReconnect = { showYouTubeLogin = true },
+                    onDismiss = { youtubeExpiryDismissed = true },
+                    title = R.string.youtube_expired_title,
+                    body = R.string.youtube_expired_body,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = statusBar + 8.dp),

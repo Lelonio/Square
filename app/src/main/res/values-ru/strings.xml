@@ -229,6 +229,8 @@
     <string name="web_api_expired_title">Сессия истекла</string>
     <string name="web_api_expired_body">Войдите в своё приложение Spotify заново, чтобы вернуть поиск и главную страницу.</string>
     <string name="web_api_expired_action">Войти заново</string>
+    <string name="youtube_expired_title">Сеанс YouTube Music истёк</string>
+    <string name="youtube_expired_body">YouTube Music больше не принимает этот вход. Страницы открываются и без него; войдите снова, чтобы вернуть свою главную и медиатеку.</string>
     <string name="later">Позже</string>
     <string name="needs_your_app">Нужно собственное приложение Spotify: настройте его в разделе поиска.</string>
 

@@ -215,6 +215,8 @@
     <string name="web_api_expired_title">Sesión caducada</string>
     <string name="web_api_expired_body">Vuelve a iniciar sesión en tu aplicación de Spotify para recuperar la búsqueda y el inicio.</string>
     <string name="web_api_expired_action">Iniciar sesión</string>
+    <string name="youtube_expired_title">Sesión de YouTube Music caducada</string>
+    <string name="youtube_expired_body">YouTube Music ya no acepta este inicio de sesión. Las páginas se abren igualmente; vuelve a iniciar sesión para tu inicio y tu biblioteca.</string>
     <string name="later">Más tarde</string>
     <string name="needs_your_app">Hace falta tu propia aplicación de Spotify: configúrala en Buscar.</string>
 

@@ -216,6 +216,8 @@
     <string name="web_api_expired_title">Sessione scaduta</string>
     <string name="web_api_expired_body">Accedi di nuovo alla tua applicazione Spotify per riavere ricerca e home.</string>
     <string name="web_api_expired_action">Accedi di nuovo</string>
+    <string name="youtube_expired_title">Sessione di YouTube Music scaduta</string>
+    <string name="youtube_expired_body">YouTube Music non accetta più questo accesso. Le pagine si aprono lo stesso; accedi di nuovo per la tua home e la tua libreria.</string>
     <string name="later">Più tardi</string>
     <string name="needs_your_app">Serve la tua applicazione Spotify: configurala in Cerca.</string>
 
