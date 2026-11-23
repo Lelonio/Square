@@ -323,7 +323,7 @@ pub fn runtime_handle() -> EngineResult<tokio::runtime::Handle> {
 /// process. The context never changes over that lifetime, so the second and
 /// later calls are simply no-ops.
 pub fn init_android_context(context: &JObject) -> EngineResult<()> {
-    CONTEXT_INITIALIZED.get_or_try_init(|| {
+    CONTEXT_INITIALIZED.get_or_try_init(|| -> EngineResult<()> {
         let vm = JAVA_VM.get().ok_or("JNI_OnLoad did not run")?;
         let env = vm.get_env().map_err(|e| e.to_string())?;
         let global = env
