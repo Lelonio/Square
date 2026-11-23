@@ -270,6 +270,19 @@ fn read_sidecar(path: &Path) -> Option<Value> {
     serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
 }
 
+/// Whether an interrupted file belongs to the exact CDN encoding selected now.
+///
+/// A track can have a different Spotify file id at each quality. Track-id-only
+/// partial paths are therefore safe to resume only when their sidecar names the
+/// same file id; otherwise bytes from two encodings would be concatenated.
+fn partial_file_matches_file_id(partial: Option<Value>, expected_file_id: &str) -> bool {
+    partial
+        .as_ref()
+        .and_then(|value| value.get("fileId"))
+        .and_then(Value::as_str)
+        == Some(expected_file_id)
+}
+
 /// Writes the sidecar through a temporary file, so it is either the old one or
 /// the new one and never half of either.
 fn write_sidecar(path: &Path, value: &Value) -> Result<(), String> {
@@ -692,9 +705,31 @@ async fn fetch(session: Session, uri_text: String, kbps: i32) -> Result<String, 
     let key_wait_ms = key_began.elapsed().as_millis() as u64;
 
     let part = audio.with_extension("part");
+    let part_meta = audio.with_extension("part.json");
     if let Some(parent) = part.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("download dir failed: {e}"))?;
     }
+
+    let file_id_hex = file_id
+        .to_base16()
+        .map_err(|e| format!("bad audio file id: {e}"))?;
+    if !partial_file_matches_file_id(read_sidecar(&part_meta), &file_id_hex) {
+        // A retry at a different quality selects a different encrypted file.
+        // Never append that file to bytes left by the previous selection.
+        match fs::remove_file(&part) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("could not discard an old partial download: {error}")),
+        }
+    }
+    write_sidecar(
+        &part_meta,
+        &json!({
+            "fileId": file_id_hex,
+            "format": format_name(format),
+        }),
+    )?;
+
     let mut done = fs::metadata(&part).map(|meta| meta.len()).unwrap_or(0) as usize;
     let mut file = fs::OpenOptions::new()
         .create(true)
@@ -851,6 +886,11 @@ async fn fetch(session: Session, uri_text: String, kbps: i32) -> Result<String, 
     });
 
     write_sidecar(&meta, &sidecar)?;
+    if let Err(error) = fs::remove_file(&part_meta) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            log::warn!("could not remove partial download metadata for <{uri_text}>: {error}");
+        }
+    }
 
     log::info!(
         "downloaded <{}> as {} ({} bytes)",
@@ -868,4 +908,23 @@ fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|since| since.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn resumes_only_when_partial_file_id_matches_selected_encoding() {
+        let partial = Some(json!({"fileId": "selected-file", "format": "OGG_VORBIS_320"}));
+        assert!(partial_file_matches_file_id(partial.clone(), "selected-file"));
+        assert!(!partial_file_matches_file_id(partial, "different-file"));
+    }
+
+    #[test]
+    fn legacy_partial_without_metadata_is_not_resumed() {
+        assert!(!partial_file_matches_file_id(None, "selected-file"));
+        assert!(!partial_file_matches_file_id(Some(json!({})), "selected-file"));
+    }
 }

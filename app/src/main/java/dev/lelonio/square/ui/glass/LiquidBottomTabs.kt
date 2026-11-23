@@ -51,6 +51,7 @@ import dev.lelonio.square.ui.glass.backdrop.BackdropEffectScope
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
@@ -73,6 +74,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.sign
 
 // The tinted copy is a drawing source, not another shared-transition endpoint.
@@ -170,10 +172,12 @@ fun LiquidBottomTabs(
         }
 
         val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+        val touchSlop = LocalViewConfiguration.current.touchSlop
         val animationScope = rememberCoroutineScope()
         var currentIndex by remember(selectedTabIndex) {
             mutableIntStateOf(selectedTabIndex())
         }
+        val gestureState = remember { IndicatorGestureState() }
         val dampedDragAnimation = remember(animationScope) {
             DampedDragAnimation(
                 animationScope = animationScope,
@@ -182,19 +186,31 @@ fun LiquidBottomTabs(
                 visibilityThreshold = 0.001f,
                 initialScale = 1f,
                 pressedScale = 78f / 56f,
-                onDragStarted = {},
+                onDragStarted = { position ->
+                    gestureState.dragged = false
+                    gestureState.dragDistance = 0f
+                    gestureState.indexAtDown = indicatorTapIndex(
+                        pointerX = position.x,
+                        indicatorPosition = value,
+                        tabWidth = tabWidth(),
+                        tabCount = tabsCount,
+                        isLtr = isLtr,
+                    )
+                },
                 onDragStopped = {
-                    val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
-                    // LOCAL CHANGE: report a press that lands on the tab that is
-                    // already selected.
-                    //
-                    // Selection is reported by watching `currentIndex` change,
-                    // so releasing on the current tab reported nothing at all.
-                    // On a screen that is not a tab — a playlist, the settings,
-                    // search — the bar still shows one of them as selected, and
-                    // that is exactly the tab you press to get back to it. The
-                    // press animated and then did nothing.
-                    if (targetIndex == currentIndex) onTabSelected(targetIndex)
+                    // The indicator can be travelling over another tab when a
+                    // rapid tap lands. In that case the pointer is hit-tested
+                    // against this moving overlay, not the button underneath.
+                    // Resolve a tap from the overlay's actual position at down,
+                    // rather than the animation's old target.
+                    val targetIndex = if (gestureState.dragged) {
+                        targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
+                    } else {
+                        gestureState.indexAtDown.fastCoerceIn(0, tabsCount - 1)
+                    }
+                    if (!gestureState.dragged && targetIndex == currentIndex) {
+                        onTabSelected(targetIndex)
+                    }
                     currentIndex = targetIndex
                     animateToValue(targetIndex.toFloat())
                     animationScope.launch {
@@ -204,7 +220,23 @@ fun LiquidBottomTabs(
                         )
                     }
                 },
+                onDragCancelled = {
+                    // A parent gesture (for example, a scroll) can cancel this
+                    // pointer sequence. Return to the route the app still shows;
+                    // a cancelled gesture must never select a partially reached tab.
+                    val index = selectedTabIndex().fastCoerceIn(0, tabsCount - 1)
+                    currentIndex = index
+                    animateToValue(index.toFloat())
+                    animationScope.launch {
+                        offsetAnimation.animateTo(
+                            0f,
+                            spring(1f, 300f, 0.5f)
+                        )
+                    }
+                },
                 onDrag = { _, dragAmount ->
+                    gestureState.dragDistance += abs(dragAmount.x) + abs(dragAmount.y)
+                    if (gestureState.dragDistance > touchSlop) gestureState.dragged = true
                     updateValue(
                         (targetValue + dragAmount.x / tabWidth() * if (isLtr) 1f else -1f)
                             .fastCoerceIn(0f, (tabsCount - 1).toFloat())
@@ -496,3 +528,39 @@ fun LiquidBottomTabs(
         )
     }
 }
+
+/** Tracks one gesture without making pointer movement a Compose state source. */
+private class IndicatorGestureState {
+    var indexAtDown: Int = 0
+    var dragged: Boolean = false
+    var dragDistance: Float = 0f
+}
+
+/**
+ * Resolves which tab sits under a pointer captured by the moving indicator.
+ *
+ * The indicator is a higher drawing sibling of the actual tab buttons. While it
+ * travels, a tap over another tab can therefore hit the indicator instead of
+ * that button. Convert the pointer's local x coordinate back to the tab row
+ * using the indicator's current (animated) position, not its eventual target.
+ */
+internal fun indicatorTapIndex(
+    pointerX: Float,
+    indicatorPosition: Float,
+    tabWidth: Float,
+    tabCount: Int,
+    isLtr: Boolean,
+): Int {
+    if (tabCount <= 1 || tabWidth <= 0f) return 0
+
+    val physicalStart = if (isLtr) {
+        indicatorPosition
+    } else {
+        tabCount - 1f - indicatorPosition
+    }
+    val physicalIndex = floor(physicalStart + pointerX / tabWidth)
+        .toInt()
+        .coerceIn(0, tabCount - 1)
+    return if (isLtr) physicalIndex else tabCount - 1 - physicalIndex
+}
+

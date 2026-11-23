@@ -35,6 +35,7 @@ import com.metrolist.innertube.models.PlaylistItem
 import com.metrolist.innertube.models.SongItem
 import com.metrolist.innertube.models.YTItem
 import com.metrolist.innertube.pages.HomePage
+import com.metrolist.innertube.pages.collectAllItems
 import dev.lelonio.square.backend.HomeChip
 import dev.lelonio.square.backend.HomeFeed
 import dev.lelonio.square.backend.HomeRow
@@ -78,11 +79,13 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         // Brings the stored cookie up to date and finds out whether it still
         // works; see [YouTubeAccount.revalidate].
         account.revalidate()
+        syncAccountScopedCaches()
         _authState.value = account.accountName.value?.let(BackendAuthState::LoggedIn) ?: ANONYMOUS
     }
 
     override suspend fun logOut() {
         account.signOut()
+        clearAccountScopedCaches()
         _authState.value = ANONYMOUS
     }
 
@@ -177,13 +180,20 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
      * rather than the public catalogue.
      */
     override suspend fun playlists(): List<CatalogPlaylist> = withContext(Dispatchers.IO) {
+        val cacheGeneration = syncAccountScopedCaches()
         if (!account.isSignedIn) return@withContext emptyList()
 
         YouTube.library(LIKED_PLAYLISTS_BROWSE_ID)
             .getOrThrow()
-            .items
+            .collectAllItems(
+                fetchContinuation = { continuation -> YouTube.libraryContinuation(continuation) },
+            )
             .filterIsInstance<PlaylistItem>()
-            .onEach { if (it.isEditable || it.id == LIKED_MUSIC_ID) editable.add(it.id) }
+            .onEach {
+                if (it.isEditable || it.id == LIKED_MUSIC_ID) {
+                    rememberEditablePlaylist(it.id, cacheGeneration)
+                }
+            }
             .map { item ->
                 CatalogPlaylist(
                     uri = "$PLAYLIST_PREFIX${item.id}",
@@ -205,7 +215,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         runCatching {
             YouTube.library(SAVED_ALBUMS_BROWSE_ID)
                 .getOrThrow()
-                .items
+                .collectAllItems(
+                    fetchContinuation = { continuation -> YouTube.libraryContinuation(continuation) },
+                )
                 .filterIsInstance<AlbumItem>()
                 .mapNotNull(::toCatalogPlaylist)
         }.getOrElse {
@@ -242,7 +254,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         runCatching {
             YouTube.library(FOLLOWED_ARTISTS_BROWSE_ID)
                 .getOrThrow()
-                .items
+                .collectAllItems(
+                    fetchContinuation = { continuation -> YouTube.libraryContinuation(continuation) },
+                )
                 .filterIsInstance<ArtistItem>()
                 .map { artist ->
                     SearchItem(
@@ -515,6 +529,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
     }
 
     override suspend fun tracksOf(uri: String): List<CatalogTrack> = withContext(Dispatchers.IO) {
+        val cacheGeneration = syncAccountScopedCaches()
         val id = uri.substringAfterLast(':')
         when {
             uri.startsWith(TRACK_PREFIX) || uri.startsWith(VIDEO_PREFIX) -> emptyList()
@@ -541,9 +556,13 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                 val page = YouTube.artist(publicArtistId(id)).getOrThrow()
                 // Kept for the follow button, which asks right after the page
                 // opens: the same response already says both.
-                artists[publicArtistId(id)] = ArtistFacts(
-                    channelId = page.artist.channelId ?: id,
-                    subscribed = page.isSubscribed,
+                rememberArtist(
+                    publicArtistId(id),
+                    ArtistFacts(
+                        channelId = page.artist.channelId ?: id,
+                        subscribed = page.isSubscribed,
+                    ),
+                    cacheGeneration,
                 )
                 page.sections
                     .flatMap { it.items }
@@ -551,7 +570,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
                     .map(::toCatalogTrack)
             }
 
-            else -> playlistTracks(id, wholePlaylist(id))
+            else -> playlistTracks(id, wholePlaylist(id), cacheGeneration)
         }
     }
 
@@ -568,12 +587,14 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         withContext(Dispatchers.IO) {
             val listed = uri.startsWith(PLAYLIST_PREFIX) || uri.startsWith(VIDEOS_PREFIX)
             if (!listed || isStation(uri)) return@withContext null to tracksOf(uri)
+            val cacheGeneration = syncAccountScopedCaches()
             val id = uri.substringAfterLast(':')
             val first = YouTube.playlist(id).getOrThrow()
             val now = stampOf(first)
             if (stamp != null && now == stamp) return@withContext now to null
             val songs = wholePlaylist(id, first)
-            now to if (uri.startsWith(VIDEOS_PREFIX)) songs.map(::toVideoTrack) else playlistTracks(id, songs)
+            now to if (uri.startsWith(VIDEOS_PREFIX)) songs.map(::toVideoTrack)
+                else playlistTracks(id, songs, cacheGeneration)
         }
 
     /** What a list's first page says about all of it; see [tracksIfChanged]. */
@@ -583,20 +604,24 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
     }
 
     /** A playlist's entries as the songs to show; see the note on own lists. */
-    private suspend fun playlistTracks(id: String, listed: List<SongItem>): List<CatalogTrack> {
+    private suspend fun playlistTracks(
+        id: String,
+        listed: List<SongItem>,
+        cacheGeneration: Long,
+    ): List<CatalogTrack> {
         // Only the listener's own lists: a video there is a song they saved,
         // and they want the song. A list YouTube made of videos (a chart of
         // music videos) is meant to be videos, and an album's entries are
         // already its songs.
-        val own = id == LIKED_MUSIC_ID || id in editable
+        val own = id == LIKED_MUSIC_ID || isEditablePlaylist(id, cacheGeneration)
         val songs = if (own) asSongs(listed) else listed
         listed.zip(songs).forEach { (entry, song) ->
             // What taking a song out of this list will need: YouTube removes an
             // entry, not a song, and names the entry here — under the song it
             // now plays as, too, if it was a video.
             entry.setVideoId?.let {
-                entries["$id/${entry.id}"] = it
-                entries["$id/${song.id}"] = it
+                rememberPlaylistEntry("$id/${entry.id}", it, cacheGeneration)
+                rememberPlaylistEntry("$id/${song.id}", it, cacheGeneration)
             }
         }
         return songs.map(::toCatalogTrack)
@@ -744,8 +769,10 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
     /** The lists the library said the account can write to; see [canWriteTo]. */
     private val editable = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
-    override fun canWriteTo(playlistUri: String): Boolean =
-        account.isSignedIn && playlistUri.removePrefix(PLAYLIST_PREFIX) in editable
+    override fun canWriteTo(playlistUri: String): Boolean {
+        syncAccountScopedCaches()
+        return account.isSignedIn && playlistUri.removePrefix(PLAYLIST_PREFIX) in editable
+    }
 
     /** Playlist entry ids, by "playlist/video"; see [removeFromPlaylist]. */
     private val entries = java.util.concurrent.ConcurrentHashMap<String, String>()
@@ -764,6 +791,76 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
     private data class ArtistFacts(val channelId: String, val subscribed: Boolean)
 
     private val artists = java.util.concurrent.ConcurrentHashMap<String, ArtistFacts>()
+
+    // These caches describe the active YouTube channel, not the public
+    // catalogue. A channel switch can keep the same backend instance alive.
+    // pageId and dataSyncId identify the channel together; compare both.
+    private var cachedAccountContext: Pair<String?, String?> =
+        account.pageId.value to YouTube.dataSyncId
+    private var accountCacheGeneration = 0L
+
+    @Synchronized
+    private fun syncAccountScopedCaches(): Long {
+        val accountContext = account.pageId.value to YouTube.dataSyncId
+        if (accountContext != cachedAccountContext) {
+            editable.clear()
+            entries.clear()
+            artists.clear()
+            cachedAccountContext = accountContext
+            accountCacheGeneration++
+        }
+        return accountCacheGeneration
+    }
+
+    @Synchronized
+    private fun clearAccountScopedCaches() {
+        editable.clear()
+        entries.clear()
+        artists.clear()
+        cachedAccountContext = account.pageId.value to YouTube.dataSyncId
+        // Also invalidate requests that began before logout, even when the
+        // next sign-in happens to use the same channel identifiers.
+        accountCacheGeneration++
+    }
+
+    @Synchronized
+    private fun rememberEditablePlaylist(id: String, generation: Long) {
+        if (syncAccountScopedCaches() == generation) editable.add(id)
+    }
+
+    @Synchronized
+    private fun isEditablePlaylist(id: String, generation: Long): Boolean {
+        return syncAccountScopedCaches() == generation && id in editable
+    }
+
+    @Synchronized
+    private fun rememberPlaylistEntry(key: String, entryId: String, generation: Long) {
+        if (syncAccountScopedCaches() == generation) entries[key] = entryId
+    }
+
+    @Synchronized
+    private fun playlistEntry(key: String, generation: Long): String? {
+        return if (syncAccountScopedCaches() == generation) entries[key] else null
+    }
+
+    @Synchronized
+    private fun forgetPlaylistEntry(key: String, generation: Long) {
+        if (syncAccountScopedCaches() == generation) entries.remove(key)
+    }
+
+    @Synchronized
+    private fun rememberArtist(id: String, facts: ArtistFacts, generation: Long) {
+        if (syncAccountScopedCaches() == generation) artists[id] = facts
+    }
+
+    @Synchronized
+    private fun artistFacts(id: String, generation: Long): ArtistFacts? {
+        return if (syncAccountScopedCaches() == generation) artists[id] else null
+    }
+
+    @Synchronized
+    private fun isCurrentAccountCacheGeneration(generation: Long): Boolean =
+        syncAccountScopedCaches() == generation
 
     /**
      * lossless.wtf first, LrcLib for everything it does not have.
@@ -812,10 +909,14 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
     override suspend fun createPlaylist(name: String, description: String, public: Boolean): CatalogPlaylist =
         withContext(Dispatchers.IO) {
+            val cacheGeneration = syncAccountScopedCaches()
             // Blocking upstream, deliberately not wrapped in runCatching there:
             // a failure has to reach the caller, which is a screen waiting to
             // open what it just made.
             val id = YouTube.createPlaylist(name)
+            // The playlist is editable as soon as it is created, before the
+            // next library refresh has a chance to repopulate this registry.
+            rememberEditablePlaylist(id, cacheGeneration)
             CatalogPlaylist(uri = "$PLAYLIST_PREFIX$id", name = name, artworkUrl = null)
         }
 
@@ -839,12 +940,17 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
      * is the like button, see [addToPlaylist].
      */
     override suspend fun writablePlaylists(): List<CatalogPlaylist> = withContext(Dispatchers.IO) {
+        val cacheGeneration = syncAccountScopedCaches()
         if (!account.isSignedIn) return@withContext emptyList()
         YouTube.library(LIKED_PLAYLISTS_BROWSE_ID)
             .getOrThrow()
-            .items
+            .collectAllItems(
+                fetchContinuation = { continuation -> YouTube.libraryContinuation(continuation) },
+            )
             .filterIsInstance<PlaylistItem>()
             .filter { it.isEditable || it.id == LIKED_MUSIC_ID }
+            // Keep canWriteTo() in sync with the exact targets offered here.
+            .onEach { rememberEditablePlaylist(it.id, cacheGeneration) }
             // Liked songs first, as the other source puts its own.
             .sortedBy { if (it.id == LIKED_MUSIC_ID) 0 else 1 }
             .map { item ->
@@ -870,6 +976,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
     override suspend fun removeFromPlaylist(playlistUri: String, trackUri: String) {
         withContext(Dispatchers.IO) {
+            val cacheGeneration = syncAccountScopedCaches()
             val playlistId = playlistUri.removePrefix(PLAYLIST_PREFIX)
             val videoId = videoIdOfUri(trackUri)
             if (playlistId == LIKED_MUSIC_ID) {
@@ -881,30 +988,43 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
             val key = "$playlistId/$listedId"
             // Read again when the list was not read here: the entry id is the
             // only thing YouTube removes by.
-            if (entries[key] == null) tracksOf(playlistUri)
-            val entry = entries[key] ?: error("no entry for $videoId in $playlistId")
+            if (playlistEntry(key, cacheGeneration) == null) tracksOf(playlistUri)
+            val entry = playlistEntry(key, cacheGeneration)
+                ?: error("account changed or no entry for $videoId in $playlistId")
+            check(isCurrentAccountCacheGeneration(cacheGeneration)) {
+                "YouTube account changed before the playlist edit could be applied"
+            }
             YouTube.removeFromPlaylist(playlistId, listedId, entry).getOrThrow()
-            entries.remove(key)
+            forgetPlaylistEntry(key, cacheGeneration)
         }
     }
 
     override suspend fun isFollowing(artistUri: String): Boolean? = withContext(Dispatchers.IO) {
+        val cacheGeneration = syncAccountScopedCaches()
         if (!account.isSignedIn) return@withContext null
         val id = publicArtistId(artistUri.removePrefix(ARTIST_PREFIX))
-        artists[id]?.subscribed ?: runCatching {
+        artistFacts(id, cacheGeneration)?.subscribed ?: runCatching {
             val page = YouTube.artist(id).getOrThrow()
-            ArtistFacts(page.artist.channelId ?: id, page.isSubscribed).also { artists[id] = it }
-        }.getOrNull()?.subscribed
+            ArtistFacts(page.artist.channelId ?: id, page.isSubscribed).also {
+                rememberArtist(id, it, cacheGeneration)
+            }
+        }.getOrNull()?.takeIf {
+            isCurrentAccountCacheGeneration(cacheGeneration)
+        }?.subscribed
     }
 
     override suspend fun setFollowing(artistUri: String, follow: Boolean) {
         withContext(Dispatchers.IO) {
+            val cacheGeneration = syncAccountScopedCaches()
             val id = publicArtistId(artistUri.removePrefix(ARTIST_PREFIX))
-            val channel = artists[id]?.channelId
+            val channel = artistFacts(id, cacheGeneration)?.channelId
                 ?: YouTube.artist(id).getOrThrow().artist.channelId
                 ?: id
+            check(isCurrentAccountCacheGeneration(cacheGeneration)) {
+                "YouTube account changed before the follow action could be applied"
+            }
             YouTube.subscribeChannel(channel, subscribe = follow).getOrThrow()
-            artists[id] = ArtistFacts(channel, follow)
+            rememberArtist(id, ArtistFacts(channel, follow), cacheGeneration)
         }
     }
 
