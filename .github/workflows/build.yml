@@ -26,6 +26,9 @@ jobs:
 
       - uses: ./.github/actions/setup
 
+      - name: Native unit tests
+        run: cargo test --manifest-path native/Cargo.toml --lib
+
       - name: Unit tests
         run: ./gradlew :app:testDevUnitTest --stacktrace
 
