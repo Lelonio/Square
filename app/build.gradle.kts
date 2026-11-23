@@ -16,9 +16,10 @@ plugins {
  */
 /**
  * Every ABI a release ships, with a universal APK besides, only when asked:
- * `-Psquare.allAbis=true`, which the release workflow passes. Anything else
- * (a build here, CI's check) is arm64 alone, which is every phone this is run
- * on, and the Rust engine and Bungee built once instead of twice.
+ * `-Psquare.allAbis=true`, which both GitHub workflows pass (release and the
+ * build on every push), so GitHub always makes all three APKs. A build here is
+ * arm64 alone, which is every phone this is run on, and the Rust engine and
+ * Bungee built once instead of twice.
  */
 val allAbis = (findProperty("square.allAbis") as String?)?.toBoolean() == true
 val nativeAbis = if (allAbis) listOf("arm64-v8a", "armeabi-v7a") else listOf("arm64-v8a")
