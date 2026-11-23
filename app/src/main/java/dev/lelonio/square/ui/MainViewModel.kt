@@ -2121,7 +2121,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return@launch
         }
         _addFriend.value = AddFriend.WORKING
-        runCatching { container.api.followArtists(type = "user", ids = id) }
+        runCatching { setSpotifyFollowing("user", id, follow = true) }
             .onSuccess {
                 _addFriend.value = AddFriend.DONE
                 loadFriends()
@@ -6354,7 +6354,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching { withTimeoutOrNull(2000L) { container.api.artist(id) } }.getOrNull()
             }
             val followingDeferred = async {
-                runCatching { withTimeoutOrNull(2000L) { container.api.isFollowing(ids = id).firstOrNull() } }.getOrNull()
+                runCatching { withTimeoutOrNull(2000L) { spotifyFollows("artist", id) } }.getOrNull()
             }
 
             var tracks = tracksDeferred.await()
@@ -6696,7 +6696,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         runCatching {
-            if (was) container.api.unfollowArtists(ids = id) else container.api.followArtists(ids = id)
+            setSpotifyFollowing("artist", id, follow = !was)
         }
             .onSuccess {
                 resetFollowedReleases()
@@ -6707,12 +6707,46 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (_playlist.value.uri == uri) {
                     _playlist.value = _playlist.value.copy(following = was)
                 }
-                // Almost always the same cause: an application connected before
-                // this feature existed, whose token carries no permission to
-                // follow anybody. Saying so is more use than the error itself.
-                _webApi.value = _webApi.value.copy(expired = true)
+                // Only a refused token is a session to sign back into. A 429
+                // (Spotify rate-limiting the account) or a 403 used to say
+                // "session expired" too, and signing in again changed nothing.
+                if (it is HttpException && it.code() == 401) {
+                    _webApi.value = _webApi.value.copy(expired = true)
+                }
             }
     }
+
+    /**
+     * Follows or unfollows an artist or a user.
+     *
+     * Through the library: since February 2026 Spotify has removed
+     * `PUT`/`DELETE me/following` for applications in development mode, which
+     * is what every listener's own application is, and answers them 403.
+     * `me/library` takes the same thing as a URI. The old endpoint is still
+     * tried when the new one is refused, for a token it still works for; if
+     * that fails too, the library's own error is what is reported.
+     */
+    private suspend fun setSpotifyFollowing(kind: String, id: String, follow: Boolean) {
+        val uri = "spotify:$kind:$id"
+        try {
+            if (follow) container.api.saveToLibrary(uri) else container.api.removeFromLibrary(uri)
+        } catch (e: HttpException) {
+            if (e.code() !in listOf(400, 403, 404, 410)) throw e
+            android.util.Log.w(TAG, "library refused $kind follow (${e.code()}); trying me/following")
+            try {
+                if (follow) container.api.followArtists(type = kind, ids = id)
+                else container.api.unfollowArtists(type = kind, ids = id)
+            } catch (legacy: HttpException) {
+                throw e
+            }
+        }
+    }
+
+    /** Whether the account follows this artist or user; same two roads as [setSpotifyFollowing]. */
+    private suspend fun spotifyFollows(kind: String, id: String): Boolean? =
+        runCatching { container.api.libraryContains("spotify:$kind:$id").firstOrNull() }
+            .recoverCatching { container.api.isFollowing(type = kind, ids = id).firstOrNull() }
+            .getOrNull()
 
     private val _savedAlbums = MutableStateFlow<List<CatalogPlaylist>>(emptyList())
 
