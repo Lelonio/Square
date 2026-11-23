@@ -79,11 +79,13 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         // Brings the stored cookie up to date and finds out whether it still
         // works; see [YouTubeAccount.revalidate].
         account.revalidate()
+        syncAccountScopedCaches()
         _authState.value = account.accountName.value?.let(BackendAuthState::LoggedIn) ?: ANONYMOUS
     }
 
     override suspend fun logOut() {
         account.signOut()
+        clearAccountScopedCaches()
         _authState.value = ANONYMOUS
     }
 
@@ -178,6 +180,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
      * rather than the public catalogue.
      */
     override suspend fun playlists(): List<CatalogPlaylist> = withContext(Dispatchers.IO) {
+        syncAccountScopedCaches()
         if (!account.isSignedIn) return@withContext emptyList()
 
         YouTube.library(LIKED_PLAYLISTS_BROWSE_ID)
@@ -516,6 +519,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
     }
 
     override suspend fun tracksOf(uri: String): List<CatalogTrack> = withContext(Dispatchers.IO) {
+        syncAccountScopedCaches()
         val id = uri.substringAfterLast(':')
         when {
             uri.startsWith(TRACK_PREFIX) || uri.startsWith(VIDEO_PREFIX) -> emptyList()
@@ -745,8 +749,10 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
     /** The lists the library said the account can write to; see [canWriteTo]. */
     private val editable = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
-    override fun canWriteTo(playlistUri: String): Boolean =
-        account.isSignedIn && playlistUri.removePrefix(PLAYLIST_PREFIX) in editable
+    override fun canWriteTo(playlistUri: String): Boolean {
+        syncAccountScopedCaches()
+        return account.isSignedIn && playlistUri.removePrefix(PLAYLIST_PREFIX) in editable
+    }
 
     /** Playlist entry ids, by "playlist/video"; see [removeFromPlaylist]. */
     private val entries = java.util.concurrent.ConcurrentHashMap<String, String>()
@@ -765,6 +771,28 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
     private data class ArtistFacts(val channelId: String, val subscribed: Boolean)
 
     private val artists = java.util.concurrent.ConcurrentHashMap<String, ArtistFacts>()
+
+    // These caches describe the active YouTube channel, not the public
+    // catalogue. A channel switch can keep the same backend instance alive.
+    private var cachedAccountPageId: String? = account.pageId.value
+
+    @Synchronized
+    private fun syncAccountScopedCaches() {
+        val pageId = account.pageId.value
+        if (pageId == cachedAccountPageId) return
+        editable.clear()
+        entries.clear()
+        artists.clear()
+        cachedAccountPageId = pageId
+    }
+
+    @Synchronized
+    private fun clearAccountScopedCaches() {
+        editable.clear()
+        entries.clear()
+        artists.clear()
+        cachedAccountPageId = account.pageId.value
+    }
 
     /**
      * lossless.wtf first, LrcLib for everything it does not have.
@@ -843,6 +871,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
      * is the like button, see [addToPlaylist].
      */
     override suspend fun writablePlaylists(): List<CatalogPlaylist> = withContext(Dispatchers.IO) {
+        syncAccountScopedCaches()
         if (!account.isSignedIn) return@withContext emptyList()
         YouTube.library(LIKED_PLAYLISTS_BROWSE_ID)
             .getOrThrow()
@@ -876,6 +905,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
     override suspend fun removeFromPlaylist(playlistUri: String, trackUri: String) {
         withContext(Dispatchers.IO) {
+            syncAccountScopedCaches()
             val playlistId = playlistUri.removePrefix(PLAYLIST_PREFIX)
             val videoId = videoIdOfUri(trackUri)
             if (playlistId == LIKED_MUSIC_ID) {
@@ -895,6 +925,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
     }
 
     override suspend fun isFollowing(artistUri: String): Boolean? = withContext(Dispatchers.IO) {
+        syncAccountScopedCaches()
         if (!account.isSignedIn) return@withContext null
         val id = publicArtistId(artistUri.removePrefix(ARTIST_PREFIX))
         artists[id]?.subscribed ?: runCatching {
@@ -905,6 +936,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
     override suspend fun setFollowing(artistUri: String, follow: Boolean) {
         withContext(Dispatchers.IO) {
+            syncAccountScopedCaches()
             val id = publicArtistId(artistUri.removePrefix(ARTIST_PREFIX))
             val channel = artists[id]?.channelId
                 ?: YouTube.artist(id).getOrThrow().artist.channelId

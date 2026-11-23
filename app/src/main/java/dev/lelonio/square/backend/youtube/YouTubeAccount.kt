@@ -231,6 +231,7 @@ class YouTubeAccount(context: Context) {
     fun signOut() {
         prefs.edit().clear().apply()
         _accountName.value = null
+        _pageId.value = null
         _expired.value = false
         // The web view's store too, or the next sign-in would walk straight
         // back into the account that was just left.
