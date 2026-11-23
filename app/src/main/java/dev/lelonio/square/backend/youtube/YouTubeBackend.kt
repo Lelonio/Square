@@ -35,6 +35,7 @@ import com.metrolist.innertube.models.PlaylistItem
 import com.metrolist.innertube.models.SongItem
 import com.metrolist.innertube.models.YTItem
 import com.metrolist.innertube.pages.HomePage
+import com.metrolist.innertube.pages.collectAllItems
 import dev.lelonio.square.backend.HomeChip
 import dev.lelonio.square.backend.HomeFeed
 import dev.lelonio.square.backend.HomeRow
@@ -181,7 +182,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
 
         YouTube.library(LIKED_PLAYLISTS_BROWSE_ID)
             .getOrThrow()
-            .items
+            .collectAllItems { continuation -> YouTube.libraryContinuation(continuation) }
             .filterIsInstance<PlaylistItem>()
             .onEach { if (it.isEditable || it.id == LIKED_MUSIC_ID) editable.add(it.id) }
             .map { item ->
@@ -205,7 +206,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         runCatching {
             YouTube.library(SAVED_ALBUMS_BROWSE_ID)
                 .getOrThrow()
-                .items
+                .collectAllItems { continuation -> YouTube.libraryContinuation(continuation) }
                 .filterIsInstance<AlbumItem>()
                 .mapNotNull(::toCatalogPlaylist)
         }.getOrElse {
@@ -242,7 +243,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         runCatching {
             YouTube.library(FOLLOWED_ARTISTS_BROWSE_ID)
                 .getOrThrow()
-                .items
+                .collectAllItems { continuation -> YouTube.libraryContinuation(continuation) }
                 .filterIsInstance<ArtistItem>()
                 .map { artist ->
                     SearchItem(
@@ -842,7 +843,7 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
         if (!account.isSignedIn) return@withContext emptyList()
         YouTube.library(LIKED_PLAYLISTS_BROWSE_ID)
             .getOrThrow()
-            .items
+            .collectAllItems { continuation -> YouTube.libraryContinuation(continuation) }
             .filterIsInstance<PlaylistItem>()
             .filter { it.isEditable || it.id == LIKED_MUSIC_ID }
             // Liked songs first, as the other source puts its own.
