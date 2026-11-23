@@ -34,6 +34,14 @@ import java.io.File
  * check on top would look reassuring and add nothing the platform does not
  * already enforce.
  */
+
+/**
+ * A non-empty APK may be committed only when a known asset length matches.
+ * When the server supplies no length, EOF is the only signal available.
+ */
+internal fun isCompleteApkDownload(expectedBytes: Long, actualBytes: Long): Boolean =
+    actualBytes > 0L && (expectedBytes <= 0L || expectedBytes == actualBytes)
+
 class Updater(context: Context) {
 
     private val app = context.applicationContext
@@ -238,7 +246,7 @@ class Updater(context: Context) {
                         output.write(buffer, 0, read)
                         written += read
                         if (total > 0) {
-                            val progress = written.toFloat() / total
+                            val progress = (written.toFloat() / total).coerceIn(0f, 1f)
                             _state.value = State.Downloading(progress)
                             // Rounded to a percent before it is reported: a
                             // notification redrawn on every sixty-fourth
@@ -253,6 +261,10 @@ class Updater(context: Context) {
                     }
                 }
             }
+        }
+        if (!isCompleteApkDownload(total, written)) {
+            target.delete()
+            error("incomplete APK download: received $written bytes, expected $total")
         }
         return target
     }
