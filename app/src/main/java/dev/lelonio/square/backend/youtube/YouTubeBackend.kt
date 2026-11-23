@@ -817,6 +817,9 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
             // a failure has to reach the caller, which is a screen waiting to
             // open what it just made.
             val id = YouTube.createPlaylist(name)
+            // The playlist is editable as soon as it is created, before the
+            // next library refresh has a chance to repopulate this registry.
+            editable.add(id)
             CatalogPlaylist(uri = "$PLAYLIST_PREFIX$id", name = name, artworkUrl = null)
         }
 
@@ -846,6 +849,8 @@ class YouTubeBackend(private val account: YouTubeAccount) : MusicBackend {
             .collectAllItems { continuation -> YouTube.libraryContinuation(continuation) }
             .filterIsInstance<PlaylistItem>()
             .filter { it.isEditable || it.id == LIKED_MUSIC_ID }
+            // Keep canWriteTo() in sync with the exact targets offered here.
+            .onEach { editable.add(it.id) }
             // Liked songs first, as the other source puts its own.
             .sortedBy { if (it.id == LIKED_MUSIC_ID) 0 else 1 }
             .map { item ->
