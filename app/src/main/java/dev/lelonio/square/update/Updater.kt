@@ -214,7 +214,6 @@ class Updater(context: Context) {
         }
 
         runCatching { withContext(Dispatchers.IO) { commit(apk) } }
-            .onSuccess { _state.value = State.Installing }
             .onFailure {
                 android.util.Log.w(TAG, "install failed: $it")
                 apk.delete()
@@ -280,6 +279,11 @@ class Updater(context: Context) {
                 apk.inputStream().use { it.copyTo(output) }
                 session.fsync(output)
             }
+            // Publish Installing before commit(): PackageInstaller reports
+            // session state through the receiver, which can run independently
+            // of this coroutine. A fast failure must not arrive before the
+            // receiver's installAbandoned() state guard becomes true.
+            _state.value = State.Installing
             session.commit(
                 PendingIntent.getBroadcast(
                     app,
