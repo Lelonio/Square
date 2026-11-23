@@ -96,6 +96,26 @@ data class PlaylistDetails(
     val artworkUrl: String?,
 )
 
+/**
+ * Whether saving the edit sheet needs a service-side metadata update.
+ *
+ * A cover can be changed locally for backends that do not store descriptions
+ * or visibility. In that case, an unchanged name must not trigger a redundant
+ * rename request that can prevent the independent cover save from completing.
+ */
+internal fun playlistMetadataChanged(
+    current: PlaylistDetails?,
+    name: String,
+    description: String,
+    public: Boolean,
+    describesPlaylists: Boolean,
+): Boolean {
+    if (current == null) return true
+    if (current.name.trim() != name.trim()) return true
+    return describesPlaylists &&
+        (current.description.trim() != description.trim() || current.public != public)
+}
+
 interface MusicBackend {
 
     val id: BackendId

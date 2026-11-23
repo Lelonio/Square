@@ -11,6 +11,7 @@ import dev.lelonio.square.backend.BackendAuthState
 import dev.lelonio.square.backend.BackendId
 import dev.lelonio.square.backend.HomeChip
 import dev.lelonio.square.backend.HomeRow
+import dev.lelonio.square.backend.playlistMetadataChanged
 import dev.lelonio.square.backend.SearchLabels
 import dev.lelonio.square.R
 import dev.lelonio.square.data.Catalog
@@ -5306,8 +5307,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _editingPlaylist.value = editing.copy(busy = true, error = null)
         viewModelScope.launch {
             val backend = container.activeBackend
-            runCatching { backend.updatePlaylist(uri, trimmed, description, public) }
-                .onSuccess {
+            val metadataChanged = playlistMetadataChanged(
+                current = editing.details,
+                name = trimmed,
+                description = description,
+                public = public,
+                describesPlaylists = backend.describesPlaylists,
+            )
+            val updateResult = if (metadataChanged) {
+                runCatching { backend.updatePlaylist(uri, trimmed, description, public) }
+            } else {
+                Result.success(Unit)
+            }
+            updateResult.onSuccess {
                     (_state.value as? UiState.Ready)?.let { ready ->
                         _state.value = ready.copy(
                             playlists = ready.playlists.map { if (it.uri == uri) it.copy(name = trimmed) else it },
