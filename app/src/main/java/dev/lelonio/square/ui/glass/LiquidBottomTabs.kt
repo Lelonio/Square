@@ -220,6 +220,20 @@ fun LiquidBottomTabs(
                         )
                     }
                 },
+                onDragCancelled = {
+                    // A parent gesture (for example, a scroll) can cancel this
+                    // pointer sequence. Return to the route the app still shows;
+                    // a cancelled gesture must never select a partially reached tab.
+                    val index = selectedTabIndex().fastCoerceIn(0, tabsCount - 1)
+                    currentIndex = index
+                    animateToValue(index.toFloat())
+                    animationScope.launch {
+                        offsetAnimation.animateTo(
+                            0f,
+                            spring(1f, 300f, 0.5f)
+                        )
+                    }
+                },
                 onDrag = { _, dragAmount ->
                     gestureState.dragDistance += abs(dragAmount.x) + abs(dragAmount.y)
                     if (gestureState.dragDistance > touchSlop) gestureState.dragged = true

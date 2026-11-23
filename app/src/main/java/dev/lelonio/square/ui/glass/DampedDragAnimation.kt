@@ -36,6 +36,8 @@ class DampedDragAnimation(
     val onDragStarted: DampedDragAnimation.(position: Offset) -> Unit,
     val onDragStopped: DampedDragAnimation.() -> Unit,
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
+    /** Called when another pointer handler cancels the gesture; must not commit it. */
+    val onDragCancelled: DampedDragAnimation.() -> Unit = {},
 ) {
 
     private val valueAnimationSpec =
@@ -83,7 +85,7 @@ class DampedDragAnimation(
                 release()
             },
             onDragCancel = {
-                onDragStopped()
+                onDragCancelled()
                 release()
             }
         ) { change, dragAmount ->
