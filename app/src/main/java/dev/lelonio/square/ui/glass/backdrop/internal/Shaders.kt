@@ -84,7 +84,8 @@ half4 main(float2 coord) {
     }
     sd = min(sd, 0.0);
     
-    float d = circleMap(1.0 - -sd / refractionHeight) * refractionAmount;
+    float t = clamp(-sd / max(refractionHeight, 0.001), 0.0, 1.0);
+    float d = t * (1.0 - t) * refractionAmount;
     float gradRadius = min(radius * 1.5, min(halfSize.x, halfSize.y));
     float2 grad = normalize(gradSdRoundedRect(centeredCoord, halfSize, gradRadius) + depthEffect * normalize(centeredCoord));
     
@@ -121,7 +122,8 @@ half4 main(float2 coord) {
     }
     sd = min(sd, 0.0);
     
-    float d = circleMap(1.0 - -sd / refractionHeight) * refractionAmount;
+    float t = clamp(-sd / max(refractionHeight, 0.001), 0.0, 1.0);
+    float d = t * (1.0 - t) * refractionAmount;
     float gradRadius = min(radius * 1.5, min(halfSize.x, halfSize.y));
     float2 grad = normalize(gradSdRoundedRect(centeredCoord, halfSize, gradRadius) + depthEffect * normalize(centeredCoord));
     

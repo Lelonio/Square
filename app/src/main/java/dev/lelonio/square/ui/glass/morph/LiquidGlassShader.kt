@@ -575,16 +575,21 @@ half4 main(float2 fragCoord) {
     float3 normal = float3(normalXY, normalZ);
 
     float height = geometryData.b * uThickness;
-    float baseHeight = uThickness * 8.0;
+    float baseHeight = uThickness;
+    float lenN = length(normalXY);
+    // Smooth boundary falloff: damp displacement to zero at the outer rim (lenN -> 1)
+    // and flat face (lenN -> 0), keeping coordinate mapping strictly monotonic
+    // (d(ysamp)/dy >= 0) to prevent ray crossing, upside-down image inversions, and duplicates.
+    float bevelFalloff = clamp(1.0 - lenN, 0.0, 1.0);
     float2 displacement;
     if (uLensModel > 0.5) {
-        displacement = -normalXY * length(normalXY) * baseHeight * (uRefractiveIndex - 1.0);
+        displacement = -normalXY * bevelFalloff * (height + baseHeight) * (uRefractiveIndex - 1.0) * 1.5;
     } else {
         float3 incident = float3(0.0, 0.0, -1.0);
         float invN = 1.0 / max(uRefractiveIndex, 0.001);
         float3 baseRefract = refract(incident, normal, invN);
         float refractLen = (height + baseHeight) / max(0.001, abs(baseRefract.z));
-        displacement = baseRefract.xy * refractLen;
+        displacement = baseRefract.xy * refractLen * bevelFalloff;
     }
     displacement *= uOpticalProps.w;
 
