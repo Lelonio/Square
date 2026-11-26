@@ -87,11 +87,6 @@ object AppleCatalog {
             "apple-catalog-v7",
             android.content.Context.MODE_PRIVATE,
         )
-        // Stored weakly: this object lives for the process lifetime and must not
-        // hold a strong reference to anything from a Context chain.
-        connectivityRef = java.lang.ref.WeakReference(
-            context.applicationContext.getSystemService(android.net.ConnectivityManager::class.java),
-        )
     }
 
 
@@ -118,36 +113,13 @@ object AppleCatalog {
      * none", and caching the first would keep the picture away for the rest of
      * the run.
      *
-     * Also gated on the connection being unmetered (Wi-Fi or ethernet). Apple's
-     * catalogue exists to enrich the visual experience — the app works correctly
-     * without it — and reaching out for large editorial photos over mobile data
-     * is not a trade the listener has agreed to. A cached answer is always used
-     * regardless of connection type; only a live lookup is skipped. The one
-     * exception is an artist's drawn name; see artist.
+     * On mobile data as on Wi-Fi. It was kept for Wi-Fi alone, and the
+     * moving covers and portraits then never appeared away from home, which is
+     * where they were asked for.
      */
     private fun mayAsk(): Boolean =
-        !dev.lelonio.square.playback.OfflineMode.active.value && unmetered()
+        !dev.lelonio.square.playback.OfflineMode.active.value
 
-    /** Wi-Fi or ethernet, or a connection that cannot be told apart from one. */
-    private fun unmetered(): Boolean {
-        // Check metered status via the connectivity service.
-        val connectivity = connectivityRef?.get()
-        if (connectivity != null) {
-            val caps = connectivity.activeNetwork
-                ?.let(connectivity::getNetworkCapabilities)
-            // If we cannot determine the connection type, err on the side of
-            // caution and allow the request (same behaviour as before this check).
-            if (caps != null &&
-                !caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-            ) {
-                return false
-            }
-        }
-        return true
-    }
-
-    /** Held weakly so AppleCatalog (an object) does not leak a Context. */
-    private var connectivityRef: java.lang.ref.WeakReference<android.net.ConnectivityManager>? = null
 
 
     private fun remember(key: String, value: String) {
@@ -261,30 +233,6 @@ object AppleCatalog {
         }
 
         if (dev.lelonio.square.playback.OfflineMode.active.value) return null
-
-        // On mobile data the page still gets the name drawn: one search and a
-        // PNG of a few tens of kilobytes, against a photograph many times that.
-        // The photograph and the colours filed with it are left for Wi-Fi —
-        // Apple's colours over Spotify's photo would be a page tinted for a
-        // different picture. Kept for this run only, and under its own key, so
-        // the first visit on Wi-Fi still asks for the whole page.
-        if (!unmetered()) {
-            val lite = "logo $key"
-            synchronized(cache) { if (cache.containsKey(lite)) return cache[lite] as Artist? }
-            val found = ask(name) { lookUpArtist(name, storefront) }
-                ?.copy(
-                    heroUrl = null,
-                    heroAspect = null,
-                    bgColor = null,
-                    textHex = null,
-                    inkPalette = emptyList(),
-                    // Nor a video streamed over mobile data.
-                    motionUrl = null,
-                    motionWideUrl = null,
-                )
-            synchronized(cache) { cache[lite] = found }
-            return found
-        }
 
         val (found, failed) = withMotionFrom(
             storefront,
