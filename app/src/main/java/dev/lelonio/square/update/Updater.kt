@@ -300,6 +300,25 @@ class Updater(context: Context) {
         _state.value = State.Idle
     }
 
+    private val _confirm = kotlinx.coroutines.flow.MutableStateFlow<Intent?>(null)
+
+    /**
+     * The installer's confirmation, waiting for the app's window to show it.
+     *
+     * Only a window in front may start it: started from the installer's
+     * broadcast it was dropped as a start from the background (#229).
+     */
+    val confirm: kotlinx.coroutines.flow.StateFlow<Intent?> = _confirm
+
+    fun askToConfirm(intent: Intent) {
+        _confirm.value = intent
+    }
+
+    /** Called once the window has started [confirm]. */
+    fun confirmShown() {
+        _confirm.value = null
+    }
+
     /** What was last sent to the installer, to offer again if it did not go in. */
     private var lastOffered: State.Available? = null
 

@@ -4486,6 +4486,20 @@ private fun UpdatePrompt(
     val scope = rememberCoroutineScope()
     val state by updater.state.collectAsStateWithLifecycle()
 
+    // The installer's dialog, started from here: a window in front is the one
+    // place Android lets it start from (#229). Collected only while the app is
+    // in front, so a download finished in the background asks on return.
+    val confirm by updater.confirm.collectAsStateWithLifecycle()
+    LaunchedEffect(confirm) {
+        val intent = confirm ?: return@LaunchedEffect
+        updater.confirmShown()
+        runCatching { context.startActivity(intent) }
+            .onFailure {
+                android.util.Log.w("Updater", "installer dialog refused: $it")
+                updater.installAbandoned()
+            }
+    }
+
     // Each time the app comes to the front, not only when it is launched. A
     // music app is rarely launched: it stays in the background between
     // listens, so a check made only at launch could wait days for the next
