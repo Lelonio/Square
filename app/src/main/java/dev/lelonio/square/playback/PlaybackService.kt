@@ -2189,8 +2189,11 @@ class PlaybackService : MediaLibraryService() {
             } finally {
                 sampledPlayer?.removeListener(listener)
                 val event = sampler.sample(null, false, System.currentTimeMillis(), android.os.SystemClock.elapsedRealtime())
-                if (event != null && owner != null) kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
-                    container.listeningStore.record(event, owner!!)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    if (event != null && owner != null) container.listeningStore.record(event, owner!!)
+                    // Written now: the service is going, and the process may
+                    // go with it before the store's own delay is up.
+                    container.listeningStore.flush()
                 }
             }
         }

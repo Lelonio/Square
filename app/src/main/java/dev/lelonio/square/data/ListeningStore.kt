@@ -1,7 +1,13 @@
 package dev.lelonio.square.data
 
 import android.content.Context
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -9,6 +15,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromStream
+import kotlinx.serialization.json.encodeToStream
 
 /**
  * What was listened to, kept apart per source.
@@ -19,6 +27,7 @@ import kotlinx.serialization.json.Json
  * only have been shared by throwing the other's away at every switch.
  * [events] is the history of the source on screen; see [show].
  */
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 class ListeningStore(context: Context) {
     enum class Source { SPOTIFY, YOUTUBE_MUSIC }
 
@@ -28,6 +37,18 @@ class ListeningStore(context: Context) {
     private val lock = Mutex()
     private val cache = HashMap<String, List<ListeningEvent>>()
     private var source = Source.SPOTIFY
+
+    // Each history in a file of its own, written a little after it changes.
+    //
+    // They lived in the preferences, which keep every value in memory for as
+    // long as the app runs, and every ten seconds of listening the whole
+    // history was encoded into one string and the preferences file written
+    // again around it. A long history is megabytes of text: done that often it
+    // ran the app out of memory mid-song.
+    private val directory = File(context.filesDir, "listening")
+    private val writer = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val unwritten = HashSet<String>()
+    private var writing: Job? = null
 
     init {
         // The single history from before, which was the Spotify account's.
@@ -61,7 +82,7 @@ class ListeningStore(context: Context) {
         val old = account
         if (old == id) return@withLock
         prefs.edit().putString("account", id).apply { if (old != null) remove(key(old)) }.apply()
-        old?.let(cache::remove)
+        old?.let(::forget)
         if (source == Source.SPOTIFY) mutable.value = read(id)
     } }
 
@@ -98,27 +119,73 @@ class ListeningStore(context: Context) {
     suspend fun clear() = withContext(Dispatchers.IO) { lock.withLock {
         val old = account
         prefs.edit().remove("account").apply { if (old != null) remove(key(old)) }.apply()
-        old?.let(cache::remove)
+        old?.let(::forget)
         if (source == Source.SPOTIFY) mutable.value = emptyList()
     } }
+
+    /** Writes what has not been written yet, now; when the player stops. */
+    suspend fun flush() = withContext(Dispatchers.IO) { lock.withLock { writeUnwritten() } }
 
     private fun known(owner: String) = owner == YOUTUBE_OWNER || owner == account
 
     private fun key(owner: String) = "events:$owner"
 
+    private fun file(owner: String) = File(directory, java.net.URLEncoder.encode(owner, "UTF-8") + ".json")
+
     private fun read(owner: String): List<ListeningEvent> = cache.getOrPut(owner) {
-        runCatching { json.decodeFromString(serializer, prefs.getString(key(owner), null) ?: "[]") }
-            .getOrDefault(emptyList())
+        val kept = file(owner)
+        if (kept.exists()) {
+            runCatching { kept.inputStream().buffered().use { json.decodeFromStream(serializer, it) } }
+                .getOrDefault(emptyList())
+        } else {
+            // Still in the preferences, from before: moved out on first read.
+            val legacy = prefs.getString(key(owner), null)
+            val events = runCatching { json.decodeFromString(serializer, legacy ?: "[]") }.getOrDefault(emptyList())
+            if (legacy != null) {
+                write(owner, events)
+                prefs.edit().remove(key(owner)).apply()
+            }
+            events
+        }
     }
 
     private fun save(owner: String, events: List<ListeningEvent>) {
         if (events == read(owner)) return
         cache[owner] = events
-        prefs.edit().putString(key(owner), json.encodeToString(serializer, events)).apply()
         if (ownerOf(source) == owner) mutable.value = events
+        unwritten += owner
+        if (writing?.isActive != true) {
+            writing = writer.launch {
+                delay(WRITE_DELAY_MS)
+                lock.withLock { writeUnwritten() }
+            }
+        }
+    }
+
+    private fun writeUnwritten() {
+        unwritten.forEach { owner -> cache[owner]?.let { write(owner, it) } }
+        unwritten.clear()
+    }
+
+    /** Streamed to the file, never held as one string; replaced whole or not at all. */
+    private fun write(owner: String, events: List<ListeningEvent>) {
+        runCatching {
+            directory.mkdirs()
+            val target = file(owner)
+            val partial = File(directory, target.name + ".part")
+            partial.outputStream().buffered().use { json.encodeToStream(serializer, events, it) }
+            if (!partial.renameTo(target)) error("could not replace ${target.name}")
+        }.onFailure { android.util.Log.w("ListeningStore", "history not written: $it") }
+    }
+
+    private fun forget(owner: String) {
+        cache.remove(owner)
+        unwritten.remove(owner)
+        file(owner).delete()
     }
 
     companion object {
         const val YOUTUBE_OWNER = "youtube-music"
+        private const val WRITE_DELAY_MS = 30_000L
     }
 }
