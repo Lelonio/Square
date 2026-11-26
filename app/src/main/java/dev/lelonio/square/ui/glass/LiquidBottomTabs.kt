@@ -185,17 +185,14 @@ fun LiquidBottomTabs(
                 onDragStarted = {},
                 onDragStopped = {
                     val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
-                    // LOCAL CHANGE: report a press that lands on the tab that is
-                    // already selected.
+                    // LOCAL CHANGE: the release itself is the selection, and it
+                    // is reported even on the tab that is already selected.
                     //
-                    // Selection is reported by watching `currentIndex` change,
-                    // so releasing on the current tab reported nothing at all.
                     // On a screen that is not a tab — a playlist, the settings,
                     // search — the bar still shows one of them as selected, and
-                    // that is exactly the tab you press to get back to it. The
-                    // press animated and then did nothing.
-                    if (targetIndex == currentIndex) onTabSelected(targetIndex)
+                    // that is exactly the tab you press to get back to it.
                     currentIndex = targetIndex
+                    onTabSelected(targetIndex)
                     animateToValue(targetIndex.toFloat())
                     animationScope.launch {
                         offsetAnimation.animateTo(
@@ -221,12 +218,20 @@ fun LiquidBottomTabs(
                     currentIndex = index
                 }
         }
+        // LOCAL CHANGE: only the hand selects a tab; a change from outside
+        // only moves the indicator.
+        //
+        // Upstream reported every change of `currentIndex`, and the caller's own
+        // index is one of those changes. Tapping two tabs quickly sent the
+        // navigation to A and then B; A arrived, the bar reported A again, B
+        // arrived, the bar reported B again, and the two echoes chased each
+        // other for ever: an endless swing of the indicator and a bar that had
+        // to be force-closed. A drag or press reports itself in onDragStopped.
         LaunchedEffect(dampedDragAnimation) {
             snapshotFlow { currentIndex }
                 .drop(1)
                 .collectLatest { index ->
                     dampedDragAnimation.animateToValue(index.toFloat())
-                    onTabSelected(index)
                 }
         }
 
