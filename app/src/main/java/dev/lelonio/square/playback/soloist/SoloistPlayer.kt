@@ -495,11 +495,19 @@ class SoloistPlayer(
         // Spotify's DJ is Soloist's to run whole: its session, its songs, its
         // voice. Square's own DJ (the queue it feeds, the lines it has said)
         // is librespot's.
-        val dj = contextUri == dev.lelonio.square.data.Catalog.DJ_URI
+        //
+        // But only from its start. Asking for the DJ opens a new session, and a
+        // new session begins again from its first songs: sent for a song picked
+        // further down the queue, or for a DJ queue handed over from librespot
+        // halfway through, it threw the listener back to the top every time,
+        // and the same few songs came round again and again. Anywhere past the
+        // start, the queue as it stands is played as a list.
+        val djQueue = contextUri == dev.lelonio.square.data.Catalog.DJ_URI
+        val dj = djQueue && index == 0 && localPosition == 0L
         sentUri = current.mediaId
         commandedAt = now
         SoloistEngine.listSource = contextUri
-        sentContext = if (asContext || dj) contextUri else SoloistEngine.LIST_CONTEXT
+        sentContext = if ((asContext && !djQueue) || dj) contextUri else SoloistEngine.LIST_CONTEXT
         sentSerial = state.trackSerial
         sentAt = now
         sentPosition = position
@@ -507,7 +515,7 @@ class SoloistPlayer(
         scope.launch(Dispatchers.IO) {
             if (dj) {
                 SoloistEngine.playDj(paused)
-            } else if (asContext) {
+            } else if (asContext && !djQueue) {
                 // The whole context, as far as it goes, so the songs before
                 // the one picked are there too.
                 val from = (index - CONTEXT_PAGE / 2).coerceAtLeast(0)
