@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -1139,11 +1140,19 @@ fun PlaylistScreen(
                         }
                     }
                 }
-                items(suggestions, key = { "suggested:" + it.uri }, contentType = { "suggestion" }) { track ->
+                itemsIndexed(suggestions, key = { _, track -> "suggested:" + track.uri }, contentType = { _, _ -> "suggestion" }) { index, track ->
+                    // A song like any other: a tap plays it, a swipe queues it
+                    // and a long press opens its menu. Only the button adds it
+                    // here; a tap that added it, as this once did, gave no way
+                    // to hear a suggestion before taking it.
+                    SwipeToQueue(onQueue = { onEnqueue(track) }) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .clickable { onAddSuggestion(track) }
+                            .combinedClickable(
+                                onClick = { onPlay(suggestions, index, false) },
+                                onLongClick = { onTrackMenu(track) },
+                            )
                             .padding(start = 24.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -1183,6 +1192,7 @@ fun PlaylistScreen(
                                 modifier = Modifier.size(20.dp),
                             )
                         }
+                    }
                     }
                 }
             }
