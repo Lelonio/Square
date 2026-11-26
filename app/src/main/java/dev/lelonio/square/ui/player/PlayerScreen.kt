@@ -1742,11 +1742,14 @@ fun PlayerScreen(
 
                         // Title and artist on their own capsule, with the two
                         // per-track actions on the right.
-                        GlassSurface(
-                            backdrop = lowerBackdrop,
-                            surfaceColor = LocalPlayerFilm.current,
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier
+                        //
+                        // The glass is the capsule's background, not its
+                        // container. A pane of glass draws what it holds in a
+                        // layer cut to its own shape, and the two buttons,
+                        // which swell and lean under a dragging finger, were
+                        // cut off at the capsule's edge.
+                        Box(
+                            Modifier
                                 .retreat(chrome)
                                 .fillMaxWidth()
                                 // Measured at rest only. Folding away moves
@@ -1756,6 +1759,12 @@ fun PlayerScreen(
                                 .onGloballyPositioned { if (chrome == 1f) lowerTop = it.boundsInWindow().top }
                                 .sharedPill(sharedScope, animatedScope),
                         ) {
+                            GlassSurface(
+                                backdrop = lowerBackdrop,
+                                surfaceColor = LocalPlayerFilm.current,
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier.matchParentSize(),
+                            ) {}
                             Row(
                                 Modifier.padding(start = 22.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
