@@ -5311,6 +5311,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val SINGLES_PAGE = 20
+    private val SINGLES_MAX = 200
+
     private val SUGGESTION_SEEDS = 2
     private val SUGGESTION_COUNT = 10
 
@@ -6269,6 +6272,55 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }.getOrNull()
     }
 
+    /**
+     * Every single and EP, where the web player's page gave only the first of
+     * them.
+     *
+     * Its overview carries one page of each shelf and the count of the whole,
+     * so an artist with a long run of singles showed a handful of them. The
+     * rest is read from the Web API, a page at a time, when a developer app is
+     * set up; without one the first page is all there is.
+     */
+    private suspend fun allSingles(id: String, overviewJson: String, have: List<SearchItem>): List<SearchItem> {
+        val total = runCatching {
+            org.json.JSONObject(overviewJson).getJSONObject("data").getJSONObject("artistUnion")
+                .getJSONObject("discography").getJSONObject("singles").optInt("totalCount")
+        }.getOrDefault(0)
+        if (total <= have.size || !container.webApi.isReady) return have
+        val read = withTimeoutOrNull(6000L) {
+            val found = mutableListOf<dev.lelonio.square.data.AlbumDto>()
+            var offset = 0
+            while (offset < minOf(total, SINGLES_MAX)) {
+                val page = runCatching {
+                    container.api.artistAlbums(artistId = id, groups = "single", limit = SINGLES_PAGE, offset = offset)
+                }.getOrNull() ?: break
+                found += page.items
+                if (page.next == null || page.items.isEmpty()) break
+                offset += page.items.size
+            }
+            found
+        }.orEmpty()
+        if (read.size <= have.size) return have
+        val known = have.mapTo(mutableSetOf()) { it.uri }
+        val titles = have.mapTo(mutableSetOf()) { it.title.lowercase() }
+        val more = read
+            .sortedByDescending { it.releaseDate.orEmpty() }
+            .mapNotNull { album ->
+                val uri = album.uri ?: return@mapNotNull null
+                if (uri in known || !titles.add(album.name.lowercase())) return@mapNotNull null
+                val year = album.releaseDate.orEmpty().take(4)
+                val type = if (album.totalTracks > 1) "EP" else string(R.string.single)
+                SearchItem(
+                    uri = uri,
+                    title = album.name,
+                    subtitle = if (year.isNotEmpty()) "$type • $year" else type,
+                    artworkUrl = album.images.firstOrNull()?.url,
+                )
+            }
+        android.util.Log.i(TAG, "artist $id: ${have.size} singles on the page, ${more.size} more of $total")
+        return have + more
+    }
+
     private suspend fun loadArtist(uri: String, knownName: String = ""): ArtistPage = coroutineScope {
         val id = uri.substringAfterLast(':')
         val market = userCountry
@@ -6316,6 +6368,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return@coroutineScope overview.copy(
                 tracks = enriched,
                 name = overview.name ?: knownName.takeIf { it.isNotEmpty() },
+                singles = allSingles(id, overviewJson.orEmpty(), overview.singles),
             )
         }
 
