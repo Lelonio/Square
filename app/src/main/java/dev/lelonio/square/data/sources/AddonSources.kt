@@ -1,20 +1,16 @@
 package dev.lelonio.square.data.sources
 
 import android.content.Context
-import android.net.Uri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -64,7 +60,9 @@ class AddonSourceStore(context: Context) {
     val sources: StateFlow<List<AddonSourceConfig>> = _sources.asStateFlow()
 
     @Synchronized private fun read(): List<AddonSourceConfig> = runCatching {
-        json.decodeFromString(AddonSourceList.serializer(), prefs.getString(KEY, null) ?: "{}").sources
+        json.decodeFromString(AddonSourceList.serializer(), prefs.getString(KEY, null) ?: "{}")
+            .sources
+            .filter { runCatching { AddonSourceClient.canonicalBaseUrl(it.baseUrl) == it.baseUrl }.getOrDefault(false) }
     }.getOrDefault(emptyList())
 
     @Synchronized private fun commit(value: List<AddonSourceConfig>) {
@@ -73,20 +71,21 @@ class AddonSourceStore(context: Context) {
         _sources.value = safe
     }
 
-    fun add(baseUrl: String, name: String = ""): AddonSourceConfig {
-        val canonical = canonicalBaseUrl(baseUrl)
-        require(_sources.value.none { canonicalBaseUrl(it.baseUrl) == canonical }) { "That addon is already added" }
+    @Synchronized fun add(baseUrl: String, name: String = ""): AddonSourceConfig {
+        val canonical = AddonSourceClient.canonicalBaseUrl(baseUrl)
+        require(_sources.value.none { it.baseUrl == canonical }) { "That addon is already added" }
+        require(_sources.value.size < MAX_SOURCES) { "You can add up to $MAX_SOURCES sources" }
         val item = AddonSourceConfig(name = name.trim(), baseUrl = canonical)
         commit(_sources.value + item)
         return item
     }
 
-    fun update(source: AddonSourceConfig) {
-        require(canonicalBaseUrl(source.baseUrl) == source.baseUrl) { "Invalid addon URL" }
+    @Synchronized fun update(source: AddonSourceConfig) {
+        require(AddonSourceClient.canonicalBaseUrl(source.baseUrl) == source.baseUrl) { "Invalid addon URL" }
         commit(_sources.value.map { if (it.id == source.id) source else it })
     }
 
-    fun remove(id: String) = commit(_sources.value.filterNot { it.id == id })
+    @Synchronized fun remove(id: String) = commit(_sources.value.filterNot { it.id == id })
 
     private companion object {
         const val KEY = "sources_v1"
@@ -108,7 +107,7 @@ class AddonSourceClient(
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     suspend fun manifest(): AddonManifest = withContext(Dispatchers.IO) {
-        val root = getJson("manifest.json") as? JsonObject ?: error("Invalid addon manifest")
+        val root = requestJson(endpoint("manifest.json")) as? JsonObject ?: error("Invalid addon manifest")
         AddonManifest(
             id = root.text("id"), name = root.text("name"), version = root.text("version"),
             resources = root.array("resources").mapNotNull { it.asText() },
@@ -151,8 +150,6 @@ class AddonSourceClient(
         AddonStream(streamUrl.toString(), headers, raw.text("mimeType").ifBlank { null })
     }
 
-    private fun getJson(path: String): JsonElement = requestJson(endpoint(path))
-
     private fun requestJson(url: HttpUrl): JsonElement {
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
         client.newCall(request).execute().use { response ->
@@ -165,7 +162,7 @@ class AddonSourceClient(
 
     private fun endpoint(vararg path: String): HttpUrl {
         val builder = base.newBuilder()
-        path.forEach { segment -> builder.addPathSegment(segment) }
+        path.forEach(builder::addPathSegment)
         return builder.build()
     }
 
@@ -178,12 +175,13 @@ class AddonSourceClient(
             .followRedirects(false)
             .build()
 
-        /** HTTPS is required except for loopback/private LAN addon servers. */
+        /** HTTPS is required except for loopback/private-LAN addon servers. */
         fun canonicalBaseUrl(raw: String): String {
             val parsed = raw.trim().trimEnd('/').toHttpUrlOrNull()
                 ?: throw IllegalArgumentException("Enter a valid addon URL")
             require(parsed.username.isEmpty() && parsed.password.isEmpty()) { "Do not put credentials in the URL" }
             require(parsed.encodedPath.isEmpty() || parsed.encodedPath == "/") { "Enter the addon server root URL" }
+            require(parsed.query == null && parsed.fragment == null) { "Addon URL cannot include query or fragment" }
             require(parsed.isHttps || isLocalHost(parsed.host)) { "Use HTTPS, or HTTP only for a local addon" }
             return parsed.newBuilder().encodedPath("/").build().toString().removeSuffix("/")
         }
@@ -203,7 +201,7 @@ data class AddonManifest(
     val resources: List<String>,
 )
 
-/** Finds the best exact catalogue match, rejecting unrelated versions/remixes. */
+/** Finds a conservative title/artist/runtime match. */
 object AddonTrackMatcher {
     fun bestMatch(
         candidates: List<AddonTrack>,
@@ -218,7 +216,7 @@ object AddonTrackMatcher {
             .filter { normalize(it.title) == wantedTitle }
             .filter { candidate ->
                 val candidateArtists = candidate.artist.split(',', '&', ';').map(::normalize)
-                candidateArtists.any { it in wantedArtists || wantedArtists.any { wanted -> it == wanted } }
+                candidateArtists.any { it in wantedArtists }
             }
             .filter { candidate ->
                 val actual = candidate.durationMs

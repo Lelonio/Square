@@ -1,6 +1,5 @@
 package dev.lelonio.square.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,16 +28,15 @@ import dev.lelonio.square.data.sources.AddonSourceClient
 import dev.lelonio.square.data.sources.AddonSourceConfig
 import dev.lelonio.square.data.sources.AddonSourceStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * Addon management UI. Hosts should embed this in the Playback/Source settings
- * page. Addons are regular HTTPS endpoints; this UI never installs plugin code.
- */
+/** Addon management UI; host it in the app's Settings > Playback > Sources page. */
 @Composable
 fun AddonSourcesSection() {
     val context = LocalContext.current
     val store = remember(context) { AddonSourceStore(context) }
+    val scope = rememberCoroutineScope()
     val sources by store.sources.collectAsStateWithLifecycle()
     var address by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
@@ -71,9 +70,7 @@ fun AddonSourcesSection() {
             onClick = {
                 checking = true
                 error = null
-                // Don't persist an endpoint until it has responded and its
-                // manifest has been checked.
-                kotlinx.coroutines.MainScope().launch {
+                scope.launch {
                     try {
                         val candidate = AddonSourceConfig(baseUrl = address.trim())
                         val manifest = withContext(Dispatchers.IO) { AddonSourceClient(candidate).manifest() }
