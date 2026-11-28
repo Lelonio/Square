@@ -60,7 +60,7 @@ fun ClassicLyricsView(
 ) {
     val listState = remember(lyrics) { LazyListState() }
     // Read as a derived value, so only a change of line recomposes the list.
-    val activeLine by remember(lyrics) {
+    val activeLine by remember(lyrics, positionMs) {
         derivedStateOf {
             if (!lyrics.synced) -1
             else lyrics.lines.indexOfLast { (it.startTimeMs ?: 0L) <= positionMs.value }

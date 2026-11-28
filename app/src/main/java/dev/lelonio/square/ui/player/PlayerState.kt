@@ -355,8 +355,19 @@ fun rememberPositionMs(player: Player?, isPlaying: Boolean): State<Long> {
     // playing, the position stayed where it was after a seek made while paused,
     // or while a video buffered at its new place: the time on screen was wrong,
     // and the bar's thumb went back to the old place before jumping forward.
+    // A track change and a change of state are read at once too: not every
+    // player reports a discontinuity with them, and the time of the track
+    // before lingered on the new one.
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+            private fun sync() {
+                position.longValue = player?.currentPosition?.coerceAtLeast(0) ?: 0
+            }
+
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) = sync()
+
+            override fun onPlaybackStateChanged(playbackState: Int) = sync()
+
             override fun onPositionDiscontinuity(
                 oldPosition: Player.PositionInfo,
                 newPosition: Player.PositionInfo,
@@ -379,7 +390,11 @@ fun rememberPositionMs(player: Player?, isPlaying: Boolean): State<Long> {
 
         while (true) {
             delay(250)
-            position.longValue = player.currentPosition.coerceAtLeast(0)
+            // Nothing advances while buffering; the listener above reads the
+            // position as that begins and ends.
+            if (player.playbackState != Player.STATE_BUFFERING) {
+                position.longValue = player.currentPosition.coerceAtLeast(0)
+            }
         }
     }
 

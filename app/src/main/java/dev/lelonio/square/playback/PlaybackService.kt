@@ -441,6 +441,13 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var crossfade: dev.lelonio.square.data.CrossfadeStore
     private var saveJob: Job? = null
 
+    /** The debounced save waiting to be made; see [scheduleSavePlayback]. */
+    private var pendingSave: Job? = null
+
+    /** Which snapshot is the newest, so an older one never lands on top of it. */
+    private val saveGeneration = java.util.concurrent.atomic.AtomicLong()
+    private val saveLock = Any()
+
     private val playbackHost = object : dev.lelonio.square.backend.PlaybackHost {
         override val context get() = this@PlaybackService
         override val looper get() = mainLooper
@@ -1401,6 +1408,7 @@ class PlaybackService : MediaLibraryService() {
         // the first act of restoring a queue was deleting it.
         if (player.mediaItemCount > 0) runCatching { savePlayback() }
         saveJob?.cancel()
+        pendingSave?.cancel()
 
         // The engine goes only when another *service* takes over.
         //
@@ -2121,7 +2129,7 @@ class PlaybackService : MediaLibraryService() {
                         androidx.media3.common.Player.EVENT_REPEAT_MODE_CHANGED,
                     )
                 ) {
-                    savePlayback()
+                    scheduleSavePlayback()
                     recordEpisode()
                 }
             }
@@ -2146,7 +2154,7 @@ class PlaybackService : MediaLibraryService() {
             while (true) {
                 delay(SAVE_INTERVAL_MS)
                 if (player.isPlaying) {
-                    savePlayback()
+                    scheduleSavePlayback()
                     recordEpisode()
                 }
             }
@@ -2267,13 +2275,6 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    /**
-     * Snapshots the queue.
-     *
-     * Read from [PlayQueue] rather than through the Media3 timeline because only
-     * the queue knows the pre-shuffle order and the permutation on top of it;
-     * the timeline exposes just the current sequence.
-     */
     /** What was playing at the last transition, for marking it heard; see observeForSaving. */
     private var episodePlaying: String? = null
 
@@ -2293,8 +2294,56 @@ class PlaybackService : MediaLibraryService() {
      */
     private var releasing = false
 
+    /**
+     * Saves shortly after the last change rather than on every one: a skip fires
+     * several events, and serialising the whole queue for each of them stalled
+     * the main thread. The snapshot is read here, on the player's thread; the
+     * encoding and the write happen off it.
+     */
+    private fun scheduleSavePlayback() {
+        if (releasing) return
+        val source = player
+        pendingSave?.cancel()
+        pendingSave = scope.launch {
+            delay(SAVE_DEBOUNCE_MS)
+            // Swapped since: the new player may not have its queue yet, and
+            // saving it empty would clear the one it is about to restore.
+            if (player !== source) return@launch
+            val snapshot = playbackSnapshot() ?: return@launch
+            val generation = saveGeneration.incrementAndGet()
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                runCatching { writeSnapshot(snapshot, generation) }
+                    .onFailure { android.util.Log.w(TAG, "queue not saved: $it") }
+            }
+        }
+    }
+
+    /**
+     * Saves before returning, for when what comes next reads the store or may be
+     * the end of the process.
+     */
     private fun savePlayback() {
         if (releasing) return
+        pendingSave?.cancel()
+        val snapshot = playbackSnapshot() ?: return
+        writeSnapshot(snapshot, saveGeneration.incrementAndGet())
+    }
+
+    private fun writeSnapshot(snapshot: SavedPlayback, generation: Long) {
+        synchronized(saveLock) {
+            // An empty queue clears the store; see PlaybackStore.save.
+            if (generation == saveGeneration.get()) playbackStore.save(snapshot)
+        }
+    }
+
+    /**
+     * Snapshots the queue; null when what is saved is to be left alone.
+     *
+     * Read from [PlayQueue] rather than through the Media3 timeline because only
+     * the queue knows the pre-shuffle order and the permutation on top of it;
+     * the timeline exposes just the current sequence.
+     */
+    private fun playbackSnapshot(): SavedPlayback? {
         // A backend with no PlayQueue behind it — the YouTube one — is saved off
         // the Media3 timeline instead. That loses the pre-shuffle order, which
         // only librespot's queue knows, so a shuffled queue comes back in the
@@ -2305,28 +2354,26 @@ class PlaybackService : MediaLibraryService() {
         // A video in front of Soloist: what was saved as it came on is Soloist's
         // queue, the one to go back to; the parked engine's would overwrite it
         // with the queue from before Soloist played.
-        if (playerKind == PlayerKind.VIDEO && soloistWanted()) return
+        if (playerKind == PlayerKind.VIDEO && soloistWanted()) return null
         val queue = queue.takeIf { playerKind != PlayerKind.SOLOIST && playerKind != PlayerKind.SPOTIFY_WEB }
-            ?: return saveTimeline()
-        if (queue.items.isEmpty()) {
-            playbackStore.clear()
-            return
-        }
+            ?: return timelineSnapshot()
+        if (queue.items.isEmpty()) return emptySnapshot()
 
-        playbackStore.save(
-            SavedPlayback(
-                tracks = queue.originalTracks.map(::toCatalogTrack),
-                shuffleOrder = queue.shuffleOrder,
-                smartShuffle = queue.smartShuffle,
-                index = queue.currentIndex,
-                positionMs = player.currentPosition.coerceAtLeast(0),
-                repeatMode = player.repeatMode,
-                contextUri = queue.contextUri,
-                contextOrdered = queue.contextIsOrdered,
-                contextLabel = queue.contextLabel,
-            ),
+        return SavedPlayback(
+            // Copied: it is encoded on another thread.
+            tracks = queue.originalTracks.map(::toCatalogTrack),
+            shuffleOrder = queue.shuffleOrder?.toList(),
+            smartShuffle = queue.smartShuffle,
+            index = queue.currentIndex,
+            positionMs = player.currentPosition.coerceAtLeast(0),
+            repeatMode = player.repeatMode,
+            contextUri = queue.contextUri,
+            contextOrdered = queue.contextIsOrdered,
+            contextLabel = queue.contextLabel,
         )
     }
+
+    private fun emptySnapshot() = SavedPlayback(tracks = emptyList(), index = 0, positionMs = 0)
 
     /**
      * The same snapshot, taken from the player's own timeline.
@@ -2335,12 +2382,9 @@ class PlaybackService : MediaLibraryService() {
      * track's URI, its metadata and the context it came from into each one — so
      * this is a read of what is loaded rather than a second bookkeeping of it.
      */
-    private fun saveTimeline() {
+    private fun timelineSnapshot(): SavedPlayback? {
         val count = player.mediaItemCount
-        if (count == 0) {
-            playbackStore.clear()
-            return
-        }
+        if (count == 0) return emptySnapshot()
         val tracks = (0 until count).map { index ->
             val item = player.getMediaItemAt(index)
             val metadata = item.mediaMetadata
@@ -2358,19 +2402,17 @@ class PlaybackService : MediaLibraryService() {
             )
         }
         val currentTrack = tracks.getOrNull(player.currentMediaItemIndex)
-        if (currentTrack != null && currentTrack.name.isBlank()) return
+        if (currentTrack != null && currentTrack.name.isBlank()) return null
         val extras = player.currentMediaItem?.mediaMetadata?.extras
-        playbackStore.save(
-            SavedPlayback(
-                tracks = tracks,
-                shuffleOrder = null,
-                index = player.currentMediaItemIndex,
-                positionMs = player.currentPosition.coerceAtLeast(0),
-                repeatMode = player.repeatMode,
-                contextUri = extras?.getString(dev.lelonio.square.ui.EXTRA_CONTEXT_URI),
-                contextOrdered = extras?.getBoolean(dev.lelonio.square.ui.EXTRA_CONTEXT_ORDERED) == true,
-                contextLabel = extras?.getString(dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL).orEmpty(),
-            ),
+        return SavedPlayback(
+            tracks = tracks,
+            shuffleOrder = null,
+            index = player.currentMediaItemIndex,
+            positionMs = player.currentPosition.coerceAtLeast(0),
+            repeatMode = player.repeatMode,
+            contextUri = extras?.getString(dev.lelonio.square.ui.EXTRA_CONTEXT_URI),
+            contextOrdered = extras?.getBoolean(dev.lelonio.square.ui.EXTRA_CONTEXT_ORDERED) == true,
+            contextLabel = extras?.getString(dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL).orEmpty(),
         )
     }
 
@@ -2669,6 +2711,7 @@ class PlaybackService : MediaLibraryService() {
 
         /** How often the position is written back while playing. */
         private const val SAVE_INTERVAL_MS = 10_000L
+        private const val SAVE_DEBOUNCE_MS = 300L
 
         /** What the engine reports for an account it cannot stream to. */
         private const val PREMIUM_REQUIRED = "premium account required"
