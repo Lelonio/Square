@@ -1,6 +1,7 @@
 package dev.lelonio.square.playback
 
 import android.os.Looper
+import android.os.SystemClock
 import android.net.Uri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -50,7 +51,9 @@ class LibrespotPlayer(
      * two engines and mixing them.
      */
     private val fadeOutThen: (() -> Unit) -> Unit,
-    private val fadeIn: () -> Unit,
+    // Retained for the backend constructor. Track confirmation uses the sink's
+    // gate directly so it can fade in without flushing newly queued audio.
+    @Suppress("UNUSED_PARAMETER") fadeIn: () -> Unit,
     /**
      * Whether the engine dissolves a change of track itself.
      *
@@ -78,100 +81,72 @@ class LibrespotPlayer(
     private val onDuckReverb: (Float) -> Unit,
 ) : SimpleBasePlayer(looper), NativeEvents {
 
-    /**
-     * Hands the current queue to the engine, with the fade around it.
-     *
-     * The whole list, not the current track: the engine now drives playback
-     * through Spotify Connect, where the queue is part of the state published
-     * to the account. Loading one track at a time would show every other device
-     * a queue with nothing in it, and would take the end-of-track advance away
-     * from the side that owns it.
-     */
-    private fun pushQueue(startPlaying: Boolean, positionMs: Int = 0) {
-        val uris = queue.items.map { it.uri }
-        if (uris.isEmpty()) return
-        loadSentAt = android.os.SystemClock.elapsedRealtime()
-        // From here until the engine is on this queue, what it says it is
-        // playing is the past; see [ownQueuePending].
-        ownQueuePending = true
-        handler.removeCallbacks(giveUpOnOwnQueue)
-        handler.postDelayed(giveUpOnOwnQueue, OWN_QUEUE_MS)
-        val index = queue.currentIndex
-        val contextUri = queue.contextUri.orEmpty()
-        // The DJ's lines are said only over the DJ's own queue; see SpotifyDj.
-        NativeBridge.djSetActive(
-            dev.lelonio.square.backend.spotify.SpotifyDj.enabled &&
-                dev.lelonio.square.backend.spotify.SpotifyDj.isDj(contextUri),
-        )
-        // Never as a context, whatever it is.
-        //
-        // Handing the engine a playlist URI asks Spotify to resolve the list
-        // itself, and its copy is not the one on screen: it steps over tracks
-        // the account is not offered here, quietly and without a word in the
-        // log, so a song sitting plainly in the list is jumped as if it were
-        // not there. Liked Songs hit this first and was fixed on its own; the
-        // same thing happens to any playlist.
-        //
-        // What goes over instead is this list, in this order, published under
-        // the playlist it came from — see native/src/engine.rs, which files it
-        // with the context so the account still records the listen against the
-        // playlist and other devices still name it. What is lost is Spotify's
-        // own ordering of a list the app has already read, which is nothing,
-        // and what is gained is that the queue plays what it shows.
-        val asContext = false
+    // The service and backend share the output registered with the native sink.
+    private val audioOutput: AudioOutput
+        get() = (appContext as dev.lelonio.square.SquareApplication).spotifyBackend.audioOutput
 
-        // A track picked from a list is not one the engine could see coming,
-        // and this used to fade the output down over its own half of the
-        // dissolve while the engine went looking for the context. Two fades
-        // over one change: the output came back up the moment the load was
-        // sent, and the engine's tail, which had only just started going down,
-        // was heard again underneath the new song rising. The engine fades the
-        // song it is leaving whether or not it has anywhere to go yet, so this
-        // one leaves the output alone; see handle_command_load in player.rs.
-        changing {
-            // Back on the player's looper before anything is read or called.
-            // The fade runs on its own thread, and everything here — the queue,
-            // playWhenReady, the engine's own idea of what is loaded — belongs
-            // to the looper. Reading it from the fade thread is a race, and a
-            // race in the middle of a track change is exactly the rare crash
-            // that skipping quickly could produce.
-            // A load is the one command with no way around the Connect device,
-            // so when that is gone the track simply never changes. Build a new
-            // one first and load on the other side of it.
-            withDevice {
-                loadSentAt = 0L
-                if (released) return@withDevice
-                // Read now, not when this was scheduled. The fade takes a
-                // moment, and a tap on a track while paused arrives as "load
-                // this" followed immediately by "play": with the flag frozen at
-                // schedule time the load went out as paused, the play landed
-                // before it, and the track sat there selected and silent.
-                val wanted = startPlaying || playWhenReady || wantPlay
-                runCatching {
-                    NativeBridge.loadQueue(
-                        uris,
-                        index,
-                        wanted,
-                        positionMs,
-                        contextUri,
-                        playAsContext = asContext,
-                    )
-                }
-                    .onFailure { android.util.Log.e("SquarePlayer", "load failed: ${it.message}") }
-                    .onSuccess { engineQueueStale = false }
-                if (wanted && !dissolves()) fadeIn()
-            }
-        }
+    private val commands = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "square-librespot-commands").apply { isDaemon = true }
     }
 
-    /**
-     * Runs a change of track, through the output fade or straight through.
-     *
-     * Straight through while the engine dissolves: what it mixes has to reach
-     * the speaker to be heard at all. See [dissolves].
-     */
-    private fun changing(action: () -> Unit) {
-        if (dissolves()) action() else fadeOutThen(action)
+    @Volatile
+    private var queueLoadGeneration = 0L
+    private var waitingToSendLoad = false
+    private var wantedWhenLoadIsSent = false
+    private var trackFadePending = false
+    private var awaitingLoadStart = false
+    private var lastReportedUri: String? = null
+
+    private fun beginTrackFade() {
+        if (dissolves()) return
+        trackFadePending = true
+        fadeOutThen {}
+    }
+
+    private fun finishTrackFade() {
+        if (!trackFadePending) return
+        trackFadePending = false
+        audioOutput.finishTrackChange()
+    }
+
+    private fun pushQueue(startPlaying: Boolean, positionMs: Int = 0, takeOver: Boolean = false) {
+        val tracks = queue.items.toList()
+        if (tracks.isEmpty()) return
+        val generation = ++queueLoadGeneration
+        ownQueuePending = true
+        waitingToSendLoad = true
+        val targetUri = tracks.getOrNull(queue.currentIndex)?.uri
+        awaitingLoadStart = targetUri != null && targetUri == lastReportedUri
+        wantedWhenLoadIsSent = startPlaying || playWhenReady || wantPlay
+        clearSeek()
+        this.positionMs = positionMs.toLong()
+        playbackState = Player.STATE_BUFFERING
+        handler.removeCallbacks(giveUpOnOwnQueue)
+        handler.postDelayed(giveUpOnOwnQueue, TRACK_CONFIRM_MS)
+        val index = queue.currentIndex
+        val contextUri = queue.contextUri.orEmpty()
+        val djActive = dev.lelonio.square.backend.spotify.SpotifyDj.enabled &&
+            dev.lelonio.square.backend.spotify.SpotifyDj.isDj(contextUri)
+        beginTrackFade()
+        withDevice {
+            if (generation != queueLoadGeneration) return@withDevice
+            waitingToSendLoad = false
+            val wanted = wantedWhenLoadIsSent
+            engine("load queue") {
+                if (generation != queueLoadGeneration) return@engine
+                if (takeOver && !OfflineMode.active.value) {
+                    runCatching {
+                        if (NativeBridge.playbackElsewhere) NativeBridge.takeOver()
+                    }.onFailure { android.util.Log.w("SquarePlayer", "could not take over", it) }
+                }
+                if (generation != queueLoadGeneration) return@engine
+                NativeBridge.djSetActive(djActive)
+                NativeBridge.loadQueue(tracks.map { it.uri }, index, wanted, positionMs, contextUri)
+                handler.post {
+                    if (!released && generation == queueLoadGeneration) engineQueueStale = false
+                }
+            }
+        }
     }
 
     /**
@@ -196,7 +171,44 @@ class LibrespotPlayer(
     /** Mirrors what the engine last told us. Only touched on the app looper. */
     private var playbackState: @Player.State Int = Player.STATE_IDLE
     private var playWhenReady = false
-    private var positionMs = 0L
+    private var positionAnchorMs = 0L
+    private var positionAnchorRealtimeMs = SystemClock.elapsedRealtime()
+    private var positionAdvancing = false
+    private var positionAnchorSpeed = 1f
+
+    private var positionMs: Long
+        get() = anchoredPosition(SystemClock.elapsedRealtime())
+        set(value) {
+            positionAnchorMs = value.coerceAtLeast(0L)
+            positionAnchorRealtimeMs = SystemClock.elapsedRealtime()
+            positionAdvancing = false
+        }
+
+    private fun anchoredPosition(now: Long): Long = positionAnchorMs +
+        if (positionAdvancing) ((now - positionAnchorRealtimeMs) * positionAnchorSpeed).toLong() else 0L
+
+    private fun positionSupplier(): PositionSupplier {
+        val advancing = queue.items.isNotEmpty() && playbackState == Player.STATE_READY && playWhenReady &&
+            !ownQueuePending && !skipPending && !skipInFlight && !seekInFlight
+        val speed = playbackParameters.speed
+        if (advancing != positionAdvancing || speed != positionAnchorSpeed) {
+            val now = SystemClock.elapsedRealtime()
+            positionAnchorMs = anchoredPosition(now)
+            positionAnchorRealtimeMs = now
+            positionAdvancing = advancing
+            positionAnchorSpeed = speed
+        }
+
+        val anchor = positionAnchorMs
+        val anchorTime = positionAnchorRealtimeMs
+        val duration = queue.items.getOrNull(queue.currentIndex)?.durationMs
+            ?.takeIf { it > 0L } ?: Long.MAX_VALUE
+        return PositionSupplier {
+            val elapsed = if (advancing) ((SystemClock.elapsedRealtime() - anchorTime) * speed).toLong() else 0L
+            (anchor + elapsed).coerceIn(0L, duration)
+        }
+    }
+    @Volatile
     private var released = false
     private var repeatMode: @Player.RepeatMode Int = Player.REPEAT_MODE_OFF
 
@@ -389,7 +401,7 @@ class LibrespotPlayer(
             .setAvailableCommands(COMMANDS)
             .setPlaybackState(reportedState)
             .setPlayWhenReady(playWhenReady, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
-            .setContentPositionMs(positionMs)
+            .setContentPositionMs(positionSupplier())
             .setRepeatMode(repeatMode)
             .setShuffleModeEnabled(shuffleEnabled)
             .setPlaybackParameters(playbackParameters)
@@ -541,9 +553,17 @@ class LibrespotPlayer(
      * refuses a command, so reaching this line means both paths failed and
      * playback is genuinely beyond the app's reach.
      */
-    private inline fun engine(what: String, command: () -> Unit) {
-        runCatching(command)
-            .onFailure { android.util.Log.e("SquarePlayer", "$what did not reach the engine", it) }
+    private fun engine(what: String, command: () -> Unit) {
+        if (commands.isShutdown) return
+        commands.execute {
+            if (released) return@execute
+            runCatching(command)
+                .onFailure { android.util.Log.e("SquarePlayer", "$what did not reach the engine", it) }
+        }
+    }
+
+    private fun refreshConnect() {
+        if (!released) engine("refresh Connect") { dev.lelonio.square.data.RemoteConnect.refresh() }
     }
 
     /** Whether the engine says its Connect device is gone; false if it cannot answer. */
@@ -586,16 +606,7 @@ class LibrespotPlayer(
     /** Set when the engine stopped its player; a play then has to load again. */
     private var engineStopped = false
 
-    /** When a load went into [changing] and has not yet gone to the engine; 0 for none. */
-    private var loadSentAt = 0L
-
-    /**
-     * A load still on its way. Bounded: a fade cut short or a reconnect that
-     * drops it never clears it, and a play button waiting on it for good is
-     * a dead one.
-     */
-    private fun loadOnItsWay(): Boolean =
-        loadSentAt != 0L && android.os.SystemClock.elapsedRealtime() - loadSentAt < 2_000
+    private fun loadOnItsWay(): Boolean = waitingToSendLoad || loadInFlight
 
     /** Set while a reconnection is in flight, so a burst of taps starts one. */
     private var reconnecting = false
@@ -618,7 +629,7 @@ class LibrespotPlayer(
         override fun run() {
             if (released) return
             if (!reconnecting && !OfflineMode.active.value) {
-                runCatching { dev.lelonio.square.data.RemoteConnect.refresh() }
+                refreshConnect()
             }
             if (!reconnecting && remote == null && !OfflineMode.active.value &&
                 (playWhenReady || wantPlay) && queue.items.isNotEmpty() && deviceGone
@@ -638,14 +649,14 @@ class LibrespotPlayer(
     private val resumeHereHandler: (dev.lelonio.square.data.RemotePlayback) -> Unit = { target ->
         handler.post {
             if (!released && focus.requestFocus()) {
-                Thread({
+                engine("resume Connect playback") {
                     runCatching {
                         NativeBridge.resumeHere(target.realContext.orEmpty(), target.uri, target.positionMs.toInt())
                     }.onFailure {
-                        android.util.Log.e("SquarePlayer", "could not resume Connect playback here", it)
-                        handler.post { focus.abandonFocus() }
+                        handler.post { if (!released) focus.abandonFocus() }
+                        throw it
                     }
-                }, "square-resume-here").start()
+                }
             }
         }
     }
@@ -725,36 +736,30 @@ class LibrespotPlayer(
      * try is better: the command was going to be ignored either way, and going
      * ahead at least reaches the engine's own fallback, which stops the sound.
      */
+    private var afterReconnect: (() -> Unit)? = null
+
     private fun withDevice(then: () -> Unit) {
-        // Keep downloaded tracks moving while Spotify is unavailable. A
-        // reconnect on every skip destroys the working downloads-only player.
-        // Offline for any reason: bringing the session back is the keeper's
-        // job, and a handshake tried here, on a network carrying nothing, held
-        // the downloaded track for as long as the handshake took to give up.
-        if (OfflineMode.active.value) {
-            handler.post { if (!released) then() }
+        if (released) return
+        if (OfflineMode.active.value || !deviceGone) {
+            then()
             return
         }
-        if (!deviceGone) {
-            handler.post { if (!released) then() }
-            return
-        }
-        if (reconnecting) {
-            android.util.Log.i("SquarePlayer", "already reconnecting, dropping this one")
-            return
-        }
+        afterReconnect = then
+        if (reconnecting) return
         reconnecting = true
-        Thread({
-            runCatching { NativeBridge.reconnect() }
-                .onFailure { android.util.Log.e("SquarePlayer", "reconnect failed", it) }
-            handler.post {
-                reconnecting = false
-                // The new device has never been told what this queue is: its
-                // predecessor's state went with the session it belonged to.
-                engineQueueStale = true
-                if (!released) then()
+        engine("reconnect") {
+            try {
+                NativeBridge.reconnect()
+            } finally {
+                handler.post {
+                    reconnecting = false
+                    engineQueueStale = true
+                    val continuation = afterReconnect
+                    afterReconnect = null
+                    if (!released) continuation?.invoke()
+                }
             }
-        }, "square-reconnect").start()
+        }
     }
 
     /** Call after any queue mutation, before [invalidateState]. */
@@ -853,6 +858,9 @@ class LibrespotPlayer(
             return
         }
 
+        val coalesce = skipInFlight || skipPending
+        val forceLoad = skipInFlight || ownQueuePending
+        clearSeek()
         queue.currentIndex = index.coerceIn(0, maxOf(0, queue.items.lastIndex))
         // A skip starts the new track at its beginning. Media3 sends
         // C.TIME_UNSET for "wherever it starts", which as a number is very
@@ -874,37 +882,23 @@ class LibrespotPlayer(
 
         playbackState = Player.STATE_BUFFERING
         skipPending = true
+        skipNeedsLoad = forceLoad
         invalidateState()
-
-        // The first skip of a burst goes out at once; only the ones on top of
-        // it wait. Waiting for the first was a fifth of a second between the
-        // tap and anything happening at all — the delay this settle exists to
-        // avoid, spent on the one skip that never needed it.
-        //
-        // Unless the change is dissolved, where nothing is waiting: the song
-        // being left goes on playing through it, and the fade starts when the
-        // engine takes the load. What the wait buys is one load instead of two
-        // for a double tap, and a load is an audio key: Spotify meters those
-        // per session and answers a burst by refusing everything for up to
-        // half a minute; see audio_key.rs.
-        val delay = if (skipInFlight || dissolves()) SKIP_SETTLE_MS else 0L
-        skipInFlight = true
         handler.removeCallbacks(settleSkip)
-        handler.postDelayed(settleSkip, delay)
-        // Held until the engine says it is on the track that was asked for.
-        //
-        // Cleared as soon as the command went out, the events still coming in
-        // about the track being left were taken as the truth, and the screen
-        // walked backwards to the song the listener had just skipped. The
-        // timeout is the way out of a command that never lands.
         handler.removeCallbacks(skipGaveUp)
-        handler.postDelayed(skipGaveUp, SKIP_CONFIRM_MS)
+        handler.postDelayed(skipGaveUp, TRACK_CONFIRM_MS)
+        if (coalesce) handler.postDelayed(settleSkip, SKIP_SETTLE_MS) else settleSkip.run()
     }
 
     /** The engine never confirmed the skip; stop ignoring what it says. */
     private val skipGaveUp = Runnable {
         skipPending = false
         skipInFlight = false
+        awaitingLoadStart = false
+        if (ownQueuePending) return@Runnable
+        loadInFlight = false
+        finishTrackFade()
+        playbackState = if (sounding) Player.STATE_READY else Player.STATE_IDLE
         // And stop contradicting it.
         //
         // Clearing the flags was not enough: the queue kept the track that was
@@ -921,50 +915,43 @@ class LibrespotPlayer(
                 "skip to ${queue.currentIndex} never confirmed, back to the engine's $engineIndex",
             )
             queue.currentIndex = engineIndex
-            invalidateState()
+            positionMs = 0L
         }
+        invalidateState()
     }
+
+    private var skipNeedsLoad = false
 
     private val settleSkip = Runnable {
         if (released) return@Runnable
         val target = queue.currentIndex
         val from = engineIndex
+        val startPosition = positionMs
+        skipPending = false
+        skipInFlight = true
 
         when {
+            skipNeedsLoad || deviceGone || engineQueueStale || startPosition > 0L || from < 0 -> {
+                pushQueue(startPlaying = playWhenReady, positionMs = startPosition.toInt())
+            }
+
             from == target -> {
-                if (positionMs > 0) engine("seek") { NativeBridge.seek(positionMs) }
+                skipInFlight = false
+                handler.removeCallbacks(skipGaveUp)
+                playbackState = Player.STATE_READY
+                invalidateState()
             }
 
-            // Nothing is listening for a skip: a step command would be
-            // accepted by a dead device and discarded, and the old track would
-            // play on. The queue is pushed instead, which rebuilds the device
-            // first and then loads the track that was asked for.
-            deviceGone -> {
-                pushQueue(startPlaying = playWhenReady, positionMs = 0)
-            }
-
-            // A step either way is a skip, and Spirc has to be the one making
-            // it: reloading the queue for a skip would restart the context and
-            // show up on other devices as a new session rather than a next.
-            !engineQueueStale && from >= 0 && target == from + 1 -> changing {
-                handler.post {
-                    if (released) return@post
-                    runCatching { NativeBridge.next() }
-                    if (!dissolves()) fadeIn()
+            target == from + 1 || target == from - 1 -> {
+                val targetUri = queue.items.getOrNull(target)?.uri
+                awaitingLoadStart = targetUri != null && targetUri == lastReportedUri
+                beginTrackFade()
+                engine("skip") {
+                    if (target > from) NativeBridge.next() else NativeBridge.previous()
                 }
             }
 
-            !engineQueueStale && from >= 0 && target == from - 1 -> changing {
-                handler.post {
-                    if (released) return@post
-                    runCatching { NativeBridge.previous() }
-                    if (!dissolves()) fadeIn()
-                }
-            }
-
-            else -> {
-                pushQueue(startPlaying = playWhenReady, positionMs = positionMs.toInt())
-            }
+            else -> pushQueue(startPlaying = playWhenReady, positionMs = startPosition.toInt())
         }
     }
 
@@ -992,6 +979,7 @@ class LibrespotPlayer(
     }
 
     override fun handleStop(): ListenableFuture<*> {
+        resetTrackRequests()
         engine("stop") { NativeBridge.stop() }
         wantPlay = false
         focus.abandonFocus()
@@ -1017,8 +1005,11 @@ class LibrespotPlayer(
             // anyway would talk over it.
             if (!focus.requestFocus()) return Futures.immediateVoidFuture()
             wantPlay = true
+            wantedWhenLoadIsSent = true
             this.playWhenReady = true
-            if (playbackState == Player.STATE_IDLE) {
+            if (loadOnItsWay() || ownQueuePending || skipPending || skipInFlight) {
+                playbackState = Player.STATE_BUFFERING
+            } else if (playbackState == Player.STATE_IDLE) {
                 playbackState = Player.STATE_READY
             }
             invalidateState()
@@ -1045,7 +1036,7 @@ class LibrespotPlayer(
                     skipInFlight = true
                     invalidateState()
                     handler.removeCallbacks(skipGaveUp)
-                    handler.postDelayed(skipGaveUp, SKIP_CONFIRM_MS)
+                    handler.postDelayed(skipGaveUp, TRACK_CONFIRM_MS)
                     pushQueue(startPlaying = true, positionMs = positionMs.toInt())
                     return Futures.immediateVoidFuture()
                 }
@@ -1059,37 +1050,39 @@ class LibrespotPlayer(
             // for a few seconds. A stopped player refuses "play" (it only logs
             // it), so the button spun forever; the track is loaded again where
             // it was paused instead.
-            if (loadOnItsWay()) {
-                // A queue just set, its load still behind the fade: it reads
-                // whether to play when it goes. Loaded again from here (the
-                // engine stopped under the old song, as a parked one is), the
-                // new song started, and started again from the top.
-            } else if ((currentMediaItem == null || engineStopped || engineQueueStale) && queue.items.isNotEmpty()) {
-                engineStopped = false
-                playbackState = Player.STATE_BUFFERING
-                invalidateState()
-                pushQueue(startPlaying = true, positionMs = positionMs.toInt())
-            } else {
-                var playFailed = false
-                engine("play") {
-                    try {
-                        NativeBridge.play()
-                    } catch (e: Throwable) {
-                        playFailed = true
-                        throw e
+            if (!waitingToSendLoad) {
+                if (!loadOnItsWay() && !ownQueuePending && !skipPending && !skipInFlight &&
+                    (currentMediaItem == null || engineStopped || engineQueueStale) && queue.items.isNotEmpty()
+                ) {
+                    engineStopped = false
+                    pushQueue(startPlaying = true, positionMs = positionMs.toInt())
+                    invalidateState()
+                } else {
+                    val generation = queueLoadGeneration
+                    engine("play") {
+                        runCatching { NativeBridge.play() }.onFailure {
+                            handler.post {
+                                if (!released && wantPlay && queue.items.isNotEmpty() &&
+                                    generation == queueLoadGeneration && !ownQueuePending &&
+                                    !skipPending && !skipInFlight
+                                ) {
+                                    pushQueue(startPlaying = true, positionMs = positionMs.toInt())
+                                    invalidateState()
+                                }
+                            }
+                            throw it
+                        }
                     }
                 }
-                if (playFailed && queue.items.isNotEmpty()) {
-                    pushQueue(startPlaying = true, positionMs = positionMs.toInt())
-                }
             }
-            // After the engine, not before: waking the output is a call into
-            // the audio server that took most of a tenth of a second here, and
-            // it stood between the button and the command that brings the
-            // music back.
-            onPlaybackActive(true)
+            // A pending switch can still have the previous song buffered.
+            // The matching playing event activates the replacement.
+            if (!loadOnItsWay() && !ownQueuePending && !skipPending && !skipInFlight) {
+                onPlaybackActive(true)
+            }
         } else {
             wantPlay = false
+            wantedWhenLoadIsSent = false
             this.playWhenReady = false
             onPlaybackActive(false)
             focus.abandonFocus()
@@ -1107,14 +1100,15 @@ class LibrespotPlayer(
      */
     private fun applyDuck(ducked: Boolean) {
         onDuckReverb(if (ducked) DUCK_FACTOR.toFloat() else 1f)
-        if (ducked) {
-            if (volumeBeforeDuck != null) return
-            val current = runCatching { NativeBridge.volume }.getOrNull() ?: return
-            volumeBeforeDuck = current
-            engine("duck") { NativeBridge.volume = (current * DUCK_FACTOR).toInt() }
-        } else {
-            volumeBeforeDuck?.let { level -> engine("unduck") { NativeBridge.volume = level } }
-            volumeBeforeDuck = null
+        engine(if (ducked) "duck" else "unduck") {
+            if (ducked && volumeBeforeDuck == null) {
+                val current = NativeBridge.volume
+                volumeBeforeDuck = current
+                NativeBridge.volume = (current * DUCK_FACTOR).toInt()
+            } else if (!ducked) {
+                volumeBeforeDuck?.let { NativeBridge.volume = it }
+                volumeBeforeDuck = null
+            }
         }
     }
 
@@ -1158,30 +1152,43 @@ class LibrespotPlayer(
             }
         }
 
-        if (mediaItemIndex == queue.currentIndex && !skipPending) {
-            engine("seek") { NativeBridge.seek(newPositionMs) }
-            positionMs = newPositionMs
+        if (mediaItemIndex == queue.currentIndex && !ownQueuePending && !skipPending && !skipInFlight) {
+            val target = newPositionMs.coerceAtLeast(0L)
+            audioOutput.flushForSeek()
+            setSeekPending(target)
+            engine("seek") {
+                NativeBridge.seek(target)
+                // Flush any pre-seek PCM queued between tap and JNI seek.
+                audioOutput.flushForSeek()
+            }
             invalidateState()
             return Futures.immediateVoidFuture()
         }
 
         requestSkipTo(mediaItemIndex, newPositionMs)
-        positionMs = newPositionMs
         return Futures.immediateVoidFuture()
     }
 
-    /**
-     * Whether the device playing is this app's own Soloist: a queue handed
-     * over between the two engines. Not taken over then: the transfer started
-     * Soloist's song here, and the load right behind it started the new song
-     * again from the top, heard as it beginning twice. The load alone makes
-     * this device the one playing.
-     */
-    private fun playingOnSoloist(): Boolean {
-        val soloist = dev.lelonio.square.playback.soloist.SoloistEngine.deviceId ?: return false
-        val active = runCatching { org.json.JSONObject(NativeBridge.remoteState()).optString("activeDevice") }
-            .getOrDefault("")
-        return active == soloist
+    private var seekInFlight = false
+    private var seekTargetMs: Long? = null
+    private val seekGaveUp = Runnable {
+        seekInFlight = false
+        seekTargetMs = null
+        invalidateState()
+    }
+
+    private fun setSeekPending(target: Long) {
+        seekInFlight = true
+        seekTargetMs = target
+        positionMs = target
+        handler.removeCallbacks(seekGaveUp)
+        handler.postDelayed(seekGaveUp, SEEK_CONFIRM_MS)
+    }
+
+    private fun clearSeek() {
+        seekInFlight = false
+        seekTargetMs = null
+        handler.removeCallbacks(seekGaveUp)
     }
 
     override fun handleSetMediaItems(
@@ -1189,22 +1196,7 @@ class LibrespotPlayer(
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<*> {
-        // Choosing a track here is the listener asking for this phone, and it
-        // is the only moment in the app where taking the account's playback is
-        // what they meant. Everything else that reaches the engine leaves the
-        // other device alone; see engine.rs.
-        // Offline there is no account to take it from: the track plays from
-        // the phone, and asking Spotify first only holds it up.
-        // From this app's own Soloist too (a downloaded song, played here):
-        // taking over is an activation, not a transfer, so Soloist's song is
-        // not started here first. Not activated, the load was dropped as one
-        // for a device not playing, and the downloaded song never began.
-        if (!OfflineMode.active.value && runCatching { NativeBridge.playbackElsewhere }.getOrDefault(false)) {
-            android.util.Log.i("SquarePlayer", "taking playback back for this device${if (playingOnSoloist()) " from Soloist" else ""}")
-            runCatching { NativeBridge.takeOver() }
-                .onFailure { android.util.Log.w("SquarePlayer", "could not take over", it) }
-        }
-
+        resetTrackRequests()
         android.util.Log.i(
             "SquarePlayer",
             "queue set: ${mediaItems.size} items at $startIndex, " +
@@ -1243,7 +1235,7 @@ class LibrespotPlayer(
         // `first` is only read to check there is something playable; the engine
         // is handed the whole list.
         check(first.uri.isNotEmpty())
-        pushQueue(startPlaying = playWhenReady, positionMs = startPositionMs.toInt())
+        pushQueue(startPlaying = playWhenReady, positionMs = positionMs.toInt(), takeOver = true)
         invalidateState()
         return Futures.immediateVoidFuture()
     }
@@ -1341,9 +1333,7 @@ class LibrespotPlayer(
         engineIndex = -1
         sounding = false
         engineQueueStale = false
-        skipPending = false
-        skipInFlight = false
-        handler.removeCallbacks(settleSkip)
+        resetTrackRequests()
         positionMs = 0
         playWhenReady = false
         playbackState = Player.STATE_IDLE
@@ -1376,7 +1366,34 @@ class LibrespotPlayer(
     private var ownQueuePending = false
 
     /** A push that never landed must not switch adoption off for good. */
-    private val giveUpOnOwnQueue = Runnable { ownQueuePending = false }
+    private val giveUpOnOwnQueue = Runnable {
+        queueLoadGeneration++
+        ownQueuePending = false
+        waitingToSendLoad = false
+        awaitingLoadStart = false
+        loadInFlight = false
+        if (!skipPending && !skipInFlight) {
+            finishTrackFade()
+            playbackState = if (sounding) Player.STATE_READY else Player.STATE_IDLE
+        }
+        invalidateState()
+    }
+
+    private fun resetTrackRequests() {
+        queueLoadGeneration++
+        ownQueuePending = false
+        waitingToSendLoad = false
+        awaitingLoadStart = false
+        loadInFlight = false
+        skipPending = false
+        skipInFlight = false
+        deferredSkip = false
+        finishTrackFade()
+        handler.removeCallbacks(settleSkip)
+        handler.removeCallbacks(skipGaveUp)
+        handler.removeCallbacks(giveUpOnOwnQueue)
+        clearSeek()
+    }
 
     fun restore(
         tracks: List<PlayQueue.Track>,
@@ -1496,8 +1513,8 @@ class LibrespotPlayer(
         // context takes seconds, and a listener who has chosen something in
         // those seconds has said what they want more recently than the engine
         // has.
-        if (ownQueuePending) {
-            android.util.Log.i("SquarePlayer", "not adopting: a queue of ours is on its way")
+        if (ownQueuePending || skipPending || skipInFlight) {
+            android.util.Log.i("SquarePlayer", "not adopting: a track change is on its way")
             return
         }
         android.util.Log.i("SquarePlayer", "adopting ${tracks.size} tracks at $index")
@@ -1510,7 +1527,8 @@ class LibrespotPlayer(
         engineIndex = queue.currentIndex
         engineQueueStale = false
 
-        this.positionMs = positionMs
+        clearSeek()
+        this.positionMs = if (playing) audiblePosition(positionMs) else positionMs
         playWhenReady = playing
         wantPlay = playing
         playbackState = Player.STATE_READY
@@ -1589,7 +1607,7 @@ class LibrespotPlayer(
         //
         // The order on screen is the one the user arranged, so it wins. The cost
         // is that the account shows this device as not shuffling.
-        runCatching { NativeBridge.setShuffle(false) }
+        engine("disable engine shuffle") { NativeBridge.setShuffle(false) }
 
         // And the engine is given the new order at once.
         //
@@ -1620,11 +1638,17 @@ class LibrespotPlayer(
     private fun pushOrder() {
         if (queue.items.isEmpty()) return
         engineIndex = queue.currentIndex
-        runCatching {
-            NativeBridge.setQueueOrder(queue.items.map { it.uri }, queue.currentIndex)
-        }.onFailure {
-            android.util.Log.w("SquarePlayer", "could not reorder: ${it.message}")
-            engineQueueStale = true
+        val index = queue.currentIndex
+        val tracks = queue.items.toList()
+        val generation = queueLoadGeneration
+        engine("reorder queue") {
+            runCatching { NativeBridge.setQueueOrder(tracks.map { it.uri }, index) }
+                .onFailure {
+                    handler.post {
+                        if (!released && generation == queueLoadGeneration) engineQueueStale = true
+                    }
+                    throw it
+                }
         }
     }
 
@@ -1650,9 +1674,11 @@ class LibrespotPlayer(
         if (dev.lelonio.square.playback.SessionKeeper.onRebuilt != null) {
             dev.lelonio.square.playback.SessionKeeper.onRebuilt = null
         }
-        handler.removeCallbacks(settleSkip)
+        resetTrackRequests()
         focus.release()
-        engine("shutdown") { NativeBridge.shutdown() }
+        commands.shutdownNow()
+        runCatching { NativeBridge.shutdown() }
+            .onFailure { android.util.Log.e("SquarePlayer", "shutdown did not reach the engine", it) }
         return Futures.immediateVoidFuture()
     }
 
@@ -1811,11 +1837,31 @@ class LibrespotPlayer(
         if (key == mixPlanFor) return
         mixPlanFor = key
         android.util.Log.i("SquarePlayer", "mix plan: ${transition?.planJson() ?: "none"} (context ${queue.contextUri})")
-        NativeBridge.setMixPlan(transition?.planJson().orEmpty())
+        engine("set mix plan") { NativeBridge.setMixPlan(transition?.planJson().orEmpty()) }
     }
+
+    private fun audiblePosition(decodedPositionMs: Long): Long =
+        (decodedPositionMs - audioOutput.bufferedMediaLatencyMs())
+            .coerceAtLeast(0L)
 
     private fun applyEvent(type: String, uri: String, eventPositionMs: Long) {
         if (released) return
+
+        val expectedUri = queue.items.getOrNull(queue.currentIndex)?.uri
+        val pendingTrack = ownQueuePending || skipPending || skipInFlight
+        val positionEvent = type == "position" || type == "seeked" || type == "position_correction"
+        val trackEvent = type == "playing" || type == "paused" || type == "loading"
+        val targetMatches = uri.isNotEmpty() && uri == expectedUri
+        if (pendingTrack && (positionEvent || trackEvent) &&
+            (skipPending || waitingToSendLoad || !targetMatches)
+        ) return
+        if (pendingTrack && awaitingLoadStart && type != "loading" && (positionEvent || trackEvent)) return
+        if (positionEvent && uri.isNotEmpty() && expectedUri != null && !targetMatches) return
+        if (pendingTrack && !targetMatches &&
+            (type == "stopped" || type == "end_of_track" || type == "unavailable")
+        ) return
+        if (uri.isNotEmpty() && trackEvent) lastReportedUri = uri
+        if (type == "loading" && targetMatches) awaitingLoadStart = false
 
         // One line per track change, and nothing for the events that arrive
         // several times a second. What a skip that nobody asked for looks like
@@ -1846,53 +1892,29 @@ class LibrespotPlayer(
         // The engine decides what plays next now, so the current index is
         // followed rather than set: an advance, a remote skip from another
         // device and a local one all arrive here the same way.
-        if (uri.isNotEmpty()) {
-            val index = queue.nearestIndexOf(uri, engineIndex.takeIf { it >= 0 } ?: queue.currentIndex)
-            if (
-                index < 0 && !ownQueuePending &&
+        val trackConfirmed = type == "playing" || type == "paused" && (!pendingTrack || !playWhenReady)
+        if (uri.isNotEmpty() && (trackConfirmed || type == "loading")) {
+            val index = if (targetMatches) queue.currentIndex else
+                queue.nearestIndexOf(uri, engineIndex.takeIf { it >= 0 } ?: queue.currentIndex)
+            if (index < 0 && !pendingTrack &&
                 (type == "playing" || type == "loading") && unknownAsked != uri
             ) {
-                // Not ours: somebody else chose it. Asked for once per track,
-                // and only on a track that is actually starting, so a position
-                // report on a queue mid-rebuild does not set this going.
-                android.util.Log.i(
-                    "SquarePlayer",
-                    "engine is $type $uri, which is not in this queue of ${queue.items.size}",
-                )
                 unknownAsked = uri
                 onUnknownTrack?.invoke(uri)
             }
-            if (index >= 0) {
+            if (index >= 0 && trackConfirmed) {
                 unknownAsked = null
-                ownQueuePending = false
-                handler.removeCallbacks(giveUpOnOwnQueue)
                 engineIndex = index
-                if (index == queue.currentIndex) {
-                    // The engine is where it was asked to be.
-                    skipPending = false
+                if (targetMatches) {
+                    ownQueuePending = false
+                    skipInFlight = false
+                    handler.removeCallbacks(giveUpOnOwnQueue)
                     handler.removeCallbacks(skipGaveUp)
-                    skipInFlight = false
-                    if (type == "playing") sounding = true
-                    if (type == "playing" || type == "loading") positionMs = 0
-                } else if (!skipPending && (type == "playing" || type == "paused")) {
-                    // The engine is the truth about what is coming out of the
-                    // speaker. While a skip is on its way its events are about
-                    // the track being left, and following them dragged the
-                    // screen backwards — but once nothing is outstanding, the
-                    // screen was simply wrong to disagree.
-                    //
-                    // Only what is playing. A load is not a track change:
-                    // the engine fetches what is coming next while the current
-                    // song plays, and following those walked the screen one or
-                    // two songs ahead of the speaker. A run of tracks the
-                    // account cannot play still lands here, because each of
-                    // those ends in the engine playing something and that is
-                    // the event this follows.
+                } else if (!pendingTrack) {
                     queue.currentIndex = index
-                    skipInFlight = false
-                    sounding = type == "playing"
-                    positionMs = 0
+                    clearSeek()
                 }
+                sounding = type == "playing"
             }
         }
 
@@ -1900,6 +1922,8 @@ class LibrespotPlayer(
 
         when (type) {
             "loading" -> {
+                if (!targetMatches && sounding) return
+                if (targetMatches && !pendingTrack) positionMs = eventPositionMs
                 engineStopped = false
                 playbackState = Player.STATE_BUFFERING
                 if (uri.isNotEmpty()) bandwidth.loading(uri)
@@ -1910,29 +1934,46 @@ class LibrespotPlayer(
                 handler.removeCallbacks(stallWatch)
             }
             "playing" -> {
-                wantPlay = true
-                // A new track to watch, and one this side has not moved on
-                // from yet.
-                if (uri != advancedFrom) advancedFrom = null
-                playbackState = Player.STATE_READY
-                playWhenReady = true
-                if (uri.isNotEmpty()) bandwidth.playing(uri)
-                loadInFlight = false
-                expectProgress()
-                if (!skipInFlight) positionMs = eventPositionMs
-                // Here as well as in handleSetPlayWhenReady: a pause can arrive
-                // from the notification, from a headset button or from another
-                // Connect device, and only this path sees all of them.
-                onPlaybackActive(true)
+                // If the listener pressed pause while this load was still in
+                // flight, honour that pause instead of reactivating AudioTrack
+                // until a later paused event arrives.
+                if (!wantPlay && !playWhenReady && (pendingTrack || loadInFlight)) {
+                    loadInFlight = false
+                    playbackState = Player.STATE_READY
+                    playWhenReady = false
+                    if (!seekInFlight) positionMs = audiblePosition(eventPositionMs)
+                    onPlaybackActive(false)
+                    if (targetMatches) finishTrackFade()
+                    engine("pause") { NativeBridge.pause() }
+                } else {
+                    wantPlay = true
+                    // A new track to watch, and one this side has not moved on
+                    // from yet.
+                    if (uri != advancedFrom) advancedFrom = null
+                    playbackState = Player.STATE_READY
+                    playWhenReady = true
+                    if (uri.isNotEmpty()) bandwidth.playing(uri)
+                    loadInFlight = false
+                    expectProgress()
+                    if (!seekInFlight) positionMs = audiblePosition(eventPositionMs)
+                    // Here as well as in handleSetPlayWhenReady: a pause can arrive
+                    // from the notification, from a headset button or from another
+                    // Connect device, and only this path sees all of them.
+                    onPlaybackActive(true)
+                    if (targetMatches) finishTrackFade()
+                }
             }
             "paused" -> {
+                if (pendingTrack && playWhenReady) return
+                loadInFlight = false
                 if (!reconnecting && !deviceGone) wantPlay = false
                 playbackState = Player.STATE_READY
                 playWhenReady = false
                 // A pause is not a stall.
                 handler.removeCallbacks(stallWatch)
-                if (!skipInFlight) positionMs = eventPositionMs
+                if (!seekInFlight) positionMs = eventPositionMs
                 onPlaybackActive(false)
+                if (targetMatches) finishTrackFade()
             }
             "position" -> {
                 // Progress arrived, so the stream is keeping up: the watch is
@@ -1941,8 +1982,8 @@ class LibrespotPlayer(
                 // The old track goes on reporting until the new one starts.
                 // Taking those would run the bar forward on a song that is no
                 // longer the one on screen.
-                if (skipPending || skipInFlight) return
-                positionMs = eventPositionMs
+                if (pendingTrack || seekInFlight || playbackState == Player.STATE_BUFFERING) return
+                positionMs = audiblePosition(eventPositionMs)
 
                 // Offline, the run-up to the next track is this side's job.
                 //
@@ -1958,7 +1999,22 @@ class LibrespotPlayer(
                     }
                 }
             }
+            "seeked" -> {
+                val expected = seekTargetMs
+                if (seekInFlight && expected != null && kotlin.math.abs(eventPositionMs - expected) > 2_500L) {
+                    return
+                }
+                clearSeek()
+                positionMs = eventPositionMs
+            }
+            "position_correction" -> {
+                if (pendingTrack || seekInFlight || playbackState == Player.STATE_BUFFERING) return
+                positionMs = audiblePosition(eventPositionMs)
+            }
             "stopped" -> {
+                if (pendingTrack) return
+                loadInFlight = false
+                clearSeek()
                 if (!reconnecting && !deviceGone) wantPlay = false
                 playbackState = Player.STATE_IDLE
                 playWhenReady = false
@@ -1978,7 +2034,7 @@ class LibrespotPlayer(
             // here plays, so nothing here has to react: the state is read and
             // published, and whoever is showing it redraws.
             "cluster" -> {
-                dev.lelonio.square.data.RemoteConnect.refresh()
+                refreshConnect()
                 // And again shortly after.
                 //
                 // A handover is two facts arriving separately: the account says
@@ -1987,8 +2043,8 @@ class LibrespotPlayer(
                 // read first leaves the screen describing the wrong device
                 // until something else happens to change it, which can be
                 // never. The second look costs two reads of memory.
-                handler.postDelayed({ dev.lelonio.square.data.RemoteConnect.refresh() }, 700)
-                handler.postDelayed({ dev.lelonio.square.data.RemoteConnect.refresh() }, 2_000)
+                handler.postDelayed({ refreshConnect() }, 700)
+                handler.postDelayed({ refreshConnect() }, 2_000)
                 return
             }
 
@@ -2030,7 +2086,7 @@ class LibrespotPlayer(
         // deciding with an answer from before the handover, which is how a
         // pause pressed here went out to a laptop.
         if (type == "playing" || type == "paused" || type == "stopped") {
-            dev.lelonio.square.data.RemoteConnect.refresh()
+            refreshConnect()
         }
 
         invalidateState()
@@ -2121,30 +2177,14 @@ class LibrespotPlayer(
          * Long enough that a run of taps becomes one decision, short enough
          * that a single skip does not feel delayed.
          */
-        const val SKIP_SETTLE_MS = 220L
+        const val SKIP_SETTLE_MS = 100L
 
         /** Set while Spotify is refusing this account every song; see onKeyRefused. */
         const val ACCOUNT_REFUSED = "account_refused"
 
-        /**
-         * How long a skip is given to land before its events count again.
-         *
-         * Long enough for a slow load — the network is the reason this exists —
-         * and short enough that a command lost on the way does not leave the
-         * screen ignoring the engine for ever.
-         */
-        const val SKIP_CONFIRM_MS = 8_000L
-
-        /**
-         * How long a queue is given to reach the engine; see [ownQueuePending].
-         *
-         * Measured at about seven hundred milliseconds from the tap to the
-         * first event about the new track, on a cold session that was still
-         * connecting. This is that with room to spare, and short enough that a
-         * queue which never arrived leaves adoption working again.
-         */
-        const val OWN_QUEUE_MS = 6_000L
-
+        /** Confirmation can arrive after a slow track fetch. */
+        const val TRACK_CONFIRM_MS = 30_000L
+        const val SEEK_CONFIRM_MS = 2_000L
 
         /** Steps of another device's volume on the phone's keys, as Spotify's app has it. */
         const val REMOTE_VOLUME_STEPS = 16
