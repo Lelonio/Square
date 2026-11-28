@@ -99,6 +99,56 @@ class SoloistPlayer(
     private var prepared = false
 
     /**
+     * A skip by hand, shown at once: the song it goes to, at its start, in
+     * the list as it was, until Soloist plays it (or a few seconds pass).
+     * Waited for, the old song stayed on screen, its time running, for as
+     * long as Soloist took to load the new one.
+     */
+    private class Skip(
+        /** The list shown when the skips began, which [index] is into. */
+        val items: List<MediaItem>,
+        /** Soloist's state when the skips began: what [index] is reckoned from. */
+        val base: SoloistEngine.State,
+        val index: Int,
+        val uri: String,
+    )
+
+    private var skipping: Skip? = null
+
+    /** The last of a run of skips, sent once the taps stop; see [skipTo]. */
+    private var skipJob: kotlinx.coroutines.Job? = null
+    private val skipExpired = Runnable {
+        if (skipping != null) {
+            skipping = null
+            invalidateState()
+        }
+    }
+
+    /** The play on its way to Soloist; a later one cancels it. */
+    private var sendJob: kotlinx.coroutines.Job? = null
+
+    /** When the last play went out; see [send]. */
+    private var lastSendAt = 0L
+
+    /**
+     * A change of song this player asked for, from when it asked: Soloist's
+     * song is shown waiting (buffering, its time at its start) until the
+     * music after the change has begun. The old song's tail, a load, a
+     * silence: none of it is the new song's time.
+     */
+    private var awaitSince = 0L
+    private var awaitSerial = -1
+
+    /** Where the song began was learned after its time was given out: said as a jump. */
+    private var resync = false
+
+    /** Looks again once a song waited for may be shown playing regardless. */
+    private val recheck = Runnable { invalidateState() }
+
+    /** Stopped for another player: Soloist's own play meanwhile is not the listener's. */
+    private var stoppedForOther = false
+
+    /**
      * Audio focus, as the Spotify engine's player keeps it.
      *
      * Soloist's sound comes out of this app like any other, but nothing asked
@@ -152,7 +202,9 @@ class SoloistPlayer(
         val now = System.currentTimeMillis()
         if (play != null) heldPlay = play
         val position = positionMs ?: currentPosition()
-        val playing = heldPlay ?: wantPlay
+        // Still at the start of a song not heard yet: the music going out is
+        // not its own, and the place held does not run on it.
+        val playing = (heldPlay ?: wantPlay) && !awaitingSong()
         heldPosition = SoloistEngine.Anchor(position, now, if (playing) 1.0 else 0.0)
         heldAt = now
     }
@@ -195,12 +247,9 @@ class SoloistPlayer(
         scope.launch {
             SoloistAudio.newSongHeard.drop(1).collect {
                 // The new song begins under the old one now, not when Soloist
-                // said it began: its time runs from here.
-                // From its start, not from where Soloist says it is: Soloist
-                // had already given out the first of it (the half second or so
-                // since the skip, still in libpulse), and counted from there
-                // the time, and the lyrics, ran that far ahead of the song.
-                state.anchor?.takeIf { it.positionMs < 2_000 }?.let { it.audioAtMs = SoloistAudio.playedMs() + it.positionMs }
+                // said it began: its time runs from here, as the engine has
+                // put it already (see SoloistEngine.audioBegan), from the
+                // moment libpulse said it rather than from this later one.
                 android.util.Log.i("SoloistPlayer", "new song heard in the dissolve (libpulse ahead ${SoloistAudio.aheadMs} ms)")
                 unfreeze()
             }
@@ -356,10 +405,7 @@ class SoloistPlayer(
             // Soloist plays it now: its queue is the one to show.
             local = null
             sentUri = null
-            if (pendingFadeIn) {
-                pendingFadeIn = false
-                output.fadeIn()
-            }
+            fadeBackIn()
         }
         if (local == null && was.active && !next.active && was.song != null) {
             // The account's playback went to another device: the queue stays
@@ -367,16 +413,88 @@ class SoloistPlayer(
             keepAsLocal(was)
             wantPlay = false
         }
+        // A skip shown ahead of Soloist: done once Soloist plays the song it
+        // went to (or something else has taken over the list shown).
+        skipping?.let { skip ->
+            if (local != null || (next.uri == skip.uri && next.trackSerial != skip.base.trackSerial)) clearSkip()
+        }
+        // The song Soloist went to after a skip of ours: the fade's gate
+        // opened for it (with no fade of its own the skip had no other).
+        if (local == null && next.trackSerial != was.trackSerial) fadeBackIn()
+        // Where the song began came to light: its time from there, said as a
+        // jump, or the screen ran on from the time it had before.
+        if (next.beganSerial != was.beganSerial && local == null && skipping == null && frozen == null) resync = true
+        if (awaitSince > 0 && next.trackSerial != awaitSerial && next.beganAt >= awaitSince) {
+            awaitSince = 0
+            resync = true
+        }
         release(next, was)
         if (was.active != next.active) thread { runCatching { dev.lelonio.square.data.RemoteConnect.refresh() } }
         // Soloist mixes a mixed playlist played as itself: the player wears
         // the mix's look while it does (see Mixes.playing).
         if (local == null) dev.lelonio.square.playback.Mixes.follow(next.contextUri?.takeIf { it.startsWith("spotify:playlist:") })
         if (local == null) wantPlay = heldPlay ?: next.playing
+        // Soloist playing again by another's word (its app, a Jam, a device):
+        // the sound with it. libpulse's resume can be stuck behind a track
+        // this player held for a pause.
+        if (local == null && !stoppedForOther && heldPlay == null && next.isActuallyPlaying && !was.isActuallyPlaying &&
+            next.song != null
+        ) {
+            SoloistAudio.resumeNow()
+        }
+        main.removeCallbacks(recheck)
+        if (awaitingSong()) main.postDelayed(recheck, AWAIT_RECHECK_MS)
         describeUnknown()
         scheduleCrossfade()
         invalidateState()
     }
+
+    /** A skip's run over: what Soloist plays is shown again. */
+    private fun clearSkip() {
+        skipping = null
+        skipJob?.cancel()
+        skipJob = null
+        main.removeCallbacks(skipExpired)
+    }
+
+    /** The output back up after a skip's short fade, once the new song is on its way. */
+    private fun fadeBackIn() {
+        main.removeCallbacks(fadeInFallback)
+        if (!pendingFadeIn) return
+        pendingFadeIn = false
+        output.fadeIn()
+    }
+
+    /**
+     * The fade's gate opened regardless when no new song came of the skip (a
+     * play refused, a skip lost): shut, the music never came back.
+     */
+    private val fadeInFallback = Runnable { fadeBackIn() }
+
+    /**
+     * Whether the song shown is a change this player asked for (or one
+     * Soloist named) whose music has not begun: shown buffering, its time
+     * held at its start. Not for ever: the music clock takes over after a
+     * while regardless.
+     */
+    private fun awaitingSong(): Boolean {
+        if (local != null) return sentUri != null
+        if (skipping != null) return true
+        if (frozen != null) return false
+        val now = System.currentTimeMillis()
+        if (awaitSince > 0) {
+            if (now - awaitSince > AWAIT_MAX_MS) {
+                awaitSince = 0
+            } else if (state.trackSerial != awaitSerial && state.beganAt < awaitSince) {
+                return true
+            }
+        }
+        return !state.heard && now - state.songAt < AWAIT_MAX_MS
+    }
+
+    /** Where a song not heard yet will start: its beginning, or the place a play sent it to. */
+    private fun startOf(anchor: SoloistEngine.Anchor): Long =
+        if (anchor.positionMs < SONG_START_MS) 0 else anchor.positionMs
 
     /** Soloist's queue as it was, made the queue waiting to be sent. */
     private fun keepAsLocal(from: SoloistEngine.State) {
@@ -388,11 +506,12 @@ class SoloistPlayer(
         localIndex = from.previous.size
         localPosition = from.anchor?.now() ?: 0
         sentUri = null
+        clearSkip()
     }
 
     // ----------------------------------------------------------------- state
 
-    private fun showing(): List<MediaItem> = local ?: soloistItems()
+    private fun showing(): List<MediaItem> = local ?: skipping?.items ?: soloistItems()
 
     private fun remember(items: List<MediaItem>) {
         items.forEach { if (!it.mediaMetadata.title.isNullOrEmpty()) known[it.mediaId] = it.mediaMetadata }
@@ -480,13 +599,23 @@ class SoloistPlayer(
             state.upcoming.take(MAX_UPCOMING).map { item(it.song, it.source, state.contextUri) }
     }
 
-    private fun currentIndex(): Int = if (local != null) localIndex else shown().previous.size
+    private fun currentIndex(): Int = if (local != null) localIndex else skipping?.index ?: shown().previous.size
 
+    /**
+     * Where the song shown is. A queue still to be sent, a skip on its way and
+     * a song not heard yet are held at their start: the time of a load, of a
+     * retry or of the old song's tail is not the new song's. Otherwise on the
+     * music clock, which runs only while music goes out (an anchor held for a
+     * pause stays where it is).
+     */
     private fun currentPosition(): Long {
         if (local != null) return localPosition
+        if (skipping != null) return 0L
         heldPosition?.let { return it.now() }
         val state = shown()
-        return state.anchor?.let { if (state.playing || frozen != null) it.now() else it.positionMs } ?: 0
+        val anchor = state.anchor ?: return 0
+        if (frozen == null && awaitingSong()) return startOf(anchor)
+        return anchor.now()
     }
 
     private fun freeze() {
@@ -650,10 +779,19 @@ class SoloistPlayer(
             lastItems = items
             lastIndex = index
         }
+        val waiting = awaitingSong()
+        val buffering = when {
+            local != null -> sentUri != null
+            skipping != null -> wantPlay
+            else -> state.status == "buffering" || (wantPlay && waiting)
+        }
+        val position = currentPosition()
         val builder = State.Builder().setAvailableCommands(COMMANDS)
             .setPlayWhenReady(wantPlay, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
-            .setContentPositionMs { currentPosition() }
             .setPlaybackParameters(parameters)
+        // On the music only while it plays; held still otherwise, so nothing
+        // that reads the session runs the time on through a load or a pause.
+        if (wantPlay && !buffering) builder.setContentPositionMs { currentPosition() } else builder.setContentPositionMs(position)
         // Another device playing the account: the session speaks for it, and
         // the phone's volume keys move that device's volume, as in Spotify's
         // own app. See LibrespotPlayer.remoteState.
@@ -680,13 +818,19 @@ class SoloistPlayer(
                 .setIsSeekable(true)
                 .build()
         }).setCurrentMediaItemIndex(index.coerceIn(items.indices))
-        val buffering = (local != null && sentUri != null) || (local == null && state.status == "buffering")
         builder.setPlaybackState(if (buffering) Player.STATE_BUFFERING else Player.STATE_READY)
         // A paused song sent to another place: said as a jump, or the screen,
         // which hears of the time only while it plays, kept the old one.
-        jumped?.let {
-            builder.setPositionDiscontinuity(Player.DISCONTINUITY_REASON_SEEK, it)
+        val jump = jumped
+        if (jump != null) {
+            builder.setPositionDiscontinuity(Player.DISCONTINUITY_REASON_SEEK, jump)
             jumped = null
+            resync = false
+        } else if (resync && !waiting) {
+            // The song's time worked out anew (where it began was learned):
+            // the screen is told, or it ran on from where it had it.
+            builder.setPositionDiscontinuity(Player.DISCONTINUITY_REASON_INTERNAL, position)
+            resync = false
         }
         if (local == null) {
             builder.setShuffleModeEnabled(shuffleShown())
@@ -780,7 +924,17 @@ class SoloistPlayer(
         sentAt = now
         sentPosition = position
         sentPaused = paused
-        scope.launch(Dispatchers.IO) {
+        awaitSince = now
+        awaitSerial = state.trackSerial
+        // Every play still being asked for (a song picked a moment ago, its
+        // retries) gives way to this one at once, and a run of picks goes out
+        // as its last: the first at once, the next ones gathered for a moment.
+        SoloistEngine.supersedePlays()
+        sendJob?.cancel()
+        val gather = (lastSendAt + SEND_GATHER_MS - now).coerceIn(0L, SEND_GATHER_MS)
+        lastSendAt = now + gather
+        sendJob = scope.launch(Dispatchers.IO) {
+            if (gather > 0) kotlinx.coroutines.delay(gather)
             if (dj) {
                 SoloistEngine.playDj(paused)
             } else if (asContext && !djQueue) {
@@ -798,8 +952,10 @@ class SoloistPlayer(
                     // The play sets shuffle off; smart shuffle again once
                     // Soloist has the context open.
                     val until = System.currentTimeMillis() + 5_000
-                    while (SoloistEngine.state.value.contextUri != contextUri && System.currentTimeMillis() < until) Thread.sleep(150)
-                    Thread.sleep(500)
+                    while (SoloistEngine.state.value.contextUri != contextUri && System.currentTimeMillis() < until) {
+                        kotlinx.coroutines.delay(150)
+                    }
+                    kotlinx.coroutines.delay(500)
                     SoloistEngine.setShuffleMode(true, true)
                 }
             } else {
@@ -818,16 +974,17 @@ class SoloistPlayer(
     /**
      * A play sent paused is taken at the song's start, whatever place it
      * asks for: the queue put back at start then played from the top of the
-     * song. Sent to the place once Soloist has the song. Blocking.
+     * song. Sent to the place once Soloist has the song; cancelled with the
+     * play it follows.
      */
-    private fun seekWhilePaused(position: Long) {
+    private suspend fun seekWhilePaused(position: Long) {
         if (position < 1_000) return
         val until = System.currentTimeMillis() + 3_000
-        while (SoloistEngine.state.value.song == null && System.currentTimeMillis() < until) Thread.sleep(100)
+        while (SoloistEngine.state.value.song == null && System.currentTimeMillis() < until) kotlinx.coroutines.delay(100)
         // After Soloist has made the play its own (the device taking the
         // account's playback comes a moment after the answer), or the place
         // went back to the start with it.
-        Thread.sleep(1_500)
+        kotlinx.coroutines.delay(1_500)
         SoloistEngine.seek(position)
         SoloistEngine.expectPosition(position)
         android.util.Log.i("SoloistPlayer", "paused play sent to $position ms")
@@ -859,6 +1016,7 @@ class SoloistPlayer(
             return done()
         }
         if (playWhenReady) focus.requestFocus() else focus.abandonFocus()
+        if (playWhenReady) stoppedForOther = false
         if (!playWhenReady) {
             // A skip's flag still up made libpulse take this pause for a
             // change of song and play the old one on.
@@ -918,7 +1076,7 @@ class SoloistPlayer(
         }
         // A song of the list played from its download: librespot's, before
         // Soloist streams any of it (and plays it twice, once on each).
-        soloistItems().getOrNull(mediaItemIndex)?.takeIf { local == null }?.let { chosen ->
+        (skipping?.items ?: soloistItems()).getOrNull(mediaItemIndex)?.takeIf { local == null }?.let { chosen ->
             val whole = handOverList(chosen.mediaId)
             if (whole != null && sendOrHandOver(whole.first, whole.second, target)) return done()
         }
@@ -934,18 +1092,16 @@ class SoloistPlayer(
         }
         val current = state.previous.size
         when {
+            // Within a run of skips the list shown is the one they began on.
+            skipping != null -> skipTo(mediaItemIndex, target)
             mediaItemIndex == current -> {
                 commandedAt = System.currentTimeMillis()
                 hold(null, target)
                 SoloistEngine.seek(target)
                 invalidateState()
             }
-            mediaItemIndex == current + 1 -> afterFadeOut { SoloistEngine.next() }
-            mediaItemIndex == current - 1 -> afterFadeOut { SoloistEngine.previous() }
-            mediaItemIndex > current + 1 -> {
-                val entry = state.upcoming.getOrNull(mediaItemIndex - current - 1) ?: return done()
-                afterFadeOut { scope.launch(Dispatchers.IO) { SoloistEngine.skipTo(entry) } }
-            }
+            mediaItemIndex == current + 1 || mediaItemIndex == current - 1 || mediaItemIndex > current + 1 ->
+                skipTo(mediaItemIndex, target)
             else -> {
                 // Further back than one song: the list from there, sent again.
                 keepAsLocal(state)
@@ -955,6 +1111,65 @@ class SoloistPlayer(
             }
         }
         return done()
+    }
+
+    /**
+     * A skip by hand to [index] of the list shown: shown at once (the song it
+     * goes to, at its start, buffering) and sent at once, the first of a run.
+     * The taps after it, while Soloist has not got there yet, are shown as
+     * they come and gathered: only where they end is sent, named, so Soloist
+     * loads the one song and not each on the way.
+     *
+     * Called from [handleSeek], whose answer shows the change (as a seek):
+     * no state is put out from in here.
+     */
+    private fun skipTo(index: Int, positionMs: Long) {
+        val run = skipping
+        val base = run?.base ?: state
+        val items = run?.items ?: soloistItems()
+        val item = items.getOrNull(index) ?: return
+        val offset = index - base.previous.size
+        if (run != null && index == run.index) return
+        if (offset == 0 || offset < -1 || (run != null && offset < 0)) {
+            // Back to where the run began, or further back than one song: the
+            // list from there, sent again.
+            keepAsLocal(base)
+            localIndex = index.coerceIn(0, maxOf(0, (local?.size ?: 1) - 1))
+            localPosition = positionMs
+            afterFadeOut { send() }
+            return
+        }
+        val now = System.currentTimeMillis()
+        heldPosition = null
+        skipping = Skip(items, base, index, item.mediaId)
+        main.removeCallbacks(skipExpired)
+        main.postDelayed(skipExpired, SKIP_SHOWN_MS)
+        commandedAt = now
+        awaitSince = now
+        awaitSerial = state.trackSerial
+        if (run == null) {
+            dispatchSkip(base, offset, first = true)
+            return
+        }
+        skipJob?.cancel()
+        skipJob = scope.launch {
+            kotlinx.coroutines.delay(SKIP_GATHER_MS)
+            dispatchSkip(base, offset, first = false)
+        }
+    }
+
+    /** Sends a skip [offset] songs on from where [base] was; see [skipTo]. */
+    private fun dispatchSkip(base: SoloistEngine.State, offset: Int, first: Boolean) {
+        awaitSince = System.currentTimeMillis()
+        awaitSerial = state.trackSerial
+        when {
+            first && offset == 1 -> afterFadeOut { SoloistEngine.next() }
+            first && offset == -1 -> afterFadeOut { SoloistEngine.previous() }
+            offset > 0 -> {
+                val entry = base.upcoming.getOrNull(offset - 1) ?: return
+                afterFadeOut { scope.launch(Dispatchers.IO) { SoloistEngine.skipTo(entry) } }
+            }
+        }
     }
 
     /**
@@ -1004,6 +1219,18 @@ class SoloistPlayer(
     override fun handleSetMediaItems(mediaItems: List<MediaItem>, startIndex: Int, startPositionMs: Long): ListenableFuture<*> {
         remember(mediaItems)
         fullList = mediaItems
+        // The song before is gone from the screen at once: nothing held of
+        // it (a place, the old song kept through its dissolve, a skip) runs
+        // on into the new one, which waits at its start until it is heard.
+        clearSkip()
+        heldPlay = null
+        heldPosition = null
+        if (heldSong != null) {
+            heldSong = null
+            main.removeCallbacks(heardYet)
+        }
+        main.removeCallbacks(thaw)
+        frozen = null
         local = mediaItems
         localIndex = startIndex.takeIf { it != C.INDEX_UNSET }?.coerceIn(0, maxOf(0, mediaItems.lastIndex)) ?: 0
         localPosition = startPositionMs.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0) ?: 0
@@ -1338,6 +1565,8 @@ class SoloistPlayer(
     override fun handleStop(): ListenableFuture<*> {
         focus.abandonFocus()
         wantPlay = false
+        stoppedForOther = true
+        clearSkip()
         // The music already given out goes too, faded: stopped for another
         // player (a downloaded song, on librespot), Soloist paused but the ten
         // seconds or so libpulse holds played on at full level under the new
@@ -1384,8 +1613,14 @@ class SoloistPlayer(
             raiseSkipFlag(skip.toLong())
             return action()
         }
+        // The fade and the command together: Soloist starts on the new song
+        // at once, the old one fading meanwhile. Faded first and sent after,
+        // every skip waited the fade out before Soloist even heard of it.
         pendingFadeIn = true
-        output.fadeOutThen(SHORT_FADE_MS) { main.post(action) }
+        main.removeCallbacks(fadeInFallback)
+        main.postDelayed(fadeInFallback, FADE_IN_FALLBACK_MS)
+        output.fadeOutThen(SHORT_FADE_MS) {}
+        action()
     }
 
     private val dropFlag = Runnable { runCatching { SoloistEngine.skipFlag(context).delete() } }
@@ -1432,6 +1667,7 @@ class SoloistPlayer(
             if (state.repeat == "track" || crossfadedFrom == state.trackSerial) return
             val blocked = when {
                 local != null -> "a queue still to be sent"
+                skipping != null -> "a skip on its way"
                 frozen != null -> "the last title still held"
                 state.upcoming.isEmpty() -> "nothing up next"
                 SoloistEngine.ownCrossfade -> "Soloist's own crossfade"
@@ -1622,6 +1858,25 @@ class SoloistPlayer(
 
         /** A skip's fade when the listener's own is off: long enough not to click. */
         private const val SHORT_FADE_MS = 120L
+
+        /** How long the gate a short fade shuts stays shut without a new song; see [fadeInFallback]. */
+        private const val FADE_IN_FALLBACK_MS = 12_000L
+
+        /** How long a skip is shown ahead of Soloist; see [skipping]. */
+        private const val SKIP_SHOWN_MS = 10_000L
+
+        /** How long the taps of a run of skips are gathered before the last is sent. */
+        private const val SKIP_GATHER_MS = 250L
+
+        /** How long plays picked one after another are gathered; see [send]. */
+        private const val SEND_GATHER_MS = 300L
+
+        /** How long a song asked for is shown waiting for its music at most; see [awaitingSong]. */
+        private const val AWAIT_MAX_MS = 15_000L
+        private const val AWAIT_RECHECK_MS = 1_000L
+
+        /** Below this a song not heard yet is shown at its start; see [startOf]. */
+        private const val SONG_START_MS = 2_000L
 
         /** How long before Soloist decodes to the end a crossfade is asked for. */
         private const val CROSSFADE_MARGIN_MS = 300L
