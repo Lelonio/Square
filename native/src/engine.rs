@@ -21,7 +21,7 @@ use librespot_playback::{
 };
 use crate::events::{self, EndReason, EventService, Listen};
 use once_cell::sync::OnceCell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -1041,6 +1041,13 @@ fn spawn_event_forwarder(
                 track_started(&uri_string(track_id));
             }
 
+            // A track loaded again is a new chance at its successor: the same
+            // song twice in a row in the queue, or one played again, would
+            // otherwise never have the track after it warmed up.
+            if let PlayerEvent::Loading { .. } = &event {
+                preloaded = None;
+            }
+
             // Warm up the next track — but not the instant this one starts.
             //
             // Preloading on the first note meant a run of skips fired a burst
@@ -1584,6 +1591,24 @@ fn spawn_event_pump(
                     PlayerEvent::Unavailable { track_id, .. } => {
                         ("unavailable", uri_string(&track_id), 0)
                     }
+                    // Where a seek actually landed, and where the player says
+                    // it really is when that differs from the clock: the app
+                    // moves its progress bar to these rather than waiting up
+                    // to a second for the next "position".
+                    PlayerEvent::Seeked {
+                        track_id,
+                        position_ms,
+                        ..
+                    } => ("seeked", uri_string(&track_id), position_ms as i64),
+                    PlayerEvent::PositionCorrection {
+                        track_id,
+                        position_ms,
+                        ..
+                    } => (
+                        "position_correction",
+                        uri_string(&track_id),
+                        position_ms as i64,
+                    ),
                     // Connect-protocol and volume events are not surfaced yet.
                     _ => continue,
                 };
@@ -1949,6 +1974,9 @@ static CONTEXT_URI: Mutex<String> = Mutex::new(String::new());
 /// [`preload_after`].
 static QUEUE: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
+/// Where in [`QUEUE`] playback was last known to be; see [`queue_position`].
+static QUEUE_AT: AtomicUsize = AtomicUsize::new(0);
+
 /// How much of the phone the cached audio may take: 512 MB.
 const AUDIO_CACHE_LIMIT: u64 = 512 * 1024 * 1024;
 
@@ -1995,7 +2023,11 @@ fn sweep_stale_downloads(dir: &str) {
 pub const PREMIUM_REQUIRED: &str = "premium account required";
 
 /// How far into a track its successor is fetched, in milliseconds.
-const PRELOAD_AFTER_MS: u32 = 5_000;
+///
+/// Long enough that a run of skips, each landing on a track for a moment,
+/// asks for no keys on the way past; short enough that a track the listener
+/// stays on has its successor in hand before they think of skipping it.
+const PRELOAD_AFTER_MS: u32 = 1_500;
 
 /// Warms up the track after `uri`, so a skip does not start from nothing.
 ///
@@ -2007,15 +2039,31 @@ const PRELOAD_AFTER_MS: u32 = 5_000;
 fn preload_after(player: &Player, uri: &str) {
     let next = {
         let Ok(queue) = QUEUE.lock() else { return };
-        let Some(position) = queue.iter().position(|item| item == uri) else {
+        let Some(position) = queue_position(&queue, uri) else {
             return;
         };
+        QUEUE_AT.store(position, Ordering::SeqCst);
         queue.get(position + 1).cloned()
     };
     let Some(next) = next else { return };
     if let Ok(parsed) = SpotifyUri::from_uri(&next) {
         player.preload(parsed);
     }
+}
+
+/// Where `uri` is in `queue`, read from where the queue was last known to be.
+///
+/// A track can be in a queue more than once, and the first time it appears is
+/// not necessarily the one playing: taking it was preloading the successor of
+/// an earlier copy. The copy at or after the last known place is the one a
+/// listener moving forward has reached; one before it, the one moved back to.
+fn queue_position(queue: &[String], uri: &str) -> Option<usize> {
+    let from = QUEUE_AT.load(Ordering::SeqCst).min(queue.len());
+    queue[from..]
+        .iter()
+        .position(|item| item == uri)
+        .map(|offset| from + offset)
+        .or_else(|| queue[..from].iter().rposition(|item| item == uri))
 }
 
 pub fn current_context() -> String {
@@ -2050,6 +2098,7 @@ pub fn load_queue(
     }
     if let Ok(mut stored) = QUEUE.lock() {
         *stored = uris.clone();
+        QUEUE_AT.store(index as usize, Ordering::SeqCst);
     }
 
     // Offline there is no Connect device to hand a queue to, so there is no
@@ -2392,7 +2441,28 @@ pub fn seek(position_ms: u32) -> EngineResult<()> {
     if player_only() {
         return with_bundle(|e| e.player.seek(position_ms));
     }
-    with_bundle(|e| e.spirc()?.set_position_ms(position_ms))?.map_err(|e| format!("seek failed: {e}"))
+    // The player first, as for play and pause, and the Connect task told
+    // afterwards that it has been done.
+    //
+    // Through the task alone, a seek waited for whatever the task was busy
+    // with — a state update on a slow line, most often — and the listener
+    // dragged the bar, let go, and went on hearing the old place. Spirc is
+    // told with `player_seeked` rather than `set_position_ms` so it updates
+    // the account without seeking a second time, which would throw away the
+    // audio just fetched for the new place. When a load or a skip is still
+    // waiting in the task, the player is not on the track this seek is meant
+    // for, and the task is left to do the seek itself once it gets there.
+    with_bundle(|e| {
+        let spirc = e.spirc()?;
+        match spirc.direct_seek_ticket() {
+            Some(ticket) => {
+                e.player.seek(position_ms);
+                spirc.player_seeked(position_ms, ticket)
+            }
+            None => spirc.set_position_ms(position_ms),
+        }
+    })?
+    .map_err(|e| format!("seek failed: {e}"))
 }
 
 // Skipping is a Spirc command like the rest, and it was the one left out of
@@ -2573,6 +2643,7 @@ pub fn set_queue_order(uris: Vec<String>, index: u32) -> EngineResult<()> {
 
     if let Ok(mut stored) = QUEUE.lock() {
         *stored = uris;
+        QUEUE_AT.store(at, Ordering::SeqCst);
     }
 
     with_bundle(|e| e.spirc()?.set_queue_tracks(prev, next))?
