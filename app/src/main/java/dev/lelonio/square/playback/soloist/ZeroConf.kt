@@ -25,7 +25,7 @@ internal object ZeroConf {
         val nsd = context.getSystemService(NsdManager::class.java) ?: return
         withdraw(context)
         val info = NsdServiceInfo().apply {
-            serviceName = "Square"
+            serviceName = dev.lelonio.square.playback.ConnectName.of(context)
             serviceType = TYPE
             setPort(port)
             setAttribute("CPath", path)

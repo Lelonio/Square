@@ -56,8 +56,38 @@ class AudioFocusController(
             if (intent?.action != AudioManager.ACTION_AUDIO_BECOMING_NOISY) return
             // A deliberate disconnect: do not resume when focus comes back.
             pausedByFocusLoss = false
+            android.util.Log.i("SquareFocus", "headphones gone: paused")
+            noisyAt = System.currentTimeMillis()
             onPause()
         }
+    }
+
+    /** When the headphones last went, for [headphonesBack]; 0 when not waiting. */
+    private var noisyAt = 0L
+
+    /**
+     * Headphones that come back a moment after they went play on. Bluetooth
+     * earphones drop off for a few seconds now and then, more with the screen
+     * off and the phone in a pocket, and the music stayed paused on their
+     * return, as if the listener had taken them off.
+     */
+    private val headphonesBack = object : android.media.AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(added: Array<out android.media.AudioDeviceInfo>) {
+            val at = noisyAt
+            if (at == 0L || !holdsFocus) return
+            if (System.currentTimeMillis() - at > HEADPHONES_BACK_MS) {
+                noisyAt = 0L
+                return
+            }
+            if (added.none { it.isSink && it.type in HEADPHONES }) return
+            noisyAt = 0L
+            android.util.Log.i("SquareFocus", "headphones back: playing on")
+            onResume()
+        }
+    }
+
+    init {
+        audioManager.registerAudioDeviceCallback(headphonesBack, android.os.Handler(android.os.Looper.getMainLooper()))
     }
 
     /**
@@ -84,6 +114,7 @@ class AudioFocusController(
         audioManager.abandonAudioFocusRequest(request)
         holdsFocus = false
         pausedByFocusLoss = false
+        noisyAt = 0L
         unregisterNoisyReceiver()
     }
 
@@ -113,6 +144,7 @@ class AudioFocusController(
 
             // A call, or another app that will hand focus back.
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                android.util.Log.i("SquareFocus", "focus lost for a while: paused")
                 pausedByFocusLoss = true
                 onPause()
             }
@@ -139,5 +171,22 @@ class AudioFocusController(
     }
 
     /** Call from the service's onDestroy. */
-    fun release() = abandonFocus()
+    fun release() {
+        abandonFocus()
+        audioManager.unregisterAudioDeviceCallback(headphonesBack)
+    }
+
+    private companion object {
+        /** How soon headphones must come back for the music to play on; see [headphonesBack]. */
+        const val HEADPHONES_BACK_MS = 20_000L
+
+        val HEADPHONES = setOf(
+            android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            android.media.AudioDeviceInfo.TYPE_BLE_HEADSET,
+            android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            android.media.AudioDeviceInfo.TYPE_USB_HEADSET,
+        )
+    }
 }

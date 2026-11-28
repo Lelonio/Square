@@ -166,15 +166,16 @@ object SoloistRuntime {
     /**
      * The stream quality in Soloist's per-account prefs, which it reads on
      * start: 5 is FLAC on 1.3.10, as spotatui found. Loudness normalisation
-     * is turned off, as Square's own engine has it.
+     * on, as Square's own engine has it (see engine.rs): off, one song came
+     * loud and the next quiet.
      */
-    fun writeQuality(dir: File, level: Int) {
+    fun writeQuality(dir: File, level: Int, normalise: Boolean = true) {
         val users = File(dir, "data/settings/Users")
         val wanted = linkedMapOf(
             "audio.play_bitrate_enumeration" to "$level",
             "audio.play_bitrate_non_metered_enumeration" to "$level",
             "audio.play_bitrate_non_metered_migrated" to "true",
-            "audio.normalize_v2" to "false",
+            "audio.normalize_v2" to "$normalise",
         )
         users.listFiles().orEmpty().map { File(it, "prefs") }.filter { it.isFile }.forEach { prefs ->
             val kept = prefs.readLines().filter { it.isNotBlank() && it.substringBefore('=') !in wanted.keys }

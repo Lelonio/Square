@@ -199,6 +199,27 @@ object Mixes {
         onChange?.invoke()
     }
 
+    /**
+     * The mix of the playlist a queue put back at start comes from, read
+     * again: a mix is otherwise set only from the playlist's page, and a
+     * playlist playing as a mix lost it when the app started cold, its songs
+     * running one after the other until the page was opened again. On or off
+     * as the page would have it (see MainViewModel.mixOn). Blocking: asks
+     * the engine.
+     */
+    fun restore(context: android.content.Context, uri: String, durations: Map<String, Long>): PlaylistMix? {
+        if (!uri.startsWith("spotify:playlist:") || playingMixes.containsKey(uri)) return null
+        val mix = parseMix(runCatching { NativeBridge.playlistMix(uri) }.getOrNull()) ?: return null
+        val prefs = context.applicationContext.getSharedPreferences("square_mix", android.content.Context.MODE_PRIVATE)
+        val on = if (mix.mixed) {
+            uri !in prefs.getStringSet("off", emptySet()).orEmpty()
+        } else {
+            uri in prefs.getStringSet("on", emptySet()).orEmpty()
+        }
+        android.util.Log.i("Mixes", "mix of $uri put back at start: mixed=${mix.mixed}, on=$on")
+        return mix.copy(durations = durations).takeIf { on }
+    }
+
     /** Set by the player, to hear about [set]; see LibrespotPlayer.followMix. */
     @Volatile var onChange: (() -> Unit)? = null
 

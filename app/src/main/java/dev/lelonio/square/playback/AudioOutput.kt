@@ -64,6 +64,60 @@ class AudioOutput {
     private var currentGain = 1f
 
     /**
+     * How far another app has asked this output to step back (a voice note, a
+     * navigation prompt), on top of whatever fade is running: 1 for not at all.
+     */
+    @Volatile
+    private var duckFactor = 1f
+
+    /**
+     * Decibels put on what is written as float (Soloist's music, normalised by
+     * Soloist to Spotify's target): the listener's normalisation amount, as
+     * librespot's pregain is for its own. A limiter keeps the loudest moments
+     * from clipping, as librespot's does. 0 leaves the samples untouched.
+     */
+    @Volatile
+    private var floatGain = 1f
+    private var limiterGain = 1f
+
+    fun setFloatGainDb(db: Float) {
+        floatGain = Math.pow(10.0, db / 20.0).toFloat()
+    }
+
+    /** [floatGain] on [samples] floats, in place, held under full scale. */
+    private fun applyFloatGain(floats: java.nio.FloatBuffer, samples: Int, channels: Int) {
+        val gain = floatGain
+        if (gain == 1f && limiterGain == 1f) return
+        val step = channels.coerceAtLeast(1)
+        var reduction = limiterGain
+        var i = 0
+        while (i + step <= samples) {
+            var peak = 0f
+            for (c in 0 until step) peak = maxOf(peak, kotlin.math.abs(floats.get(i + c) * gain))
+            // At once on a peak, back over a tenth of a second or so.
+            val wanted = if (peak > LIMIT) LIMIT / peak else 1f
+            reduction = if (wanted < reduction) wanted else reduction + (1f - reduction) * LIMITER_RELEASE
+            for (c in 0 until step) floats.put(i + c, floats.get(i + c) * gain * reduction)
+            i += step
+        }
+        limiterGain = if (reduction > 0.9999f) 1f else reduction
+    }
+
+    /**
+     * Lowers the output under another app's sound, or brings it back; the
+     * reverb's room goes down with it. For a player with no engine volume of
+     * its own to lower (Soloist), see AudioFocusController.
+     */
+    fun duck(factor: Float) {
+        val wanted = factor.coerceIn(0f, 1f)
+        if (wanted == duckFactor) return
+        duckFactor = wanted
+        duckReverb(wanted)
+        val output = synchronized(this) { track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED } } ?: return
+        runCatching { output.setVolume(currentGain * wanted) }
+    }
+
+    /**
      * Whether the sink has been told to play.
      *
      * Kept because [start] can arrive before there is an AudioTrack to start —
@@ -493,7 +547,7 @@ class AudioOutput {
             if (generation != 0L && fadeGeneration.get() != generation) return
             val gain = start + (target - start) * step / steps
             currentGain = gain
-            if (runCatching { output.setVolume(gain) }.isFailure) return
+            if (runCatching { output.setVolume(gain * duckFactor) }.isFailure) return
             try {
                 Thread.sleep(FADE_STEP_MS)
             } catch (e: InterruptedException) {
@@ -606,6 +660,7 @@ class AudioOutput {
         val samples = sizeInBytes / 4
         // A view of its own: the caller's buffer keeps the byte order it had.
         val floats = data.duplicate().order(java.nio.ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+        applyFloatGain(floats, samples, channels)
         AudioLevel.ofFloats(floats, samples)
 
         val neutral = effectsNeutral()
@@ -925,6 +980,12 @@ class AudioOutput {
     }
 
     private companion object {
+        /** Where the limiter holds the music: half a decibel under full scale. */
+        const val LIMIT = 0.944f
+
+        /** How far back to no reduction each frame: about a tenth of a second at 44.1 kHz. */
+        const val LIMITER_RELEASE = 0.0002f
+
         const val TAG = "SpotAudio"
         const val BUFFER_MULTIPLIER = 4
 

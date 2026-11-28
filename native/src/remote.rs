@@ -277,6 +277,9 @@ pub fn devices_json() -> String {
     format!("[{}]", devices.join(","))
 }
 
+/// How long a command to a device is waited for; see [`command`].
+const COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// Sends one command to another device.
 ///
 /// `body` is the JSON Spotify's own clients send, so the caller names the
@@ -293,15 +296,23 @@ pub fn command(device_id: &str, body: String) -> engine::EngineResult<()> {
     let from = session.device_id().to_string();
     let endpoint = format!("/connect-state/v1/player/command/from/{from}/to/{device_id}");
 
-    handle
-        .block_on(async move {
+    // Within a time: a request that never came back held the thread asking
+    // for good, and the music waiting on it stayed stopped with no word.
+    match handle.block_on(async move {
+        tokio::time::timeout(
+            COMMAND_TIMEOUT,
             session
                 .spclient()
-                .request(&http::Method::POST, &endpoint, None, Some(body.as_bytes()))
-                .await
-        })
-        .map(|_| ())
-        .map_err(|e| format!("command failed: {e}"))
+                .request(&http::Method::POST, &endpoint, None, Some(body.as_bytes())),
+        )
+        .await
+    }) {
+        Ok(result) => result.map(|_| ()).map_err(|e| format!("command failed: {e}")),
+        Err(_) => {
+            log::warn!("command to {device_id} got no answer in {} s", COMMAND_TIMEOUT.as_secs());
+            Err("command failed: no answer".into())
+        }
+    }
 }
 
 /// Any request to the account's spclient, as this session, for a probe: the

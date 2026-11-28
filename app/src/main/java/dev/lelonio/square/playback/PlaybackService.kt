@@ -519,11 +519,33 @@ class PlaybackService : MediaLibraryService() {
 
         // Offline (no network, or asked for): Soloist can play nothing, and
         // librespot plays what is downloaded, so the queue goes to it.
+        //
+        // Not while Soloist is still playing: it holds the song it is on, and
+        // the network dropping for a moment with the screen off (the phone
+        // changing cell, or Wi-Fi going to sleep) took the music away from it
+        // mid-song for librespot, which stayed in front once the network was
+        // back. It goes when Soloist stops for want of the network, and comes
+        // back to Soloist with the network.
         scope.launch {
-            dev.lelonio.square.playback.OfflineMode.active.collect { offline ->
+            dev.lelonio.square.playback.OfflineMode.active.collectLatest { offline ->
                 if (offline && playerKind == PlayerKind.SOLOIST) {
+                    while (playerKind == PlayerKind.SOLOIST && player.isPlaying &&
+                        dev.lelonio.square.playback.OfflineMode.reason.value != dev.lelonio.square.playback.OfflineMode.Reason.MANUAL
+                    ) {
+                        delay(2_000)
+                    }
+                    if (playerKind != PlayerKind.SOLOIST) return@collectLatest
                     android.util.Log.i(TAG, "offline: the queue goes to librespot and the downloads")
+                    leftSoloistOffline = true
                     swapPlayer(PlayerKind.SPOTIFY, restore = true)
+                } else if (!offline && leftSoloistOffline) {
+                    leftSoloistOffline = false
+                    if (soloistWanted() && playerKind == PlayerKind.SPOTIFY &&
+                        !downloadedHere(player.currentMediaItem?.mediaId)
+                    ) {
+                        android.util.Log.i(TAG, "online again: the queue goes back to Soloist")
+                        swapPlayer(PlayerKind.SOLOIST, restore = true)
+                    }
                 }
             }
         }
@@ -748,6 +770,15 @@ class PlaybackService : MediaLibraryService() {
         // The crossfade is part of the same configuration and just as fixed, so
         // it takes the same road: a new engine, with the queue put back where
         // it was.
+        // The normalisation amount: Soloist's at once, librespot's with a new
+        // player, as for the crossfade below.
+        scope.launch {
+            container.preferences.normalisationDb.drop(1).collect { db ->
+                dev.lelonio.square.playback.soloist.SoloistEngine.setNormalisation(this@PlaybackService, db)
+                applyNormalisation(db)
+                if (playerKind != PlayerKind.SOLOIST) reconfigureEngine("normalisation")
+            }
+        }
         scope.launch {
             crossfade.seconds.drop(1).collect {
                 // Soloist's libpulse reads it while it runs: no new run, which
@@ -790,6 +821,10 @@ class PlaybackService : MediaLibraryService() {
                     // the artist and the cover of what plays elsewhere.
                     val described = elsewhere?.let { describeRemote(it) }
                     librespot?.showRemote(described)
+                    // And Soloist's player, when it is the one in front: its
+                    // session is the one the notification and the volume keys
+                    // read.
+                    (player as? dev.lelonio.square.playback.soloist.SoloistPlayer)?.showRemote(described)
                 }
         }
 
@@ -819,6 +854,9 @@ class PlaybackService : MediaLibraryService() {
      * the setting but what is being played; see [ensurePlayerFor].
      */
     private enum class PlayerKind { SPOTIFY, YOUTUBE, LOCAL, VIDEO, SPOTIFY_WEB, SOLOIST }
+
+    /** Soloist was let go of for the network gone; it is taken back with the network. */
+    private var leftSoloistOffline = false
 
     private var playerKind = PlayerKind.SPOTIFY
         set(value) {
@@ -1282,7 +1320,15 @@ class PlaybackService : MediaLibraryService() {
                 ::soloistContext,
                 playsElsewhere = { uri -> !dev.lelonio.square.playback.OfflineMode.active.value && downloadedHere(uri) },
                 elsewhere = ::playElsewhere,
-            )
+            ).also { made ->
+                // What another device is playing already, mirrored from the
+                // start rather than from its next change.
+                scope.launch {
+                    dev.lelonio.square.data.RemoteConnect.playback.value
+                        ?.takeIf { !OfflineMode.active.value }
+                        ?.let { made.showRemote(describeRemote(it)) }
+                }
+            }
         }
     }
 
@@ -1774,8 +1820,8 @@ class PlaybackService : MediaLibraryService() {
                 runCatching {
                     android.util.Log.i(
                         TAG,
-                        "quality: asking for ${'$'}{quality.bitrateKbps()} kbps" +
-                            " (link estimate ${'$'}{quality.linkKbps()} kbps)",
+                        "quality: asking for ${quality.bitrateKbps()} kbps" +
+                            " (link estimate ${quality.linkKbps()} kbps)",
                     )
                     NativeBridge.setQuality(quality.bitrateKbps(), crossfade.durationMs())
                 }
@@ -1860,7 +1906,7 @@ class PlaybackService : MediaLibraryService() {
                     // session's client id — so the two have to agree or the
                     // access point rejects every catalogue call.
                     clientId = SpotifyOAuth.CLIENT_ID,
-                    deviceName = android.os.Build.MODEL ?: "Android",
+                    deviceName = dev.lelonio.square.playback.ConnectName.of(this@PlaybackService),
                     // Kept across launches, so the account sees this phone as
                     // one device rather than a new one every time.
                     deviceId = container.preferences.deviceId(),
@@ -1878,9 +1924,10 @@ class PlaybackService : MediaLibraryService() {
                     bitrateKbps = quality.bitrateKbps().also {
                         android.util.Log.i(
                             TAG,
-                            "quality: starting at ${'$'}it kbps" +
-                                " (link estimate ${'$'}{quality.linkKbps()} kbps)",
+                            "quality: starting at $it kbps" +
+                                " (link estimate ${quality.linkKbps()} kbps)",
                         )
+                        applyNormalisation(container.preferences.normalisationDb.value)
                     },
                     // Off is zero, which is upstream librespot's own behaviour.
                     crossfadeMs = crossfade.durationMs(),
@@ -1955,6 +2002,7 @@ class PlaybackService : MediaLibraryService() {
             // Up with no session: try again for as long as there is a network.
             if (offline) SessionKeeper.sessionMissing()
             if (restoreQueue) restoreQueue()
+            restoreMix()
             // With Soloist chosen, the queue belongs in front of it: the engine
             // is up behind it for the catalogue and for Connect.
             // Not when the song put back is a downloaded one, which plays
@@ -1963,9 +2011,29 @@ class PlaybackService : MediaLibraryService() {
                 !downloadedHere(player.currentMediaItem?.mediaId)
             ) {
                 swapPlayer(PlayerKind.SOLOIST, restore = true)
+                (player as? dev.lelonio.square.playback.soloist.SoloistPlayer)?.preload()
             }
             observeForSaving()
         }
+    }
+
+    /** The mix of the playlist the queue put back comes from; see Mixes.restore. */
+    private fun restoreMix() {
+        val saved = playbackStore.load() ?: return
+        val uri = saved.contextUri?.takeIf { saved.contextOrdered } ?: return
+        val durations = saved.tracks.filter { it.durationMs > 0 }.associate { it.uri to it.durationMs }
+        scope.launch {
+            val mix = withContext(Dispatchers.IO) { dev.lelonio.square.playback.Mixes.restore(this@PlaybackService, uri, durations) }
+                ?: return@launch
+            dev.lelonio.square.playback.Mixes.set(uri, mix)
+        }
+    }
+
+    /** librespot's normalisation, for the player built next; see NativeBridge.setNormalisation. */
+    private fun applyNormalisation(db: Int) {
+        val off = db == dev.lelonio.square.data.Normalisation.OFF
+        runCatching { NativeBridge.setNormalisation(!off, if (off) 0f else db.toFloat()) }
+            .onFailure { android.util.Log.w(TAG, "normalisation not set: $it") }
     }
 
     /** See the note where it is called, as the engine starts. */

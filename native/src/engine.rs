@@ -451,8 +451,10 @@ pub fn start(
         // back. The pregain is what puts it back — Spotify's own "loud" setting
         // is about three decibels over its normal one, and a couple more brings
         // this level with apps that do no normalisation at all.
-        normalisation: true,
-        normalisation_pregain_db: 5.0,
+        // On, and how much is put back, as the listener sets it; see
+        // [`set_normalisation`]. Five decibels until told otherwise.
+        normalisation: NORMALISATION.load(Ordering::SeqCst),
+        normalisation_pregain_db: PREGAIN_CENTI_DB.load(Ordering::SeqCst) as f64 / 100.0,
         // The limiter, not a flat scale: with five decibels added, the loudest
         // moments of a loud master would otherwise clip.
         normalisation_method: NormalisationMethod::Dynamic,
@@ -1091,6 +1093,32 @@ pub fn set_quality(bitrate_kbps: i32, crossfade_ms: i32) -> EngineResult<()> {
         engine.recipe.player_config.crossfade_duration_ms = crossfade_ms.max(0) as u32;
     }
     reconnect()
+}
+
+/// Whether loudness normalisation is on, as the listener last set it.
+static NORMALISATION: AtomicBool = AtomicBool::new(true);
+/// The normalisation's pregain, in hundredths of a decibel.
+static PREGAIN_CENTI_DB: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(500);
+
+/// Loudness normalisation on or off, and how many decibels over Spotify's
+/// target it brings songs to. What the next player is built with: fixed for
+/// a player's life, like the crossfade, so a change while one runs is heard
+/// once the caller has it built again (see [`set_quality`]).
+pub fn set_normalisation(on: bool, pregain_db: f64) -> EngineResult<()> {
+    let centi = (pregain_db * 100.0).round() as i32;
+    let was_on = NORMALISATION.swap(on, Ordering::SeqCst);
+    let was_centi = PREGAIN_CENTI_DB.swap(centi, Ordering::SeqCst);
+    if was_on == on && was_centi == centi {
+        return Ok(());
+    }
+    {
+        let mut guard = ENGINE.lock().map_err(|_| "engine mutex poisoned")?;
+        let Some(engine) = guard.as_mut() else { return Ok(()) };
+        engine.recipe.player_config.normalisation = on;
+        engine.recipe.player_config.normalisation_pregain_db = centi as f64 / 100.0;
+    }
+    log::info!("normalisation {} at {:+.1} dB", if on { "on" } else { "off" }, pregain_db);
+    Ok(())
 }
 
 /// Changes the quality of what is asked for next, without rebuilding anything.

@@ -22,6 +22,9 @@ import kotlin.concurrent.thread
  * with it, and Soloist's writes stop behind that.
  */
 object SoloistAudio {
+    /** How soon after a flush a cork is Soloist changing song rather than pausing. */
+    private const val CHANGE_CORK_MS = 3_000L
+
     private const val TAG = "SoloistAudio"
 
     @Volatile
@@ -273,7 +276,23 @@ object SoloistAudio {
                 // song resumes too, and starting a running output faded it to
                 // nothing in the middle of the dissolve.
                 'R' -> { Log.i(TAG, "resume"); resumeNow() }
-                'P' -> { Log.i(TAG, "pause"); pauseNow(); awaitingSound = true }
+                // Soloist corks the stream while it loads the next song, a
+                // moment after the change of song's flush. That is no pause: the
+                // song being left is still coming, to be dissolved into the new
+                // one, and stopping the output for it silenced those seconds,
+                // so the music stopped and then jumped into the next song.
+                // Only a cork while Soloist is not playing, or not just after a
+                // change of song, stops the output.
+                'P' -> {
+                    val changing = android.os.SystemClock.elapsedRealtime() - flushedAt < CHANGE_CORK_MS
+                    if (changing && SoloistEngine.state.value.playing) {
+                        Log.i(TAG, "pause in a change of song, playing on")
+                    } else {
+                        Log.i(TAG, "pause")
+                        pauseNow()
+                    }
+                    awaitingSound = true
+                }
                 'F' -> {
                     Log.i(TAG, "flush")
                     // What was ahead is gone, and the points in it with it;

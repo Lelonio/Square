@@ -99,6 +99,43 @@ class SoloistPlayer(
     private var prepared = false
 
     /**
+     * Audio focus, as the Spotify engine's player keeps it.
+     *
+     * Soloist's sound comes out of this app like any other, but nothing asked
+     * the system for focus while it played: a WhatsApp voice note played over
+     * the music instead of lowering it, and the engine's player, still holding
+     * the focus from before, answered a navigation prompt in Soloist's place
+     * and left it stopped. Asked for here when Soloist is told to play, let go
+     * when it is told to stop.
+     */
+    private val focus = dev.lelonio.square.playback.AudioFocusController(
+        context,
+        onPause = { pauseForFocus() },
+        onResume = { resumeAfterFocus() },
+        onDuck = { ducked -> output.duck(if (ducked) DUCK_FACTOR else 1f) },
+        pauseOnLoss = {
+            (context.applicationContext as? dev.lelonio.square.SquareApplication)
+                ?.preferences?.pauseForOtherApps?.value != false
+        },
+    )
+
+    /** Another app has the sound for a moment: stopped, without letting go of the focus. */
+    private fun pauseForFocus() {
+        if (!wantPlay) return
+        SoloistAudio.pauseNow()
+        if (local == null) hold(false, null)
+        wantPlay = false
+        if (local == null || sentUri != null) SoloistEngine.pause()
+        invalidateState()
+    }
+
+    /** The focus is back after a pause it caused. */
+    private fun resumeAfterFocus() {
+        if (wantPlay) return
+        handleSetPlayWhenReady(true)
+    }
+
+    /**
      * What a button asked for, shown at once and until Soloist says it too
      * (or a few seconds pass): Soloist's events in between still carry the
      * state from before, and following them made pause flick back to play
@@ -159,12 +196,25 @@ class SoloistPlayer(
             SoloistAudio.newSongHeard.drop(1).collect {
                 // The new song begins under the old one now, not when Soloist
                 // said it began: its time runs from here.
-                state.anchor?.takeIf { it.positionMs < 2_000 }?.audioAtMs = SoloistAudio.playedMs()
+                // From its start, not from where Soloist says it is: Soloist
+                // had already given out the first of it (the half second or so
+                // since the skip, still in libpulse), and counted from there
+                // the time, and the lyrics, ran that far ahead of the song.
+                state.anchor?.takeIf { it.positionMs < 2_000 }?.let { it.audioAtMs = SoloistAudio.playedMs() + it.positionMs }
                 android.util.Log.i("SoloistPlayer", "new song heard in the dissolve (libpulse ahead ${SoloistAudio.aheadMs} ms)")
                 unfreeze()
             }
         }
         bindEffects()
+        // Another device starting or stopping, or its volume moving, changes
+        // what the session says of itself; see remoteTarget.
+        scope.launch {
+            kotlinx.coroutines.flow.combine(
+                dev.lelonio.square.data.RemoteConnect.elsewhereActive,
+                dev.lelonio.square.data.RemoteConnect.devices,
+            ) { elsewhere, devices -> elsewhere to devices.firstOrNull { it.active }?.let { it.id to it.volume } }
+                .collect { main.post { invalidateState() } }
+        }
         if (!adoptedAtLaunch) {
             adoptedAtLaunch = true
             scope.launch { adoptAccount() }
@@ -172,6 +222,41 @@ class SoloistPlayer(
     }
 
     // ------------------------------------------------------------- following
+
+    /**
+     * The queue put back at start, handed to Soloist paused as soon as it is
+     * signed in, so the first play is at once (rather than the second or two
+     * of sending it then) and the account's other devices see the song ready
+     * here. Not while another device is playing: taking the account's
+     * playback, even paused, stops the music there.
+     */
+    fun preload() {
+        scope.launch {
+            val ready = kotlinx.coroutines.withTimeoutOrNull(PRELOAD_WAIT_MS) {
+                SoloistEngine.state.first { it.loggedIn }
+                while (SoloistEngine.deviceId == null) kotlinx.coroutines.delay(250)
+                // The account's devices as they are now, not as at the last look.
+                kotlinx.coroutines.withContext(Dispatchers.IO) { runCatching { dev.lelonio.square.data.RemoteConnect.refresh() } }
+                true
+            } ?: false
+            if (!ready || local == null || wantPlay || sentUri != null) return@launch
+            // Only with the account's devices known, and none of them the
+            // one playing, paused or not: right after a start the list was
+            // still empty, taken for "nothing playing", and the music on the
+            // other phone stopped as this one opened.
+            val devices = dev.lelonio.square.data.RemoteConnect.devices.value
+            val other = devices.firstOrNull { it.active && it.id != SoloistEngine.deviceId }
+            if (devices.isEmpty() || other != null || dev.lelonio.square.data.RemoteConnect.elsewhereActive.value) {
+                android.util.Log.i("SoloistPlayer", "queue kept for play: ${other?.name ?: if (devices.isEmpty()) "the account's devices not known yet" else "another device"} is active")
+                return@launch
+            }
+            android.util.Log.i("SoloistPlayer", "queue put back handed to Soloist, paused")
+            send()
+        }
+    }
+
+    /** The send waiting for Soloist to sign in; see [send]. */
+    private var waitingToSend: kotlinx.coroutines.Job? = null
 
     /** When this player last told Soloist to change song or place; see [holdUntilHeard]. */
     private var commandedAt = 0L
@@ -252,6 +337,9 @@ class SoloistPlayer(
         val was = state
         holdUntilHeard(was, next)
         state = next
+        // Smart shuffle turned on from elsewhere (Spotify's app, or kept by
+        // Soloist from before): wanted from here on, across contexts.
+        if (next.smartShuffle && !was.smartShuffle) SoloistEngine.smartWanted = true
         if (!next.running && was.running && local == null) {
             // Soloist stopping (a restart for the quality, or gone): what it
             // was playing is kept here, to be sent again when it is back.
@@ -416,7 +504,141 @@ class SoloistPlayer(
         invalidateState()
     }
 
+    /**
+     * Playback on another device of the account, mirrored here as the Spotify
+     * engine's player mirrors it (see LibrespotPlayer.showRemote): what plays
+     * there, what comes next, and the buttons sent there. Set by the service.
+     */
+    private var remote: dev.lelonio.square.data.RemotePlayback? = null
+    private var remoteItems: List<MediaItemData>? = null
+
+    fun showRemote(playback: dev.lelonio.square.data.RemotePlayback?) {
+        val shown = { p: dev.lelonio.square.data.RemotePlayback? -> p?.copy(positionMs = 0, playing = false) }
+        if (shown(remote) != shown(playback)) remoteItems = null
+        remote = playback
+        invalidateState()
+    }
+
+    /** The other device, while it is the one playing and Soloist is not. */
+    private fun mirrored(): dev.lelonio.square.data.RemotePlayback? = remote?.takeIf { !state.active }
+
+    private fun toRemote(what: String, command: (String) -> Unit): Boolean {
+        val target = mirrored() ?: return false
+        thread {
+            runCatching { command(target.deviceId) }
+                .onFailure { android.util.Log.w("SoloistPlayer", "$what did not reach ${target.deviceName}", it) }
+        }
+        return true
+    }
+
+    private fun remoteState(playback: dev.lelonio.square.data.RemotePlayback): State {
+        fun item(uid: String, uri: String, title: String, artist: String, album: String, cover: String) =
+            MediaItemData.Builder(uid).setMediaItem(
+                MediaItem.Builder()
+                    .setMediaId(uri)
+                    .setUri(uri)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(title)
+                            .setArtist(artist)
+                            .setAlbumTitle(album)
+                            .setArtworkUri(cover.takeIf { it.isNotEmpty() }?.let(android.net.Uri::parse))
+                            .setIsBrowsable(false)
+                            .setIsPlayable(true)
+                            .build(),
+                    )
+                    .build(),
+            )
+        val items = remoteItems ?: buildList {
+            add(
+                item("remote:0", playback.uri, playback.title, playback.artist, playback.album, playback.coverUrl)
+                    .setDurationUs(playback.durationMs * 1000)
+                    .build(),
+            )
+            playback.next.forEachIndexed { index, track ->
+                add(item("remote:${index + 1}:${track.uri}", track.uri, track.title, track.artist, "", track.coverUrl).build())
+            }
+        }.also { remoteItems = it }
+        val builder = State.Builder()
+            .setAvailableCommands(COMMANDS)
+            .setPlaybackState(Player.STATE_READY)
+            .setPlayWhenReady(playback.playing, Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE)
+            .setContentPositionMs(playback.positionMs)
+            .setRepeatMode(
+                when {
+                    playback.repeatTrack -> Player.REPEAT_MODE_ONE
+                    playback.repeatContext -> Player.REPEAT_MODE_ALL
+                    else -> Player.REPEAT_MODE_OFF
+                },
+            )
+            .setShuffleModeEnabled(playback.shuffle)
+            .setPlaylist(items)
+            .setCurrentMediaItemIndex(0)
+        dev.lelonio.square.data.RemoteConnect.devices.value.firstOrNull { it.id == playback.deviceId }?.let { device ->
+            val volume = remoteVolumeShown ?: (device.volume.toLong().times(REMOTE_STEPS).plus(32767).div(65535).toInt())
+            builder
+                .setAvailableCommands(REMOTE_COMMANDS)
+                .setDeviceInfo(
+                    androidx.media3.common.DeviceInfo.Builder(androidx.media3.common.DeviceInfo.PLAYBACK_TYPE_REMOTE)
+                        .setMinVolume(0)
+                        .setMaxVolume(REMOTE_STEPS)
+                        .build(),
+                )
+                .setDeviceVolume(volume.coerceIn(0, REMOTE_STEPS))
+        }
+        return builder.build()
+    }
+
+    /** The account's device playing right now, when it is not this phone. */
+    private fun remoteTarget(): dev.lelonio.square.data.RemoteDevice? {
+        if (!dev.lelonio.square.data.RemoteConnect.elsewhereActive.value) return null
+        return dev.lelonio.square.data.RemoteConnect.devices.value.firstOrNull {
+            it.active && !it.isThisPhone && it.id != SoloistEngine.deviceId
+        }
+    }
+
+    private var remoteVolumeShown: Int? = null
+    private var remoteVolumeAt = 0L
+
+    private fun setRemoteVolume(steps: Int) {
+        val device = mirrored()?.let { p -> dev.lelonio.square.data.RemoteConnect.devices.value.firstOrNull { it.id == p.deviceId } }
+            ?: remoteTarget() ?: return
+        val target = steps.coerceIn(0, REMOTE_STEPS)
+        remoteVolumeShown = target
+        remoteVolumeAt = System.currentTimeMillis()
+        main.postDelayed({
+            if (System.currentTimeMillis() - remoteVolumeAt >= REMOTE_HOLD_MS) {
+                remoteVolumeShown = null
+                invalidateState()
+            }
+        }, REMOTE_HOLD_MS)
+        thread { dev.lelonio.square.data.RemoteConnect.setVolume(device.id, target * 65535 / REMOTE_STEPS) }
+        invalidateState()
+    }
+
+    private fun shownRemoteVolume(): Int? =
+        remoteVolumeShown ?: (
+            mirrored()?.let { p -> dev.lelonio.square.data.RemoteConnect.devices.value.firstOrNull { it.id == p.deviceId } }
+                ?: remoteTarget()
+            )?.let { it.volume.toLong().times(REMOTE_STEPS).plus(32767).div(65535).toInt() }
+
+    override fun handleSetDeviceVolume(deviceVolume: Int, flags: Int): ListenableFuture<*> {
+        setRemoteVolume(deviceVolume)
+        return done()
+    }
+
+    override fun handleIncreaseDeviceVolume(flags: Int): ListenableFuture<*> {
+        shownRemoteVolume()?.let { setRemoteVolume(it + 1) }
+        return done()
+    }
+
+    override fun handleDecreaseDeviceVolume(flags: Int): ListenableFuture<*> {
+        shownRemoteVolume()?.let { setRemoteVolume(it - 1) }
+        return done()
+    }
+
     override fun getState(): State {
+        mirrored()?.let { return remoteState(it) }
         var items = showing()
         var index = currentIndex()
         // A moment with no song (Soloist between one and the next) is not an
@@ -432,6 +654,21 @@ class SoloistPlayer(
             .setPlayWhenReady(wantPlay, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setContentPositionMs { currentPosition() }
             .setPlaybackParameters(parameters)
+        // Another device playing the account: the session speaks for it, and
+        // the phone's volume keys move that device's volume, as in Spotify's
+        // own app. See LibrespotPlayer.remoteState.
+        remoteTarget()?.let { device ->
+            val volume = remoteVolumeShown ?: (device.volume.toLong().times(REMOTE_STEPS).plus(32767).div(65535).toInt())
+            builder
+                .setAvailableCommands(REMOTE_COMMANDS)
+                .setDeviceInfo(
+                    androidx.media3.common.DeviceInfo.Builder(androidx.media3.common.DeviceInfo.PLAYBACK_TYPE_REMOTE)
+                        .setMinVolume(0)
+                        .setMaxVolume(REMOTE_STEPS)
+                        .build(),
+                )
+                .setDeviceVolume(volume.coerceIn(0, REMOTE_STEPS))
+        }
         if (items.isEmpty()) return builder.setPlaybackState(Player.STATE_IDLE).build()
         val uids = mutableSetOf<String>()
         builder.setPlaylist(items.mapIndexed { i, item ->
@@ -445,8 +682,14 @@ class SoloistPlayer(
         }).setCurrentMediaItemIndex(index.coerceIn(items.indices))
         val buffering = (local != null && sentUri != null) || (local == null && state.status == "buffering")
         builder.setPlaybackState(if (buffering) Player.STATE_BUFFERING else Player.STATE_READY)
+        // A paused song sent to another place: said as a jump, or the screen,
+        // which hears of the time only while it plays, kept the old one.
+        jumped?.let {
+            builder.setPositionDiscontinuity(Player.DISCONTINUITY_REASON_SEEK, it)
+            jumped = null
+        }
         if (local == null) {
-            builder.setShuffleModeEnabled(state.shuffle)
+            builder.setShuffleModeEnabled(shuffleShown())
                 .setRepeatMode(
                     when (state.repeat) {
                         "track" -> Player.REPEAT_MODE_ONE
@@ -470,11 +713,21 @@ class SoloistPlayer(
     private fun send() {
         val items = local ?: return
         if (items.isEmpty()) return
-        if (!state.loggedIn || SoloistEngine.deviceId == null) {
+        // Asked of the engine, not of the copy this player follows: the copy
+        // is brought up to date by a collector queued behind this on the main
+        // thread. Waited for once, and sent again from a later turn of the
+        // main loop: run at once, the send found the copy still signed out,
+        // waited for an engine already signed in, and went round again
+        // without end, the main thread spinning until Android killed the app
+        // (the restart after the network came back).
+        if (!SoloistEngine.state.value.loggedIn || SoloistEngine.deviceId == null) {
             SoloistEngine.start(context)
-            scope.launch {
-                SoloistEngine.state.first { it.loggedIn }
-                if (local != null) send()
+            if (waitingToSend?.isActive != true) {
+                waitingToSend = scope.launch {
+                    SoloistEngine.state.first { it.loggedIn }
+                    while (SoloistEngine.deviceId == null) kotlinx.coroutines.delay(250)
+                    main.post { if (local != null) send() }
+                }
             }
             return
         }
@@ -482,10 +735,25 @@ class SoloistPlayer(
         val current = items[index]
         val contextUri = current.mediaMetadata.extras?.getString(EXTRA_CONTEXT_URI)
             ?.takeIf { it.startsWith("spotify:") && it != SoloistEngine.LIST_CONTEXT }
-        val asContext = contextUri != null && items.all {
+        // Smart shuffle kept on from one list to the next, as in Spotify's
+        // app: a playlist of the listener's goes as itself (smart shuffle is
+        // Spotify's for a context it knows), whatever order the page showed.
+        val keepSmart = SoloistEngine.smartWanted && contextUri != null && smartable(contextUri) &&
+            items.all { it.mediaMetadata.extras?.getString(EXTRA_CONTEXT_URI) == contextUri }
+        // The context in its own order up to the song and beyond, with only
+        // songs added after it (autoplay, the radio that follows a playlist)
+        // at the end: still that context, those songs going along as the
+        // last of its pages. Sent as Square's own list for them, it was a
+        // context no other device could be moved to, and a transfer handed
+        // the next device an empty queue.
+        val inContext = items.map {
             it.mediaMetadata.extras?.getString(EXTRA_CONTEXT_URI) == contextUri &&
                 it.mediaMetadata.extras?.getBoolean(EXTRA_CONTEXT_ORDERED) == true
-        } && !dev.lelonio.square.playback.Mixes.offHere(context, contextUri)
+        }
+        val lastInContext = inContext.lastIndexOf(true)
+        val contextFirst = lastInContext >= localIndex.coerceIn(items.indices) && inContext.take(lastInContext + 1).all { it }
+        val asContext = contextUri != null && (keepSmart || contextFirst) &&
+            !dev.lelonio.square.playback.Mixes.offHere(context, contextUri)
         val position = localPosition
         val paused = !wantPlay
         // The same play again a moment later (the queue set and then play
@@ -519,8 +787,21 @@ class SoloistPlayer(
                 // The whole context, as far as it goes, so the songs before
                 // the one picked are there too.
                 val from = (index - CONTEXT_PAGE / 2).coerceAtLeast(0)
-                val page = items.subList(from, minOf(items.size, from + CONTEXT_PAGE)).map { it.mediaId }
-                SoloistEngine.playContext(contextUri!!, page, index - from, position, paused)
+                val ordered = items.subList(from, minOf(items.size, from + CONTEXT_PAGE)).map { it.mediaId }
+                // Mixed up for smart shuffle, which orders the same songs in
+                // the same order the same way every time; see mixedUp.
+                val page = if (keepSmart) mixedUp(ordered, current.mediaId) else ordered
+                val at = if (keepSmart) page.indexOf(current.mediaId).coerceAtLeast(0) else index - from
+                val sent = SoloistEngine.playContext(contextUri!!, page, at, position, paused)
+                if (sent && paused) seekWhilePaused(position)
+                if (sent && keepSmart) {
+                    // The play sets shuffle off; smart shuffle again once
+                    // Soloist has the context open.
+                    val until = System.currentTimeMillis() + 5_000
+                    while (SoloistEngine.state.value.contextUri != contextUri && System.currentTimeMillis() < until) Thread.sleep(150)
+                    Thread.sleep(500)
+                    SoloistEngine.setShuffleMode(true, true)
+                }
             } else {
                 // Not under the playlist's name: Soloist opens a context it knows
                 // itself and plays it in Spotify's order, so a playlist shown
@@ -528,11 +809,36 @@ class SoloistPlayer(
                 // nothing after it.
                 val from = (index - LIST_BEFORE).coerceAtLeast(0)
                 val window = items.subList(from, minOf(items.size, index + LIST_PAGE)).map { it.mediaId }
-                SoloistEngine.playList(window, index - from, position, paused, null)
+                if (SoloistEngine.playList(window, index - from, position, paused, null) && paused) seekWhilePaused(position)
             }
         }
         invalidateState()
     }
+
+    /**
+     * A play sent paused is taken at the song's start, whatever place it
+     * asks for: the queue put back at start then played from the top of the
+     * song. Sent to the place once Soloist has the song. Blocking.
+     */
+    private fun seekWhilePaused(position: Long) {
+        if (position < 1_000) return
+        val until = System.currentTimeMillis() + 3_000
+        while (SoloistEngine.state.value.song == null && System.currentTimeMillis() < until) Thread.sleep(100)
+        // After Soloist has made the play its own (the device taking the
+        // account's playback comes a moment after the answer), or the place
+        // went back to the start with it.
+        Thread.sleep(1_500)
+        SoloistEngine.seek(position)
+        SoloistEngine.expectPosition(position)
+        android.util.Log.i("SoloistPlayer", "paused play sent to $position ms")
+        main.post {
+            jumped = position
+            invalidateState()
+        }
+    }
+
+    /** A place a paused song was sent to, to be said as a jump; see [seekWhilePaused]. */
+    private var jumped: Long? = null
 
     // -------------------------------------------------------------- commands
 
@@ -542,6 +848,17 @@ class SoloistPlayer(
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        // The other device's play and pause, while it is the one playing.
+        if (toRemote(if (playWhenReady) "play" else "pause") { id ->
+                if (playWhenReady) dev.lelonio.square.data.RemoteConnect.play(id)
+                else dev.lelonio.square.data.RemoteConnect.pause(id)
+            }
+        ) {
+            remote = remote?.copy(playing = playWhenReady)
+            invalidateState()
+            return done()
+        }
+        if (playWhenReady) focus.requestFocus() else focus.abandonFocus()
         if (!playWhenReady) {
             // A skip's flag still up made libpulse take this pause for a
             // change of song and play the old one on.
@@ -571,6 +888,25 @@ class SoloistPlayer(
     }
 
     override fun handleSeek(index: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
+        if (mirrored() != null) {
+            when (seekCommand) {
+                Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM ->
+                    toRemote("next", dev.lelonio.square.data.RemoteConnect::next)
+                Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM ->
+                    toRemote("previous", dev.lelonio.square.data.RemoteConnect::previous)
+                else -> if (index == 0) {
+                    toRemote("seek") { id -> dev.lelonio.square.data.RemoteConnect.seek(id, positionMs.coerceAtLeast(0)) }
+                } else {
+                    // A song further down that device's queue: played there
+                    // from it, the rest of the queue after it.
+                    val playing = mirrored()
+                    val uris = listOfNotNull(playing?.uri) + playing?.next.orEmpty().map { it.uri }
+                    val from = uris.drop(index)
+                    if (from.isNotEmpty()) toRemote("jump") { id -> SoloistEngine.playListOn(id, from, 0, 0, playing?.realContext) }
+                }
+            }
+            return done()
+        }
         val target = positionMs.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0) ?: 0
         var mediaItemIndex = index
         frozen?.let { before ->
@@ -770,6 +1106,8 @@ class SoloistPlayer(
 
     /** [items] after everything Soloist has still to play, as songs of the list, not queued ones. */
     private fun appendToSoloist(items: List<MediaItem>) {
+        // Square's own (autoplay, the DJ's next page): not smart shuffle's.
+        items.forEach { SoloistEngine.queuedByHand.add(it.mediaId) }
         unfreeze()
         val now = state
         val added = items.map { item ->
@@ -817,6 +1155,159 @@ class SoloistPlayer(
         return done()
     }
 
+    /**
+     * The shuffle button: off, shuffle, smart shuffle (Spotify's
+     * recommendations mixed in, chosen by Spotify for the context), off, as
+     * in Spotify's own app.
+     *
+     * Smart shuffle is Spotify's for a context it knows: a playlist played as
+     * Square's own list (a page sorted its way, or picked from) is handed to
+     * Soloist as the playlist first, at the same song and time, and smart
+     * shuffle is asked for once Soloist plays it.
+     */
+    fun cycleShuffle() {
+        val ownList = state.contextUri == null || state.contextUri == SoloistEngine.LIST_CONTEXT
+        val source = (if (ownList) SoloistEngine.listSource else state.contextUri)
+            ?.takeIf { smartable(it) && smartRefusedFor != it }
+        val wantSmart = state.shuffle && !state.smartShuffle && source != null && local == null
+        val shuffle = !state.shuffle || wantSmart
+        android.util.Log.i("SoloistPlayer", "shuffle ${if (wantSmart) "smart on $source" else if (shuffle) "on" else "off"}")
+        askedShuffle = (shuffle to wantSmart) to System.currentTimeMillis()
+        invalidateState()
+        SoloistEngine.smartWanted = wantSmart
+        if (!wantSmart && !state.smartShuffle) {
+            handleSetShuffleModeEnabled(shuffle)
+            return
+        }
+        if (!wantSmart) {
+            thread { if (!SoloistEngine.setShuffleMode(false, false)) SoloistEngine.setShuffle(false) }
+            return
+        }
+        val shown = showing().map { it.mediaId }.filter { it.startsWith("spotify:track:") || it.startsWith("spotify:episode:") }
+        val current = currentMediaItem?.mediaId
+        val position = currentPosition
+        val paused = !wantPlay
+        thread {
+            // The whole playlist, not the part of it in the queue: given the
+            // eighty songs a queue put back holds, Soloist shuffled those and
+            // smart shuffle came out the same every time.
+            val whole = runCatching {
+                val list = org.json.JSONArray(dev.lelonio.square.nativecore.NativeBridge.contextTracks(source!!))
+                (0 until list.length()).map { list.getString(it) }
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
+            whole?.let { ownTracks = source!! to it.toSet() }
+            val uris = mixedUp(whole?.takeIf { current in it } ?: shown, current)
+            val index = uris.indexOf(current)
+            val replay = ownList || (whole != null && whole.size > SoloistEngine.state.value.let { it.previous.size + it.upcoming.size + 1 })
+            if (replay) {
+                if (index < 0 || !SoloistEngine.playContext(source!!, uris, index, position, paused)) {
+                    if (ownList) {
+                        refuseSmart(source!!)
+                        return@thread
+                    }
+                }
+                // Soloist answers the play before it has the context open;
+                // asked at once, the options went to the list still playing.
+                val until = System.currentTimeMillis() + 5_000
+                while (SoloistEngine.state.value.contextUri != source && System.currentTimeMillis() < until) Thread.sleep(150)
+                // The same context again: nothing to wait for in its name, so
+                // a moment for Soloist to open it.
+                if (!ownList) Thread.sleep(1_500)
+            }
+            if (!SoloistEngine.setShuffleMode(true, true)) refuseSmart(source!!)
+        }
+    }
+
+    /**
+     * The shuffle mode the button last asked for, and when: shown until
+     * Soloist has it. Smart shuffle goes by way of a new play of the
+     * playlist, which turns shuffle off, and the button showed plain play a
+     * moment before it showed smart shuffle.
+     */
+    private var askedShuffle: Pair<Pair<Boolean, Boolean>, Long>? = null
+
+    private fun askedMode(): Pair<Boolean, Boolean>? {
+        val (mode, at) = askedShuffle ?: return null
+        val (shuffle, smart) = mode
+        if (System.currentTimeMillis() - at > ASKED_SHOWN_MS || (state.shuffle == shuffle && state.smartShuffle == smart)) {
+            askedShuffle = null
+            return null
+        }
+        return mode
+    }
+
+    private fun shuffleShown() = askedMode()?.first ?: state.shuffle
+    private fun smartShown() = askedMode()?.second ?: state.smartShuffle
+
+    /**
+     * Whether a song was put in by smart shuffle. Soloist gives them out as
+     * the context's own, with nothing to tell them apart: a song in the queue
+     * that is not in the playlist is one Spotify added.
+     */
+    private fun recommended(uri: String, source: String): Boolean {
+        if (!smartShown() || source == "queue" || uri in SoloistEngine.queuedByHand) return false
+        if (source.contains("recommendation") || uri in SoloistEngine.recommended) return true
+        val context = state.contextUri?.takeIf { smartable(it) } ?: return false
+        val own = ownTracks?.takeIf { it.first == context }?.second
+        if (own == null) {
+            loadOwnTracks(context)
+            return false
+        }
+        return uri !in own
+    }
+
+    /** The songs of the context smart shuffle plays, as Spotify lists them; see [recommended]. */
+    @Volatile private var ownTracks: Pair<String, Set<String>>? = null
+    @Volatile private var loadingOwn: String? = null
+
+    private fun loadOwnTracks(context: String) {
+        if (loadingOwn == context) return
+        loadingOwn = context
+        thread {
+            val tracks = runCatching {
+                val list = org.json.JSONArray(dev.lelonio.square.nativecore.NativeBridge.contextTracks(context))
+                (0 until list.length()).map { list.getString(it) }.toSet()
+            }.onFailure { android.util.Log.w("SoloistPlayer", "songs of $context not known: ${it.message}") }.getOrNull()
+            main.post {
+                loadingOwn = null
+                if (tracks.isNullOrEmpty()) return@post
+                android.util.Log.i("SoloistPlayer", "smart shuffle: ${tracks.size} songs of the playlist, the rest added")
+                ownTracks = context to tracks
+                invalidateState()
+            }
+        }
+    }
+
+    /**
+     * [uris] in a new random order, [current] first. Smart shuffle orders a
+     * context the same way every time it is given the same songs in the same
+     * order: sent in the playlist's own order, every press came out as the
+     * same list.
+     */
+    private fun mixedUp(uris: List<String>, current: String?): List<String> {
+        val rest = uris.filter { it != current }.shuffled()
+        return if (current != null && current in uris) listOf(current) + rest else rest
+    }
+
+    /** The context smart shuffle was last refused for; see [cycleShuffle]. */
+    @Volatile private var smartRefusedFor: String? = null
+
+    /** Contexts Spotify mixes recommendations into: the listener's playlists and Liked Songs. */
+    private fun smartable(uri: String) =
+        uri.startsWith("spotify:playlist:") || uri.endsWith(":collection") || uri.startsWith("spotify:collection")
+
+    /**
+     * Refused for this context (Spotify's own playlists, the Daily Mixes
+     * among them, take no smart shuffle): said, and the next press turns
+     * shuffle off.
+     */
+    private fun refuseSmart(uri: String) {
+        smartRefusedFor = uri
+        main.post {
+            android.widget.Toast.makeText(context, dev.lelonio.square.R.string.smart_shuffle_unavailable, android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun handleSetShuffleModeEnabled(shuffleModeEnabled: Boolean): ListenableFuture<*> {
         SoloistEngine.setShuffle(shuffleModeEnabled)
         return done()
@@ -845,12 +1336,29 @@ class SoloistPlayer(
     }
 
     override fun handleStop(): ListenableFuture<*> {
+        focus.abandonFocus()
         wantPlay = false
-        SoloistEngine.pause()
+        // The music already given out goes too, faded: stopped for another
+        // player (a downloaded song, on librespot), Soloist paused but the ten
+        // seconds or so libpulse holds played on at full level under the new
+        // song. A skip's flag still up would have it taken for a change of
+        // song and played on as well.
+        main.removeCallbacks(dropFlag)
+        dropFlag.run()
+        unfreeze()
+        output.fadeOutThen(STOP_FADE_MS) { SoloistAudio.pauseNow() }
+        // Soloist itself paused a moment later, unless another player has
+        // taken over meanwhile (this one released, the pause with it): paused
+        // at once, Soloist told the account it was the device playing, and
+        // librespot, taking a downloaded song, was made inactive and dropped
+        // the song.
+        main.postDelayed({ if (!wantPlay) SoloistEngine.pause() }, STOP_PAUSE_DELAY_MS)
         return done()
     }
 
     override fun handleRelease(): ListenableFuture<*> {
+        focus.release()
+        output.duck(1f)
         dev.lelonio.square.playback.Mixes.soloistMixing(false)
         main.removeCallbacksAndMessages(null)
         scope.cancel()
@@ -903,6 +1411,9 @@ class SoloistPlayer(
     /** The song a crossfade was last started out of, so each song makes one. */
     private var crossfadedFrom: Int = -1
 
+    /** The song a blocked crossfade was last logged for; see [crossfade]. */
+    private var blockedNoted: Int = -1
+
     /**
      * The crossfade between songs that end by themselves. Soloist has none it
      * can be told to make, so the next song is skipped to as the old one has
@@ -917,9 +1428,25 @@ class SoloistPlayer(
             main.postDelayed(this, CROSSFADE_WATCH_MS)
             val cross = crossfadeMs()
             val anchor = state.anchor ?: return
-            if (cross <= 0 || local != null || !state.playing || frozen != null || state.durationMs <= 0) return
-            if (state.upcoming.isEmpty() || state.repeat == "track" || crossfadedFrom == state.trackSerial) return
-            if (SoloistEngine.ownCrossfade) return
+            if (cross <= 0 || !state.playing || state.durationMs <= 0) return
+            if (state.repeat == "track" || crossfadedFrom == state.trackSerial) return
+            val blocked = when {
+                local != null -> "a queue still to be sent"
+                frozen != null -> "the last title still held"
+                state.upcoming.isEmpty() -> "nothing up next"
+                SoloistEngine.ownCrossfade -> "Soloist's own crossfade"
+                else -> null
+            }
+            if (blocked != null) {
+                // Said once a song, near its end: a dissolve that never came
+                // has its reason in the report.
+                val near = state.durationMs - (heldPosition?.now() ?: anchor.now()) < cross + 5_000
+                if (near && blockedNoted != state.trackSerial) {
+                    blockedNoted = state.trackSerial
+                    android.util.Log.i("SoloistPlayer", "no crossfade for this song: $blocked")
+                }
+                return
+            }
             // Before Soloist has decoded to the end of the song, which it does
             // as far ahead of the music as libpulse keeps (more than the
             // crossfade, with a longer skip fade): reached first, Soloist went
@@ -928,12 +1455,23 @@ class SoloistPlayer(
             // until it has said.
             val ahead = SoloistAudio.aheadMs.toLong().takeIf { it > 0 } ?: SoloistEngine.aheadMs(context)
             val speed = AudioEffects.speed.value.coerceAtLeast(0.1f)
-            val left = state.durationMs - anchor.now()
-            val due = ahead + CROSSFADE_MARGIN_MS + (CROSSFADE_WATCH_MS * speed).toLong()
+            // Where the song is as the listener sees it: just after a seek,
+            // Soloist's own word still has the place before it, and the end
+            // was found only once Soloist had gone on to the next song.
+            val left = state.durationMs - (heldPosition?.now() ?: anchor.now())
+            // Wider just after a seek: Soloist then decodes far faster than
+            // the music plays, filling libpulse again, and reached the end of
+            // the song between two looks (and two of libpulse's reports).
+            val margin = if (android.os.SystemClock.elapsedRealtime() - SoloistAudio.flushedAt < AFTER_SEEK_MS) {
+                CROSSFADE_MARGIN_AFTER_SEEK_MS
+            } else {
+                CROSSFADE_MARGIN_MS
+            }
+            val due = ahead + margin + (CROSSFADE_WATCH_MS * speed).toLong()
             if (left > due) return
             crossfadedFrom = state.trackSerial
             if (left < ahead) {
-                android.util.Log.i("SoloistPlayer", "crossfade missed: $left ms left, Soloist has the next song already")
+                android.util.Log.i("SoloistPlayer", "crossfade missed: $left ms left, Soloist has the next song already (libpulse ahead $ahead ms)")
                 return
             }
             android.util.Log.i("SoloistPlayer", "crossfade of $cross ms into the next song, $left ms before the end")
@@ -973,6 +1511,8 @@ class SoloistPlayer(
                     if (fromContext) putString(EXTRA_CONTEXT_URI, contextUri) else remove(EXTRA_CONTEXT_URI)
                     putBoolean(EXTRA_CONTEXT_ORDERED, fromContext)
                     labelFor(song.uri, contextUri)?.let { putString(dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL, it) }
+                    putBoolean(dev.lelonio.square.data.SmartShuffle.MODE, smartShown())
+                    putBoolean(dev.lelonio.square.data.SmartShuffle.RECOMMENDED, recommended(song.uri, source))
                 }
                 return MediaItem.Builder().setMediaId(song.uri).setUri(song.uri)
                     .setMediaMetadata(described.buildUpon().setExtras(extras).build()).build()
@@ -993,6 +1533,8 @@ class SoloistPlayer(
                             if (fromContext) putString(EXTRA_CONTEXT_URI, contextUri)
                             putBoolean(EXTRA_CONTEXT_ORDERED, fromContext)
                             labelFor(song.uri, contextUri)?.let { putString(dev.lelonio.square.ui.EXTRA_CONTEXT_LABEL, it) }
+                            putBoolean(dev.lelonio.square.data.SmartShuffle.MODE, smartShown())
+                            putBoolean(dev.lelonio.square.data.SmartShuffle.RECOMMENDED, recommended(song.uri, source))
                             song.artists.firstOrNull()?.second?.let { putString(EXTRA_ARTIST_URI, it) }
                             song.albumUri?.let { putString(EXTRA_ALBUM_URI, it) }
                             if (song.explicit) putBoolean(EXTRA_EXPLICIT, true)
@@ -1052,9 +1594,22 @@ class SoloistPlayer(
     }
 
     companion object {
+        /** How far the music steps back under a voice note or a prompt. */
+        private const val DUCK_FACTOR = 0.3f
+
         /** Whether the account's playback has been looked at since the app started. */
         @Volatile
         private var adoptedAtLaunch = false
+
+        private const val REMOTE_STEPS = 16
+        private const val REMOTE_HOLD_MS = 2_000L
+        private val REMOTE_COMMANDS: Player.Commands by lazy {
+            COMMANDS.buildUpon().addAll(
+                Player.COMMAND_GET_DEVICE_VOLUME,
+                Player.COMMAND_SET_DEVICE_VOLUME_WITH_FLAGS,
+                Player.COMMAND_ADJUST_DEVICE_VOLUME_WITH_FLAGS,
+            ).build()
+        }
 
         /** Songs sent as a list's pages in one play. */
         private const val LIST_PAGE = 400
@@ -1070,6 +1625,20 @@ class SoloistPlayer(
 
         /** How long before Soloist decodes to the end a crossfade is asked for. */
         private const val CROSSFADE_MARGIN_MS = 300L
+
+        /** How long Soloist's music fades as another player takes over; see [handleStop]. */
+        private const val STOP_FADE_MS = 1_500L
+        private const val STOP_PAUSE_DELAY_MS = 5_000L
+
+        /** How long a queue put back waits for Soloist to sign in; see [preload]. */
+        private const val PRELOAD_WAIT_MS = 60_000L
+
+        /** How long the shuffle mode asked for is shown before Soloist says it; see [askedShuffle]. */
+        private const val ASKED_SHOWN_MS = 8_000L
+
+        /** The margin just after a seek; see [crossfade]. */
+        private const val CROSSFADE_MARGIN_AFTER_SEEK_MS = 1_500L
+        private const val AFTER_SEEK_MS = 20_000L
 
         /** How often the end of the song is looked for. */
         private const val CROSSFADE_WATCH_MS = 250L

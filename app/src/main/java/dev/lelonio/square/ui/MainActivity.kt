@@ -400,6 +400,44 @@ class MainActivity : ComponentActivity() {
         val wanted = tracks.getOrNull(index)?.uri
         val start = playable.indexOfFirst { it.uri == wanted }.coerceAtLeast(0)
 
+        // Another device playing the account: the song goes there, as in
+        // Spotify's own apps, rather than starting here and taking the music
+        // away from it. Only when that device will not take it does it play here.
+        val remote = dev.lelonio.square.data.RemoteConnect.devices.value
+            .firstOrNull { it.active && !it.isThisPhone }
+        val streamable = playable.all { it.uri.startsWith("spotify:track:") || it.uri.startsWith("spotify:episode:") }
+        if (remote != null && dev.lelonio.square.data.RemoteConnect.elsewhereActive.value && streamable) {
+            val from = (start - REMOTE_BEFORE).coerceAtLeast(0)
+            val window = playable.subList(from, minOf(playable.size, start + REMOTE_AFTER)).map { it.uri }
+            val source = contextUri?.takeIf { asContext && it.startsWith("spotify:") }
+            lifecycleScope.launch {
+                val sent = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching {
+                        dev.lelonio.square.playback.soloist.SoloistEngine.playListOn(remote.id, window, start - from, positionMs, source)
+                    }.getOrDefault(false)
+                }
+                if (sent) {
+                    android.util.Log.i("SquareUi", "played on ${remote.name}: ${window.size} songs at ${start - from}")
+                } else {
+                    android.util.Log.w("SquareUi", "${remote.name} would not play it; playing here")
+                    playHere(player, playable, start, positionMs, contextUri, asContext, contextLabel, tappedLocal)
+                }
+            }
+            return
+        }
+        playHere(player, playable, start, positionMs, contextUri, asContext, contextLabel, tappedLocal)
+    }
+
+    private fun playHere(
+        player: androidx.media3.common.Player,
+        playable: List<CatalogTrack>,
+        start: Int,
+        positionMs: Long,
+        contextUri: String?,
+        asContext: Boolean,
+        contextLabel: String,
+        tappedLocal: Boolean,
+    ) {
         player.setMediaItems(
             // The phone's files out of a Spotify playlist are not that
             // playlist to the engine, which would load the context from
@@ -573,3 +611,7 @@ const val EXTRA_EXPLICIT = "dev.lelonio.square.EXPLICIT"
 /** Every credited artist, in order, as two lists that line up. */
 const val EXTRA_ARTIST_NAMES = "dev.lelonio.square.ARTIST_NAMES"
 const val EXTRA_ARTIST_URIS = "dev.lelonio.square.ARTIST_URIS"
+
+/** How much of the list goes to another device around the song tapped. */
+private const val REMOTE_BEFORE = 50
+private const val REMOTE_AFTER = 300

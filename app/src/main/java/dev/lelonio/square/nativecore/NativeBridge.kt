@@ -198,6 +198,13 @@ object NativeBridge {
     fun setQuality(bitrateKbps: Int, crossfadeMs: Int) = nativeSetQuality(bitrateKbps, crossfadeMs)
 
     /**
+     * Loudness normalisation on or off, and how many decibels over Spotify's
+     * target songs are brought to: what the next player is built with, so a
+     * change while one runs needs [setQuality] after it.
+     */
+    fun setNormalisation(on: Boolean, pregainDb: Float) = nativeSetNormalisation(on, pregainDb)
+
+    /**
      * Changes the quality asked for from the next track on.
      *
      * Unlike [setQuality] this rebuilds nothing: the bitrate is only read while
@@ -450,6 +457,27 @@ object NativeBridge {
      */
     fun setInRootlist(uri: String, keep: Boolean) = nativeSetInRootlist(uri, keep)
 
+    /** A playlist's name and description, through the playlist service. Blocking. */
+    fun setPlaylistDetails(uri: String, name: String, description: String) =
+        nativeSetPlaylistDetails(uri, name, description)
+
+    /** Whether a playlist in the library is public: true, false, or null when its entry does not say. Blocking. */
+    fun playlistPublic(uri: String): Boolean? = when (nativePlaylistPublic(uri)) {
+        "true" -> true
+        "false" -> false
+        else -> null
+    }
+
+    /** Makes a playlist in the library public or not. Blocking. */
+    fun setPlaylistPublic(uri: String, public: Boolean) = nativeSetPlaylistPublic(uri, public)
+
+    /** Sets the picture uploaded as [uploadToken] on a playlist. Blocking. */
+    fun setPlaylistCover(uri: String, uploadToken: String) = nativeSetPlaylistCover(uri, uploadToken)
+
+    /** A new playlist, at the top of the library; its URI. Blocking. */
+    fun createPlaylist(name: String, description: String, public: Boolean): String =
+        nativeCreatePlaylist(name, description, public)
+
     /** JSON array of track URIs contained in a playlist, album or collection. */
     fun contextTracks(contextUri: String): String = nativeContextTracks(contextUri)
 
@@ -574,6 +602,7 @@ object NativeBridge {
     private external fun nativeSetConnectHidden(hidden: Boolean)
     private external fun nativeSpclient(method: String, path: String, body: String): String
     private external fun nativeSetQuality(bitrateKbps: Int, crossfadeMs: Int)
+    private external fun nativeSetNormalisation(on: Boolean, pregainDb: Float)
 
     private external fun nativeSetBitrate(bitrateKbps: Int)
     private external fun nativeSetTrimSilence(enabled: Boolean)
@@ -698,6 +727,11 @@ object NativeBridge {
     private external fun nativeCollectionUri(): String
     private external fun nativeRootlist(): String
     private external fun nativeSetInRootlist(uri: String, keep: Boolean)
+    private external fun nativeSetPlaylistDetails(uri: String, name: String, description: String)
+    private external fun nativeCreatePlaylist(name: String, description: String, public: Boolean): String
+    private external fun nativePlaylistPublic(uri: String): String
+    private external fun nativeSetPlaylistCover(uri: String, token: String)
+    private external fun nativeSetPlaylistPublic(uri: String, public: Boolean)
     private external fun nativeContextTracks(contextUri: String): String
     private external fun nativeTracksMetadata(urisJson: String): String
     private external fun nativeLyrics(trackUri: String): String

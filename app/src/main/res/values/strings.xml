@@ -330,6 +330,13 @@
     <string name="update_install">Install</string>
     <string name="download_get_app">Get YTDLnis</string>
     <string name="download_with">Download with YTDLnis</string>
+    <string name="normalisation">Volume normalisation</string>
+    <string name="normalisation_off">Off: each song as it was mastered</string>
+    <string name="normalisation_quiet">Quiet</string>
+    <string name="normalisation_normal">Normal (Spotify)</string>
+    <string name="normalisation_loud">Loud</string>
+    <string name="normalisation_louder">Louder</string>
+    <string name="normalisation_note">Brings every song to the same loudness, on both engines. Louder levels hold the peaks with a limiter.</string>
     <string name="crossfade">Crossfade</string>
     <string name="crossfade_off">Off</string>
     <string name="crossfade_seconds">%1$d seconds</string>

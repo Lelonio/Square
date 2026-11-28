@@ -300,6 +300,20 @@ class PreferencesStore(context: Context) {
         prefs.edit().putBoolean(KEY_KEEP_PLAYING, value).apply()
     }
 
+    private val _normalisationDb = MutableStateFlow(prefs.getInt(KEY_NORMALISATION_DB, Normalisation.DEFAULT_DB))
+
+    /**
+     * How loud songs are brought to: decibels over Spotify's own target
+     * (-14 LUFS), the same on both engines, or [Normalisation.OFF] for each
+     * song as it was mastered, one loud and the next quiet.
+     */
+    val normalisationDb: StateFlow<Int> = _normalisationDb.asStateFlow()
+
+    fun setNormalisationDb(value: Int) {
+        _normalisationDb.value = value
+        prefs.edit().putInt(KEY_NORMALISATION_DB, value).apply()
+    }
+
     private val _pauseForOtherApps = MutableStateFlow(prefs.getBoolean(KEY_PAUSE_FOR_OTHER_APPS, true))
 
     /**
@@ -501,6 +515,7 @@ class PreferencesStore(context: Context) {
         const val KEY_PREFERRED_LYRICS = "preferred_lyrics_source"
         const val KEY_KEEP_PLAYING = "keep_playing_on_close"
         const val KEY_PAUSE_FOR_OTHER_APPS = "pause_for_other_apps"
+        const val KEY_NORMALISATION_DB = "normalisation_db"
         const val KEY_SPONSOR_BLOCK = "sponsor_block"
         const val KEY_AUTOPLAY_INFINITE = "autoplay_infinite"
         const val KEY_SPOTIFY_DJ = "spotify_dj"
@@ -524,3 +539,15 @@ class PreferencesStore(context: Context) {
  * the song somebody just chose is not kept waiting for it.
  */
 const val SKIP_FADE_MS = 1_000
+
+/** The normalisation amounts; see PreferencesStore.normalisationDb. */
+object Normalisation {
+    /** No normalisation. */
+    const val OFF = -100
+
+    /** Five over Spotify's target: what librespot always played at. */
+    const val DEFAULT_DB = 5
+
+    /** The amounts offered: off, quiet, Spotify's normal, loud, louder. */
+    val STEPS = listOf(OFF, -5, 0, 3, 5)
+}

@@ -310,6 +310,13 @@
     <string name="update_install">Installa</string>
     <string name="download_get_app">Installa YTDLnis</string>
     <string name="download_with">Scarica con YTDLnis</string>
+    <string name="normalisation">Normalizzazione volume</string>
+    <string name="normalisation_off">Spenta: ogni brano com\'è stato masterizzato</string>
+    <string name="normalisation_quiet">Bassa</string>
+    <string name="normalisation_normal">Normale (Spotify)</string>
+    <string name="normalisation_loud">Alta</string>
+    <string name="normalisation_louder">Più alta</string>
+    <string name="normalisation_note">Porta tutti i brani allo stesso volume, con entrambi i motori. I livelli più alti tengono i picchi con un limitatore.</string>
     <string name="crossfade">Dissolvenza</string>
     <string name="crossfade_off">Spenta</string>
     <string name="crossfade_seconds">%1$d secondi</string>

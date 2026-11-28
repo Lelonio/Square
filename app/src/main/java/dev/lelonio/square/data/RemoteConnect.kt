@@ -344,6 +344,23 @@ object RemoteConnect {
                 .onFailure { android.util.Log.w(TAG, "could not take playback back", it) }
             return
         }
+        // The account's own transfer, from the device playing to the one
+        // chosen, as Spotify's clients move playback: it carries the queue,
+        // the song and the second along. Sent as a command to the device
+        // instead, the device became active with nothing to play, or nothing
+        // happened at all.
+        val source = _devices.value.firstOrNull { it.active }?.id ?: ownId
+        val moved = source.isNotEmpty() && source != deviceId && runCatching {
+            NativeBridge.spclient(
+                "POST",
+                "/connect-state/v1/connect/transfer/from/$source/to/$deviceId",
+                """{"transfer_options":{"restore_paused":"restore"}}""",
+            )
+        }.onFailure { android.util.Log.w(TAG, "transfer from $source to $deviceId refused: $it") }.isSuccess
+        if (moved) {
+            android.util.Log.i(TAG, "playback transferred from $source to $deviceId")
+            return
+        }
         send(
             deviceId,
             """{"command":{"endpoint":"transfer","transfer_options":{"restore_paused":"restore"}}}""",

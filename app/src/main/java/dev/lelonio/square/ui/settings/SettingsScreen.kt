@@ -553,6 +553,10 @@ fun SettingsScreen(
             CrossfadeSection(backdrop)
         }
 
+        if (shown == SettingsPage.Playback && showSpotify && "listening" in openGroups) groupItem("normalisation", Group.LISTENING) {
+            NormalisationSection()
+        }
+
         // Autoplay: automatically append similar tracks when queue reaches the end.
         if (shown == SettingsPage.Playback && "listening" in openGroups) groupItem("autoplay", Group.LISTENING) {
             AutoplaySection(backdrop)
@@ -1738,6 +1742,40 @@ private fun CrossfadeSection(backdrop: Backdrop) {
         RowDivider()
         Text(
             stringResource(R.string.quality_restarts),
+            style = MaterialTheme.typography.bodySmall,
+            color = InkDim,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+        )
+    }
+}
+
+@Composable
+private fun NormalisationSection() {
+    val context = LocalContext.current
+    val preferences = remember(context) {
+        (context.applicationContext as dev.lelonio.square.SquareApplication).preferences
+    }
+    val chosen by preferences.normalisationDb.collectAsStateWithLifecycle()
+
+    Section(stringResource(R.string.normalisation)) {
+        dev.lelonio.square.data.Normalisation.STEPS.forEachIndexed { index, db ->
+            if (index > 0) RowDivider()
+            ChoiceRow(
+                label = stringResource(
+                    when (db) {
+                        dev.lelonio.square.data.Normalisation.OFF -> R.string.normalisation_off
+                        -5 -> R.string.normalisation_quiet
+                        0 -> R.string.normalisation_normal
+                        3 -> R.string.normalisation_loud
+                        else -> R.string.normalisation_louder
+                    },
+                ),
+                selected = db == chosen,
+            ) { preferences.setNormalisationDb(db) }
+        }
+        RowDivider()
+        Text(
+            stringResource(R.string.normalisation_note),
             style = MaterialTheme.typography.bodySmall,
             color = InkDim,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),

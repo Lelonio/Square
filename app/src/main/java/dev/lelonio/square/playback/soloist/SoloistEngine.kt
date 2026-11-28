@@ -40,6 +40,15 @@ import kotlin.concurrent.thread
 object SoloistEngine {
     private const val TAG = "Soloist"
 
+    /** Spotify's name for smart shuffle, in the options' modes. */
+    private const val SMART_SHUFFLE_MODE = "RECOMMENDATION"
+
+    /** How long a run started for refused plays is given to sign in before another; see [play]. */
+    private const val RESTART_PATIENCE_MS = 30_000L
+
+    /** How long a new run is given for Spotify to know its device; see [play]. */
+    private const val REGISTER_GRACE_MS = 30_000L
+
     /** The position Soloist reported, and the moment it was true. */
     data class Anchor(val positionMs: Long, val atMs: Long, val speed: Double) {
         /**
@@ -91,6 +100,8 @@ object SoloistEngine {
         val durationMs: Long = 0,
         val anchor: Anchor? = null,
         val shuffle: Boolean = false,
+        /** Smart shuffle: Spotify's recommendations mixed into the shuffled context. */
+        val smartShuffle: Boolean = false,
         val repeat: String = "off",
         /** Bumped on every track_changed, so the same URI twice is still news. */
         val trackSerial: Int = 0,
@@ -287,7 +298,37 @@ object SoloistEngine {
     /** Bumped when a restart has brought Soloist back logged in. */
     private val _restarted = MutableStateFlow(0)
     val restarted: StateFlow<Int> = _restarted.asStateFlow()
-    private var restarting = false
+    @Volatile private var restarting = false
+
+    /** When a refused play last started Soloist again; see [play]. */
+    @Volatile private var restartedForPlayAt = 0L
+
+    /** When the running Soloist was started; see [play]. */
+    @Volatile private var runStartedAt = 0L
+
+    /** Counts the plays sent, so an older one still asking gives way; see [play]. */
+    private val playGeneration = java.util.concurrent.atomic.AtomicInteger()
+
+    /** Whether the running Soloist was started normalising; see [setNormalisation]. */
+    @Volatile private var normalisedWith: Boolean? = null
+
+    private fun normalisationDb(app: Context): Int =
+        (app.applicationContext as? dev.lelonio.square.SquareApplication)?.preferences?.normalisationDb?.value
+            ?: dev.lelonio.square.data.Normalisation.DEFAULT_DB
+
+    private fun gainFor(db: Int): Float =
+        if (db == dev.lelonio.square.data.Normalisation.OFF) 0f else db.toFloat()
+
+    /**
+     * The listener's normalisation amount: the gain over Soloist's own
+     * normalisation at once, and normalisation itself on or off with a new
+     * run, as Soloist reads it only on start (the song carries on).
+     */
+    fun setNormalisation(context: Context, db: Int) {
+        SoloistAudio.output.setFloatGainDb(gainFor(db))
+        val on = db != dev.lelonio.square.data.Normalisation.OFF
+        if (normalisedWith != null && normalisedWith != on) reconfigure(context)
+    }
 
     /** Settings Soloist reads only on start (the crossfade): restarted, the song carries on. */
     fun reconfigure(context: Context) {
@@ -371,7 +412,10 @@ object SoloistEngine {
         }
         SoloistRuntime.writeResolver(app, dir)
         val crossfadeMs = dev.lelonio.square.data.CrossfadeStore(app).durationMs()
-        SoloistRuntime.writeQuality(dir, quality(app))
+        val normalisationDb = normalisationDb(app)
+        SoloistRuntime.writeQuality(dir, quality(app), normalisationDb != dev.lelonio.square.data.Normalisation.OFF)
+        normalisedWith = normalisationDb != dev.lelonio.square.data.Normalisation.OFF
+        SoloistAudio.output.setFloatGainDb(gainFor(normalisationDb))
         val fifo = File(app.cacheDir, "soloist-pcm")
         SoloistAudio.open(fifo)
 
@@ -382,7 +426,7 @@ object SoloistEngine {
         }
         val builder = ProcessBuilder(
             SoloistRuntime.command(app, dir) + listOf(
-                "-n", "Square",
+                "-n", dev.lelonio.square.playback.ConnectName.of(app),
                 "-D", File(dir, "data").path,
                 "-C", File(dir, "cache").path,
                 "-z", cacheSizeMb(dir).toString(),
@@ -413,6 +457,7 @@ object SoloistEngine {
 
         val started = builder.start()
         val startedAt = System.currentTimeMillis()
+        runStartedAt = startedAt
         process = started
         launching = false
         _state.update { it.copy(running = true) }
@@ -662,6 +707,7 @@ object SoloistEngine {
                         anchor = if (trusted) told else it.anchor,
                         active = event.optBoolean("is_active", it.active),
                         shuffle = options?.optBoolean("shuffle", it.shuffle) ?: it.shuffle,
+                        smartShuffle = options?.let(::smart) ?: it.smartShuffle,
                         repeat = options?.optString("repeat", it.repeat) ?: it.repeat,
                     )
                 }
@@ -688,6 +734,7 @@ object SoloistEngine {
                 _state.update {
                     it.copy(
                         shuffle = options.optBoolean("shuffle", it.shuffle),
+                        smartShuffle = smart(options) ?: it.smartShuffle,
                         repeat = options.optString("repeat", it.repeat),
                     )
                 }
@@ -721,8 +768,27 @@ object SoloistEngine {
             val item = entry.optJSONObject("item") ?: return@mapNotNull null
             val described = song(item)
             if (described.uri.isEmpty()) return@mapNotNull null
-            QueueEntry(entry.optString("uid", "$i:${described.uri}"), entry.optString("source"), described)
+            val source = entry.optString("source")
+            val provider = entry.optJSONObject("metadata")?.optString("provider").orEmpty()
+            if (source !in seenSources) {
+                seenSources.add(source)
+                Log.i(TAG, "queue source seen: $source (provider $provider, keys ${entry.keys().asSequence().toList()})")
+            }
+            if (RECOMMENDED in source || provider == RECOMMENDED) recommended.add(described.uri)
+            QueueEntry(entry.optString("uid", "$i:${described.uri}"), source, described)
         }
+
+    /** Sources of queue entries already said in the log, for what smart shuffle adds. */
+    private val seenSources = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /**
+     * Songs smart shuffle put in (Spotify's recommendations, not the
+     * context's own): kept past the queue, so the one playing is known for
+     * one too. Spotify marks them so, as its web player reads them.
+     */
+    val recommended: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
+
+    private const val RECOMMENDED = "enhanced_recommendation"
 
     /** A song out of Soloist's entity envelope. */
     private fun song(item: JSONObject): Song {
@@ -780,6 +846,51 @@ object SoloistEngine {
     fun setShuffle(on: Boolean) = command("set_shuffle", "enabled" to on)
 
     /**
+     * Smart shuffle as the listener last chose it, kept from one context to
+     * the next (a play turns it off on Soloist); see SoloistPlayer.send.
+     */
+    @Volatile var smartWanted = false
+
+    /** Whether [options] (Soloist's word on them) have smart shuffle on; null when they do not say. */
+    private fun smart(options: JSONObject): Boolean? =
+        options.optJSONObject("modes")?.optString("context_enhancement")?.takeIf(String::isNotEmpty)
+            ?.let { it == SMART_SHUFFLE_MODE }
+
+    /**
+     * Shuffle, smart or plain, or off: the Connect `set_options` Spotify's
+     * own players send, which Soloist's local commands have no word for.
+     * Smart shuffle is shuffle with Spotify's recommendations mixed in, the
+     * mode the web player sets as `context_enhancement`. Blocking.
+     */
+    fun setShuffleMode(shuffle: Boolean, smart: Boolean): Boolean {
+        val device = deviceId ?: return false
+        val body = JSONObject().put(
+            "command",
+            JSONObject()
+                .put("endpoint", "set_options")
+                .put("shuffling_context", shuffle || smart)
+                .put("modes", JSONObject().put("context_enhancement", if (smart) SMART_SHUFFLE_MODE else "NONE"))
+                .put("logging_params", JSONObject()),
+        )
+        // Twice: asked while Soloist is still opening a context it was just
+        // sent, the command went unanswered.
+        repeat(2) { attempt ->
+            val sent = runCatching { dev.lelonio.square.nativecore.NativeBridge.remoteCommand(device, body.toString()) }
+            if (sent.isSuccess) {
+                Log.i(TAG, "shuffle mode set: ${if (smart) "smart" else if (shuffle) "on" else "off"}")
+                if (smart) reshuffleUpcoming()
+                return true
+            }
+            val message = sent.exceptionOrNull()?.message.orEmpty()
+            Log.w(TAG, "shuffle mode not set (try ${attempt + 1}): $message")
+            // Refused outright: no second try changes that.
+            if ("403" in message) return false
+            Thread.sleep(1_000)
+        }
+        return false
+    }
+
+    /**
      * Straight to one song of Soloist's queue, as Spotify's apps jump to a song
      * in the list of what is next: a Connect skip naming it.
      */
@@ -793,7 +904,13 @@ object SoloistEngine {
     }
 
     /** A track into Soloist's own queue, played after the current one. */
-    fun addToQueue(uri: String) = command("add_to_queue", "uri" to uri)
+    fun addToQueue(uri: String): Unit {
+        queuedByHand.add(uri)
+        command("add_to_queue", "uri" to uri)
+    }
+
+    /** Songs put in the queue by hand, never smart shuffle's however Soloist labels them. */
+    val queuedByHand: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
 
     fun setRepeat(mode: String) {
         when (mode) {
@@ -887,6 +1004,53 @@ object SoloistEngine {
         return runCatching { dev.lelonio.square.nativecore.NativeBridge.remoteCommand(device, body.toString()) }
             .onFailure { Log.w(TAG, "queue not set: ${it.message}") }
             .isSuccess
+    }
+
+    /**
+     * Smart shuffle's queue in a new order. Soloist orders a context the
+     * same way every time smart shuffle is turned on, whatever order it was
+     * sent in, where Spotify's own app gives a new one each time: the songs
+     * it chose (the recommendations among them) are mixed up here, those
+     * queued by hand left first. Blocking.
+     */
+    private fun reshuffleUpcoming() {
+        // Once Soloist has put its smart queue out.
+        val until = System.currentTimeMillis() + 4_000
+        val before = _state.value.upcoming
+        while (System.currentTimeMillis() < until && (_state.value.upcoming == before || !_state.value.smartShuffle)) Thread.sleep(150)
+        Thread.sleep(300)
+        val now = _state.value
+        if (!now.smartShuffle || now.upcoming.size < 3) return
+        val (hand, rest) = now.upcoming.partition { it.source == "queue" || it.song.uri in queuedByHand }
+        // The playlist's own songs and the recommendations each mixed up,
+        // then one recommendation every third song, as smart shuffle spaces
+        // them.
+        val own = now.contextUri?.let { context ->
+            runCatching {
+                val list = JSONArray(dev.lelonio.square.nativecore.NativeBridge.contextTracks(context))
+                (0 until list.length()).map { list.getString(it) }.toSet()
+            }.getOrNull()
+        }.orEmpty()
+        val (mine, added) = if (own.isEmpty()) rest to emptyList() else rest.partition { it.song.uri in own }
+        val ownMixed = ArrayDeque(mine.shuffled())
+        val addedMixed = ArrayDeque(added.shuffled())
+        val mixed = mutableListOf<QueueEntry>()
+        while (ownMixed.isNotEmpty() || addedMixed.isNotEmpty()) {
+            val third = mixed.size % 3 == 2
+            val take = if (third && addedMixed.isNotEmpty() || ownMixed.isEmpty()) addedMixed else ownMixed
+            mixed.add(take.removeFirst())
+        }
+        val next = hand + mixed
+        Log.i(TAG, "smart queue mixed up: ${mine.size} of the playlist, ${added.size} recommended")
+        if (setQueue(now.previous.reversed(), next)) expectQueue(next)
+    }
+
+    /**
+     * Where a paused song was sent to: Soloist, paused, says nothing of the
+     * new place, and the time showed the start of the song until play.
+     */
+    fun expectPosition(positionMs: Long) {
+        _state.update { if (it.playing) it else it.copy(anchor = Anchor(positionMs, System.currentTimeMillis(), 0.0)) }
     }
 
     /** Shows a queue edited here until Soloist reports it, which it does a moment later. */
@@ -985,6 +1149,7 @@ object SoloistEngine {
         feature: String = "square",
     ): Boolean {
         val device = deviceId ?: return false
+        val generation = playGeneration.incrementAndGet()
         _automixing.value = false
         Log.i(TAG, "play $trackUri of ${context.optString("uri")} at $positionMs ms${if (paused) ", paused" else ""}")
         val body = playBody(context, trackUri, index, positionMs, paused, feature)
@@ -994,19 +1159,55 @@ object SoloistEngine {
         // waiting: three of those and Soloist is started again at once, rather
         // than leaving the music stopped for the half minute of all eight.
         var unknown = 0
-        for (attempt in 0 until 8) {
+        var attempt = -1
+        while (true) {
+            attempt++
+            // Eight tries, and for as long as a new run is still being made
+            // known to Spotify.
+            if (attempt >= 8 && System.currentTimeMillis() - runStartedAt > REGISTER_GRACE_MS) break
+            // A later play (another song picked meanwhile) is the one that
+            // counts: this one gives way rather than going on asking, and
+            // starting Soloist again under the new one. Three at once, each
+            // starting it again in turn, kept it down for half a minute.
+            if (playGeneration.get() != generation) {
+                Log.i(TAG, "play of $trackUri given up for a later one")
+                return false
+            }
             val sent = runCatching { dev.lelonio.square.nativecore.NativeBridge.remoteCommand(device, body.toString()) }
             if (sent.isSuccess) return true
             val message = sent.exceptionOrNull()?.message.orEmpty()
             Log.w(TAG, "play did not reach Soloist (try ${attempt + 1}): $message")
-            if ("404" in message || "410" in message) unknown++
+            // Not in the first half minute of a run: Spotify takes that long
+            // to know a device just signed in, and answers 404 and 410 for it
+            // meanwhile. Counted then, each new run was started again before
+            // it was known, and the next the same, round and round.
+            if (("404" in message || "410" in message) && System.currentTimeMillis() - runStartedAt > REGISTER_GRACE_MS) unknown++
+            // Gone from the account's devices altogether: Soloist drops out of
+            // Connect after another device has taken the playback from it, and
+            // no wait brings it back; a new run does, at once.
+            if (("404" in message || "410" in message) && System.currentTimeMillis() - runStartedAt > REGISTER_GRACE_MS &&
+                dev.lelonio.square.data.RemoteConnect.devices.value.isNotEmpty() &&
+                dev.lelonio.square.data.RemoteConnect.devices.value.none { it.id == device }
+            ) {
+                Log.w(TAG, "Soloist is no longer among the account's devices")
+                break
+            }
             if (unknown >= 3) break
-            Thread.sleep(750L * (attempt + 1))
+            Thread.sleep(minOf(750L * (attempt + 1), 3_000L))
         }
+        if (playGeneration.get() != generation) return false
         // Refused throughout: its Connect device is no longer what the account
         // knows (a broken queue, a lost registration). A new run registers it
         // again, and the player sends its queue once it is back; see [restarted].
+        // Once: a run started a moment ago is still signing in, and starting
+        // it again only began the wait anew.
+        val now = System.currentTimeMillis()
+        if (restarting && now - restartedForPlayAt < RESTART_PATIENCE_MS) {
+            Log.w(TAG, "Soloist refused every play: already starting again")
+            return false
+        }
         Log.w(TAG, "Soloist refused every play: starting it again")
+        restartedForPlayAt = now
         restarting = true
         restart(app)
         return false

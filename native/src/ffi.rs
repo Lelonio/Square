@@ -356,6 +356,66 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
 }
 
 #[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetPlaylistDetails(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+    name: JString,
+    description: JString,
+) {
+    let uri = read_string(&mut env, &uri);
+    let name = read_string(&mut env, &name);
+    let description = read_string(&mut env, &description);
+    guard(&mut env, "SetPlaylistDetails", || catalog::set_playlist_details(&uri?, &name?, &description?));
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeCreatePlaylist(
+    mut env: JNIEnv,
+    _class: JClass,
+    name: JString,
+    description: JString,
+    public: jboolean,
+) -> jstring {
+    let name = read_string(&mut env, &name);
+    let description = read_string(&mut env, &description);
+    guard_string(&mut env, "CreatePlaylist", || catalog::create_playlist(&name?, &description?, public != 0))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativePlaylistPublic(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+) -> jstring {
+    let uri = read_string(&mut env, &uri);
+    guard_string(&mut env, "PlaylistPublic", || catalog::playlist_public(&uri?))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetPlaylistPublic(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+    public: jboolean,
+) {
+    let uri = read_string(&mut env, &uri);
+    guard(&mut env, "SetPlaylistPublic", || catalog::set_playlist_public(&uri?, public != 0));
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetPlaylistCover(
+    mut env: JNIEnv,
+    _class: JClass,
+    uri: JString,
+    token: JString,
+) {
+    let uri = read_string(&mut env, &uri);
+    let token = read_string(&mut env, &token);
+    guard(&mut env, "SetPlaylistCover", || catalog::set_playlist_cover(&uri?, &token?));
+}
+
+#[no_mangle]
 pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeContextTracks(
     mut env: JNIEnv,
     _class: JClass,
@@ -649,6 +709,19 @@ pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSet
 ) {
     guard(&mut env, "SetQuality", || {
         engine::set_quality(bitrate_kbps, crossfade_ms)
+    });
+}
+
+/// Loudness normalisation on or off, and its pregain; see `engine::set_normalisation`.
+#[no_mangle]
+pub extern "system" fn Java_dev_lelonio_square_nativecore_NativeBridge_nativeSetNormalisation(
+    mut env: JNIEnv,
+    _class: JClass,
+    on: jboolean,
+    pregain_db: jni::sys::jfloat,
+) {
+    guard(&mut env, "SetNormalisation", || {
+        engine::set_normalisation(on == JNI_TRUE, pregain_db as f64)
     });
 }
 
