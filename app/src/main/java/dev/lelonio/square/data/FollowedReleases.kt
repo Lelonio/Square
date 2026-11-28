@@ -94,6 +94,8 @@ class FollowedReleases(
      * the longest of them.
      */
     private suspend fun discography(id: String, cutoff: LocalDate): List<AlbumDto> {
+        // The web player's own discography first; the Web API after it.
+        gateway?.let { ownDiscography(it, id, cutoff) }?.let { return it }
         val albums = mutableListOf<AlbumDto>()
         for (group in listOf("album", "single")) {
             var offset = 0
@@ -104,6 +106,23 @@ class FollowedReleases(
                 if (page.next == null || page.items.isEmpty() || oldest == null || oldest < cutoff) break
                 offset += page.items.size
                 check(offset < MAX_PER_GROUP) { "Artist album pages did not reach back a year" }
+            }
+        }
+        return albums.distinctBy { it.uri ?: it.id }
+    }
+
+    /** [discography] through the gateway; null when it will not answer. */
+    private suspend fun ownDiscography(gateway: Gateway, id: String, cutoff: LocalDate): List<AlbumDto>? {
+        val albums = mutableListOf<AlbumDto>()
+        for (shelf in listOf("Albums", "Singles")) {
+            var offset = 0
+            while (true) {
+                val page = gateway.discographyAlbums("spotify:artist:$id", shelf, offset, PAGE) ?: return null
+                albums += page
+                val oldest = page.lastOrNull()?.let { releaseDay(it.releaseDate) }
+                if (page.size < PAGE || oldest == null || oldest < cutoff) break
+                offset += page.size
+                if (offset >= MAX_PER_GROUP) break
             }
         }
         return albums.distinctBy { it.uri ?: it.id }

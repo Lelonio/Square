@@ -852,11 +852,11 @@ fun SquareApp(
     // Once, on the first composition that has a usable Web API session. The
     // ViewModel keeps what it fetched, so navigating away and back does not
     // spend the quota again.
+    // The gateway answers them without one; the Web API, once connected, is
+    // asked for what the gateway will not give.
     LaunchedEffect(webApi.connected) {
-        if (webApi.connected) {
-            viewModel.loadFeed()
-            viewModel.loadProfile()
-        }
+        viewModel.loadFeed()
+        viewModel.loadProfile()
     }
     // Two layers, and the split is not optional.
     //

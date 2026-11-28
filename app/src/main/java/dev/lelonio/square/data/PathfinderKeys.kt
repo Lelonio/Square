@@ -53,6 +53,26 @@ class PathfinderKeys(context: Context) {
     val artistOverview: String
         get() = prefs.getString(KEY_ARTIST_OVERVIEW, null) ?: DEFAULT_ARTIST_OVERVIEW
 
+    /** What the account played lately: albums, playlists, artists, shows. */
+    val recents: String
+        get() = prefs.getString(KEY_RECENTS, null) ?: DEFAULT_RECENTS
+
+    /** Following and unfollowing people. */
+    val followUsers: String
+        get() = prefs.getString(KEY_FOLLOW_USERS, null) ?: DEFAULT_FOLLOW_USERS
+
+    /** A playlist's own details: name, description, owner. */
+    val playlistMetadata: String
+        get() = prefs.getString(KEY_PLAYLIST_METADATA, null) ?: DEFAULT_PLAYLIST_METADATA
+
+    /** The account's most listened artists and songs. */
+    val userTopContent: String
+        get() = prefs.getString(KEY_USER_TOP_CONTENT, null) ?: DEFAULT_USER_TOP_CONTENT
+
+    /** An artist's whole discography, a shelf and a page at a time. */
+    val artistDiscography: String
+        get() = prefs.getString(KEY_ARTIST_DISCOGRAPHY, null) ?: DEFAULT_ARTIST_DISCOGRAPHY
+
     /** And `browseSection`, for reading one of that page's rows past its first few. */
     val browseSection: String
         get() = prefs.getString(KEY_BROWSE_SECTION, null) ?: DEFAULT_BROWSE_SECTION
@@ -111,6 +131,16 @@ class PathfinderKeys(context: Context) {
                     ?.let { edit.putString(KEY_BROWSE_SECTION, it) }
                 body.optString("artistOverview").takeIf { it.length == HASH_LENGTH }
                     ?.let { edit.putString(KEY_ARTIST_OVERVIEW, it) }
+                body.optString("recents").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_RECENTS, it) }
+                body.optString("followUsers").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_FOLLOW_USERS, it) }
+                body.optString("playlistMetadata").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_PLAYLIST_METADATA, it) }
+                body.optString("userTopContent").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_USER_TOP_CONTENT, it) }
+                body.optString("artistDiscography").takeIf { it.length == HASH_LENGTH }
+                    ?.let { edit.putString(KEY_ARTIST_DISCOGRAPHY, it) }
                 body.optString("playlistSection").takeIf { it.length == HASH_LENGTH }
                     ?.let { edit.putString(KEY_PLAYLIST_SECTION, it) }
                 body.optString("show").takeIf { it.length == HASH_LENGTH }
@@ -139,6 +169,11 @@ class PathfinderKeys(context: Context) {
         const val KEY_BROWSE_PAGE = "browse_page"
         const val KEY_BROWSE_SECTION = "browse_section"
         const val KEY_ARTIST_OVERVIEW = "artist_overview"
+        const val KEY_ARTIST_DISCOGRAPHY = "artist_discography"
+        const val KEY_USER_TOP_CONTENT = "user_top_content"
+        const val KEY_PLAYLIST_METADATA = "playlist_metadata"
+        const val KEY_FOLLOW_USERS = "follow_users"
+        const val KEY_RECENTS = "recents"
         const val KEY_PLAYLIST_SECTION = "playlist_section"
         const val KEY_SHOW = "show"
         const val KEY_SHOW_EPISODES = "show_episodes"
@@ -172,6 +207,16 @@ class PathfinderKeys(context: Context) {
             "f5c4e6d668f5716464a231c1cc8b22c1cbf6ad68b09929fd7de813a30581298b"
         const val DEFAULT_BROWSE_SECTION =
             "b13c1cccbfcb6947753c2613411b3566485c21fd5f36d80a80bb64be61ba2d51"
+        const val DEFAULT_RECENTS =
+            "94be830be40f0f3759ef83a4ea6e4dd1bef1f6108f7502c11ee1fa7fb1bb1658"
+        const val DEFAULT_FOLLOW_USERS =
+            "c00e0cb6c7766e7230fc256cf4fe07aec63b53d1160a323940fce7b664e95596"
+        const val DEFAULT_PLAYLIST_METADATA =
+            "21ea11a6ac75a5f3e01fd365d29c18e0a4a8b7dc09f89bbb5d73910190c6acaf"
+        const val DEFAULT_USER_TOP_CONTENT =
+            "61b7353d3625780022dbc63d459eb64cd609e7e5e2a820f9160d65030efe2e15"
+        const val DEFAULT_ARTIST_DISCOGRAPHY =
+            "5e07d323febb57b4a56a42abbf781490e58764aa45feb6e3dc0591564fc56599"
         const val DEFAULT_ARTIST_OVERVIEW =
             "eafb1620d783ece118e72fbfede2b0064483e029d3c1aafafa1c2de0e25a89e7"
         const val DEFAULT_PLAYLIST_SECTION =

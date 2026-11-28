@@ -194,57 +194,9 @@ object SpotifyWebArtist {
             }
         }
 
-        data class ReleaseEntry(val item: SearchItem, val year: Int)
 
-        fun extractReleases(sectionKey: String): List<SearchItem> {
-            val section = disco?.optJSONObject(sectionKey)
-            val items = section?.optJSONArray("items") ?: return emptyList()
-            val list = mutableListOf<ReleaseEntry>()
-            for (i in 0 until items.length()) {
-                val group = items.optJSONObject(i) ?: continue
-                val releases = group.optJSONObject("releases")?.optJSONArray("items") ?: continue
-                for (j in 0 until releases.length()) {
-                    val rel = releases.optJSONObject(j) ?: continue
-                    val uri = rel.optString("uri")
-                    if (!uri.startsWith("spotify:album:")) continue
-
-                    val title = rel.optString("name")
-                    val type = rel.optString("type")
-                    val yearInt = rel.optJSONObject("date")?.optInt("year")?.takeIf { it > 0 }
-                        ?: rel.optString("date").take(4).toIntOrNull()
-                        ?: 0
-                    val yearStr = if (yearInt > 0) yearInt.toString() else ""
-
-                    val trackCount = rel.optJSONObject("tracks")?.optInt("totalCount") ?: 0
-                    val label = when (type) {
-                        "EP" -> "EP"
-                        // Spotify files EPs under singles; more than one song
-                        // is what the Web API path calls an EP too.
-                        "SINGLE" -> if (trackCount > 1) "EP" else resources?.getString(R.string.single) ?: "Single"
-                        "ALBUM" -> resources?.getString(R.string.album) ?: "Album"
-                        "COMPILATION" -> resources?.getString(R.string.compilation) ?: "Compilation"
-                        else -> ""
-                    }
-                    val subtitle = if (label.isNotEmpty() && yearStr.isNotEmpty()) "$label • $yearStr" else yearStr.ifEmpty { label }
-                    val cover = extractBestImage(rel.optJSONObject("coverArt")?.optJSONArray("sources"), 300)
-
-                    list.add(
-                        ReleaseEntry(
-                            item = SearchItem(
-                                uri = uri,
-                                title = title,
-                                subtitle = subtitle,
-                                artworkUrl = cover,
-                            ),
-                            year = yearInt,
-                        ),
-                    )
-                }
-            }
-            return list.distinctBy { it.item.title.lowercase() }
-                .sortedByDescending { it.year }
-                .map { it.item }
-        }
+        fun extractReleases(sectionKey: String): List<SearchItem> =
+            releasesIn(disco?.optJSONObject(sectionKey), resources)
 
         val albumsList = extractReleases("albums") + extractReleases("compilations")
         val singlesList = extractReleases("singles")
@@ -326,6 +278,62 @@ object SpotifyWebArtist {
             biography = biography,
         )
     }
+
+
+    /**
+     * The releases of one discography shelf ("albums", "singles"...), newest
+     * first, one per name; the same rows the overview and the whole
+     * discography both carry.
+     */
+    private fun releasesIn(section: JSONObject?, resources: Resources?): List<SearchItem> {
+        val items = section?.optJSONArray("items") ?: return emptyList()
+        val list = mutableListOf<Pair<SearchItem, Int>>()
+        for (i in 0 until items.length()) {
+            val group = items.optJSONObject(i) ?: continue
+            val releases = group.optJSONObject("releases")?.optJSONArray("items") ?: continue
+            for (j in 0 until releases.length()) {
+                val rel = releases.optJSONObject(j) ?: continue
+                val uri = rel.optString("uri")
+                if (!uri.startsWith("spotify:album:")) continue
+
+                val title = rel.optString("name")
+                val type = rel.optString("type")
+                val yearInt = rel.optJSONObject("date")?.optInt("year")?.takeIf { it > 0 }
+                    ?: rel.optString("date").take(4).toIntOrNull()
+                    ?: 0
+                val yearStr = if (yearInt > 0) yearInt.toString() else ""
+
+                val trackCount = rel.optJSONObject("tracks")?.optInt("totalCount") ?: 0
+                val label = when (type) {
+                    "EP" -> "EP"
+                    // Spotify files EPs under singles; more than one song
+                    // is what the Web API path calls an EP too.
+                    "SINGLE" -> if (trackCount > 1) "EP" else resources?.getString(R.string.single) ?: "Single"
+                    "ALBUM" -> resources?.getString(R.string.album) ?: "Album"
+                    "COMPILATION" -> resources?.getString(R.string.compilation) ?: "Compilation"
+                    else -> ""
+                }
+                val subtitle = if (label.isNotEmpty() && yearStr.isNotEmpty()) "$label • $yearStr" else yearStr.ifEmpty { label }
+                val cover = extractBestImage(rel.optJSONObject("coverArt")?.optJSONArray("sources"), 300)
+                list += SearchItem(uri = uri, title = title, subtitle = subtitle, artworkUrl = cover) to yearInt
+            }
+        }
+        return list.distinctBy { it.first.title.lowercase() }
+            .sortedByDescending { it.second }
+            .map { it.first }
+    }
+
+    /**
+     * One page of a discography shelf from the gateway's own query for it
+     * (see Gateway.artistDiscography), and how many the shelf holds in all.
+     * [shelf] is the key in the answer: "singles", "albums", "compilations".
+     */
+    fun parseDiscography(json: String, shelf: String, resources: Resources? = null): Pair<List<SearchItem>, Int>? = runCatching {
+        val artist = JSONObject(json).getJSONObject("data").getJSONObject("artistUnion")
+        if (artist.optString("__typename") != "Artist") return null
+        val section = artist.optJSONObject("discography")?.optJSONObject(shelf) ?: return null
+        releasesIn(section, resources) to section.optInt("totalCount")
+    }.getOrNull()
 
     private fun extractBestImage(sources: JSONArray?, preferredWidth: Int): String? {
         if (sources == null || sources.length() == 0) return null

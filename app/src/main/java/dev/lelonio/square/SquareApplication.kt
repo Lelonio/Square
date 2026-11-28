@@ -234,6 +234,11 @@ class SquareApplication : Application(), ImageLoaderFactory {
         dev.lelonio.square.data.Gateway(pathfinderKeys)
     }
 
+    /** The account's library, gateway first; see [dev.lelonio.square.data.SpotifyLibrary]. */
+    val spotifyLibrary: dev.lelonio.square.data.SpotifyLibrary by lazy {
+        dev.lelonio.square.data.SpotifyLibrary(gateway) { api }
+    }
+
     /** Which stretcher works out speed and pitch. */
     val effectQuality: dev.lelonio.square.data.EffectQualityStore by lazy {
         dev.lelonio.square.data.EffectQualityStore(this)

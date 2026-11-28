@@ -1,5 +1,6 @@
 package dev.lelonio.square.backend
 
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -159,24 +160,22 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
      * and needs the loop itself. This is for callers that just want the list.
      */
     override suspend fun tracksOf(uri: String): List<CatalogTrack> = when {
+        // The artist's top songs as the web player has them, then as the
+        // access point lists the artist; the Web API only when both fail.
         uri.startsWith("spotify:artist:") -> {
             val id = uri.substringAfterLast(':')
-            val apiTracks = if (container.webApi.isReady) {
-                runCatching {
-                    container.api.artistTopTracks(id, market = container.userCountry).tracks
-                        .map { it.toCatalogTrack() }
-                }.getOrNull()?.takeIf { it.isNotEmpty() }
-            } else null
-
-            if (apiTracks != null) {
-                apiTracks
-            } else {
-                val webTracks = runCatching {
-                    dev.lelonio.square.data.SpotifyWebArtist.fetch(id, container.sharedHttpClient, container.resources)?.tracks
-                }.getOrNull()?.takeIf { it.isNotEmpty() }
-
-                webTracks ?: Catalog.tracks(Catalog.contextTrackUris(uri).take(10))
-            }
+            runCatching {
+                container.gateway.artistOverview(uri)
+                    ?.let { dev.lelonio.square.data.SpotifyWebArtist.parseOverview(it, id, container.resources) }
+                    ?.tracks
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
+                ?.let { top -> runCatching { Catalog.tracks(top.map { it.uri }) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: top }
+                ?: runCatching { Catalog.tracks(Catalog.contextTrackUris(uri).take(10)) }.getOrNull()?.takeIf { it.isNotEmpty() }
+                ?: if (container.webApi.isReady) {
+                    container.api.artistTopTracks(id, market = container.userCountry).tracks.map { it.toCatalogTrack() }
+                } else {
+                    emptyList()
+                }
         }
 
         // Spotify's own gateway first, for both of the lists it answers for:
@@ -272,14 +271,29 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
      * could perfectly well edit.
      */
     override val canEditPlaylists: Boolean
-        get() = container.spotifySignedIn && container.webApi.isReady
+        get() = container.spotifySignedIn
 
     override val describesPlaylists: Boolean get() = true
 
     override suspend fun createPlaylist(name: String, description: String, public: Boolean): CatalogPlaylist {
+        // The playlist service first, as Spotify's own clients make one.
+        withContext(Dispatchers.IO) {
+            runCatching {
+                NativeBridge.createPlaylist(name, description, public).also { uri ->
+                    // The service makes the list without the name it was
+                    // given: it came out "Untitled" until named in a change of
+                    // its own, which is how Spotify's own clients name one.
+                    NativeBridge.setPlaylistDetails(uri, name, description)
+                }
+            }
+                .onFailure { android.util.Log.w("SpotifyBackend", "playlist service refused to create: $it") }
+                .getOrNull()
+        }?.let { return CatalogPlaylist(uri = it, name = name.trim(), artworkUrl = null) }
         // The account's own id: Spotify creates a playlist under a user rather
         // than under "me", even though the token already says who that is.
-        val userId = container.api.me().id
+        val userId = withContext(Dispatchers.IO) { runCatching { NativeBridge.username() }.getOrNull() }
+            ?.takeIf { it.isNotBlank() }
+            ?: container.api.me().id
         val created = container.api.createPlaylist(
             userId,
             // Sent even when empty: left out, Spotify stored the word "null"
@@ -294,6 +308,25 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
     }
 
     override suspend fun setPlaylistCover(uri: String, jpeg: ByteArray) {
+        // As Spotify's own clients do: the picture to the image service, then
+        // given to the playlist by the playlist service. The Web API only when
+        // that fails.
+        val own = withContext(Dispatchers.IO) {
+            runCatching {
+                val token = NativeBridge.accessToken() ?: error("no access token")
+                val request = okhttp3.Request.Builder()
+                    .url("https://image-upload.spotify.com/v4/playlist")
+                    .header("Authorization", "Bearer $token")
+                    .post(jpeg.toRequestBody("image/jpeg".toMediaType()))
+                    .build()
+                val upload = container.sharedHttpClient.newCall(request).execute().use { response ->
+                    check(response.isSuccessful) { "image upload answered ${response.code}" }
+                    org.json.JSONObject(response.body.string()).getString("uploadToken")
+                }
+                NativeBridge.setPlaylistCover(uri, upload)
+            }.onFailure { android.util.Log.w("SpotifyBackend", "cover not set here: $it") }.isSuccess
+        }
+        if (own) return
         val body = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
         container.api.uploadPlaylistCover(
             uri.substringAfterLast(':'),
@@ -302,6 +335,22 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
     }
 
     override suspend fun playlistDetails(uri: String): PlaylistDetails {
+        // The gateway's head of the playlist first. Whether it is public only
+        // the Web API says, and only that is asked of it when it is there.
+        container.gateway.playlistMetadata(uri)?.let { meta ->
+            val public = withContext(Dispatchers.IO) { runCatching { NativeBridge.playlistPublic(uri) }.getOrNull() }
+                ?: if (container.webApi.isReady) {
+                    runCatching { container.api.playlist(uri.substringAfterLast(':'), fields = "public").public }.getOrNull()
+                } else null
+            return PlaylistDetails(
+                name = meta.name.ifBlank { Catalog.playlistName(uri).orEmpty() },
+                description = androidx.core.text.HtmlCompat
+                    .fromHtml(meta.description.orEmpty(), androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY)
+                    .toString(),
+                public = public ?: false,
+                artworkUrl = meta.artworkUrl,
+            )
+        }
         val dto = container.api.playlist(uri.substringAfterLast(':'), fields = "id,uri,name,description,public,images")
         return PlaylistDetails(
             name = dto.name,
@@ -320,6 +369,26 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
     }
 
     override suspend fun updatePlaylist(uri: String, name: String, description: String, public: Boolean) {
+        val written = withContext(Dispatchers.IO) {
+            runCatching { NativeBridge.setPlaylistDetails(uri, name, description) }
+                .onFailure { android.util.Log.w("SpotifyBackend", "playlist service refused the details: $it") }
+                .isSuccess
+        }
+        // Whether it is public is an attribute of its place in the library;
+        // the Web API only when that cannot be changed.
+        if (written) {
+            val visible = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (NativeBridge.playlistPublic(uri) != public) NativeBridge.setPlaylistPublic(uri, public)
+                }.onFailure { android.util.Log.w("SpotifyBackend", "visibility not changed here: $it") }.isSuccess
+            }
+            if (!visible && container.webApi.isReady) {
+                runCatching {
+                    container.api.updatePlaylistDetails(uri.substringAfterLast(':'), PlaylistDetailsDto(name, isPublic = public, description = description.trim()))
+                }
+            }
+            return
+        }
         container.api.updatePlaylistDetails(
             uri.substringAfterLast(':'),
             PlaylistDetailsDto(name, isPublic = public, description = description.trim()),
@@ -327,11 +396,23 @@ class SpotifyBackend(private val container: SquareApplication) : MusicBackend {
     }
 
     override suspend fun renamePlaylist(uri: String, name: String) {
-        container.api.updatePlaylistDetails(uri.substringAfterLast(':'), PlaylistDetailsDto(name))
+        // The description is sent back as it is, so it has to be known first:
+        // sent empty, it would be taken off.
+        val meta = runCatching { container.gateway.playlistMetadata(uri) }.getOrNull()
+        val written = meta != null && withContext(Dispatchers.IO) {
+            runCatching { NativeBridge.setPlaylistDetails(uri, name, meta.description.orEmpty()) }.isSuccess
+        }
+        if (!written) container.api.updatePlaylistDetails(uri.substringAfterLast(':'), PlaylistDetailsDto(name))
     }
 
+    /** Out of the rootlist, as Spotify's own clients delete one; the Web API if that fails. */
     override suspend fun deletePlaylist(uri: String) {
-        container.api.unfollowPlaylist(uri.substringAfterLast(':'))
+        val removed = withContext(Dispatchers.IO) {
+            runCatching { NativeBridge.setInRootlist(uri, keep = false) }
+                .onFailure { android.util.Log.w("SpotifyBackend", "rootlist refused the delete: $it") }
+                .isSuccess
+        }
+        if (!removed) container.api.unfollowPlaylist(uri.substringAfterLast(':'))
     }
 
     override fun owns(uri: String) = uri.startsWith("spotify:")

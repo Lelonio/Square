@@ -238,6 +238,7 @@ class MediaBrowseTree(
                 return scope.future {
                     try {
                         if (player is LibrespotPlayer) player.cycleShuffle()
+                        else if (player is dev.lelonio.square.playback.soloist.SoloistPlayer) player.cycleShuffle()
                         else player.shuffleModeEnabled = !player.shuffleModeEnabled
                         SessionResult(SessionResult.RESULT_SUCCESS)
                     } catch (e: Exception) {
@@ -311,10 +312,8 @@ class MediaBrowseTree(
                     val liked = dev.lelonio.square.backend.youtube.YouTubeBackend.LIKED_MUSIC_URI
                     if (nowLiked) app.youtubeBackend.addToPlaylist(liked, uri)
                     else app.youtubeBackend.removeFromPlaylist(liked, uri)
-                } else if (nowLiked) {
-                    app.api.saveToLibrary("spotify:track:$id", dev.lelonio.square.data.SpotifyApi.EMPTY_BODY)
                 } else {
-                    app.api.removeFromLibrary("spotify:track:$id")
+                    app.spotifyLibrary.set("spotify:track:$id", keep = nowLiked)
                 }
             }
             callResult.onSuccess {
@@ -522,18 +521,21 @@ class MediaBrowseTree(
     }
 
     /**
-     * Search runs on the Web API, which is the only place Spotify exposes it —
-     * the access point has no search endpoint at all. It therefore needs the
-     * user's own registered application: without it the car gets nothing rather
-     * than an error it has no way to show.
+     * Search as the app's own search box runs it: the active source's, which
+     * for Spotify is the web player's gateway first and the Web API only after
+     * it. The car gets nothing rather than an error it has no way to show.
      */
     private suspend fun search(query: String): List<CatalogTrack> {
         val node = searchNode(query)
         trackCache[node]?.let { return it }
 
         val tracks = runCatching {
-            app.api.search(query, type = "track", limit = SEARCH_LIMIT)
-                .tracks?.items.orEmpty().map { it.toCatalogTrack() }
+            val labels = dev.lelonio.square.backend.SearchLabels(
+                artist = strings.getString(R.string.artist),
+                album = strings.getString(R.string.album),
+                playlist = strings.getString(R.string.playlist),
+            )
+            app.activeBackend.search(query, labels, 0).tracks.take(SEARCH_LIMIT)
         }.getOrElse {
             android.util.Log.w(TAG, "search failed: $it")
             emptyList()

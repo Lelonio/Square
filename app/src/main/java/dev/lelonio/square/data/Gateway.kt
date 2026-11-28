@@ -67,6 +67,238 @@ class Gateway(private val keys: PathfinderKeys) {
     }
 
     /**
+     * One page of an artist's discography, newest first: [shelf] is "Singles",
+     * "Albums" or "Compilations", as the web player's own shelves are asked.
+     * The raw answer, or null when the gateway will not give it.
+     */
+    suspend fun artistDiscography(artistUri: String, shelf: String, offset: Int, limit: Int): String? {
+        keys.refresh()
+        return runCatching {
+            query(
+                operation = "queryArtistDiscography$shelf",
+                hash = keys.artistDiscography,
+                variables = """{"uri":"$artistUri","offset":$offset,"limit":$limit,"order":"DATE_DESC"}""",
+            )
+        }
+            .onFailure { android.util.Log.i(TAG, "discography unavailable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /**
+     * What the account played lately, newest first, as the web player's
+     * "Recents" list has it: albums, playlists, artists and shows, named and
+     * pictured. Null when the gateway will not answer.
+     */
+    suspend fun recents(limit: Int): List<SearchItem>? {
+        keys.refresh()
+        return runCatching {
+            val raw = query(
+                operation = "recents",
+                hash = keys.recents,
+                variables = """{"uris":["spotify:list:recents:page"],"offset":0,"limit":$limit}""",
+            )
+            val list = org.json.JSONObject(raw).getJSONObject("data").getJSONArray("lists").getJSONObject(0)
+            if (list.optString("__typename") != "List") return null
+            val items = list.getJSONObject("items").getJSONArray("items")
+            (0 until items.length()).mapNotNull { i ->
+                val entity = items.optJSONObject(i)?.optJSONObject("entity") ?: return@mapNotNull null
+                val uri = entity.optString("_uri").takeIf { it.startsWith("spotify:") } ?: return@mapNotNull null
+                val data = entity.optJSONObject("data")
+                val name = data?.optJSONObject("identityTrait")?.optString("name").orEmpty()
+                if (name.isEmpty()) return@mapNotNull null
+                val contributors = data?.optJSONObject("identityTrait")?.optJSONArray("contributors")
+                val by = (0 until (contributors?.length() ?: 0)).mapNotNull { k ->
+                    contributors?.optJSONObject(k)?.optString("name")?.takeIf { it.isNotEmpty() }
+                }.joinToString(", ")
+                SearchItem(uri = uri, title = name, subtitle = by, artworkUrl = firstImageUrl(data?.optJSONObject("visualIdentityTrait")))
+            }
+        }
+            .onFailure { android.util.Log.i(TAG, "recents unavailable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /** The largest picture anywhere under [node], by its "url" and "maxWidth"/"width". */
+    private fun firstImageUrl(node: Any?): String? {
+        var best: String? = null
+        var bestWidth = -1
+        fun walk(value: Any?) {
+            when (value) {
+                is org.json.JSONObject -> {
+                    val url = value.optString("url")
+                    if (url.startsWith("https://")) {
+                        val width = maxOf(value.optInt("maxWidth"), value.optInt("width"))
+                        if (width > bestWidth) { best = url; bestWidth = width }
+                    }
+                    value.keys().forEach { walk(value.opt(it)) }
+                }
+                is org.json.JSONArray -> for (i in 0 until value.length()) walk(value.opt(i))
+            }
+        }
+        walk(node)
+        return best
+    }
+
+    /** Follows or unfollows people by username, as the web player does; true when it took. */
+    suspend fun followUsers(usernames: List<String>, follow: Boolean): Boolean {
+        keys.refresh()
+        val list = usernames.joinToString(",") { org.json.JSONObject.quote(it) }
+        return runCatching {
+            val raw = query(
+                operation = if (follow) "followUsers" else "unfollowUsers",
+                hash = keys.followUsers,
+                variables = """{"usernames":[$list]}""",
+            )
+            !org.json.JSONObject(raw).has("errors")
+        }
+            .onFailure { android.util.Log.i(TAG, "follow refused: ${it.message}") }
+            .getOrDefault(false)
+    }
+
+    /** What the web player shows above a playlist's songs; see [playlistMetadata]. */
+    data class PlaylistMeta(
+        val name: String,
+        val description: String?,
+        val ownerId: String?,
+        val ownerName: String?,
+        val artworkUrl: String?,
+        val editable: Boolean,
+    )
+
+    /** A playlist's name, description, owner and cover. Null when the gateway will not say. */
+    suspend fun playlistMetadata(uri: String): PlaylistMeta? {
+        keys.refresh()
+        return runCatching {
+            val raw = query(
+                operation = "fetchPlaylistMetadata",
+                hash = keys.playlistMetadata,
+                variables = """{"uri":"$uri","offset":0,"limit":1,"enableWatchFeedEntrypoint":false}""",
+            )
+            val list = org.json.JSONObject(raw).getJSONObject("data").getJSONObject("playlistV2")
+            if (list.optString("__typename") != "Playlist") return null
+            val owner = list.optJSONObject("ownerV2")?.optJSONObject("data")
+                ?.takeIf { it.optString("__typename") == "User" }
+            val sources = list.optJSONObject("images")?.optJSONArray("items")?.optJSONObject(0)?.optJSONArray("sources")
+            val cover = (0 until (sources?.length() ?: 0)).mapNotNull { sources?.optJSONObject(it) }
+                .maxByOrNull { it.optInt("width") }?.optString("url")?.takeIf { it.isNotEmpty() }
+            if (list.optString("name").isEmpty()) {
+                android.util.Log.i(TAG, "playlist details without a name: ${list.keys().asSequence().toList()}")
+            }
+            PlaylistMeta(
+                name = list.optString("name"),
+                description = list.optString("description").takeIf { it.isNotBlank() && it != "null" },
+                ownerId = owner?.optString("username")?.takeIf { it.isNotEmpty() },
+                ownerName = owner?.optString("name")?.takeIf { it.isNotEmpty() },
+                artworkUrl = cover,
+                editable = list.optJSONObject("currentUserCapabilities")?.optBoolean("canEditItems") == true,
+            )
+        }
+            .onFailure { android.util.Log.i(TAG, "playlist details unavailable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /**
+     * The account's most listened artists and songs over [timeRange]
+     * ("SHORT_TERM", "MEDIUM_TERM", "LONG_TERM"), as its profile page shows
+     * them. Null when the gateway will not answer, and the Web API is asked.
+     */
+    suspend fun topContent(timeRange: String, artists: Int, tracks: Int): Pair<List<SearchItem>, List<CatalogTrack>>? {
+        keys.refresh()
+        val raw = runCatching {
+            query(
+                operation = "userTopContent",
+                hash = keys.userTopContent,
+                variables = """{"includeTopArtists":${artists > 0},""" +
+                    """"topArtistsInput":{"offset":0,"limit":${artists.coerceAtLeast(1)},"sortBy":"AFFINITY","timeRange":"$timeRange"},""" +
+                    """"includeTopTracks":${tracks > 0},""" +
+                    """"topTracksInput":{"offset":0,"limit":${tracks.coerceAtLeast(1)},"sortBy":"AFFINITY","timeRange":"$timeRange"}}""",
+            )
+        }
+            .onFailure { android.util.Log.i(TAG, "top content unavailable: ${it.message}") }
+            .getOrNull() ?: return null
+        return runCatching {
+            val profile = org.json.JSONObject(raw).getJSONObject("data").getJSONObject("me").getJSONObject("profile")
+            val artistItems = profile.optJSONObject("topArtists")?.optJSONArray("items") ?: org.json.JSONArray()
+            val top = (0 until artistItems.length()).mapNotNull { i ->
+                val data = artistItems.optJSONObject(i)?.optJSONObject("data") ?: return@mapNotNull null
+                if (data.optString("__typename") != "Artist") return@mapNotNull null
+                val uri = data.optString("uri").takeIf { it.startsWith("spotify:artist:") } ?: return@mapNotNull null
+                val sources = data.optJSONObject("visuals")?.optJSONObject("avatarImage")?.optJSONArray("sources")
+                val picture = (0 until (sources?.length() ?: 0)).mapNotNull { sources?.optJSONObject(it) }
+                    .maxByOrNull { it.optInt("width") }?.optString("url")?.takeIf { it.isNotEmpty() }
+                SearchItem(uri = uri, title = data.optJSONObject("profile")?.optString("name").orEmpty(), subtitle = "", artworkUrl = picture)
+            }
+            val trackItems = profile.optJSONObject("topTracks")?.optJSONArray("items") ?: org.json.JSONArray()
+            val songs = (0 until trackItems.length()).mapNotNull { i ->
+                GatewayTracks.track(trackItems.optJSONObject(i)?.optJSONObject("data"), null)
+            }
+            top to songs
+        }
+            .onFailure { android.util.Log.i(TAG, "top content unreadable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /**
+     * One page of an artist's discography shelf as albums with their dates,
+     * newest first; [shelf] is "Albums" or "Singles". Null when the gateway
+     * will not answer.
+     */
+    suspend fun discographyAlbums(artistUri: String, shelf: String, offset: Int, limit: Int): List<AlbumDto>? {
+        val raw = artistDiscography(artistUri, shelf, offset, limit) ?: return null
+        return runCatching {
+            val artist = org.json.JSONObject(raw).getJSONObject("data").getJSONObject("artistUnion")
+            if (artist.optString("__typename") != "Artist") return null
+            val groups = artist.optJSONObject("discography")?.optJSONObject(shelf.lowercase())?.optJSONArray("items")
+                ?: return emptyList()
+            val group = if (shelf == "Singles") "single" else "album"
+            (0 until groups.length()).flatMap { i ->
+                val releases = groups.optJSONObject(i)?.optJSONObject("releases")?.optJSONArray("items")
+                    ?: return@flatMap emptyList()
+                (0 until releases.length()).mapNotNull { j ->
+                    val rel = releases.optJSONObject(j) ?: return@mapNotNull null
+                    val uri = rel.optString("uri").takeIf { it.startsWith("spotify:album:") } ?: return@mapNotNull null
+                    val date = rel.optJSONObject("date")
+                    val released = date?.optString("isoString")?.takeIf { it.length >= 4 }?.take(10)
+                        ?: date?.optInt("year")?.takeIf { it > 0 }?.let { year ->
+                            val month = date.optInt("month").takeIf { it in 1..12 }
+                            val day = date.optInt("day").takeIf { it in 1..31 }
+                            when {
+                                month != null && day != null -> "%04d-%02d-%02d".format(year, month, day)
+                                month != null -> "%04d-%02d".format(year, month)
+                                else -> "$year"
+                            }
+                        }
+                    val sources = rel.optJSONObject("coverArt")?.optJSONArray("sources")
+                    val artists = rel.optJSONObject("artists")?.optJSONArray("items")
+                    AlbumDto(
+                        id = uri.substringAfterLast(':'),
+                        uri = uri,
+                        name = rel.optString("name"),
+                        images = (0 until (sources?.length() ?: 0)).mapNotNull { k ->
+                            val source = sources?.optJSONObject(k) ?: return@mapNotNull null
+                            ImageDto(
+                                url = source.optString("url").takeIf { it.isNotEmpty() } ?: return@mapNotNull null,
+                                width = source.optInt("width").takeIf { it > 0 },
+                                height = source.optInt("height").takeIf { it > 0 },
+                            )
+                        }.sortedByDescending { it.width ?: 0 },
+                        albumGroup = group,
+                        albumType = rel.optString("type").lowercase().takeIf { it.isNotEmpty() },
+                        releaseDate = released,
+                        totalTracks = rel.optJSONObject("tracks")?.optInt("totalCount") ?: 0,
+                        artists = (0 until (artists?.length() ?: 0)).mapNotNull { k ->
+                            val a = artists?.optJSONObject(k) ?: return@mapNotNull null
+                            val aUri = a.optString("uri").takeIf { it.isNotEmpty() }
+                            ArtistDto(id = aUri?.substringAfterLast(':'), uri = aUri, name = a.optJSONObject("profile")?.optString("name").orEmpty())
+                        },
+                    )
+                }
+            }
+        }
+            .onFailure { android.util.Log.i(TAG, "discography unreadable: ${it.message}") }
+            .getOrNull()
+    }
+
+    /**
      * The playlists like this one, for the row under it; see [RelatedPlaylists].
      *
      * Null when the gateway will not answer, and the row is then simply not
@@ -314,6 +546,36 @@ class Gateway(private val keys: PathfinderKeys) {
 
 
     /**
+     * The albums the account has saved, all of them, as the web player's
+     * "Albums" chip reads them from the library. Null when the gateway will
+     * not answer, and the caller goes to the Web API then.
+     */
+    suspend fun savedAlbums(): List<CatalogPlaylist>? {
+        keys.refresh()
+        val albums = mutableListOf<CatalogPlaylist>()
+        var offset = 0
+        while (true) {
+            val raw = runCatching {
+                query(
+                    operation = "libraryV3",
+                    hash = keys.libraryContents,
+                    variables = """{"filters":["Albums"],"order":null,"textFilter":"",""" +
+                        """"features":["LIKED_SONGS","YOUR_EPISODES_V2","PRERELEASES","PRERELEASES_V2","CLIPS","EVENTS"],""" +
+                        """"limit":$ARTISTS_PAGE,"offset":$offset,"flatten":false,"expandedFolders":[],""" +
+                        """"folderUri":null,"includeFoldersWhenFlattening":true}""",
+                )
+            }
+                .onFailure { android.util.Log.i(TAG, "saved albums unavailable: ${it.message}") }
+                .getOrNull() ?: return null
+            val page = parseSavedAlbums(raw) ?: return null
+            albums += page.first
+            offset += ARTISTS_PAGE
+            if (page.first.isEmpty() || offset >= page.second) break
+        }
+        return albums.distinctBy { it.uri }
+    }
+
+    /**
      * Puts [uris] in the account's library, or takes them out: shows, which the
      * Web API keeps behind a registered application, and anything else the web
      * player keeps the same way. True when the gateway took it.
@@ -477,4 +739,25 @@ internal fun parseFollowedArtists(json: String): Pair<List<ArtistDto>, Int>? = r
         )
     }
     artists to library.optInt("totalCount", artists.size)
+}.getOrNull()
+
+internal fun parseSavedAlbums(json: String): Pair<List<CatalogPlaylist>, Int>? = runCatching {
+    val library = org.json.JSONObject(json).getJSONObject("data")
+        .getJSONObject("me")
+        .getJSONObject("libraryV3")
+    if (library.optString("__typename") != "LibraryPage") return null
+    val items = library.optJSONArray("items") ?: org.json.JSONArray()
+    val albums = (0 until items.length()).mapNotNull { index ->
+        val data = items.optJSONObject(index)?.optJSONObject("item")?.optJSONObject("data")
+            ?: return@mapNotNull null
+        if (data.optString("__typename") != "Album") return@mapNotNull null
+        val uri = data.optString("uri").takeIf { it.startsWith("spotify:album:") } ?: return@mapNotNull null
+        val sources = data.optJSONObject("coverArt")?.optJSONArray("sources")
+        val cover = (0 until (sources?.length() ?: 0)).mapNotNull { sources?.optJSONObject(it) }
+            .maxByOrNull { it.optInt("width") }
+            ?.optString("url")
+            ?.takeIf { it.isNotEmpty() }
+        CatalogPlaylist(uri = uri, name = data.optString("name"), artworkUrl = cover)
+    }
+    albums to library.optInt("totalCount", albums.size)
 }.getOrNull()

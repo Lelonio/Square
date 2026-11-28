@@ -1624,3 +1624,264 @@ pub fn playlist_mine(uri: &str) -> EngineResult<String> {
         })
     })
 }
+
+/// The playlist service's own name for a playlist URI, and its id.
+fn playlist_id(playlist_uri: &str) -> EngineResult<String> {
+    let parsed = SpotifyUri::from_uri(playlist_uri).map_err(|e| format!("bad uri: {e}"))?;
+    let SpotifyUri::Playlist { id, .. } = parsed else {
+        return Err(format!("{playlist_uri} is not a playlist"));
+    };
+    id.to_base62().map_err(|e| format!("bad playlist id: {e}"))
+}
+
+/// Renames a playlist and sets its description, through the playlist
+/// service, as Spotify's own clients do; the Web API's edit answers only to an
+/// application of the listener's own. An empty description takes it off.
+pub fn set_playlist_details(playlist_uri: &str, name: &str, description: &str) -> EngineResult<()> {
+    use librespot_protocol::playlist4_external::{
+        op::Kind, Delta, ListAttributeKind, ListAttributes, ListAttributesPartialState, ListChanges, Op,
+        UpdateListAttributes,
+    };
+
+    let base62 = playlist_id(playlist_uri)?;
+    let session = with_session(|s| s.clone())?;
+    let name = name.trim().to_string();
+    let description = description.trim().to_string();
+    block_on(async move {
+        let mut values = ListAttributes::new();
+        if !name.is_empty() {
+            values.set_name(name);
+        }
+        let mut state = ListAttributesPartialState::new();
+        if description.is_empty() {
+            state.no_value.push(ListAttributeKind::LIST_DESCRIPTION.into());
+        } else {
+            values.set_description(description);
+        }
+        state.values = Some(values).into();
+        let mut update = UpdateListAttributes::new();
+        update.new_attributes = Some(state).into();
+
+        let mut op = Op::new();
+        op.set_kind(Kind::UPDATE_LIST_ATTRIBUTES);
+        op.update_list_attributes = Some(update).into();
+        let mut delta = Delta::new();
+        delta.ops.push(op);
+        let mut changes = ListChanges::new();
+        changes.deltas.push(delta);
+
+        session
+            .spclient()
+            .request_with_protobuf(
+                &Method::POST,
+                &format!("/playlist/v2/playlist/{base62}/changes"),
+                None,
+                &changes,
+            )
+            .await
+            .map_err(|e| format!("playlist change refused: {e}"))?;
+        Ok(())
+    })
+}
+
+/// Makes a new playlist and puts it at the top of the account's library, as
+/// Spotify's own clients do: the list made by the playlist service, then
+/// added to the rootlist, public or not. Answers the new playlist's URI.
+pub fn create_playlist(name: &str, description: &str, public: bool) -> EngineResult<String> {
+    use librespot_protocol::playlist4_external::{
+        op, Add, CreateListReply, Delta, Item, ItemAttributes, ListAttributes, ListChanges, ListUpdateRequest, Op,
+    };
+
+    let session = with_session(|s| s.clone())?;
+    let name = name.trim().to_string();
+    let description = description.trim().to_string();
+    block_on(async move {
+        let mut attributes = ListAttributes::new();
+        attributes.set_name(name);
+        if !description.is_empty() {
+            attributes.set_description(description);
+        }
+        let mut request = ListUpdateRequest::new();
+        request.attributes = Some(attributes).into();
+
+        let reply = session
+            .spclient()
+            .request_with_protobuf(&Method::POST, "/playlist/v2/playlist", None, &request)
+            .await
+            .map_err(|e| format!("playlist not created: {e}"))?;
+        let created = CreateListReply::parse_from_bytes(&reply)
+            .map_err(|e| format!("playlist reply unreadable: {e}"))?;
+        let uri = created.uri().to_string();
+        if !uri.starts_with("spotify:playlist:") {
+            return Err(format!("playlist service answered {uri}"));
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|since| since.as_millis() as i64)
+            .unwrap_or_default();
+        let mut item_attributes = ItemAttributes::new();
+        item_attributes.set_timestamp(now);
+        item_attributes.set_public(public);
+        let mut item = Item::new();
+        item.set_uri(uri.clone());
+        item.attributes = Some(item_attributes).into();
+        let mut add = Add::new();
+        add.set_add_first(true);
+        add.items.push(item);
+        let mut operation = Op::new();
+        operation.set_kind(op::Kind::ADD);
+        operation.add = Some(add).into();
+        let mut delta = Delta::new();
+        delta.ops.push(operation);
+        let mut changes = ListChanges::new();
+        changes.deltas.push(delta);
+
+        let user = session.username();
+        session
+            .spclient()
+            .request_with_protobuf(&Method::POST, &format!("/playlist/v2/user/{user}/rootlist/changes"), None, &changes)
+            .await
+            .map_err(|e| format!("new playlist not added to the library: {e}"))?;
+        log::info!("playlist created: {uri}");
+        Ok(uri)
+    })
+}
+
+/// Where [uri] sits in the account's rootlist, the rootlist's revision, and
+/// whether it is public there; None when the playlist is not in it.
+async fn rootlist_entry(session: &Session, uri: &str) -> EngineResult<Option<(usize, Vec<u8>, Option<bool>)>> {
+    let mut from = 0usize;
+    loop {
+        let bytes = session
+            .spclient()
+            .get_rootlist(from, Some(ROOTLIST_PAGE))
+            .await
+            .map_err(|e| format!("rootlist failed: {e}"))?;
+        let list = SelectedListContent::parse_from_bytes(&bytes)
+            .map_err(|e| format!("rootlist was not a SelectedListContent: {e}"))?;
+        let total = list.length() as usize;
+        let revision = list.revision().to_vec();
+        let items = &list.contents.items;
+        if let Some(index) = items.iter().position(|item| item.uri() == uri) {
+            let attributes = &items[index].attributes;
+            let public = attributes.as_ref().filter(|a| a.has_public()).map(|a| a.public());
+            return Ok(Some((from + index, revision, public)));
+        }
+        let got = items.len();
+        from += got;
+        if got == 0 || from >= total {
+            return Ok(None);
+        }
+    }
+}
+
+/// Whether a playlist of the account's is public, as its rootlist entry says:
+/// "true", "false", or "null" when the entry does not say.
+pub fn playlist_public(uri: &str) -> EngineResult<String> {
+    let session = with_session(|s| s.clone())?;
+    let uri = uri.to_string();
+    block_on(async move {
+        let entry = rootlist_entry(&session, &uri).await?;
+        Ok(match entry.and_then(|(_, _, public)| public) {
+            Some(true) => "true".to_string(),
+            Some(false) => "false".to_string(),
+            None => "null".to_string(),
+        })
+    })
+}
+
+/// Makes a playlist of the account's public or not, as Spotify's own clients
+/// do: an attribute of its entry in the rootlist, changed at its place there.
+pub fn set_playlist_public(uri: &str, public: bool) -> EngineResult<()> {
+    use librespot_protocol::playlist4_external::{
+        op, Delta, ItemAttributes, ItemAttributesPartialState, ListChanges, Op, UpdateItemAttributes,
+    };
+
+    let session = with_session(|s| s.clone())?;
+    let uri = uri.to_string();
+    block_on(async move {
+        let (index, revision, _) = rootlist_entry(&session, &uri)
+            .await?
+            .ok_or_else(|| format!("{uri} is not in the library"))?;
+        let mut values = ItemAttributes::new();
+        values.set_public(public);
+        let mut state = ItemAttributesPartialState::new();
+        state.values = Some(values).into();
+        // By its place alone: named as well, the service answered 400.
+        let mut update = UpdateItemAttributes::new();
+        update.set_index(index as i32);
+        update.new_attributes = Some(state).into();
+        let mut operation = Op::new();
+        operation.set_kind(op::Kind::UPDATE_ITEM_ATTRIBUTES);
+        operation.update_item_attributes = Some(update).into();
+        let mut delta = Delta::new();
+        delta.ops.push(operation);
+        let mut changes = ListChanges::new();
+        changes.set_base_revision(revision);
+        changes.deltas.push(delta);
+
+        let user = session.username();
+        session
+            .spclient()
+            .request_with_protobuf(&Method::POST, &format!("/playlist/v2/user/{user}/rootlist/changes"), None, &changes)
+            .await
+            .map_err(|e| format!("rootlist change failed: {e}"))?;
+        log::info!("playlist {} made {}", uri, if public { "public" } else { "private" });
+        Ok(())
+    })
+}
+
+/// Gives a playlist the picture uploaded as [upload_token], as Spotify's own
+/// clients do: the upload registered with the playlist service, and what it
+/// answers set as the playlist's picture.
+pub fn set_playlist_cover(playlist_uri: &str, upload_token: &str) -> EngineResult<()> {
+    use librespot_protocol::playlist4_external::{
+        op::Kind, Delta, ListAttributes, ListAttributesPartialState, ListChanges, Op, RegisterPlaylistImageRequest,
+        RegisterPlaylistImageResponse, UpdateListAttributes,
+    };
+
+    let base62 = playlist_id(playlist_uri)?;
+    let session = with_session(|s| s.clone())?;
+    let token = upload_token.to_string();
+    block_on(async move {
+        let mut request = RegisterPlaylistImageRequest::new();
+        request.set_upload_token(token);
+        let reply = session
+            .spclient()
+            .request_with_protobuf(
+                &Method::POST,
+                &format!("/playlist/v2/playlist/{base62}/register-image"),
+                None,
+                &request,
+            )
+            .await
+            .map_err(|e| format!("cover not registered: {e}"))?;
+        let registered = RegisterPlaylistImageResponse::parse_from_bytes(&reply)
+            .map_err(|e| format!("cover reply unreadable: {e}"))?;
+        if registered.picture().is_empty() {
+            return Err("cover registered without a picture".into());
+        }
+
+        let mut values = ListAttributes::new();
+        values.set_picture(registered.picture().to_vec());
+        let mut state = ListAttributesPartialState::new();
+        state.values = Some(values).into();
+        let mut update = UpdateListAttributes::new();
+        update.new_attributes = Some(state).into();
+        let mut op = Op::new();
+        op.set_kind(Kind::UPDATE_LIST_ATTRIBUTES);
+        op.update_list_attributes = Some(update).into();
+        let mut delta = Delta::new();
+        delta.ops.push(op);
+        let mut changes = ListChanges::new();
+        changes.deltas.push(delta);
+        session
+            .spclient()
+            .request_with_protobuf(&Method::POST, &format!("/playlist/v2/playlist/{base62}/changes"), None, &changes)
+            .await
+            .map_err(|e| format!("playlist change refused: {e}"))?;
+        log::info!("cover set on {base62}");
+        Ok(())
+    })
+}
