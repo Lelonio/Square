@@ -134,33 +134,141 @@ object SoloistAudio {
     @Volatile
     private var awaitingSound = true
 
+    /** How much music has been heard at the speaker, accounting for AudioTrack's queue. */
+    fun audiblePlayedMs(): Double = (playedMs() - output.bufferedMediaLatencyMs()).coerceAtLeast(0.0)
+
     /** Soloist's output, for the player to start and stop with the music. */
     val output = dev.lelonio.square.playback.AudioOutput()
 
     /** Whether the output is stopped: by Soloist's pause, or by a button ahead of it. */
     private var stopped = true
+
+    /**
+     * Whether the output was stopped outright (faded, flushed, its track let
+     * go of) rather than only held, and so has to be started again, not just
+     * let go on. Before the first music, too.
+     */
+    private var needsStart = true
+
+    /** A stop running on [stopper] now, which a resume waits behind. */
+    private var stopping = false
+
+    /** Counts the pauses, so a stop left over from an older one does nothing. */
+    private var pauseGeneration = 0
     private val gate = Any()
-    private val stopper = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val stopper = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
 
     /**
      * Stops the sound now, ahead of Soloist's own pause, which comes a moment
-     * later with a second or so of music still on its way. Off the caller's
-     * thread: the output fades before it stops.
+     * later with a second or so of music still on its way.
+     *
+     * Held at once (the track paused where it is, nothing faded or thrown
+     * away), so the button is answered on the spot and a play straight after
+     * carries on from the very same sample. A moment later, if it is still a
+     * pause, the output is stopped for good: its buffer emptied, so the music
+     * still on its way from libpulse has room and Soloist's own cork is not
+     * held up behind a full track. Stopped at once instead, as before, the
+     * fade took a fifth of a second and a play pressed meanwhile waited for it.
      */
     fun pauseNow() {
-        synchronized(gate) {
+        val generation = synchronized(gate) {
             if (stopped) return
             stopped = true
+            ++pauseGeneration
         }
-        stopper.execute { output.stop() }
+        output.setPlaybackActive(false)
+        stopper.schedule({
+            synchronized(gate) {
+                if (!stopped || pauseGeneration != generation) return@schedule
+                stopping = true
+            }
+            try {
+                output.stop()
+            } finally {
+                synchronized(gate) {
+                    stopping = false
+                    needsStart = true
+                }
+            }
+        }, FLUSH_AFTER_PAUSE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
+    /**
+     * The sound back at once: the held track let go on, or, once it was
+     * stopped for good, started again (which fades it in). Only a stop already
+     * under way is waited for, and that at most the fade it is in.
+     */
     fun resumeNow() {
-        synchronized(gate) {
+        val start = synchronized(gate) {
             if (!stopped) return
             stopped = false
+            pauseGeneration++
+            needsStart || stopping
         }
-        stopper.execute { output.start() }
+        if (!start) {
+            output.setPlaybackActive(true)
+            return
+        }
+        stopper.execute {
+            synchronized(gate) { if (stopped) return@execute }
+            output.start()
+            synchronized(gate) { needsStart = false }
+        }
+    }
+
+    // ------------------------------------------------- where a song begins
+
+    /**
+     * Whether the music has a gap that its next sound ends: a flush (a skip, a
+     * seek), a cork (a pause, or Soloist loading the next song) or a new
+     * stream (a new context). The first music after it is where a song (or a
+     * seek's new place) begins, and is told to [SoloistEngine.audioBegan].
+     */
+    @Volatile
+    var gapOpen = true
+        private set
+
+    /**
+     * Whether the gap ends only at libpulse's 'N': the song being left was
+     * kept to dissolve into the next one, and the music written meanwhile is
+     * still the old song's.
+     */
+    @Volatile
+    private var awaitingNew = false
+
+    /** How much of the old song's dissolve [awaitingNew] waits through, in ms of music. */
+    private var dissolveLimitMs = 0.0
+
+    /** [playedMs] at the first music after the gap, while [awaitingNew]. */
+    private var firstAfterGap = -1.0
+
+    private fun openGap(dissolving: Boolean) {
+        gapOpen = true
+        awaitingNew = dissolving
+        firstAfterGap = -1.0
+        dissolveLimitMs = if (dissolving) SoloistEngine.dissolveMs().toDouble() + DISSOLVE_SLACK_MS else 0.0
+    }
+
+    /** Music written after a gap, from [before] on: the song's beginning, unless a dissolve is still playing. */
+    private fun soundAfterGap(before: Double) {
+        if (!gapOpen) return
+        if (!awaitingNew) {
+            gapOpen = false
+            SoloistEngine.audioBegan(before, dissolved = false)
+            return
+        }
+        if (firstAfterGap < 0) {
+            firstAfterGap = before
+            return
+        }
+        // Longer than any dissolve and still no 'N': nothing was kept of the
+        // old song (there was none ahead), and the new one began with the
+        // first of this music.
+        if (before - firstAfterGap > dissolveLimitMs) {
+            gapOpen = false
+            awaitingNew = false
+            SoloistEngine.audioBegan(firstAfterGap, dissolved = false)
+        }
     }
 
     fun open(fifo: File) {
@@ -189,12 +297,20 @@ object SoloistAudio {
                 Log.e(TAG, "reader failed", t)
             } finally {
                 output.stop()
+                synchronized(gate) { needsStart = true }
+                gapOpen = true
                 reader = null
             }
         }
     }
 
     private const val HISTORY = 256
+
+    /** How long a pause holds the track before it is stopped for good; see [pauseNow]. */
+    private const val FLUSH_AFTER_PAUSE_MS = 350L
+
+    /** Past the dissolve's own length, how long the old song's tail may still be heard. */
+    private const val DISSOLVE_SLACK_MS = 500.0
 
     private var shortBuffer: ByteBuffer = ByteBuffer.allocateDirect(1 shl 15).order(ByteOrder.LITTLE_ENDIAN)
 
@@ -218,7 +334,11 @@ object SoloistAudio {
         var channels = 2
         var float = false
         var audioBytes = 0L
-        synchronized(gate) { stopped = true }
+        synchronized(gate) {
+            stopped = true
+            needsStart = true
+        }
+        openGap(false)
         while (true) {
             input.readFully(head)
             check(head[0] == 'S'.code.toByte() && head[1] == 'Q'.code.toByte() &&
@@ -233,6 +353,9 @@ object SoloistAudio {
                     // 2 is float, Soloist's own; 1 (or a header without it) 16-bit.
                     float = length >= 12 && b.int == 2
                     Log.i(TAG, "stream: $rate Hz, $channels ch, ${if (float) "float" else "16-bit"}")
+                    // A new stream: a new context, with the song left behind
+                    // dissolving into it only when Square said this was a skip.
+                    openGap(float && SoloistEngine.skipFlagUp())
                 }
                 'A' -> {
                     if (length > bytes.size) {
@@ -247,6 +370,7 @@ object SoloistAudio {
                     synchronized(speechAt) {
                         while (speechAt.isNotEmpty() && speechAt.peekFirst().first <= now) speaking = speechAt.pollFirst().second
                     }
+                    val beforeTaken = output.takenMs()
                     when {
                         // The DJ's voice as it was recorded: no tempo, pitch or
                         // room on it, as on the Spotify engine.
@@ -259,16 +383,23 @@ object SoloistAudio {
                         float -> output.writeFloat(direct, length, rate, channels)
                         else -> output.write(direct, length, rate, channels)
                     }
-                    if (awaitingSound) {
-                        awaitingSound = false
-                        sounding.value++
-                    }
-                    audioBytes += length
-                    val perSecond = rate * channels * (if (float) 4L else 2L)
-                    if (!speaking) playedUs.addAndGet(length * 1_000_000L / perSecond)
-                    noteHistory()
-                    if (audioBytes / (perSecond * 10) != (audioBytes - length) / (perSecond * 10)) {
-                        Log.i(TAG, "${audioBytes / perSecond} s of audio played")
+                    // When AudioOutput's PCM gate is closed (e.g. during a
+                    // short skip fade), discarded packets must never advance
+                    // the playback clock or mark a replacement track as heard.
+                    val accepted = speaking || output.takenMs() > beforeTaken
+                    if (accepted) {
+                        if (awaitingSound) {
+                            awaitingSound = false
+                            sounding.value++
+                        }
+                        audioBytes += length
+                        val perSecond = rate * channels * (if (float) 4L else 2L)
+                        if (!speaking) playedUs.addAndGet(length * 1_000_000L / perSecond)
+                        noteHistory()
+                        soundAfterGap(now)
+                        if (audioBytes / (perSecond * 10) != (audioBytes - length) / (perSecond * 10)) {
+                            Log.i(TAG, "${audioBytes / perSecond} s of audio played")
+                        }
                     }
                 }
                 // Only a real pause stops the output and only a resume after
@@ -287,9 +418,11 @@ object SoloistAudio {
                     val changing = android.os.SystemClock.elapsedRealtime() - flushedAt < CHANGE_CORK_MS
                     if (changing && SoloistEngine.state.value.playing) {
                         Log.i(TAG, "pause in a change of song, playing on")
+                        if (!gapOpen) openGap(false)
                     } else {
                         Log.i(TAG, "pause")
                         pauseNow()
+                        openGap(false)
                     }
                     awaitingSound = true
                 }
@@ -300,8 +433,16 @@ object SoloistAudio {
                     synchronized(speechAt) { speechAt.clear() }
                     aheadMs = 0
                     flushedAt = android.os.SystemClock.elapsedRealtime()
+                    // libpulse keeps what was ahead to dissolve into what comes
+                    // next when it has a dissolve to make and was playing.
+                    openGap(float && !synchronized(gate) { stopped } && SoloistEngine.dissolveMs() > 0)
                 }
-                'N' -> newSongHeard.value++
+                'N' -> {
+                    gapOpen = false
+                    awaitingNew = false
+                    SoloistEngine.audioBegan(playedMs(), dissolved = true)
+                    newSongHeard.value++
+                }
                 'L' -> {
                     val told = ByteArray(length).also { input.readFully(it) }
                     if (length >= 4) aheadMs = ByteBuffer.wrap(told).order(ByteOrder.LITTLE_ENDIAN).int

@@ -49,13 +49,24 @@ object SoloistEngine {
     /** How long a new run is given for Spotify to know its device; see [play]. */
     private const val REGISTER_GRACE_MS = 30_000L
 
-    /** The position Soloist reported, and the moment it was true. */
+    /**
+     * The position Soloist reported, and the moment it was true. A [speed] of
+     * nothing is a place held still (paused): [now] stays on it.
+     */
     data class Anchor(val positionMs: Long, val atMs: Long, val speed: Double) {
         /**
          * The music gone out when this was taken (later, for a song still
          * behind the one heard); not part of what makes two the same.
+         *
+         * Soloist's moment is read on this phone's clock, as its own is, but
+         * kept to the last few seconds: a moment ahead of the clock (a clock
+         * set meanwhile) or older than what the history holds read the music
+         * at the wrong place, and the time jumped by as much.
          */
-        var audioAtMs: Double = SoloistAudio.playedAt(atMs)
+        @Volatile
+        var audioAtMs: Double = SoloistAudio.playedAt(
+            atMs.coerceIn(System.currentTimeMillis() - ANCHOR_PAST_MS, System.currentTimeMillis()),
+        )
 
         /**
          * Where the song is now: as far on from [positionMs] as the music that
@@ -68,10 +79,39 @@ object SoloistEngine {
          */
         fun now(): Long {
             if (speed == 0.0) return positionMs
-            val gone = SoloistAudio.playedMs() - audioAtMs
+            val gone = SoloistAudio.audiblePlayedMs() - audioAtMs
             return positionMs + gone.coerceAtLeast(0.0).toLong()
         }
+
+        /** Held where the music is now: a pause, the music clock kept to go on from. */
+        internal fun held(): Anchor =
+            if (speed == 0.0) this
+            else Anchor(now(), System.currentTimeMillis(), 0.0).also { it.audioAtMs = SoloistAudio.audiblePlayedMs() }
+
+        /**
+         * Let go on from where it was held, on the music gone out since it was:
+         * whatever the track took in while paused is heard first after it, and
+         * counted.
+         */
+        internal fun running(): Anchor =
+            if (speed != 0.0) this
+            else Anchor(positionMs, System.currentTimeMillis(), 1.0).also { it.audioAtMs = audioAtMs }
     }
+
+    /** How far back a moment of Soloist's is read on the music; see [Anchor.audioAtMs]. */
+    private const val ANCHOR_PAST_MS = 8_000L
+
+    /**
+     * Below this, a new song's place as Soloist first gives it is its start:
+     * Soloist counts the old song's dissolve played meanwhile as the new one's.
+     */
+    private const val SONG_START_MS = 2_000L
+
+    /** How long after its start a dissolve's 'N' may still say where a song began. */
+    private const val DISSOLVE_WINDOW_MS = 15_000L
+
+    /** How long a song keeps looking for where it began; see [audioBegan]. */
+    private const val SONG_WINDOW_MS = 30_000L
 
     /** A song as Soloist describes it, with what the player shows of it. */
     data class Song(
@@ -110,9 +150,128 @@ object SoloistEngine {
         /** Soloist's queue: what played, newest first, and what comes, next first. */
         val previous: List<QueueEntry> = emptyList(),
         val upcoming: List<QueueEntry> = emptyList(),
+        /** The song [anchor] is a place in; a song's first word is taken whatever came before it. */
+        val anchorUri: String? = null,
+        /**
+         * Whether the music of the song named is going out: false from a
+         * change of song until its first sound, while the old song's tail, a
+         * load or a silence is what is heard. Its time does not run meanwhile.
+         */
+        val heard: Boolean = true,
+        /** When Soloist last named a song other than the one before (wall clock). */
+        val songAt: Long = 0,
+        /** When music last began after a gap (a skip, a load, a pause), wall clock; see [audioBegan]. */
+        val beganAt: Long = 0,
+        /** Bumped when where the song began is learned, and its time worked out from there anew. */
+        val beganSerial: Int = 0,
     ) {
+        /** Playing, or meaning to: playing, or waiting for data to play. */
         val playing get() = status == "playing" || status == "buffering"
+
+        /** Waiting for data: a song loading, or the network behind. */
+        val isBuffering get() = status == "buffering"
+
+        /** Playing as Soloist says it, not waiting for anything. */
+        val isActuallyPlaying get() = status == "playing"
     }
+
+    /** Whether a status of Soloist's runs the time (on the music clock) or holds it. */
+    private fun runs(status: String) = status == "playing" || status == "buffering"
+
+    // ------------------------------------------------------ where songs begin
+
+    private val songLock = Any()
+
+    /** Where the music of the song playing began, by [SoloistAudio.playedMs], once known. */
+    private var songMark: Double? = null
+    private var songMarkAt = 0L
+    private var songMarkDissolved = false
+
+    /** Whether the song playing has been placed for good: no later sound is its beginning. */
+    private var songSettled = true
+
+    /** Until when Soloist's word on the song is put on [songMark]; see [fit]. */
+    private var songFitUntil = 0L
+
+    /** When the song playing was named (wall clock). */
+    private var songSince = 0L
+
+    /** A new song named: where it begins is looked for from its next sound. */
+    private fun songChanged(now: Long) = synchronized(songLock) {
+        songMark = null
+        songMarkAt = 0L
+        songMarkDissolved = false
+        songSettled = false
+        songFitUntil = 0L
+        songSince = now
+    }
+
+    /** The song placed for good, by a seek or a pause: its next sound after a gap is no beginning. */
+    private fun songPlaced() = synchronized(songLock) {
+        songSettled = true
+        songFitUntil = 0L
+    }
+
+    /**
+     * [anchor], a place in a song still being placed, put on the music where
+     * the song began: Soloist reckons its place from when it started the song,
+     * and the old song's tail, a dissolve, or the music thrown away while it
+     * loaded all went out after that, and were counted as the new song's.
+     */
+    private fun fit(anchor: Anchor?): Anchor? {
+        anchor ?: return null
+        val mark = synchronized(songLock) { songMark.takeIf { System.currentTimeMillis() < songFitUntil } }
+            ?: return anchor
+        if (anchor.speed == 0.0) return anchor
+        anchor.audioAtMs = if (anchor.positionMs < SONG_START_MS) mark + anchor.positionMs else maxOf(anchor.audioAtMs, mark)
+        return anchor
+    }
+
+    /**
+     * Soloist's music began after a gap, at [playedMs] of the music clock
+     * ([dissolved]: libpulse's 'N', the first of a song a dissolve led into).
+     * Called by [SoloistAudio] as it happens. The first such sound of a song
+     * just named is where it begins; a dissolve's 'N' corrects a sound that
+     * was still the old song's tail.
+     */
+    internal fun audioBegan(playedMs: Double, dissolved: Boolean) {
+        val now = System.currentTimeMillis()
+        val placed = synchronized(songLock) {
+            val take = when {
+                songSettled -> false
+                songMark == null -> now - songSince < SONG_WINDOW_MS || !_state.value.heard
+                else -> dissolved && !songMarkDissolved && now - songMarkAt < DISSOLVE_WINDOW_MS
+            }
+            if (take) {
+                songMark = playedMs
+                songMarkAt = now
+                songMarkDissolved = dissolved
+                songFitUntil = now + DISSOLVE_WINDOW_MS
+                if (dissolved) songSettled = true
+            }
+            take
+        }
+        _state.update {
+            if (!placed) return@update it.copy(beganAt = now)
+            // The song's own anchor, or the one it was given as it was named.
+            fit(it.anchor?.takeIf { _ -> it.anchorUri == null || it.anchorUri == it.uri })
+            it.copy(heard = true, beganAt = now, beganSerial = it.beganSerial + 1)
+        }
+    }
+
+    /** The dissolve libpulse makes of a change of song now: the skip's flag, else what it was started with. */
+    internal fun dissolveMs(): Long {
+        if (!::app.isInitialized) return confDissolveMs
+        val flagged = runCatching { skipFlag(app).takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull() }.getOrNull()
+        return flagged?.takeIf { it > 0 } ?: confDissolveMs
+    }
+
+    /** Whether Square has said the change of song coming is a skip, to be dissolved. */
+    internal fun skipFlagUp(): Boolean = ::app.isInitialized && runCatching { skipFlag(app).exists() }.getOrDefault(false)
+
+    /** The dissolve libpulse makes when no skip says otherwise; see [writeDissolves]. */
+    @Volatile
+    private var confDissolveMs = 0L
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
@@ -349,6 +508,7 @@ object SoloistEngine {
         val crossfade = dev.lelonio.square.data.CrossfadeStore(context).durationMs()
         val skipFade = (context.applicationContext as? dev.lelonio.square.SquareApplication)?.preferences?.skipFadeMs() ?: 0
         val dissolve = if (skipFade > 0) skipFade else crossfade.coerceAtMost(1500)
+        confDissolveMs = dissolve.toLong()
         runCatching { dissolvesFile(context).writeText("${aheadMs(context) - 500} $dissolve\n") }
     }
 
@@ -446,6 +606,7 @@ object SoloistEngine {
         val skipFade = (app as? dev.lelonio.square.SquareApplication)?.preferences?.skipFadeMs() ?: 0
         val dissolve = if (skipFade > 0) skipFade else crossfadeMs.coerceAtMost(1500)
         builder.environment()["SQUARE_XFADE_MS"] = dissolve.toString()
+        confDissolveMs = dissolve.toLong()
         // Soloist has no crossfade of its own to turn on (its setting lives in
         // the account's device settings now): Square makes every transition
         // itself, and libpulse keeps this much of the old song ahead for it.
@@ -678,13 +839,14 @@ object SoloistEngine {
             // it (a seek, a song starting, a transition): the anchor every
             // position on screen is worked out from.
             "position_sync" -> {
-                anchor(event.optJSONObject("position"))?.let { at ->
-                    _state.update { it.copy(anchor = at) }
+                anchor(event.optJSONObject("position"))?.let { told ->
+                    _state.update { it.copy(anchor = held(fit(told), it.status), anchorUri = it.uri) }
                 }
             }
             "playback_state", "state", "get_state" -> {
                 signedIn(event)
                 val item = event.optJSONObject("item")
+                val uri = item?.optString("uri")?.takeIf(String::isNotEmpty)
                 // Soloist's position runs on its own clock from its last
                 // reckoning, not on the music: at a tempo set in Square it
                 // falls behind what is heard, and after a song change it runs
@@ -692,40 +854,77 @@ object SoloistEngine {
                 // before it is heard. Only its reckonings (position_sync) and a
                 // song's first word are anchors; between them the music's own
                 // clock is right, and this one only ever set the lyrics off.
+                val changed = uri != _state.value.uri
+                val now = System.currentTimeMillis()
+                if (changed) songChanged(now)
                 val told = anchor(event.optJSONObject("position"))
-                val sameSong = item?.optString("uri") == _state.value.uri
-                val trusted = told != null && (!sameSong || _state.value.anchor == null)
                 val options = event.optJSONObject("options")
                 _state.update {
+                    val status = event.optString("status", it.status)
+                    // A song's first word, whatever came before: a song named a
+                    // moment before by track_changed has no anchor of its own
+                    // yet, and the old song's, kept, ran on into the new one.
+                    val trusted = told != null && (changed || it.anchor == null || it.anchorUri != uri)
+                    val anchor = when {
+                        trusted -> fit(told)
+                        changed -> null
+                        else -> it.anchor
+                    }
                     it.copy(
                         loggedIn = true,
-                        status = event.optString("status", it.status),
-                        uri = item?.optString("uri")?.takeIf(String::isNotEmpty),
+                        status = status,
+                        uri = uri,
                         song = item?.let(::song)?.takeIf { s -> s.uri.isNotEmpty() },
                         contextUri = event.optJSONObject("context")?.optString("uri")?.takeIf(String::isNotEmpty),
                         durationMs = duration(item),
-                        anchor = if (trusted) told else it.anchor,
+                        anchor = held(anchor, status),
+                        anchorUri = if (anchor != null) uri else null,
+                        heard = heardAfter(it, changed, status),
+                        songAt = if (changed) now else it.songAt,
                         active = event.optBoolean("is_active", it.active),
                         shuffle = options?.optBoolean("shuffle", it.shuffle) ?: it.shuffle,
                         smartShuffle = options?.let(::smart) ?: it.smartShuffle,
                         repeat = options?.optString("repeat", it.repeat) ?: it.repeat,
                     )
                 }
+                afterStatus()
             }
             "track_changed" -> {
                 val item = event.optJSONObject("item")
+                val uri = item?.optString("uri")?.takeIf(String::isNotEmpty)
+                val changed = uri != _state.value.uri
+                val now = System.currentTimeMillis()
+                if (changed) songChanged(now)
                 _state.update {
                     it.copy(
-                        uri = item?.optString("uri")?.takeIf(String::isNotEmpty),
+                        uri = uri,
                         song = item?.let(::song)?.takeIf { s -> s.uri.isNotEmpty() },
                         durationMs = duration(item),
                         trackSerial = it.trackSerial + 1,
+                        // Another song: the last one's place is no place in
+                        // it. Kept, the new song began where the old one was,
+                        // and Soloist's first word on it, which comes next and
+                        // looked like the same song's, was not taken. It
+                        // starts from its beginning, as its first sound puts it
+                        // (see fit), until Soloist's word on it, which is
+                        // taken whatever it says. The same song again
+                        // (repeated, or played anew) keeps its place until
+                        // Soloist says where it starts.
+                        anchor = if (changed) held(Anchor(0, now, 1.0), it.status) else it.anchor,
+                        anchorUri = null,
+                        heard = heardAfter(it, changed, it.status),
+                        songAt = if (changed) now else it.songAt,
                     )
                 }
                 askQueue()
             }
-            "playback_changed" -> _state.update { it.copy(status = event.optString("status", it.status)) }
-            "position_sync" -> anchor(event.optJSONObject("position"))?.let { a -> _state.update { it.copy(anchor = a) } }
+            "playback_changed" -> {
+                _state.update {
+                    val status = event.optString("status", it.status)
+                    it.copy(status = status, anchor = held(it.anchor, status), heard = heardAfter(it, false, status))
+                }
+                afterStatus()
+            }
             "device_changed" -> _state.update { it.copy(active = event.optBoolean("is_active", it.active)) }
             "context_changed" -> _state.update {
                 it.copy(contextUri = event.optJSONObject("context")?.optString("uri")?.takeIf(String::isNotEmpty))
@@ -750,6 +949,34 @@ object SoloistEngine {
             }
             "error" -> Log.w(TAG, "Soloist says: ${event.optString("message")}")
         }
+    }
+
+    /**
+     * [anchor] as [status] has it: held where the music is while paused, and
+     * let go on from there when it plays again. Buffering runs on: the music
+     * libpulse holds ahead goes on being heard through a short wait, and the
+     * music clock stops by itself when it runs out.
+     */
+    private fun held(anchor: Anchor?, status: String): Anchor? = when {
+        anchor == null -> null
+        runs(status) -> anchor.running()
+        else -> anchor.held()
+    }
+
+    /**
+     * Whether the song named is heard: a song just named only once its first
+     * sound has gone out, unless it is going out already (a song that follows
+     * the last one without a gap, which the player holds back itself).
+     */
+    private fun heardAfter(was: State, changed: Boolean, status: String): Boolean {
+        if (!changed && was.heard) return true
+        return status == "playing" && !SoloistAudio.gapOpen
+    }
+
+    /** After Soloist's status: a song heard and then paused is placed for good. */
+    private fun afterStatus() {
+        val now = _state.value
+        if (now.heard && !runs(now.status)) songPlaced()
     }
 
     private var queueAsked = 0L
@@ -842,7 +1069,12 @@ object SoloistEngine {
     fun pause() = command("pause")
     fun next() = command("skip_next")
     fun previous() = command("skip_prev")
-    fun seek(positionMs: Long) = command("seek", "position_ms" to positionMs)
+    fun seek(positionMs: Long) {
+        // A place chosen: the music after the seek's flush is that place, not
+        // the song's beginning.
+        songPlaced()
+        command("seek", "position_ms" to positionMs)
+    }
     fun setShuffle(on: Boolean) = command("set_shuffle", "enabled" to on)
 
     /**
@@ -1050,7 +1282,17 @@ object SoloistEngine {
      * new place, and the time showed the start of the song until play.
      */
     fun expectPosition(positionMs: Long) {
-        _state.update { if (it.playing) it else it.copy(anchor = Anchor(positionMs, System.currentTimeMillis(), 0.0)) }
+        _state.update {
+            if (it.playing) it else it.copy(anchor = Anchor(positionMs, System.currentTimeMillis(), 0.0), anchorUri = it.uri)
+        }
+    }
+
+    /**
+     * A play about to be sent: every play still asking (its retries) gives
+     * way at once, as the song picked last is the one that counts.
+     */
+    fun supersedePlays() {
+        playGeneration.incrementAndGet()
     }
 
     /** Shows a queue edited here until Soloist reports it, which it does a moment later. */
@@ -1140,6 +1382,26 @@ object SoloistEngine {
                 ),
         )
 
+    /**
+     * Waits [ms] between two tries of a play, or less: false as soon as a
+     * later play has been sent. Slept through whole, a song picked while the
+     * last one was still being asked for waited up to three seconds behind it.
+     */
+    private fun waitUnlessSuperseded(generation: Int, ms: Long): Boolean {
+        val until = System.currentTimeMillis() + ms
+        while (true) {
+            if (playGeneration.get() != generation) return false
+            val left = until - System.currentTimeMillis()
+            if (left <= 0) return true
+            try {
+                Thread.sleep(minOf(left, 50L))
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+    }
+
     private fun play(
         context: JSONObject,
         trackUri: String,
@@ -1193,7 +1455,10 @@ object SoloistEngine {
                 break
             }
             if (unknown >= 3) break
-            Thread.sleep(minOf(750L * (attempt + 1), 3_000L))
+            if (!waitUnlessSuperseded(generation, minOf(750L * (attempt + 1), 3_000L))) {
+                Log.i(TAG, "play of $trackUri given up for a later one")
+                return false
+            }
         }
         if (playGeneration.get() != generation) return false
         // Refused throughout: its Connect device is no longer what the account

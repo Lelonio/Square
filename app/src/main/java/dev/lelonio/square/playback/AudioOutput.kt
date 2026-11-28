@@ -25,6 +25,17 @@ class AudioOutput {
     private var configuredEncoding = AudioFormat.ENCODING_PCM_16BIT
 
     private var reverb: EnvironmentalReverb? = null
+    private var auxAttached = false
+
+    private var writtenFrames = 0L
+    private var lastPlaybackHead = 0L
+    private var playbackHeadWraps = 0L
+
+    @Volatile
+    private var bufferGeneration = 0L
+
+    private val stretcherLock = Any()
+    private var stretcherGeneration = -1L
 
     /**
      * Tempo and pitch, independently, done by [Stretcher] rather than by
@@ -181,8 +192,7 @@ class AudioOutput {
         if (light == lightEffects) return
         lightEffects = light
         synchronized(this) {
-            stretcher?.release()
-            stretcher = null
+            synchronized(stretcherLock) { resetStretcher() }
             applyPlatformRate()
         }
     }
@@ -258,15 +268,7 @@ class AudioOutput {
         // new track, a slider moved or a duck while paused, it stayed enabled
         // after the music stopped and every other app played into it.
         if (output == null || amount <= 0f || !playing || held || voice) {
-            output?.runCatching {
-                setAuxEffectSendLevel(0f)
-                attachAuxEffect(0)
-            }
-            reverb?.runCatching {
-                enabled = false
-                release()
-            }
-            reverb = null
+            suspendReverb()
             return
         }
 
@@ -301,7 +303,7 @@ class AudioOutput {
             // A session effect is already in the path; only an auxiliary one
             // has to be sent to.
             if (!reverbOnSession) {
-                output.attachAuxEffect(effect.id)
+                if (!auxAttached) auxAttached = output.attachAuxEffect(effect.id) == AudioTrack.SUCCESS
                 output.setAuxEffectSendLevel(ReverbTuning.sendLevel(amount) * reverbDuck)
             }
             if (fresh) android.util.Log.i(TAG, "reverb on at $amount, id ${effect.id}")
@@ -313,20 +315,20 @@ class AudioOutput {
     fun start() {
         // A gate left closed by a load that never got its fade-in — a track
         // loaded paused, say — would otherwise silence the next play outright.
-        discarding = false
-        playing = true
-        held = false
-        val output = synchronized(this) {
-            track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
-        } ?: return
-
-        runCatching {
-            output.setVolume(0f)
-            output.play()
+        synchronized(this) {
+            val generation = fadeGeneration.incrementAndGet()
+            discarding = false
+            playing = true
+            held = false
+            val output = track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED } ?: return
+            runCatching {
+                output.setVolume(0f)
+                currentGain = 0f
+                output.play()
+            }
+            applyReverb()
+            fadeExecutor.execute { ramp(output, 1f, FADE_IN_MS, generation) }
         }
-        // Back on the mix now that this player is the thing making sound.
-        synchronized(this) { applyReverb() }
-        fadeExecutor.execute { ramp(output, 1f, FADE_IN_MS) }
     }
 
     /**
@@ -340,32 +342,21 @@ class AudioOutput {
      */
     @Suppress("unused")
     fun stop() {
-        discarding = false
-        playing = false
-        if (voice) {
-            voice = false
-            dev.lelonio.square.backend.spotify.SpotifyDj.setSpeaking(false)
-        }
-        val output = synchronized(this) {
-            track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
-        }
-
-        if (output != null) {
-            ramp(output, 0f, FADE_OUT_MS)
-            runCatching {
-                output.pause()
-                output.flush()
+        val (output, generation) = synchronized(this) {
+            playing = false
+            if (voice) {
+                voice = false
+                dev.lelonio.square.backend.spotify.SpotifyDj.setSpeaking(false)
             }
+            track to fadeGeneration.incrementAndGet()
         }
-
+        if (output != null && !held && output.playState == AudioTrack.PLAYSTATE_PLAYING) {
+            ramp(output, 0f, FADE_OUT_MS, generation)
+        }
         synchronized(this) {
-            // The stretcher holds a window of the *previous* track. Kept across
-            // a change, those grains are resynthesised over the first moments of
-            // the next one — which is the half-second of the old song audible
-            // under the new one when effects are on.
-            stretcher?.release()
-            stretcher = null
-
+            if (generation != fadeGeneration.get() || output !== track) return
+            discarding = false
+            if (output != null) flushBuffered(output, resume = false)
             suspendReverb()
         }
     }
@@ -387,38 +378,33 @@ class AudioOutput {
      * makes. This is the pause the *player* knows about.
      */
     fun setPlaybackActive(active: Boolean) {
-        val output = synchronized(this) {
+        synchronized(this) {
+            val resumed = active && held
             held = !active
-            if (active) applyReverb() else suspendReverb()
-            track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
-        } ?: return
-
-        // Outside the lock. Both are calls into the audio server, and the
-        // writer takes this lock for every packet: held across a slow one, it
-        // held up the very audio that was being resumed.
-        //
-        // The pause is what makes the button feel instant, since the engine's
-        // own stop fades for a fifth of a second first. The play is for a
-        // pause the engine never turned into a stop, a track still loading
-        // when it was pressed, say: the sink is then never started again, and
-        // a track left paused here would keep the writer waiting for good.
-        output.runCatching {
-            if (active) {
-                if (playState != AudioTrack.PLAYSTATE_PLAYING) play()
-            } else {
-                if (playState == AudioTrack.PLAYSTATE_PLAYING) pause()
+            val output = track?.takeIf { it.state == AudioTrack.STATE_INITIALIZED }
+            if (resumed) {
+                val generation = fadeGeneration.incrementAndGet()
+                if (output != null && !discarding) {
+                    fadeExecutor.execute { ramp(output, 1f, FADE_IN_MS, generation) }
+                }
             }
+            output?.runCatching {
+                if (active && playState != AudioTrack.PLAYSTATE_PLAYING) play()
+                if (!active && playState == AudioTrack.PLAYSTATE_PLAYING) pause()
+            }
+            if (active) applyReverb() else suspendReverb()
         }
     }
 
     private fun suspendReverb() {
         // Only an auxiliary effect has a send to close; a session one goes with
         // the track it lives in.
-        if (!reverbOnSession) {
+        if (auxAttached) {
             track?.runCatching {
                 setAuxEffectSendLevel(0f)
                 attachAuxEffect(0)
             }
+            auxAttached = false
         }
         reverbOnSession = false
         dropReverb()
@@ -467,8 +453,13 @@ class AudioOutput {
             ramp(output, 0f, durationMs, generation)
             // Order matters: the gate closes before the buffer is emptied, so
             // nothing can slip back in between the two.
-            discarding = true
-            discardBuffered(output)
+            synchronized(this) {
+                if (generation == fadeGeneration.get() && output === track) {
+                    discarding = true
+                    flushBuffered(output, resume = !held)
+                    suspendReverb()
+                }
+            }
             action()
         }
     }
@@ -481,8 +472,12 @@ class AudioOutput {
         val generation = fadeGeneration.incrementAndGet()
         fadeExecutor.execute {
             // Whatever arrived while the gate was closing is still old audio.
-            discardBuffered(output)
-            discarding = false
+            synchronized(this) {
+                if (generation != fadeGeneration.get() || output !== track) return@execute
+                flushBuffered(output, resume = !held)
+                suspendReverb()
+                discarding = false
+            }
             ramp(output, 1f, FADE_IN_MS, generation)
         }
     }
@@ -498,31 +493,66 @@ class AudioOutput {
      */
     private val fadeGeneration = java.util.concurrent.atomic.AtomicLong(0)
 
-    /**
-     * Empties the track's buffer and leaves it running again.
-     *
-     * `flush` is only honoured on a paused track, and the track has to be put
-     * back into play afterwards or every following write blocks forever.
-     */
-    private fun discardBuffered(output: AudioTrack) {
-        runCatching {
-            output.pause()
-            output.flush()
-            output.play()
-        }
+    /** Reopens the PCM gate when the player confirms the replacement track. */
+    fun finishTrackChange() {
         synchronized(this) {
-            // The stretcher holds a window of the track being left behind; kept
-            // across the change, those grains are resynthesised over the first
-            // moments of the next one.
-            stretcher?.release()
-            stretcher = null
+            val generation = fadeGeneration.incrementAndGet()
+            discarding = false
+            val output = track ?: return
+            fadeExecutor.execute { ramp(output, 1f, FADE_IN_MS, generation) }
+        }
+    }
 
-            // And the reverb holds seconds of it. Emptying the track's buffer
-            // says nothing to an effect that has already been fed: the tail of
-            // the song being left went on ringing over the opening of the one
-            // being chosen. It is rebuilt, silent, when the engine says the new
-            // track is playing.
-            dropReverb()
+    fun isDiscarding(): Boolean = discarding
+
+    fun flushForSeek() {
+        synchronized(this) {
+            track?.let {
+                flushBuffered(it, resume = !held && (playing || it.playState == AudioTrack.PLAYSTATE_PLAYING))
+            }
+        }
+    }
+
+    fun bufferedLatencyMs(): Long = synchronized(this) {
+        val output = track ?: return@synchronized 0L
+        if (output.playState != AudioTrack.PLAYSTATE_PLAYING || configuredSampleRate <= 0) {
+            return@synchronized 0L
+        }
+        val head = output.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+        if (lastPlaybackHead - head > 0x80000000L) playbackHeadWraps++
+        lastPlaybackHead = head
+        val playedFrames = (playbackHeadWraps shl 32) + head
+        ((writtenFrames - playedFrames).coerceAtLeast(0L) * 1000L / configuredSampleRate)
+            .coerceAtMost(1500L)
+    }
+
+    /**
+     * Media milliseconds currently queued in [AudioTrack] ahead of the speaker.
+     *
+     * In light-effects mode, [AudioTrack] itself applies [speed], so the queued
+     * source frames already represent media time. In Bungee mode, queued frames
+     * are stretched real-time output frames, so scaling by [speed] converts them
+     * back to media milliseconds.
+     */
+    fun bufferedMediaLatencyMs(): Long = synchronized(this) {
+        val rawMs = bufferedLatencyMs()
+        if (rawMs <= 0L || lightEffects) rawMs else (rawMs * speed).toLong().coerceIn(0L, 1500L)
+    }
+
+    // The next writer resets the stretcher before processing this generation.
+    private fun resetBufferedPosition() {
+        bufferGeneration++
+        writtenFrames = 0L
+        lastPlaybackHead = 0L
+        playbackHeadWraps = 0L
+    }
+
+    private fun flushBuffered(output: AudioTrack, resume: Boolean) {
+        runCatching {
+            if (output.playState == AudioTrack.PLAYSTATE_PLAYING) output.pause()
+            output.flush()
+            resetBufferedPosition()
+            if (resume) output.play()
         }
     }
 
@@ -538,24 +568,23 @@ class AudioOutput {
         output: AudioTrack,
         target: Float,
         durationMs: Long,
-        /** Which fade this is; see [fadeGeneration]. Zero means "cannot be superseded". */
-        generation: Long = 0,
+        generation: Long,
     ) {
         val steps = (durationMs / FADE_STEP_MS).toInt().coerceAtLeast(1)
         val start = currentGain
         for (step in 1..steps) {
-            if (generation != 0L && fadeGeneration.get() != generation) return
+            if (fadeGeneration.get() != generation) return
             val gain = start + (target - start) * step / steps
             currentGain = gain
             if (runCatching { output.setVolume(gain * duckFactor) }.isFailure) return
             try {
-                Thread.sleep(FADE_STEP_MS)
+                Thread.sleep(durationMs * step / steps - durationMs * (step - 1) / steps)
             } catch (e: InterruptedException) {
                 Thread.currentThread().interrupt()
                 return
             }
         }
-        currentGain = target
+        if (fadeGeneration.get() == generation) currentGain = target
     }
 
     /**
@@ -586,7 +615,10 @@ class AudioOutput {
         // 16-bit through the effects: not what a DAC opened bit-perfect is for.
         HiFi.release()
 
-        val output = synchronized(this) { ensureTrack(sampleRate, channels) } ?: return
+        val (output, generation) = synchronized(this) {
+            val output = ensureTrack(sampleRate, channels) ?: return
+            output to bufferGeneration
+        }
         if (voice) leaveVoice()
 
         val currentSpeed = speed
@@ -605,7 +637,7 @@ class AudioOutput {
         if (lightEffects) {
             synchronized(this) { applyPlatformRate() }
             equalizer.apply(data, sizeInBytes, channels, sampleRate)
-            writeAll(output, data, sizeInBytes)
+            writeAll(output, data, sizeInBytes, generation)
             return
         }
 
@@ -613,9 +645,14 @@ class AudioOutput {
         // At 1.0/1.0 Bungee is not a no-op — it still analyses and resynthesises
         // every grain — so bypassing it keeps normal playback exactly as it was.
         val stretched = if (currentSpeed != 1f || currentPitch != 1f) {
-            synchronized(this) {
+            synchronized(stretcherLock) {
+                if (generation != bufferGeneration) return
+                if (stretcherGeneration != generation) {
+                    resetStretcher()
+                    stretcherGeneration = generation
+                }
                 stretcher(sampleRate, channels)
-                    ?.process(data, sizeInBytes, currentSpeed, currentPitch)
+                    ?.process(data.duplicate(), sizeInBytes, currentSpeed, currentPitch)
             }
         } else {
             null
@@ -627,12 +664,12 @@ class AudioOutput {
             // EqualizerAudioProcessor. Its own view of the buffer, so the
             // equaliser's reads leave the position the write starts from.
             equalizer.apply(stretched.duplicate(), size, channels, sampleRate)
-            writeAll(output, stretched, size)
+            writeAll(output, stretched, size, generation)
             return
         }
 
         equalizer.apply(data, sizeInBytes, channels, sampleRate)
-        writeAll(output, data, sizeInBytes)
+        writeAll(output, data, sizeInBytes, generation)
     }
 
     /** Nothing the listener set changes the sound: no curve, no karaoke, no stretch, no room. */
@@ -689,17 +726,20 @@ class AudioOutput {
         }
 
         val encoding = HiFi.encodingFor(sampleRate, channels)
-        val output = synchronized(this) { ensureTrack(sampleRate, channels, encoding) } ?: return
+        val (output, generation) = synchronized(this) {
+            val output = ensureTrack(sampleRate, channels, encoding) ?: return
+            output to bufferGeneration
+        }
         if (voice) leaveVoice()
         when (encoding) {
-            AudioFormat.ENCODING_PCM_FLOAT -> writeAll(output, data, sizeInBytes)
+            AudioFormat.ENCODING_PCM_FLOAT -> writeAll(output, data, sizeInBytes, generation)
             AudioFormat.ENCODING_PCM_32BIT -> {
                 val out = scratch(samples * 4)
                 for (i in 0 until samples) {
                     out.putInt((floats.get(i).toDouble() * 2147483647.0).coerceIn(-2147483648.0, 2147483647.0).toInt())
                 }
                 out.flip()
-                writeAll(output, out, samples * 4)
+                writeAll(output, out, samples * 4, generation)
             }
             AudioFormat.ENCODING_PCM_24BIT_PACKED -> {
                 val out = scratch(samples * 3)
@@ -708,7 +748,7 @@ class AudioOutput {
                     out.put(v.toByte()).put((v shr 8).toByte()).put((v shr 16).toByte())
                 }
                 out.flip()
-                writeAll(output, out, samples * 3)
+                writeAll(output, out, samples * 3, generation)
             }
             else -> {
                 val out = scratch(samples * 2)
@@ -716,7 +756,7 @@ class AudioOutput {
                     out.putShort((floats.get(i) * 32767f).coerceIn(-32768f, 32767f).toInt().toShort())
                 }
                 out.flip()
-                writeAll(output, out, samples * 2)
+                writeAll(output, out, samples * 2, generation)
             }
         }
     }
@@ -768,13 +808,16 @@ class AudioOutput {
     @Suppress("unused")
     fun writeVoice(data: ByteBuffer, sizeInBytes: Int, sampleRate: Int, channels: Int) {
         if (discarding) return
-        val output = synchronized(this) { ensureTrack(sampleRate, channels) } ?: return
+        val (output, generation) = synchronized(this) {
+            val output = ensureTrack(sampleRate, channels) ?: return
+            output to bufferGeneration
+        }
         if (!voice) enterVoice(output)
         dev.lelonio.square.backend.spotify.SpotifyDj.hear(data, sizeInBytes)
         // The one thing the voice does go through: the curve is about the
         // headphones, not the music, and a voice on them needs it as much.
         equalizer.apply(data, sizeInBytes, channels, sampleRate)
-        writeAll(output, data, sizeInBytes)
+        writeAll(output, data, sizeInBytes, generation)
     }
 
     /** Whether the packets being written are the DJ's voice; see [writeVoice]. */
@@ -786,8 +829,7 @@ class AudioOutput {
         synchronized(this) {
             // What the stretcher holds is music, and would be heard after the
             // line; the room would ring with the voice.
-            stretcher?.release()
-            stretcher = null
+            synchronized(stretcherLock) { resetStretcher() }
             suspendReverb()
             if (platformSpeed != 1f || platformPitch != 1f) {
                 runCatching {
@@ -819,16 +861,34 @@ class AudioOutput {
     private var platformSpeed = 1f
     private var platformPitch = 1f
 
-    private fun writeAll(output: AudioTrack, buffer: ByteBuffer, sizeInBytes: Int) {
+    private fun writeAll(output: AudioTrack, buffer: ByteBuffer, sizeInBytes: Int, generation: Long) {
+        val bytesPerFrame = synchronized(this) {
+            if (output !== track || generation != bufferGeneration || discarding) return
+            configuredChannels * bytesPerSample(configuredEncoding)
+        }
         var written = 0
-        while (written < sizeInBytes) {
-            // WRITE_BLOCKING returns short only on error or when the track is
-            // stopped, so a non-positive result must break the loop or this
-            // spins.
-            val result = output.write(buffer, sizeInBytes - written, AudioTrack.WRITE_BLOCKING)
+        while (written < sizeInBytes && generation == bufferGeneration && !discarding) {
+            val result = runCatching {
+                output.write(buffer, sizeInBytes - written, AudioTrack.WRITE_BLOCKING)
+            }.getOrDefault(-1)
             if (result <= 0) return
+            synchronized(this) {
+                if (generation != bufferGeneration) return
+                writtenFrames += (written + result) / bytesPerFrame - written / bytesPerFrame
+            }
             written += result
         }
+    }
+
+    private fun resetStretcher() {
+        stretcher?.release()
+        stretcher = null
+    }
+
+    private fun bytesPerSample(encoding: Int): Int = when (encoding) {
+        AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_32BIT -> 4
+        AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
+        else -> 2
     }
 
     /**
@@ -855,10 +915,10 @@ class AudioOutput {
 
     fun release() {
         synchronized(this) {
-            reverb?.runCatching { release() }
-            reverb = null
-            stretcher?.release()
-            stretcher = null
+            fadeGeneration.incrementAndGet()
+            suspendReverb()
+            resetBufferedPosition()
+            synchronized(stretcherLock) { resetStretcher() }
             track?.run {
                 runCatching { pause() }
                 runCatching { flush() }
@@ -889,9 +949,8 @@ class AudioOutput {
             runCatching { pause() }
             release()
         }
-        // Bound to the old format's rate and channel count.
-        stretcher?.release()
-        stretcher = null
+        auxAttached = false
+        resetBufferedPosition()
 
         val channelMask = if (channels == 1) {
             AudioFormat.CHANNEL_OUT_MONO
@@ -915,12 +974,7 @@ class AudioOutput {
         // and decoding competes with the UI and the network on a phone. Sizing for at least
         // 500 ms ensures that UI garbage collection (GC) or Compose frame animation bursts
         // will never cause audible dropouts or buffer starvation.
-        val bytesPerSample = when (encoding) {
-            AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_32BIT -> 4
-            AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
-            else -> 2
-        }
-        val bytesPerMs = sampleRate * channels * bytesPerSample / 1000
+        val bytesPerMs = sampleRate * channels * bytesPerSample(encoding) / 1000
         val minBuffer500ms = bytesPerMs * 500
         val bufferSize = maxOf(minBuffer * BUFFER_MULTIPLIER, minBuffer500ms)
 
@@ -961,9 +1015,10 @@ class AudioOutput {
         // before this track existed.
         runCatching { created.setVolume(0f) }
         currentGain = 0f
-        created.play()
-        if (playing) {
-            fadeExecutor.execute { ramp(created, 1f, FADE_IN_MS) }
+        if (!held) created.play()
+        if (playing && !held) {
+            val generation = fadeGeneration.incrementAndGet()
+            fadeExecutor.execute { ramp(created, 1f, FADE_IN_MS, generation) }
         }
         track = created
         configuredSampleRate = sampleRate
@@ -999,15 +1054,9 @@ class AudioOutput {
          * rather than smooth.
          */
         const val FADE_IN_MS = 260L
-        const val FADE_OUT_MS = 200L
+        const val FADE_OUT_MS = 25L
 
-        /**
-         * The fade before a skip, which is shorter than the one before a pause.
-         *
-         * It is time the listener waits between asking for the next track and
-         * hearing it, and a skip is a request to be somewhere else now. A pause
-         * has no such hurry, so it keeps the longer, softer fade.
-         */
+        /** Default fade for a track change. */
         const val SKIP_FADE_OUT_MS = 70L
         const val FADE_STEP_MS = 10L
 

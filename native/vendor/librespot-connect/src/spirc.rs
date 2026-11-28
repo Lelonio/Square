@@ -80,6 +80,11 @@ struct SpircTask {
     playing: std::sync::Arc<std::sync::Mutex<PlayingHere>>,
     /// Latest cluster, including the initial device registration response.
     cluster: std::sync::Arc<std::sync::Mutex<Option<Cluster>>>,
+    /// LOCAL PATCH: shared with the handle; see [`TrackChanges`].
+    track_changes: std::sync::Arc<TrackChanges>,
+    /// LOCAL PATCH: this device has made itself active and the account has not
+    /// been told yet; see [`SpircTask::handle_cluster_update`].
+    announcing_activation: bool,
     connect_established: bool,
 
     play_request_id: Option<u64>,
@@ -116,6 +121,9 @@ struct SpircTask {
     /// when set to true, it will update the volume after [UPDATE_STATE_DELAY],
     /// when no other future resolves, otherwise resets the delay
     update_state: bool,
+    /// LOCAL PATCH: fixed deadline for a pending state update so frequent
+    /// events cannot reset the sleep and starve remote state updates.
+    update_state_deadline: Option<tokio::time::Instant>,
 
     spirc_id: usize,
 }
@@ -140,6 +148,12 @@ enum SpircCommand {
     RepeatTrack(bool),
     Disconnect { pause: bool },
     SetPosition(u32),
+    /// LOCAL PATCH: the player has already been moved here; see
+    /// [`Spirc::player_seeked`].
+    PlayerSeeked {
+        position_ms: u32,
+        ticket: u64,
+    },
     /// LOCAL PATCH: replace what comes before and after the current track.
     SetQueueTracks {
         prev: Vec<String>,
@@ -188,6 +202,24 @@ pub struct Spirc {
     playing: std::sync::Arc<std::sync::Mutex<PlayingHere>>,
     /// Latest cluster, including the initial device registration response.
     cluster: std::sync::Arc<std::sync::Mutex<Option<Cluster>>>,
+    /// LOCAL PATCH: see [`TrackChanges`].
+    track_changes: std::sync::Arc<TrackChanges>,
+}
+
+/// LOCAL PATCH: commands that change the track, as sent and as handled.
+///
+/// The owner of the handle moves the player itself for a seek, so the seek is
+/// heard the moment it is asked for rather than after whatever the loop is
+/// busy with. That is only right while the track the player is on is the one
+/// the loop will be on when it gets to the seek: with a load or a skip still
+/// in the channel, the player would be moved within the track that is about to
+/// be replaced. Comparing the two counters tells those cases apart.
+#[derive(Default)]
+struct TrackChanges {
+    /// Incremented by the handle before such a command is sent.
+    sent: std::sync::atomic::AtomicU64,
+    /// Incremented by the loop as it takes one from the channel.
+    handled: std::sync::atomic::AtomicU64,
 }
 
 /// LOCAL PATCH: a snapshot of what the device is playing, for its owner.
@@ -221,6 +253,42 @@ impl Spirc {
     /// LOCAL PATCH: whether this device currently holds the account's playback.
     pub fn is_active(&self) -> bool {
         self.active.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// LOCAL PATCH: whether the player may be moved directly for a seek.
+    ///
+    /// `Some` with a ticket for [`Spirc::player_seeked`] when this device holds
+    /// playback and no command that changes the track is waiting in the loop,
+    /// so the track the player is on is the one the seek is meant for. `None`
+    /// means the seek has to go through [`Spirc::set_position_ms`].
+    pub fn direct_seek_ticket(&self) -> Option<u64> {
+        if !self.is_active() {
+            return None;
+        }
+        let sent = self.track_changes.sent.load(Ordering::SeqCst);
+        let handled = self.track_changes.handled.load(Ordering::SeqCst);
+        (sent == handled).then_some(sent)
+    }
+
+    /// LOCAL PATCH: tells the loop the player has already been seeked.
+    ///
+    /// The Connect state is updated to the position as for
+    /// [`Spirc::set_position_ms`], without moving the player a second time:
+    /// a second seek to the same place still throws away what has been
+    /// decoded and waits for the buffer again, which is heard as a stutter.
+    /// Should the track have changed after all since `ticket` was taken, the
+    /// loop seeks the new track itself.
+    pub fn player_seeked(&self, position_ms: u32, ticket: u64) -> Result<(), Error> {
+        Ok(self.commands.send(SpircCommand::PlayerSeeked {
+            position_ms,
+            ticket,
+        })?)
+    }
+
+    /// LOCAL PATCH: sends a command that changes the track; see [`TrackChanges`].
+    fn send_track_change(&self, command: SpircCommand) -> Result<(), Error> {
+        self.track_changes.sent.fetch_add(1, Ordering::SeqCst);
+        Ok(self.commands.send(command)?)
     }
 
     /// LOCAL PATCH: what this device is playing right now.
@@ -340,10 +408,13 @@ impl Spirc {
             transfer_state: None,
             update_volume: false,
             update_state: false,
+            update_state_deadline: None,
             // LOCAL PATCH: replaced with the handle's own the moment it exists.
             active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             playing: std::sync::Arc::new(std::sync::Mutex::new(PlayingHere::default())),
             cluster: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            track_changes: std::sync::Arc::new(TrackChanges::default()),
+            announcing_activation: false,
 
             spirc_id,
         };
@@ -361,6 +432,7 @@ impl Spirc {
             active,
             playing,
             cluster,
+            track_changes: task.track_changes.clone(),
         };
 
         let initial_volume = task.connect_state.device_info().volume;
@@ -415,7 +487,7 @@ impl Spirc {
     ///
     /// Does nothing if we are not the active device.
     pub fn prev(&self) -> Result<(), Error> {
-        Ok(self.commands.send(SpircCommand::Prev)?)
+        self.send_track_change(SpircCommand::Prev)
     }
 
     /// LOCAL PATCH: goes to the previous track even past the first three
@@ -427,14 +499,14 @@ impl Spirc {
     /// second line the app moved to the previous song while this restarted the
     /// current one, which left the app a track behind the speaker from then on.
     pub fn prev_track(&self) -> Result<(), Error> {
-        Ok(self.commands.send(SpircCommand::PrevTrack)?)
+        self.send_track_change(SpircCommand::PrevTrack)
     }
 
     /// Skips to the next track.
     ///
     /// Does nothing if we are not the active device.
     pub fn next(&self) -> Result<(), Error> {
-        Ok(self.commands.send(SpircCommand::Next)?)
+        self.send_track_change(SpircCommand::Next)
     }
 
     /// Increases the volume by configured steps of [ConnectConfig].
@@ -516,7 +588,7 @@ impl Spirc {
     ///
     /// Does not overwrite the queue.
     pub fn load(&self, command: LoadRequest) -> Result<(), Error> {
-        Ok(self.commands.send(SpircCommand::Load(command))?)
+        self.send_track_change(SpircCommand::Load(command))
     }
 
     /// Disconnects the current device and pauses the playback according the value.
@@ -635,6 +707,14 @@ impl SpircTask {
             // because of that the context resolving has to wait, so that the other tasks can finish
             let allow_context_resolving = !self.update_state && !self.update_volume;
 
+            if self.update_state && self.update_state_deadline.is_none() {
+                self.update_state_deadline =
+                    Some(tokio::time::Instant::now() + UPDATE_STATE_DELAY);
+            } else if !self.update_state {
+                self.update_state_deadline = None;
+            }
+            let update_state_deadline = self.update_state_deadline;
+
             tokio::select! {
                 // startup of the dealer requires a connection_id, which is retrieved at the very beginning
                 connection_id_update = self.connection_id_update.next() => unwrap! {
@@ -701,8 +781,27 @@ impl SpircTask {
                         error!("could not dispatch player event: {e}");
                     }
                 },
-                _ = async { sleep(UPDATE_STATE_DELAY).await }, if self.update_state => {
+                _ = async {
+                    if let Some(deadline) = update_state_deadline {
+                        tokio::time::sleep_until(deadline).await;
+                    } else {
+                        sleep(UPDATE_STATE_DELAY).await;
+                    }
+                }, if self.update_state => {
+                    // LOCAL PATCH: commands first.
+                    //
+                    // A command that came in as the delay ran out would
+                    // otherwise wait behind the request below. Left for the
+                    // next turn, it is handled at once and the update then
+                    // describes its outcome as well.
+                    if self.connect_established
+                        && self.commands.as_ref().is_some_and(|rx| !rx.is_empty())
+                    {
+                        continue;
+                    }
+
                     self.update_state = false;
+                    self.update_state_deadline = None;
 
                     // LOCAL PATCH: bounded, because this loop is the only thing
                     // reading the command channel.
@@ -714,16 +813,11 @@ impl SpircTask {
                     // that is many seconds of music playing under a finger that
                     // has already asked for silence. The account can be told
                     // late; the listener cannot be answered late.
-                    match tokio::time::timeout(STATE_UPDATE_TIMEOUT, self.notify()).await {
-                        Ok(Err(why)) => error!("state update: {why}"),
-                        Err(_) => {
-                            warn!("state update timed out, telling the account later");
-                            // Left set, so the next turn of the loop tries
-                            // again rather than leaving the account with a
-                            // state this device has moved on from.
-                            self.update_state = true;
-                        }
-                        Ok(Ok(())) => (),
+                    if !self.notify_bounded("state update").await {
+                        // Left set, so the next turn of the loop tries again
+                        // rather than leaving the account with a state this
+                        // device has moved on from.
+                        self.update_state = true;
                     }
                 },
                 _ = async { sleep(VOLUME_UPDATE_DELAY).await }, if self.update_volume => {
@@ -737,8 +831,9 @@ impl SpircTask {
                     // for some reason the web-player does need two separate updates, so that the
                     // position of the current track is retained, other clients also send a state
                     // update before they send the volume update
-                    if let Err(why) = self.notify().await {
-                        error!("error updating connect state for volume update: {why}")
+                    // LOCAL PATCH: bounded, as above.
+                    if !self.notify_bounded("state update for volume update").await {
+                        self.update_state = true;
                     }
                 },
                 // context resolver handling, the idea/reason behind it the following:
@@ -761,10 +856,9 @@ impl SpircTask {
                     }).await
                 }, if allow_context_resolving && self.context_resolver.has_next() => {
                     let update_state = self.handle_next_context(next_context);
-                    if update_state {
-                        if let Err(why) = self.notify().await {
-                            error!("update after context resolving failed: {why}")
-                        }
+                    // LOCAL PATCH: bounded, as above.
+                    if update_state && !self.notify_bounded("update after context resolving").await {
+                        self.update_state = true;
                     }
                 },
                 else => break
@@ -845,6 +939,31 @@ impl SpircTask {
 
     async fn handle_command(&mut self, cmd: SpircCommand) -> Result<(), Error> {
         trace!("Received SpircCommand::{cmd:?}");
+        // LOCAL PATCH: counted as taken, whatever becomes of it below; see
+        // [`TrackChanges`].
+        if matches!(
+            cmd,
+            SpircCommand::Load(_)
+                | SpircCommand::Next
+                | SpircCommand::Prev
+                | SpircCommand::PrevTrack
+        ) {
+            self.track_changes.handled.fetch_add(1, Ordering::SeqCst);
+        }
+
+        // LOCAL PATCH: the account is told about a command later, not here.
+        //
+        // Telling it is an HTTP request, and awaiting that at the end of every
+        // command put a round trip between each command and the next one in
+        // the channel: picking a track sends an activate, a shuffle and a load
+        // one after the other, and the load reached the player only after two
+        // state updates had come back. A run of skips queued up the same way.
+        // Each command now only marks the state as changed, the loop sends it
+        // once things go quiet (bounded; see `run`), and a burst of commands
+        // goes out as one update describing where they ended up.
+        //
+        // Only the commands that end this device's part in playback still
+        // wait for the account, because after them there is no later.
         match cmd {
             SpircCommand::Shutdown => {
                 trace!("Received SpircCommand::Shutdown");
@@ -854,6 +973,10 @@ impl SpircTask {
                 if let Some(rx) = self.commands.as_mut() {
                     rx.close()
                 }
+                // The loop ends with this, and ending it removes the state
+                // from the account altogether; another update would only be
+                // a round trip in the way of shutting down.
+                return Ok(());
             }
             SpircCommand::Transfer(request) if !self.connect_state.is_active() => {
                 let device_id = self.session.device_id();
@@ -866,7 +989,9 @@ impl SpircTask {
             SpircCommand::Activate if !self.connect_state.is_active() => {
                 trace!("Received SpircCommand::{cmd:?}");
                 self.handle_activate();
-                return self.notify().await;
+                // Announced with whatever follows it, usually a load; until
+                // then the account still names the device that had playback.
+                self.announcing_activation = true;
             }
             SpircCommand::Transfer(..) | SpircCommand::Activate => {
                 warn!("SpircCommand::{cmd:?} will be ignored while already active")
@@ -910,13 +1035,23 @@ impl SpircTask {
             SpircCommand::Shuffle(shuffle) => self.handle_shuffle(shuffle)?,
             SpircCommand::Repeat(repeat) => self.handle_repeat_context(repeat)?,
             SpircCommand::RepeatTrack(repeat) => self.handle_repeat_track(repeat),
-            SpircCommand::SetPosition(position) => self.handle_seek(position),
+            SpircCommand::SetPosition(position) => self.handle_seek(position, true),
+            SpircCommand::PlayerSeeked {
+                position_ms,
+                ticket,
+            } => {
+                // The player is on the track this seek was meant for unless a
+                // track change was taken from the channel after the ticket.
+                let player_moved = self.track_changes.handled.load(Ordering::SeqCst) == ticket;
+                self.handle_seek(position_ms, !player_moved)
+            }
             SpircCommand::SetQueueTracks { prev, next } => self.handle_set_queue_tracks(prev, next)?,
             SpircCommand::SetVolume(volume) => self.set_volume(volume),
             SpircCommand::Load(command) => self.handle_load(command, None, None).await?,
         };
 
-        self.notify().await
+        self.update_state = true;
+        Ok(())
     }
 
     /// LOCAL PATCH: see [`Spirc::set_queue_tracks`].
@@ -1217,10 +1352,28 @@ impl SpircTask {
             }
             let became_inactive = self.connect_state.is_active()
                 && cluster.active_device_id != self.session.device_id();
-            if became_inactive {
+            // LOCAL PATCH: not while this device's own activation is unsent.
+            //
+            // Activating is announced with the next state update rather than
+            // on the spot (see `handle_command`), and a cluster update that
+            // arrives in between was written before the account heard of it:
+            // it still names the device that had playback, and obeying it
+            // would stop the track this device was just asked to play. Once
+            // the update has gone out the account answers with a cluster that
+            // names this device, or, if another one really took over, with a
+            // later one that is obeyed as usual.
+            if became_inactive && self.announcing_activation {
+                debug!(
+                    "cluster still names <{}>, this device's activation is not sent yet",
+                    cluster.active_device_id
+                );
+                self.update_state = true;
+            } else if became_inactive {
                 info!("device became inactive");
-                self.handle_disconnect().await?;
+                // LOCAL PATCH: silence the local player immediately before any
+                // network disconnect PUT so a transfer never leaves audio playing.
                 self.handle_stop();
+                self.handle_disconnect().await?;
             } else if self.connect_state.is_active() {
                 // fixme: workaround fix, because of missing information why it behaves like it does
                 //  background: when another device sends a connect-state update, some player's position de-syncs
@@ -1228,7 +1381,18 @@ impl SpircTask {
                 self.update_state = true;
             }
         } else if self.connect_state.is_active() {
-            self.connect_state.became_inactive(&self.session).await?;
+            // LOCAL PATCH: bound the inactive PUT too so a stalled network never
+        // blocks subsequent commands or leaves the loop wedged.
+        match tokio::time::timeout(
+            STATE_UPDATE_TIMEOUT,
+            self.connect_state.became_inactive(&self.session),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(why)) => warn!("failed marking device inactive: {why}"),
+            Err(_) => warn!("timed out marking device inactive"),
+        }
         }
 
         Ok(())
@@ -1294,7 +1458,12 @@ impl SpircTask {
             // modification and update of the connect_state
             Transfer(transfer) => {
                 self.handle_transfer(transfer.data.expect("by condition checked"))?;
-                return self.notify().await;
+                // LOCAL PATCH: bounded, and tried again later if it did not
+                // get through; see `notify_bounded`.
+                if !self.notify_bounded("state update after transfer").await {
+                    self.update_state = true;
+                }
+                return Ok(());
             }
             Play(mut play) => {
                 if !self.connect_state.is_active() {
@@ -1349,7 +1518,7 @@ impl SpircTask {
             SeekTo(seek_to) => {
                 // for some reason the position is stored in value, not in position
                 trace!("seek to {seek_to:?}");
-                self.handle_seek(seek_to.value)
+                self.handle_seek(seek_to.value, true)
             }
             SetShufflingContext(shuffle) => self.handle_shuffle(shuffle.value)?,
             SetRepeatingContext(repeat_context) => {
@@ -1520,9 +1689,24 @@ impl SpircTask {
         self.play_status = SpircPlayStatus::Stopped {};
         self.connect_state
             .update_position_in_relation(self.now_ms());
-        self.notify().await?;
+        // LOCAL PATCH: bounded. The state going inactive below is what the
+        // account has to hear; the last position before it is a courtesy.
+        self.notify_bounded("state update before disconnecting")
+            .await;
+        self.announcing_activation = false;
 
-        self.connect_state.became_inactive(&self.session).await?;
+        // LOCAL PATCH: bound the inactive PUT too so a stalled network never
+        // blocks subsequent commands or leaves the loop wedged.
+        match tokio::time::timeout(
+            STATE_UPDATE_TIMEOUT,
+            self.connect_state.became_inactive(&self.session),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(why)) => warn!("failed marking device inactive: {why}"),
+            Err(_) => warn!("timed out marking device inactive"),
+        }
 
         self.player
             .emit_session_disconnected_event(self.session.connection_id(), self.session.username());
@@ -1811,7 +1995,9 @@ impl SpircTask {
         }
     }
 
-    fn handle_seek(&mut self, position_ms: u32) {
+    /// LOCAL PATCH: `seek_player` is false when the player has been moved
+    /// already; see [`Spirc::player_seeked`].
+    fn handle_seek(&mut self, position_ms: u32, seek_player: bool) {
         let duration = self.connect_state.player().duration;
         if i64::from(position_ms) > duration {
             warn!("tried to seek to {position_ms}ms of {duration}ms");
@@ -1820,7 +2006,9 @@ impl SpircTask {
 
         self.connect_state
             .update_position(position_ms, self.now_ms());
-        self.player.seek(position_ms);
+        if seek_player {
+            self.player.seek(position_ms);
+        }
         let now = self.now_ms();
         match self.play_status {
             SpircPlayStatus::Stopped => (),
@@ -1979,7 +2167,7 @@ impl SpircTask {
         if self.position() < 3000 {
             self.handle_prev_track()?;
         } else {
-            self.handle_seek(0);
+            self.handle_seek(0, true);
         }
 
         Ok(())
@@ -2140,10 +2328,32 @@ impl SpircTask {
         self.connect_state.set_now(self.now_ms() as u64);
         self.connect_state.apply_sleep_timer();
 
-        self.connect_state
-            .send_state(&self.session)
-            .await
-            .map(|_| ())
+        self.connect_state.send_state(&self.session).await?;
+        // LOCAL PATCH: the account knows now; see `announcing_activation`.
+        self.announcing_activation = false;
+        Ok(())
+    }
+
+    /// LOCAL PATCH: [`SpircTask::notify`], given up on after
+    /// [`STATE_UPDATE_TIMEOUT`].
+    ///
+    /// This loop is the only thing reading the command channel, and an
+    /// unanswered request here is a listener's pause or skip left unread for as
+    /// long as the network takes. Returns false when the update did not get
+    /// through, failed or timed out, for the caller to decide whether to try
+    /// again later.
+    async fn notify_bounded(&mut self, what: &str) -> bool {
+        match tokio::time::timeout(STATE_UPDATE_TIMEOUT, self.notify()).await {
+            Ok(Ok(())) => true,
+            Ok(Err(why)) => {
+                error!("{what}: {why}");
+                false
+            }
+            Err(_) => {
+                warn!("{what}: timed out, telling the account later");
+                false
+            }
+        }
     }
 
     fn set_volume(&mut self, volume: u16) {

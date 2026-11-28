@@ -55,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.runtime.withFrameNanos
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -150,7 +151,8 @@ fun LyricsView(
     onSeek: (Long) -> Unit,
 ) {
     val listState = remember(lyrics) { LazyListState() }
-    val position by rememberSmoothPosition(positionMs, isPlaying)
+    val playbackSpeed by dev.lelonio.square.playback.AudioEffects.speed.collectAsStateWithLifecycle()
+    val position by rememberSmoothPosition(positionMs, isPlaying, lyrics, playbackSpeed)
 
     val activeLine = remember(lyrics, position) {
         if (!lyrics.synced) -1
@@ -229,21 +231,36 @@ fun LyricsView(
 }
 
 /**
+ * How far past the last report the position is carried: a little over the time
+ * between reports, so a stalled player does not leave the words running ahead.
+ */
+private const val MAX_EXTRAPOLATION_MS = 350L
+
+/**
  * The playback position, advanced every frame between reports.
  */
 @Composable
-private fun rememberSmoothPosition(source: State<Long>, isPlaying: Boolean): State<Long> {
-    val smoothed = remember { mutableLongStateOf(source.value) }
+private fun rememberSmoothPosition(
+    source: State<Long>,
+    isPlaying: Boolean,
+    lyrics: Lyrics,
+    speed: Float = 1f,
+): State<Long> {
+    // Started afresh with new words, so one song's time never reaches the next.
+    val smoothed = remember(source, lyrics) { mutableLongStateOf(source.value) }
     val reported = source.value
 
-    LaunchedEffect(reported, isPlaying) {
+    LaunchedEffect(smoothed, reported, isPlaying, speed) {
         smoothed.longValue = reported
         if (!isPlaying) return@LaunchedEffect
 
+        val rate = speed.takeIf { it > 0f } ?: 1f
         val startedAt = withFrameMillis { it }
-        while (true) {
+        var elapsed = 0L
+        while (elapsed < MAX_EXTRAPOLATION_MS) {
             withFrameMillis { frame ->
-                smoothed.longValue = reported + (frame - startedAt)
+                elapsed = (frame - startedAt).coerceAtMost(MAX_EXTRAPOLATION_MS)
+                smoothed.longValue = reported + (elapsed * rate).toLong()
             }
         }
     }

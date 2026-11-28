@@ -34,6 +34,7 @@ use futures_util::{
     FutureExt, StreamExt, TryFutureExt, future, future::FusedFuture,
     stream::futures_unordered::FuturesUnordered,
 };
+use librespot_core::audio_key::AudioKey;
 use librespot_metadata::{audio::UniqueFields, track::Tracks};
 
 use symphonia::core::io::MediaSource;
@@ -1433,6 +1434,63 @@ impl PlayerTrackLoader {
         }
     }
 
+    /// LOCAL PATCH: the audio key for a file, as `load_track` decides on it.
+    ///
+    /// `None` when the key was refused and the load must end; `Some(None)`
+    /// when the file is to be played without decryption.
+    //
+    // Not all audio files are encrypted. If we can't get a key, try loading the track
+    // without decryption. If the file was encrypted after all, the decoder will fail
+    // parsing and bail out, so we should be safe from outputting ear-piercing noise.
+    //
+    // LOCAL PATCH: a refused key ends the load instead.
+    //
+    // Spotify refuses keys when it is throttling a session, and the
+    // refusal says nothing about the track. Carrying on without one
+    // means handing the decoder an encrypted file: it dies on the first
+    // frame, the track "ends" in half a second, and the engine moves to
+    // the next one — which is refused too. The listener sees the whole
+    // queue flick past in silence, with nothing in the log but a
+    // decoder complaining about the end of the stream.
+    //
+    // Failing the load here puts it on the retry path instead (see
+    // MAX_LOAD_ATTEMPTS above), which waits and tries again, and says
+    // so plainly if it still cannot. Only a refusal or a timeout is
+    // treated this way; any other key failure keeps upstream's
+    // behaviour, since a file that is genuinely unencrypted has to go
+    // on playing.
+    async fn request_key(
+        &self,
+        track_id: SpotifyId,
+        file_id: librespot_core::FileId,
+    ) -> Option<Option<AudioKey>> {
+        // LOCAL PATCH: said before asking, so a download queue running
+        // alongside knows to keep out of the way. Audio keys are limited
+        // per session, and a queue spending that allowance is a queue
+        // stopping the music from starting; see `downloads.rs`.
+        librespot_core::audio_key::note_playback_request();
+        match self.session.audio_key().request(track_id, file_id).await {
+            Ok(key) => Some(Some(key)),
+            Err(e) => {
+                // A key that never came because the session went away
+                // counts too: the connection dropping mid-request answers
+                // "channel closed", and the file is no less encrypted for
+                // it. Played anyway, it was a decoder error and a skip.
+                let refused = matches!(
+                    e.error.downcast_ref::<librespot_core::audio_key::AudioKeyError>(),
+                    Some(librespot_core::audio_key::AudioKeyError::AesKey)
+                        | Some(librespot_core::audio_key::AudioKeyError::Timeout)
+                ) || self.session.is_invalid();
+                if refused {
+                    warn!("no key for <{track_id:?}>, not playing it undecrypted: {e}");
+                    return None;
+                }
+                warn!("Unable to load key, continuing without decryption: {e}");
+                Some(None)
+            }
+        }
+    }
+
     fn stream_data_rate(&self, format: AudioFileFormat) -> Option<usize> {
         let kbps = match format {
             AudioFileFormat::OGG_VORBIS_96 => 12.,
@@ -1781,12 +1839,45 @@ impl PlayerTrackLoader {
 
         let bytes_per_second = self.stream_data_rate(format)?;
 
+        // LOCAL PATCH: the key asked for once, even if the file is opened again.
+        //
+        // A retry below only replaces a broken cached file; the key for it is
+        // the same, and audio keys are rationed per session.
+        let mut known_key: Option<Option<AudioKey>> = None;
+
         // This is only a loop to be able to reload the file if an error occurred
         // while opening a cached file.
         loop {
-            let encrypted_file = AudioFile::open(&self.session, file_id, bytes_per_second);
+            let open = AudioFile::open(&self.session, file_id, bytes_per_second)
+                .map(|result| (result, began.elapsed()));
 
-            let encrypted_file = match encrypted_file.await {
+            // LOCAL PATCH: the file and its key fetched side by side.
+            //
+            // They are independent requests, one to the CDN and one to the
+            // access point, and asking for the key only once the file had
+            // opened put a whole round trip in front of every uncached track.
+            let (encrypted_file, after_open, key, after_key) = match known_key {
+                Some(key) => {
+                    let (file, after_open) = open.await;
+                    (file, after_open, key, after_open)
+                }
+                None => {
+                    let ((file, after_open), (key, after_key)) = future::join(
+                        open,
+                        self.request_key(track_id, file_id)
+                            .map(|key| (key, began.elapsed())),
+                    )
+                    .await;
+                    // A refusal ends the load whatever became of the file.
+                    let key = key?;
+                    known_key = Some(key);
+                    // Whichever came last is when both were in hand; the log
+                    // below reports the key as the wait beyond the file.
+                    (file, after_open, key, after_key.max(after_open))
+                }
+            };
+
+            let encrypted_file = match encrypted_file {
                 Ok(encrypted_file) => encrypted_file,
                 Err(e) => {
                     error!("Unable to load encrypted file: {e:?}");
@@ -1795,55 +1886,8 @@ impl PlayerTrackLoader {
             };
 
             let is_cached = encrypted_file.is_cached();
-            let after_open = began.elapsed();
 
             let stream_loader_controller = encrypted_file.get_stream_loader_controller().ok()?;
-
-            // Not all audio files are encrypted. If we can't get a key, try loading the track
-            // without decryption. If the file was encrypted after all, the decoder will fail
-            // parsing and bail out, so we should be safe from outputting ear-piercing noise.
-            //
-            // LOCAL PATCH: a refused key ends the load instead.
-            //
-            // Spotify refuses keys when it is throttling a session, and the
-            // refusal says nothing about the track. Carrying on without one
-            // means handing the decoder an encrypted file: it dies on the first
-            // frame, the track "ends" in half a second, and the engine moves to
-            // the next one — which is refused too. The listener sees the whole
-            // queue flick past in silence, with nothing in the log but a
-            // decoder complaining about the end of the stream.
-            //
-            // Failing the load here puts it on the retry path instead (see
-            // MAX_LOAD_ATTEMPTS above), which waits and tries again, and says
-            // so plainly if it still cannot. Only a refusal or a timeout is
-            // treated this way; any other key failure keeps upstream's
-            // behaviour, since a file that is genuinely unencrypted has to go
-            // on playing.
-            // LOCAL PATCH: said before asking, so a download queue running
-            // alongside knows to keep out of the way. Audio keys are limited
-            // per session, and a queue spending that allowance is a queue
-            // stopping the music from starting; see `downloads.rs`.
-            librespot_core::audio_key::note_playback_request();
-            let key = match self.session.audio_key().request(track_id, file_id).await {
-                Ok(key) => Some(key),
-                Err(e) => {
-                    // A key that never came because the session went away
-                    // counts too: the connection dropping mid-request answers
-                    // "channel closed", and the file is no less encrypted for
-                    // it. Played anyway, it was a decoder error and a skip.
-                    let refused = matches!(
-                        e.error.downcast_ref::<librespot_core::audio_key::AudioKeyError>(),
-                        Some(librespot_core::audio_key::AudioKeyError::AesKey)
-                            | Some(librespot_core::audio_key::AudioKeyError::Timeout)
-                    ) || self.session.is_invalid();
-                    if refused {
-                        warn!("no key for <{track_id:?}>, not playing it undecrypted: {e}");
-                        return None;
-                    }
-                    warn!("Unable to load key, continuing without decryption: {e}");
-                    None
-                }
-            };
 
             // LOCAL PATCH: what playing this again from the cache, offline,
             // will need; see `HeardSink`.
@@ -1879,7 +1923,6 @@ impl PlayerTrackLoader {
                 }
             }
 
-            let after_key = began.elapsed();
             let mut decrypted_file = AudioDecrypt::new(key, encrypted_file);
 
             let is_ogg_vorbis = AudioFiles::is_ogg_vorbis(format);
@@ -3747,6 +3790,7 @@ impl PlayerInternal {
             );
         }
 
+        let mut seeked = None;
         if let Some(decoder) = self.state.decoder() {
             match decoder.seek(position_ms) {
                 Ok(new_position_ms) => {
@@ -3764,12 +3808,7 @@ impl PlayerInternal {
                     } = self.state
                     {
                         *stream_position_ms = new_position_ms;
-
-                        self.send_event(PlayerEvent::Seeked {
-                            play_request_id,
-                            track_id: track_id.clone(),
-                            position_ms: new_position_ms,
-                        });
+                        seeked = Some((play_request_id, track_id.clone(), new_position_ms));
                     }
                 }
                 Err(e) => error!("PlayerInternal::handle_command_seek error: {e}"),
@@ -3778,8 +3817,18 @@ impl PlayerInternal {
             error!("Player::seek called from invalid state: {:?}", self.state);
         }
 
-        // ensure we have a bit of a buffer of downloaded data
+        // ensure we have a bit of a buffer of downloaded data before reporting
+        // that the seek is ready to play, so slow uncached seeks don't advance
+        // the client's playback clock while waiting on audio data.
         self.preload_data_before_playback()?;
+
+        if let Some((play_request_id, track_id, new_position_ms)) = seeked {
+            self.send_event(PlayerEvent::Seeked {
+                play_request_id,
+                track_id,
+                position_ms: new_position_ms,
+            });
+        }
 
         if let PlayerState::Playing {
             ref mut reported_nominal_start_time,
@@ -4040,14 +4089,18 @@ impl PlayerInternal {
             ..
         } = self.state
         {
-            let read_ahead_during_playback = AudioFetchParams::get().read_ahead_during_playback;
+            let params = AudioFetchParams::get();
             // Request our read ahead range
-            let request_data_length =
-                (read_ahead_during_playback.as_secs_f32() * bytes_per_second as f32) as usize;
+            let request_data_length = (params.read_ahead_during_playback.as_secs_f32()
+                * bytes_per_second as f32) as usize;
 
-            // Request the part we want to wait for blocking. This effectively means we wait for the previous request to partially complete.
-            let wait_for_data_length =
-                (read_ahead_during_playback.as_secs_f32() * bytes_per_second as f32) as usize;
+            // LOCAL PATCH: wait only for what playback needs to start, as
+            // upstream does. Waiting for the whole read-ahead blocked the
+            // player thread on a seek into unfetched audio until five seconds
+            // of it had arrived; the rest is still requested above and keeps
+            // arriving in the background.
+            let wait_for_data_length = (params.read_ahead_before_playback.as_secs_f32()
+                * bytes_per_second as f32) as usize;
 
             stream_loader_controller.fetch_next_and_wait(request_data_length, wait_for_data_length)
         } else {
